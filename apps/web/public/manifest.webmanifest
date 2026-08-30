@@ -1,0 +1,9 @@
+{
+  "name": "OpenTriage",
+  "short_name": "OpenTriage",
+  "description": "Electronic patient care reporting",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e9f0f2",
+  "theme_color": "#123b52"
+}

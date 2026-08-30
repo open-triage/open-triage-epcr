@@ -1,0 +1,11 @@
+project_id = "open-triage"
+
+[api]
+enabled = true
+
+[db]
+major_version = 17
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"

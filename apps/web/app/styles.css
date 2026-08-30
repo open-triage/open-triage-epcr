@@ -1,0 +1,15 @@
+:root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #e9f0f2; color: #102d3c; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { min-height: 100dvh; max-width: 920px; margin: auto; padding: clamp(1rem, 4vw, 3rem); }
+header { background: #123b52; color: white; padding: clamp(1.5rem, 5vw, 3rem); border-radius: 1.2rem; }
+h1 { margin: .2rem 0; font-size: clamp(2rem, 8vw, 4rem); }
+header p { margin: .25rem 0; opacity: .8; }
+.eyebrow { font-size: .75rem; font-weight: 800; letter-spacing: .16em; }
+.status { margin: 1rem 0; padding: 1rem; background: white; border-radius: .8rem; font-weight: 650; }
+.dot { display: inline-block; width: .7rem; height: .7rem; margin-right: .5rem; border-radius: 50%; background: #25a477; }
+nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .75rem; }
+button { min-height: 4.5rem; border: 0; border-radius: .8rem; padding: 1rem; background: white; color: inherit; text-align: left; font: inherit; font-weight: 750; box-shadow: 0 2px 8px #123b5212; }
+button span { display: block; color: #39809b; font-size: .72rem; margin-bottom: .25rem; }
+footer { padding: 2rem 0; color: #56717e; font-size: .85rem; }
+@media (max-width: 480px) { main { padding: .75rem; } nav { grid-template-columns: 1fr 1fr; } button { min-height: 5rem; } }

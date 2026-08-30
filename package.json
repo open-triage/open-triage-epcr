@@ -1,0 +1,18 @@
+{
+  "name": "open-triage",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @open-triage/web\" \"npm run dev -w @open-triage/api\"",
+    "build": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": { "node": ">=22" }
+}
