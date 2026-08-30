@@ -25,3 +25,9 @@ source of truth for schema changes; TypeORM's `synchronize` option is disabled.
 NEMSIS identifiers are source metadata, not application structure. Form sections, labels,
 requirements, order, and code systems belong in versioned configuration. Deployment-specific
 overrides can later replace that configuration without changing UI components or database schema.
+
+## License
+
+OpenTriage is licensed under the GNU Affero General Public License v3.0 only
+(AGPL-3.0-only). Reusable interoperability libraries may be explicitly designated
+under Apache-2.0. See `LICENSE` and `LICENSES/README.md` for details.
