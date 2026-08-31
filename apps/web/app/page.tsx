@@ -4,7 +4,15 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
-import { INITIAL_SHELL_STATE, transitionShell, type ShellView, type VitalField } from "./synthetic-encounter";
+import {
+  checklistFields,
+  INITIAL_SHELL_STATE,
+  transitionShell,
+  validateChecklist,
+  type ChecklistField,
+  type ShellView,
+  type VitalField,
+} from "./synthetic-encounter";
 import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
@@ -23,6 +31,7 @@ export default function Home() {
   const [procedureSearch, setProcedureSearch] = useState("");
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const encounter = shell.encounter;
+  const findings = validateChecklist(shell.checklistValues);
   const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
   const procedureValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
   const vitalValidation = useMemo(() => shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null, [shell.vitalDraft]);
@@ -42,6 +51,12 @@ export default function Home() {
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
   }, [shell.noteDraft]);
+
+  useEffect(() => {
+    if (!shell.focusedChecklistField) return;
+    document.getElementById(`checklist-${shell.focusedChecklistField}`)?.focus();
+    dispatch({ type: "validation-focus-cleared" });
+  }, [shell.focusedChecklistField]);
 
   function startNote() {
     dispatch({ type: "note-started", id: crypto.randomUUID(), time: localClinicalTime() });
@@ -91,7 +106,7 @@ export default function Home() {
             <span>Incident {encounter.incident.number}</span>
             <strong>{encounter.incident.complaint}</strong>
           </div>
-          <span className="required-count">{encounter.requiredRemaining} required left</span>
+          <span className="required-count" aria-live="polite">{findings.length} required left</span>
         </div>
         <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype</button>
       </header>
@@ -167,25 +182,44 @@ export default function Home() {
               <p className="eyebrow">Encounter details</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
-            <span>{encounter.requiredRemaining} remaining</span>
+            <span aria-live="polite">{findings.length} remaining</span>
           </div>
           <div className="checklist-summary">
-            <strong>Chest-pain transport</strong>
-            <span>{encounter.incident.address}</span>
+            <strong>{findings.length === 0 ? "Required documentation complete" : `${findings.length} required ${findings.length === 1 ? "item" : "items"} remaining`}</strong>
+            <span>Curated chest-pain assessment, disposition and narrative</span>
           </div>
-          <ul className="checklist-list">
-            {encounter.checklist.map((item) => (
-              <li key={item.title} className={item.complete ? "complete" : "incomplete"}>
-                <span className="check-status" aria-hidden="true">{item.complete ? "✓" : "!"}</span>
-                <div>
-                  <h2>{item.title}</h2>
-                  <p>{item.detail}</p>
-                  <small>{item.reference}</small>
-                </div>
-                <span className="status-label">{item.complete ? "Complete" : "Required"}</span>
-              </li>
+          {findings.length > 0 && (
+            <section className="validation-summary" aria-labelledby="validation-heading">
+              <h2 id="validation-heading">Needs attention</h2>
+              <p>Select a finding to move to its NEMSIS input.</p>
+              <ul>
+                {findings.map((finding) => (
+                  <li key={finding.fieldId}>
+                    <button type="button" onClick={() => dispatch({ type: "validation-selected", field: finding.fieldId })}>
+                      <strong>{finding.reference}</strong>
+                      <span>{finding.message}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          <form className="checklist-form" onSubmit={(event) => event.preventDefault()}>
+            {(["Assessment", "Disposition", "Narrative"] as const).map((section) => (
+              <fieldset key={section}>
+                <legend>{section}</legend>
+                {checklistFields.filter((field) => field.section === section).map((field) => (
+                  <ChecklistInput
+                    field={field}
+                    finding={findings.find((finding) => finding.fieldId === field.id)?.message}
+                    key={field.id}
+                    value={shell.checklistValues[field.id]}
+                    onChange={(value) => dispatch({ type: "checklist-field-changed", field: field.id, value })}
+                  />
+                ))}
+              </fieldset>
             ))}
-          </ul>
+          </form>
         </section>
       )}
 
@@ -400,5 +434,54 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+function ChecklistInput({ field, finding, value, onChange }: {
+  readonly field: ChecklistField;
+  readonly finding?: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}) {
+  const inputId = `checklist-${field.id}`;
+  const findingId = `${inputId}-finding`;
+  const metadataId = `${inputId}-metadata`;
+  const sharedProps = {
+    id: inputId,
+    "aria-invalid": finding ? true : undefined,
+    "aria-describedby": `${metadataId}${finding ? ` ${findingId}` : ""}`,
+  };
+
+  return (
+    <div className={`checklist-field ${finding ? "has-finding" : "is-complete"}`}>
+      <div className="field-heading">
+        <label htmlFor={inputId}>{field.label}</label>
+        <span>{finding ? "Required" : "Complete"}</span>
+      </div>
+      {field.control === "select" ? (
+        <select {...sharedProps} value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">Select…</option>
+          {field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      ) : field.control === "textarea" ? (
+        <textarea {...sharedProps} maxLength={field.maxLength} placeholder={field.placeholder} rows={5} value={value} onChange={(event) => onChange(event.target.value)} />
+      ) : (
+        <input {...sharedProps} maxLength={field.maxLength} placeholder={field.placeholder} type="text" value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
+      {field.control !== "select" && field.exceptionalValues.length > 0 && (
+        <div className="exceptional-values" aria-label={`Permitted exceptional values for ${field.label}`}>
+          {field.exceptionalValues.map((exception) => (
+            <button key={exception} type="button" onClick={() => onChange(exception)}>
+              Use {exception === "NV" ? "Not available (NV)" : "Pertinent negative (PN)"}
+            </button>
+          ))}
+        </div>
+      )}
+      <small id={metadataId} className="field-metadata">
+        <strong>{field.reference}</strong> · {field.datatype} · {field.cardinality} · {field.usage}
+        {field.exceptionalValues.length > 0 ? ` · permits ${field.exceptionalValues.join(" / ")}` : " · no NV/PN"}
+      </small>
+      {finding && <p className="field-finding" id={findingId}>{finding}</p>}
+    </div>
   );
 }
