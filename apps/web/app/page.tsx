@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
@@ -34,6 +34,8 @@ export default function Home() {
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const noteSummary = useRef<HTMLTextAreaElement>(null);
+  const dialog = useRef<HTMLElement>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const findings = validateChecklist(shell.checklistValues);
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
@@ -43,6 +45,14 @@ export default function Home() {
   const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
   const procedureValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
   const vitalValidation = useMemo(() => shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null, [shell.vitalDraft]);
+  const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+
+  const closeActiveDialog = useCallback(() => {
+    if (shell.noteDraft) dispatch({ type: "note-cancelled" });
+    else if (shell.medicationDraft) dispatch({ type: "medication-cancelled" });
+    else if (shell.procedureDraft) dispatch({ type: "procedure-cancelled" });
+    else if (shell.vitalDraft) dispatch({ type: "vitals-cancelled" });
+  }, [shell.medicationDraft, shell.noteDraft, shell.procedureDraft, shell.vitalDraft]);
 
   useEffect(() => {
     const saved = loadShellState(window.localStorage);
@@ -61,24 +71,72 @@ export default function Home() {
   }, [shell.noteDraft]);
 
   useEffect(() => {
+    if (!activeDialog) {
+      returnFocus.current?.focus();
+      returnFocus.current = null;
+      return;
+    }
+
+    returnFocus.current ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const target = dialog.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")
+        ?? dialog.current?.querySelector<HTMLElement>("button, input, select, textarea");
+      target?.focus();
+    });
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeActiveDialog();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog.current) return;
+      const controls = [...dialog.current.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])")]
+        .filter((control) => control.getClientRects().length > 0);
+      if (!controls.length) return;
+      const first = controls[0]!;
+      const last = controls.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeDialog, closeActiveDialog]);
+
+  useEffect(() => {
     if (!shell.focusedChecklistField) return;
     document.getElementById(`checklist-${shell.focusedChecklistField}`)?.focus();
     dispatch({ type: "validation-focus-cleared" });
   }, [shell.focusedChecklistField]);
 
-  function startNote() {
+  function rememberTrigger(element: HTMLElement) {
+    returnFocus.current = element;
+  }
+
+  function startNote(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
     dispatch({ type: "note-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
-  function startVitals() {
+  function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
     dispatch({ type: "vitals-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
-  function startProcedure() {
+  function startProcedure(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
     setProcedureSearch("");
     dispatch({ type: "procedure-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
-  function startMedication() {
+  function startMedication(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
     dispatch({ type: "medication-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
@@ -114,17 +172,18 @@ export default function Home() {
             <span>Incident {encounter.incident.number}</span>
             <strong>{encounter.incident.complaint}</strong>
           </div>
-          <button className="required-count" aria-live="polite" type="button" onClick={() => dispatch({ type: "review-opened" })}>
-            {reviewErrors.length} required left · Review
+          <button className="required-count" aria-label={`Review encounter, ${reviewErrors.length} required ${reviewErrors.length === 1 ? "item" : "items"} left`} aria-live="polite" type="button" onClick={() => dispatch({ type: "review-opened" })}>
+            <span aria-hidden="true">! </span>{reviewErrors.length} required left · Review
           </button>
         </div>
-        <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype</button>
+        <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype data</button>
       </header>
 
       {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
+            aria-current={shell.view === tab.id ? "page" : undefined}
             className={shell.view === tab.id ? "active" : undefined}
             key={tab.id}
             onClick={() => dispatch({ type: "view-selected", view: tab.id })}
@@ -152,9 +211,13 @@ export default function Home() {
                 <span className={`event-dot ${event.kind}`} aria-hidden="true" />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
+                    aria-label={`Edit ${event.title} at ${event.time}. ${event.detail}`}
                     className="timeline-event-button"
                     type="button"
-                    onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id })}
+                    onClick={(clickEvent) => {
+                      rememberTrigger(clickEvent.currentTarget);
+                      dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
+                    }}
                   >
                     <span className="event-title">{event.title}</span>
                     <span className="event-detail">{event.detail}</span>
@@ -171,7 +234,7 @@ export default function Home() {
                       warningAcknowledged: event.procedure.warningAcknowledged,
                       isNew: false,
                     }).warnings.length > 0 && !event.procedure.warningAcknowledged && (
-                      <span className="warning-pill">Review warning</span>
+                      <span className="warning-pill">⚠ Warning: review needed</span>
                     )}
                   </button>
                 ) : (
@@ -196,7 +259,7 @@ export default function Home() {
             <span aria-live="polite">{findings.length} remaining</span>
           </div>
           <div className="checklist-summary">
-            <strong>{findings.length === 0 ? "Required documentation complete" : `${findings.length} required ${findings.length === 1 ? "item" : "items"} remaining`}</strong>
+            <strong>{findings.length === 0 ? "✓ Status: required documentation complete" : `! Status: ${findings.length} required ${findings.length === 1 ? "item" : "items"} remaining`}</strong>
             <span>Curated chest-pain assessment, disposition and narrative</span>
           </div>
           {findings.length > 0 && (
@@ -207,7 +270,7 @@ export default function Home() {
                 {findings.map((finding) => (
                   <li key={finding.fieldId}>
                     <button type="button" onClick={() => dispatch({ type: "validation-selected", field: finding.fieldId })}>
-                      <strong>{finding.reference}</strong>
+                      <strong>Error · {finding.reference}</strong>
                       <span>{finding.message}</span>
                     </button>
                   </li>
@@ -251,15 +314,15 @@ export default function Home() {
       )}
 
       {(shell.view === "timeline" || shell.view === "checklist") && <footer className="quick-actions" aria-label="Quick actions">
-        <button type="button" onClick={startVitals}>+ Vitals</button>
-        <button type="button" onClick={startMedication}>+ Med</button>
-        <button type="button" onClick={startProcedure}>+ Proc</button>
-        <button type="button" onClick={startNote}>+ Note</button>
+        <button aria-label="Add vital signs" type="button" onClick={startVitals}>+ Vitals</button>
+        <button aria-label="Add medication" type="button" onClick={startMedication}>+ Med</button>
+        <button aria-label="Add procedure" type="button" onClick={startProcedure}>+ Proc</button>
+        <button aria-label="Add clinical note" type="button" onClick={startNote}>+ Note</button>
       </footer>}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
-          <section className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
+          <section ref={dialog} className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
             <div className="note-dialog-heading">
               <div>
                 <p className="eyebrow">{shell.noteDraft.isNew ? "New timeline event" : "Revise timeline event"}</p>
@@ -285,6 +348,7 @@ export default function Home() {
               Note summary
               <textarea
                 ref={noteSummary}
+                data-dialog-initial-focus
                 rows={5}
                 placeholder="Document the clinical observation or decision…"
                 value={shell.noteDraft.summary}
@@ -300,11 +364,11 @@ export default function Home() {
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog draft={shell.medicationDraft} dispatch={dispatch} />}
+      {shell.medicationDraft && <MedicationDialog dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} />}
 
       {shell.procedureDraft && (
         <div className="dialog-backdrop" role="presentation">
-          <section className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
+          <section ref={dialog} className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
             <div className="note-dialog-heading">
               <div>
                 <p className="eyebrow">{shell.procedureDraft.isNew ? "New treatment event" : "Edit canonical event"}</p>
@@ -318,6 +382,7 @@ export default function Home() {
                 <label htmlFor="procedure-search">Search all {PROCEDURE_MANIFEST.release} procedures</label>
                 <input
                   autoFocus
+                  data-dialog-initial-focus
                   id="procedure-search"
                   type="search"
                   placeholder="Try ECG, IV, oxygen…"
@@ -398,13 +463,13 @@ export default function Home() {
 
                 {procedureValidation!.errors.length > 0 && (
                   <div className="validation-callout errors" role="alert">
-                    <strong>Complete required NEMSIS fields</strong>
+                    <strong>Errors: complete required NEMSIS fields</strong>
                     <ul>{procedureValidation!.errors.map((error) => <li key={error}>{error}</li>)}</ul>
                   </div>
                 )}
                 {procedureValidation!.warnings.length > 0 && (
                   <div className="validation-callout warnings">
-                    <strong>Review warning</strong>
+                    <strong>Warning: review before continuing</strong>
                     <ul>{procedureValidation!.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
                     <label className="acknowledge-warning">
                       <input
@@ -430,32 +495,32 @@ export default function Home() {
 
       {shell.vitalDraft && vitalValidation && (
         <div className="dialog-backdrop" role="presentation">
-          <section className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
+          <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
               <button aria-label="Close vital signs editor" type="button" onClick={() => dispatch({ type: "vitals-cancelled" })}>×</button>
             </div>
             <label>Clinical time <small>eVitals.01</small>
-              <input inputMode="numeric" placeholder="HH:mm" value={shell.vitalDraft.time} onChange={(event) => dispatch({ type: "vitals-time-changed", value: event.target.value })} />
+              <input autoFocus data-dialog-initial-focus aria-invalid={Boolean(vitalValidation.errors.time)} aria-describedby={vitalValidation.errors.time ? "vital-time-error" : undefined} inputMode="numeric" placeholder="HH:mm" value={shell.vitalDraft.time} onChange={(event) => dispatch({ type: "vitals-time-changed", value: event.target.value })} />
             </label>
-            {vitalValidation.errors.time && <p className="validation-message error" role="alert">{vitalValidation.errors.time}</p>}
+            {vitalValidation.errors.time && <p id="vital-time-error" className="validation-message error" role="alert">Error: {vitalValidation.errors.time}</p>}
             <div className="vital-grid">
               {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (
                 <div className="vital-field" key={field}>
                   <label htmlFor={`vital-${field}`}>{rule.label} <small>{rule.reference}</small></label>
                   <div className="vital-inputs">
-                    <input id={`vital-${field}`} aria-invalid={Boolean(vitalValidation.errors[field])} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
+                    <input id={`vital-${field}`} aria-invalid={Boolean(vitalValidation.errors[field])} aria-describedby={vitalValidation.errors[field] || vitalValidation.warnings[field] ? `vital-${field}-message` : undefined} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
                     <select aria-label={`${rule.label} null value`} value={shell.vitalDraft!.values.nullValues[field] ?? ""} onChange={(event) => dispatch({ type: "vitals-null-changed", field, value: event.target.value as never })}>
                       {nullOptionsFor(rule).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </div>
-                  {vitalValidation.errors[field] && <p className="validation-message error" role="alert">{vitalValidation.errors[field]}</p>}
-                  {vitalValidation.warnings[field] && <p className="validation-message warning">{vitalValidation.warnings[field]}</p>}
+                  {vitalValidation.errors[field] && <p id={`vital-${field}-message`} className="validation-message error" role="alert">Error: {vitalValidation.errors[field]}</p>}
+                  {vitalValidation.warnings[field] && <p id={`vital-${field}-message`} className="validation-message warning">Warning: {vitalValidation.warnings[field]}</p>}
                 </div>
               ))}
             </div>
             <p className="null-help">NV and PN choices are limited to the codes permitted for each element by the NEMSIS 3.5.1 schema.</p>
-            {vitalValidation.errors.group && <p className="validation-message error" role="alert">{vitalValidation.errors.group}</p>}
+            {vitalValidation.errors.group && <p className="validation-message error" role="alert">Error: {vitalValidation.errors.group}</p>}
             <div className="note-dialog-actions"><button type="button" onClick={() => dispatch({ type: "vitals-cancelled" })}>Cancel</button><button type="button" disabled={!vitalValidation.valid} onClick={() => dispatch({ type: "vitals-saved" })}>{shell.vitalDraft.isNew ? "Add vital set" : "Save changes"}</button></div>
           </section>
         </div>

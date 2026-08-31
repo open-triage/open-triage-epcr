@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, searchMedications } from "../app/medication-catalog";
 import { validateMedication, type MedicationDraft, type ShellAction } from "../app/synthetic-encounter";
 
-type Props = { readonly draft: MedicationDraft; readonly dispatch: React.Dispatch<ShellAction> };
+type Props = {
+  readonly draft: MedicationDraft;
+  readonly dispatch: React.Dispatch<ShellAction>;
+  readonly dialogRef: RefObject<HTMLElement | null>;
+};
 
-export function MedicationDialog({ draft, dispatch }: Props) {
+export function MedicationDialog({ draft, dispatch, dialogRef }: Props) {
   const [query, setQuery] = useState(draft.label);
   const [submitted, setSubmitted] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -21,7 +25,7 @@ export function MedicationDialog({ draft, dispatch }: Props) {
 
   return (
     <div className="dialog-backdrop" role="presentation">
-      <section className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
+      <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
         <div className="note-dialog-heading">
           <div>
             <p className="eyebrow">{draft.isNew ? "New timeline event" : "Revise timeline event"}</p>
@@ -40,8 +44,8 @@ export function MedicationDialog({ draft, dispatch }: Props) {
           <input
             id="medication-query"
             ref={searchInput}
-            aria-autocomplete="list"
-            aria-controls="medication-results"
+            autoFocus
+            data-dialog-initial-focus
             aria-invalid={submitted && !draft.medicationCode}
             autoComplete="off"
             placeholder="Search name or code…"
@@ -50,9 +54,9 @@ export function MedicationDialog({ draft, dispatch }: Props) {
             onChange={(event) => setQuery(event.target.value)}
           />
           {query !== draft.label && (
-            <ul id="medication-results" className="medication-results" role="listbox" aria-label="NEMSIS medications">
+            <ul id="medication-results" className="medication-results" aria-label="Medication search results">
               {results.map((medication) => (
-                <li key={`${medication.codeType}-${medication.code}`} role="option" aria-selected={draft.medicationCode === medication.code}>
+                <li key={`${medication.codeType}-${medication.code}`}>
                   <button type="button" onClick={() => {
                     dispatch({ type: "medication-selected", code: medication.code, codeType: medication.codeType, label: medication.displayLabel });
                     setQuery(medication.displayLabel);
@@ -101,11 +105,11 @@ export function MedicationDialog({ draft, dispatch }: Props) {
         </label>
 
         {submitted && validation.errors.length > 0 && (
-          <div className="validation-box error-box" role="alert"><strong>Fix before saving</strong><ul>{validation.errors.map((error) => <li key={error}>{error}</li>)}</ul></div>
+          <div className="validation-box error-box" role="alert"><strong>Errors: fix before saving</strong><ul>{validation.errors.map((error) => <li key={error}>{error}</li>)}</ul></div>
         )}
         {validation.warnings.length > 0 && (
           <div className="validation-box warning-box">
-            <strong>Warning</strong><p>{validation.warnings[0]}</p>
+            <strong>Warning: response missing</strong><p>{validation.warnings[0]}</p>
             <label className="warning-acknowledgement"><input type="checkbox" checked={draft.warningAcknowledged} onChange={(event) => dispatch({ type: "medication-warning-acknowledged", acknowledged: event.target.checked })} /> Acknowledge and save; I’ll document the response later.</label>
           </div>
         )}
