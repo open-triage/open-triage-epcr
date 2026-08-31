@@ -21,6 +21,7 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
     return {
       ...candidate,
       noteDraft: candidate.noteDraft ?? null,
+      procedureDraft: candidate.procedureDraft ?? null,
       vitalDraft: candidate.vitalDraft ?? null,
       medicationDraft: candidate.medicationDraft ?? null,
       checklistValues: { ...INITIAL_CHECKLIST_VALUES, ...candidate.checklistValues },
