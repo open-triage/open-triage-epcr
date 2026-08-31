@@ -1,8 +1,8 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
-import { validateVitals } from "./vital-validation";
+import { validateVitals, VITAL_RULES } from "./vital-validation";
 
-export type ShellView = "timeline" | "checklist";
+export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
 export type ChecklistFieldId =
   | "primary-symptom"
@@ -211,6 +211,7 @@ export type ShellState = {
   readonly medicationDraft: MedicationDraft | null;
   readonly checklistValues: ChecklistValues;
   readonly focusedChecklistField: ChecklistFieldId | null;
+  readonly acknowledgedWarnings: ReadonlyArray<string>;
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
@@ -222,6 +223,11 @@ export type ShellAction =
   | { readonly type: "checklist-field-changed"; readonly field: ChecklistFieldId; readonly value: string }
   | { readonly type: "validation-selected"; readonly field: ChecklistFieldId }
   | { readonly type: "validation-focus-cleared" }
+  | { readonly type: "review-opened" }
+  | { readonly type: "review-finding-selected"; readonly id: string }
+  | { readonly type: "review-warning-acknowledged"; readonly id: string; readonly acknowledged: boolean }
+  | { readonly type: "review-finished" }
+  | { readonly type: "summary-editing-continued" }
   | { readonly type: "procedure-started"; readonly id: string; readonly time: string }
   | { readonly type: "procedure-opened"; readonly id: string }
   | { readonly type: "procedure-selected"; readonly code: string }
@@ -257,6 +263,7 @@ export const INITIAL_SHELL_STATE: ShellState = {
   medicationDraft: null,
   checklistValues: INITIAL_CHECKLIST_VALUES,
   focusedChecklistField: null,
+  acknowledgedWarnings: [],
 };
 
 export type MedicationValidation = { readonly errors: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
@@ -272,6 +279,91 @@ export function validateMedication(draft: MedicationDraft): MedicationValidation
   if (!(MEDICATION_ROUTES as readonly string[]).includes(draft.route)) errors.push("Select a valid configured administration route (eMedications.04).");
   if (!draft.response.trim()) warnings.push("Medication response is not documented (eMedications.07). You can acknowledge this warning and add it later.");
   return { errors, warnings };
+}
+
+export type ReviewFinding = {
+  readonly id: string;
+  readonly severity: "error" | "warning";
+  readonly category: "Vital" | "Medication" | "Procedure" | "Note" | "Checklist" | "Disposition" | "Narrative";
+  readonly title: string;
+  readonly reference: string;
+  readonly message: string;
+  readonly target: { readonly kind: "checklist"; readonly field: ChecklistFieldId } | { readonly kind: "event"; readonly eventId: string };
+  readonly acknowledged: boolean;
+};
+
+function eventFinding(
+  state: ShellState,
+  event: EncounterEvent,
+  severity: ReviewFinding["severity"],
+  category: ReviewFinding["category"],
+  reference: string,
+  message: string,
+  index: number,
+  recordAcknowledged = false,
+): ReviewFinding {
+  const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
+  return {
+    id, severity, category, reference, message,
+    title: `${event.time} · ${event.title}`,
+    target: { kind: "event", eventId: event.id },
+    acknowledged: severity === "warning" && (recordAcknowledged || state.acknowledgedWarnings.includes(id)),
+  };
+}
+
+/** Consolidates validation for every canonical, editable part of the encounter. */
+export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding> {
+  const checklist = validateChecklist(state.checklistValues).map((finding): ReviewFinding => {
+    const field = checklistFields.find((candidate) => candidate.id === finding.fieldId)!;
+    const category = field.section === "Disposition" ? "Disposition" : field.section === "Narrative" ? "Narrative" : "Checklist";
+    return {
+      id: `checklist:${finding.fieldId}:error`, severity: "error", category,
+      title: field.label, reference: finding.reference, message: finding.message,
+      target: { kind: "checklist", field: finding.fieldId }, acknowledged: false,
+    };
+  });
+
+  const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
+    if (event.vitals) {
+      const validation = validateVitals(event.time, event.vitals);
+      const errors = Object.entries(validation.errors).map(([field, message], index) =>
+        eventFinding(state, event, "error", "Vital", field === "time" || field === "group" ? "eVitals.VitalGroup" : VITAL_RULES[field as VitalField].reference, message!, index));
+      const warnings = Object.entries(validation.warnings).map(([field, message], index) =>
+        eventFinding(state, event, "warning", "Vital", VITAL_RULES[field as VitalField].reference, message!, index));
+      return [...errors, ...warnings];
+    }
+    if (event.medication) {
+      const validation = validateMedication({ id: event.id, time: event.time, ...event.medication, isNew: false });
+      return [
+        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Medication", "eMedications", message, index)),
+        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Medication", "eMedications.07", message, index, event.medication!.warningAcknowledged)),
+      ];
+    }
+    if (event.procedure) {
+      const validation = validateProcedure({
+        id: event.id, time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
+        attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
+        complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
+      });
+      return [
+        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Procedure", "eProcedures", message, index)),
+        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Procedure", "eProcedures", message, index, event.procedure!.warningAcknowledged)),
+      ];
+    }
+    if (event.kind === "note") {
+      const findings: ReviewFinding[] = [];
+      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Enter a valid clinical time (HH:mm).", 0));
+      if (!event.detail.trim()) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Clinical note summary is required.", 1));
+      return findings;
+    }
+    return [];
+  });
+
+  return [...checklist, ...events];
+}
+
+export function checklistDisplayValue(field: ChecklistField, value: string): string {
+  return field.options?.find((option) => option.value === value)?.label ?? value;
 }
 
 export function vitalSummary(values: VitalValues): string {
@@ -301,6 +393,41 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, view: "checklist", focusedChecklistField: action.field };
     case "validation-focus-cleared":
       return { ...state, focusedChecklistField: null };
+    case "review-opened":
+      return { ...state, view: "review", noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null, focusedChecklistField: null };
+    case "review-finding-selected": {
+      const finding = reviewEncounter(state).find((candidate) => candidate.id === action.id);
+      if (!finding) return state;
+      if (finding.target.kind === "checklist") {
+        return { ...state, view: "checklist", focusedChecklistField: finding.target.field };
+      }
+      const eventId = finding.target.eventId;
+      const event = state.encounter.events.find((candidate) => candidate.id === eventId);
+      if (!event) return state;
+      const opened = event.vitals
+        ? transitionShell(state, { type: "vitals-opened", id: event.id })
+        : event.kind === "medication"
+          ? transitionShell(state, { type: "medication-opened", id: event.id })
+          : event.kind === "procedure"
+            ? transitionShell(state, { type: "procedure-opened", id: event.id })
+            : transitionShell(state, { type: "note-opened", id: event.id });
+      return { ...opened, view: "timeline" };
+    }
+    case "review-warning-acknowledged":
+      return {
+        ...state,
+        acknowledgedWarnings: action.acknowledged
+          ? [...new Set([...state.acknowledgedWarnings, action.id])]
+          : state.acknowledgedWarnings.filter((id) => id !== action.id),
+      };
+    case "review-finished": {
+      const findings = reviewEncounter(state);
+      return findings.some((finding) => finding.severity === "error" || !finding.acknowledged)
+        ? state
+        : { ...state, view: "summary" };
+    }
+    case "summary-editing-continued":
+      return { ...state, view: "timeline" };
     case "note-started":
       return { ...state, noteDraft: { id: action.id, time: action.time, summary: "", isNew: true } };
     case "note-opened": {
@@ -499,7 +626,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
-      return { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null };
+      return { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] };
     case "prototype-reset":
       return INITIAL_SHELL_STATE;
     default:

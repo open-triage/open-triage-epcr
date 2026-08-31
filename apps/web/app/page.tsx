@@ -6,10 +6,14 @@ import { clearShellState, loadShellState, saveShellState } from "./local-persist
 import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
 import {
   checklistFields,
+  checklistDisplayValue,
   INITIAL_SHELL_STATE,
+  reviewEncounter,
   transitionShell,
   validateChecklist,
   type ChecklistField,
+  type ReviewFinding,
+  type ShellState,
   type ShellView,
   type VitalField,
 } from "./synthetic-encounter";
@@ -32,6 +36,10 @@ export default function Home() {
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const encounter = shell.encounter;
   const findings = validateChecklist(shell.checklistValues);
+  const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
+  const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
+  const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
+  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
   const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
   const procedureValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
   const vitalValidation = useMemo(() => shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null, [shell.vitalDraft]);
@@ -106,12 +114,14 @@ export default function Home() {
             <span>Incident {encounter.incident.number}</span>
             <strong>{encounter.incident.complaint}</strong>
           </div>
-          <span className="required-count" aria-live="polite">{findings.length} required left</span>
+          <button className="required-count" aria-live="polite" type="button" onClick={() => dispatch({ type: "review-opened" })}>
+            {reviewErrors.length} required left · Review
+          </button>
         </div>
         <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype</button>
       </header>
 
-      <nav className="view-switcher" aria-label="Encounter views">
+      {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
@@ -124,9 +134,9 @@ export default function Home() {
             {tab.id === "timeline" && <span aria-hidden="true"> · {encounter.events.length}</span>}
           </button>
         ))}
-      </nav>
+      </nav>}
 
-      {shell.view === "timeline" ? (
+      {shell.view === "timeline" && (
         <section className="content-panel" aria-labelledby="timeline-heading">
           <div className="section-heading">
             <div>
@@ -175,7 +185,8 @@ export default function Home() {
             ))}
           </ol>
         </section>
-      ) : (
+      )}
+      {shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
             <div>
@@ -223,12 +234,28 @@ export default function Home() {
         </section>
       )}
 
-      <footer className="quick-actions" aria-label="Quick actions">
+      {shell.view === "review" && (
+        <ReviewPanel
+          errors={reviewErrors}
+          warnings={reviewWarnings}
+          canFinish={canFinish}
+          onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
+          onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
+          onContinue={() => dispatch({ type: "summary-editing-continued" })}
+          onFinish={() => dispatch({ type: "review-finished" })}
+        />
+      )}
+
+      {shell.view === "summary" && (
+        <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
+      )}
+
+      {(shell.view === "timeline" || shell.view === "checklist") && <footer className="quick-actions" aria-label="Quick actions">
         <button type="button" onClick={startVitals}>+ Vitals</button>
         <button type="button" onClick={startMedication}>+ Med</button>
         <button type="button" onClick={startProcedure}>+ Proc</button>
         <button type="button" onClick={startNote}>+ Note</button>
-      </footer>
+      </footer>}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -434,6 +461,114 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+function ReviewPanel({ errors, warnings, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+  readonly errors: ReadonlyArray<ReviewFinding>;
+  readonly warnings: ReadonlyArray<ReviewFinding>;
+  readonly canFinish: boolean;
+  readonly onFinding: (id: string) => void;
+  readonly onWarning: (id: string, acknowledged: boolean) => void;
+  readonly onContinue: () => void;
+  readonly onFinish: () => void;
+}) {
+  return (
+    <section className="content-panel review-panel" aria-labelledby="review-heading">
+      <div className="section-heading">
+        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and finish</h1></div>
+        <span>{errors.length} errors · {warnings.length} warnings</span>
+      </div>
+      <p className="review-intro">Resolve every blocking error and acknowledge each warning before producing the prototype summary.</p>
+
+      <FindingGroup title="Blocking errors" empty="No blocking errors." findings={errors} onFinding={onFinding} onWarning={onWarning} />
+      <FindingGroup title="Warnings to acknowledge" empty="No warnings." findings={warnings} onFinding={onFinding} onWarning={onWarning} />
+
+      <div className="review-actions">
+        <button type="button" onClick={onContinue}>Continue editing</button>
+        <button type="button" disabled={!canFinish} onClick={onFinish}>Finish prototype</button>
+      </div>
+      {!canFinish && <p className="finish-help" role="status">Completion stays blocked until errors are fixed and every warning is acknowledged.</p>}
+    </section>
+  );
+}
+
+function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
+  readonly title: string;
+  readonly empty: string;
+  readonly findings: ReadonlyArray<ReviewFinding>;
+  readonly onFinding: (id: string) => void;
+  readonly onWarning: (id: string, acknowledged: boolean) => void;
+}) {
+  return (
+    <section className="review-group">
+      <h2>{title} <span>{findings.length}</span></h2>
+      {!findings.length ? <p className="review-empty">✓ {empty}</p> : (
+        <ul className="review-findings">
+          {findings.map((finding) => (
+            <li key={finding.id} className={finding.severity}>
+              <button type="button" onClick={() => onFinding(finding.id)}>
+                <span className="finding-category">{finding.category} · {finding.reference}</span>
+                <strong>{finding.title}</strong>
+                <span>{finding.message}</span>
+                <small>Open affected entry →</small>
+              </button>
+              {finding.severity === "warning" && (
+                <label className="review-acknowledgement">
+                  <input type="checkbox" checked={finding.acknowledged} onChange={(event) => onWarning(finding.id, event.target.checked)} />
+                  I reviewed and acknowledge this warning
+                </label>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ReadOnlySummary({ shell, warnings, onContinue }: {
+  readonly shell: ShellState;
+  readonly warnings: ReadonlyArray<ReviewFinding>;
+  readonly onContinue: () => void;
+}) {
+  const encounter = shell.encounter;
+  return (
+    <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
+      <div className="summary-label" role="note">
+        <strong>Synthetic usability prototype summary</strong>
+        <span>Read-only preview — not a signed or complete legal clinical record</span>
+      </div>
+      <div className="section-heading">
+        <div><p className="eyebrow">Review produced</p><h1 id="summary-heading">Encounter summary</h1></div>
+      </div>
+      <section className="summary-section">
+        <h2>Patient and incident</h2>
+        <dl>
+          <div><dt>Patient</dt><dd>{encounter.patient.name} · {encounter.patient.age} y · {encounter.patient.sex}</dd></div>
+          <div><dt>Synthetic ID</dt><dd>{encounter.patient.identifier}</dd></div>
+          <div><dt>Incident</dt><dd>{encounter.incident.number}</dd></div>
+          <div><dt>Complaint</dt><dd>{encounter.incident.complaint}</dd></div>
+          <div><dt>Location</dt><dd>{encounter.incident.address}</dd></div>
+          <div><dt>Crew</dt><dd>{encounter.crew}</dd></div>
+        </dl>
+      </section>
+      <section className="summary-section">
+        <h2>Timeline</h2>
+        <ol className="summary-timeline">
+          {encounter.events.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
+        </ol>
+      </section>
+      <section className="summary-section">
+        <h2>Checklist</h2>
+        <dl>{checklistFields.map((field) => <div key={field.id}><dt>{field.label} <small>{field.reference}</small></dt><dd>{checklistDisplayValue(field, shell.checklistValues[field.id])}</dd></div>)}</dl>
+      </section>
+      <section className="summary-section">
+        <h2>Warning acknowledgements</h2>
+        {warnings.length ? <ul className="summary-warnings">{warnings.map((warning) => <li key={warning.id}><strong>Acknowledged</strong><span>{warning.title}: {warning.message}</span></li>)}</ul> : <p>No validation warnings were present at finish.</p>}
+      </section>
+      <button className="continue-editing" type="button" onClick={onContinue}>Continue editing</button>
+    </article>
   );
 }
 
