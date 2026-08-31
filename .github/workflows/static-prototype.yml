@@ -1,0 +1,35 @@
+name: Verify static prototype
+
+on:
+  push:
+    branches: [first-mvp]
+  pull_request:
+    branches: [first-mvp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NEXT_PUBLIC_BASE_PATH: /open-triage-epcr-demo
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w @open-triage/web
+      - run: npm run lint -w @open-triage/web
+      - run: npm test -w @open-triage/web
+      - run: npm run build -w @open-triage/web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:deployment -w @open-triage/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-prototype
+          path: apps/web/out
