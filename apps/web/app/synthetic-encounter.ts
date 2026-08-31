@@ -1,5 +1,114 @@
 export type ShellView = "timeline" | "checklist";
 
+export type ChecklistFieldId =
+  | "primary-symptom"
+  | "secondary-symptom"
+  | "primary-impression"
+  | "possible-injury"
+  | "destination-condition"
+  | "unit-disposition"
+  | "narrative";
+
+export type ChecklistField = {
+  readonly id: ChecklistFieldId;
+  readonly section: "Assessment" | "Disposition" | "Narrative";
+  readonly label: string;
+  readonly reference: string;
+  readonly datatype: "Coded value" | "Text";
+  readonly cardinality: "1..1" | "1..*";
+  readonly usage: "Required";
+  readonly exceptionalValues: ReadonlyArray<"NV" | "PN">;
+  readonly control: "select" | "text" | "textarea";
+  readonly options?: ReadonlyArray<{ readonly value: string; readonly label: string }>;
+  readonly placeholder?: string;
+  readonly maxLength?: number;
+};
+
+const notAvailable = { value: "NV", label: "Not available / not recorded (NV)" };
+
+export const checklistFields: ReadonlyArray<ChecklistField> = [
+  {
+    id: "primary-symptom", section: "Assessment", label: "Primary symptom", reference: "eSituation.09",
+    datatype: "Coded value", cardinality: "1..1", usage: "Required", exceptionalValues: ["NV"], control: "select",
+    options: [{ value: "R07.9", label: "R07.9 — Chest pain, unspecified" }, notAvailable],
+  },
+  {
+    id: "primary-impression", section: "Assessment", label: "Primary impression", reference: "eSituation.11",
+    datatype: "Coded value", cardinality: "1..1", usage: "Required", exceptionalValues: ["NV"], control: "select",
+    options: [{ value: "I21.3", label: "I21.3 — ST-elevation myocardial infarction" }, notAvailable],
+  },
+  {
+    id: "secondary-symptom", section: "Assessment", label: "Secondary symptom", reference: "eSituation.10",
+    datatype: "Coded value", cardinality: "1..*", usage: "Required", exceptionalValues: ["NV", "PN"], control: "select",
+    options: [{ value: "R61", label: "R61 — Diaphoresis" }, notAvailable, { value: "PN", label: "Symptom not present (PN)" }],
+  },
+  {
+    id: "possible-injury", section: "Assessment", label: "Possible injury", reference: "eSituation.02",
+    datatype: "Coded value", cardinality: "1..1", usage: "Required", exceptionalValues: ["NV"], control: "select",
+    options: [{ value: "no", label: "No" }, { value: "yes", label: "Yes" }, notAvailable],
+  },
+  {
+    id: "destination-condition", section: "Disposition", label: "Acuity upon EMS release", reference: "eDisposition.19",
+    datatype: "Coded value", cardinality: "1..1", usage: "Required", exceptionalValues: ["NV"], control: "select",
+    options: [
+      { value: "4219001", label: "Critical (Red)" },
+      { value: "4219003", label: "Emergent (Yellow)" },
+      { value: "4219005", label: "Lower acuity (Green)" },
+      { value: "4219009", label: "Non-acute / routine" },
+      notAvailable,
+    ],
+  },
+  {
+    id: "unit-disposition", section: "Disposition", label: "Unit disposition", reference: "eDisposition.27",
+    datatype: "Coded value", cardinality: "1..1", usage: "Required", exceptionalValues: [], control: "select",
+    options: [
+      { value: "4227001", label: "Patient contact made" },
+      { value: "4227003", label: "Cancelled on scene" },
+      { value: "4227005", label: "Cancelled prior to arrival" },
+      { value: "4227007", label: "No patient contact" },
+      { value: "4227009", label: "No patient found" },
+    ],
+  },
+  {
+    id: "narrative", section: "Narrative", label: "Clinical narrative review", reference: "eNarrative.01",
+    datatype: "Text", cardinality: "1..1", usage: "Required", exceptionalValues: [], control: "textarea",
+    placeholder: "Summarize assessment, care and response…", maxLength: 2000,
+  },
+];
+
+export type ChecklistValues = Readonly<Record<ChecklistFieldId, string>>;
+export const INITIAL_CHECKLIST_VALUES: ChecklistValues = {
+  "primary-symptom": "R07.9",
+  "secondary-symptom": "R61",
+  "primary-impression": "I21.3",
+  "possible-injury": "no",
+  "destination-condition": "",
+  "unit-disposition": "",
+  narrative: "",
+};
+
+export type ValidationFinding = { readonly fieldId: ChecklistFieldId; readonly reference: string; readonly message: string };
+
+export function validateChecklist(values: ChecklistValues): ReadonlyArray<ValidationFinding> {
+  return checklistFields.flatMap((field) => {
+    const value = values[field.id].trim();
+    if (!value) return [{ fieldId: field.id, reference: field.reference, message: `${field.label} is required.` }];
+    if (value === "NV" && !field.exceptionalValues.includes("NV")) {
+      return [{ fieldId: field.id, reference: field.reference, message: "Not available (NV) is not permitted for this input." }];
+    }
+    if (value === "PN" && !field.exceptionalValues.includes("PN")) {
+      return [{ fieldId: field.id, reference: field.reference, message: "Pertinent negative (PN) is not permitted for this input." }];
+    }
+    if (field.maxLength && value.length > field.maxLength) {
+      return [{ fieldId: field.id, reference: field.reference, message: `Must be ${field.maxLength} characters or fewer.` }];
+    }
+    if (field.control === "select" && !field.options?.some((option) => option.value === value)) {
+      return [{ fieldId: field.id, reference: field.reference, message: "Select a permitted value." }];
+    }
+    return [];
+  });
+}
+
 export type EncounterEvent = {
   readonly id: string;
   readonly time: string;
@@ -69,7 +178,13 @@ export const syntheticEncounter: Encounter = {
 };
 
 export type NoteDraft = { readonly id: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
-export type ShellState = { readonly view: ShellView; readonly encounter: Encounter; readonly noteDraft: NoteDraft | null };
+export type ShellState = {
+  readonly view: ShellView;
+  readonly encounter: Encounter;
+  readonly noteDraft: NoteDraft | null;
+  readonly checklistValues: ChecklistValues;
+  readonly focusedChecklistField: ChecklistFieldId | null;
+};
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "note-started"; readonly id: string; readonly time: string }
@@ -77,10 +192,19 @@ export type ShellAction =
   | { readonly type: "note-draft-changed"; readonly field: "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
   | { readonly type: "note-saved" }
+  | { readonly type: "checklist-field-changed"; readonly field: ChecklistFieldId; readonly value: string }
+  | { readonly type: "validation-selected"; readonly field: ChecklistFieldId }
+  | { readonly type: "validation-focus-cleared" }
   | { readonly type: "state-restored"; readonly state: ShellState }
   | { readonly type: "prototype-reset" };
 
-export const INITIAL_SHELL_STATE: ShellState = { view: "timeline", encounter: syntheticEncounter, noteDraft: null };
+export const INITIAL_SHELL_STATE: ShellState = {
+  view: "timeline",
+  encounter: syntheticEncounter,
+  noteDraft: null,
+  checklistValues: INITIAL_CHECKLIST_VALUES,
+  focusedChecklistField: null,
+};
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
   return events.map((event, index) => ({ event, index })).sort((a, b) =>
@@ -91,7 +215,13 @@ function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<Encou
 export function transitionShell(state: ShellState, action: ShellAction): ShellState {
   switch (action.type) {
     case "view-selected":
-      return { ...state, view: action.view };
+      return { ...state, view: action.view, focusedChecklistField: null };
+    case "checklist-field-changed":
+      return { ...state, checklistValues: { ...state.checklistValues, [action.field]: action.value } };
+    case "validation-selected":
+      return { ...state, view: "checklist", focusedChecklistField: action.field };
+    case "validation-focus-cleared":
+      return { ...state, focusedChecklistField: null };
     case "note-started":
       return { ...state, noteDraft: { id: action.id, time: action.time, summary: "", isNew: true } };
     case "note-opened": {
