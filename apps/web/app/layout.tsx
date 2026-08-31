@@ -3,8 +3,8 @@ import { ServiceWorkerRegistration } from "../components/service-worker-registra
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "OpenTriage",
-  description: "Electronic patient care reporting",
+  title: "OpenTriage synthetic encounter",
+  description: "Synthetic-data-only ePCR usability prototype — not for clinical use",
   manifest: "/manifest.webmanifest"
 };
 
