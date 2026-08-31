@@ -1,3 +1,5 @@
+import { validateVitals } from "./vital-validation";
+
 export type ShellView = "timeline" | "checklist";
 
 export type ChecklistFieldId =
@@ -117,7 +119,13 @@ export type EncounterEvent = {
   readonly detail: string;
   readonly reference: string;
   readonly visitorEntered?: true;
+  readonly vitals?: VitalValues;
 };
+
+export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
+export type NullValue = "" | "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
+export type VitalDraft = { readonly id: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
 
 export type Encounter = {
   readonly scenarioId: string;
@@ -134,7 +142,7 @@ export type Encounter = {
 const baselineEvents: ReadonlyArray<Omit<EncounterEvent, "id">> = [
   { time: "08:34", kind: "transport", title: "Handover", detail: "Coronary care nurse — condition improved", reference: "eDisposition.27" },
   { time: "08:29", kind: "transport", title: "Arrived at destination", detail: "Karolinska University Hospital Solna", reference: "eTimes.12" },
-  { time: "08:26", kind: "care", title: "Vital signs", detail: "BP 136/84 · HR 88 · SpO₂ 97% · RR 17 · GCS 15 · pain 3", reference: "eVitals.VitalGroup" },
+  { time: "08:26", kind: "care", title: "Vital signs", detail: "BP 136/84 · HR 88 · SpO₂ 97% · RR 17 · GCS 15 · pain 3", reference: "eVitals.VitalGroup", vitals: { systolic: "136", diastolic: "84", heartRate: "88", spo2: "97", respiratoryRate: "17", gcs: "15", pain: "3", nullValues: {} } },
   { time: "08:14", kind: "transport", title: "Left scene", detail: "Priority 2, no lights or siren", reference: "eTimes.11" },
   { time: "08:11", kind: "care", title: "Oxygen 2 l/min", detail: "Nasal cannula — SpO₂ 94 → 96%", reference: "eMedications.03" },
   { time: "08:09", kind: "care", title: "Morphine 4 mg", detail: "IV · pain 8 → 4", reference: "eMedications.03" },
@@ -143,7 +151,7 @@ const baselineEvents: ReadonlyArray<Omit<EncounterEvent, "id">> = [
   { time: "08:03", kind: "care", title: "12-lead ECG", detail: "1 attempt, successful — interpreted on scene", reference: "eProcedures.03" },
   { time: "08:01", kind: "care", title: "Acetylsalicylic acid 300 mg", detail: "PO · per guideline 4.2", reference: "eMedications.03" },
   { time: "07:58", kind: "care", title: "IV access", detail: "Left antecubital, 18 G — 1 attempt, successful", reference: "eProcedures.03" },
-  { time: "07:56", kind: "care", title: "Vital signs", detail: "BP 148/92 · HR 104 · SpO₂ 94% · RR 22 · GCS 15 · pain 8", reference: "eVitals.VitalGroup" },
+  { time: "07:56", kind: "care", title: "Vital signs", detail: "BP 148/92 · HR 104 · SpO₂ 94% · RR 22 · GCS 15 · pain 8", reference: "eVitals.VitalGroup", vitals: { systolic: "148", diastolic: "92", heartRate: "104", spo2: "94", respiratoryRate: "22", gcs: "15", pain: "8", nullValues: {} } },
   { time: "07:53", kind: "transport", title: "Patient contact", detail: "Awake, oriented, pale and diaphoretic", reference: "eTimes.09" },
   { time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Residence — stairwell access, no lift", reference: "eTimes.07" },
   { time: "07:44", kind: "transport", title: "Unit en route", detail: "Priority 1 response, lights and siren", reference: "eTimes.06" },
@@ -182,6 +190,7 @@ export type ShellState = {
   readonly view: ShellView;
   readonly encounter: Encounter;
   readonly noteDraft: NoteDraft | null;
+  readonly vitalDraft: VitalDraft | null;
   readonly checklistValues: ChecklistValues;
   readonly focusedChecklistField: ChecklistFieldId | null;
 };
@@ -195,16 +204,36 @@ export type ShellAction =
   | { readonly type: "checklist-field-changed"; readonly field: ChecklistFieldId; readonly value: string }
   | { readonly type: "validation-selected"; readonly field: ChecklistFieldId }
   | { readonly type: "validation-focus-cleared" }
+  | { readonly type: "vitals-started"; readonly id: string; readonly time: string }
+  | { readonly type: "vitals-opened"; readonly id: string }
+  | { readonly type: "vitals-time-changed"; readonly value: string }
+  | { readonly type: "vitals-value-changed"; readonly field: VitalField; readonly value: string }
+  | { readonly type: "vitals-null-changed"; readonly field: VitalField; readonly value: NullValue }
+  | { readonly type: "vitals-cancelled" }
+  | { readonly type: "vitals-saved" }
   | { readonly type: "state-restored"; readonly state: ShellState }
   | { readonly type: "prototype-reset" };
 
+export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
 export const INITIAL_SHELL_STATE: ShellState = {
   view: "timeline",
   encounter: syntheticEncounter,
   noteDraft: null,
+  vitalDraft: null,
   checklistValues: INITIAL_CHECKLIST_VALUES,
   focusedChecklistField: null,
 };
+
+export function vitalSummary(values: VitalValues): string {
+  const shown = (field: VitalField, label: string, suffix = "") => {
+    const value = values[field];
+    if (value) return `${label} ${value}${suffix}`;
+    return values.nullValues[field] ? `${label} not recorded` : null;
+  };
+  return [values.systolic || values.diastolic ? `BP ${values.systolic || "—"}/${values.diastolic || "—"}` : null,
+    shown("heartRate", "HR"), shown("spo2", "SpO₂", "%"), shown("respiratoryRate", "RR"), shown("gcs", "GCS"), shown("pain", "pain")]
+    .filter(Boolean).join(" · ");
+}
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
   return events.map((event, index) => ({ event, index })).sort((a, b) =>
@@ -251,6 +280,26 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         noteDraft: null,
         encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, note]) },
       };
+    }
+    case "vitals-started":
+      return { ...state, vitalDraft: { id: action.id, time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
+    case "vitals-opened": {
+      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.vitals);
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, time: event.time, values: event.vitals, isNew: false } } : state;
+    }
+    case "vitals-time-changed":
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
+    case "vitals-value-changed":
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: action.value, nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: "" } } } } : state;
+    case "vitals-null-changed":
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: "", nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: action.value } } } } : state;
+    case "vitals-cancelled":
+      return { ...state, vitalDraft: null };
+    case "vitals-saved": {
+      const draft = state.vitalDraft;
+      if (!draft || !validateVitals(draft.time, draft.values).valid) return state;
+      const event: EncounterEvent = { id: draft.id, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
+      return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
       return action.state;
