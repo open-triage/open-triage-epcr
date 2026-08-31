@@ -1,3 +1,4 @@
+import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
 import { validateVitals } from "./vital-validation";
 
@@ -6,11 +7,12 @@ export type ShellView = "timeline" | "checklist";
 export type EncounterEvent = {
   readonly id: string;
   readonly time: string;
-  readonly kind: "care" | "transport" | "alert" | "note" | "medication";
+  readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication";
   readonly title: string;
   readonly detail: string;
   readonly reference: string;
   readonly visitorEntered?: true;
+  readonly procedure?: ProcedureRecord;
   readonly medication?: MedicationAdministration;
   readonly vitals?: VitalValues;
 };
@@ -91,7 +93,14 @@ export type MedicationAdministration = {
 };
 export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly time: string; readonly isNew: boolean };
 export type MedicationField = keyof Pick<MedicationDraft, "time" | "medicationCode" | "codeType" | "label" | "dose" | "unit" | "route" | "response">;
-export type ShellState = { readonly view: ShellView; readonly encounter: Encounter; readonly noteDraft: NoteDraft | null; readonly medicationDraft: MedicationDraft | null; readonly vitalDraft: VitalDraft | null };
+export type ShellState = {
+  readonly view: ShellView;
+  readonly encounter: Encounter;
+  readonly noteDraft: NoteDraft | null;
+  readonly procedureDraft: ProcedureDraft | null;
+  readonly medicationDraft: MedicationDraft | null;
+  readonly vitalDraft: VitalDraft | null;
+};
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "note-started"; readonly id: string; readonly time: string }
@@ -99,6 +108,14 @@ export type ShellAction =
   | { readonly type: "note-draft-changed"; readonly field: "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
   | { readonly type: "note-saved" }
+  | { readonly type: "procedure-started"; readonly id: string; readonly time: string }
+  | { readonly type: "procedure-opened"; readonly id: string }
+  | { readonly type: "procedure-selected"; readonly code: string }
+  | { readonly type: "procedure-draft-changed"; readonly field: "time" | "attempts" | "success" | "outcome"; readonly value: string }
+  | { readonly type: "procedure-complication-toggled"; readonly code: string }
+  | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
+  | { readonly type: "procedure-cancelled" }
+  | { readonly type: "procedure-saved" }
   | { readonly type: "medication-started"; readonly id: string; readonly time: string }
   | { readonly type: "medication-opened"; readonly id: string }
   | { readonly type: "medication-selected"; readonly code: string; readonly codeType: MedicationAdministration["codeType"]; readonly label: string }
@@ -117,7 +134,7 @@ export type ShellAction =
   | { readonly type: "prototype-reset" };
 
 export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
-export const INITIAL_SHELL_STATE: ShellState = { view: "timeline", encounter: syntheticEncounter, noteDraft: null, medicationDraft: null, vitalDraft: null };
+export const INITIAL_SHELL_STATE: ShellState = { view: "timeline", encounter: syntheticEncounter, noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null };
 
 export type MedicationValidation = { readonly errors: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
 
@@ -183,6 +200,108 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         view: "timeline",
         noteDraft: null,
         encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, note]) },
+      };
+    }
+    case "procedure-started":
+      return {
+        ...state,
+        procedureDraft: {
+          id: action.id,
+          time: action.time,
+          procedureCode: "",
+          procedureLabel: "",
+          attempts: "1",
+          success: "",
+          outcome: "",
+          complications: [],
+          warningAcknowledged: false,
+          isNew: true,
+        },
+      };
+    case "procedure-opened": {
+      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "procedure");
+      if (!event?.procedure) return state;
+      return {
+        ...state,
+        procedureDraft: {
+          id: event.id,
+          time: event.time,
+          procedureCode: event.procedure.code,
+          procedureLabel: event.procedure.label,
+          attempts: String(event.procedure.attempts),
+          success: event.procedure.success,
+          outcome: event.procedure.outcome,
+          complications: event.procedure.complications,
+          warningAcknowledged: event.procedure.warningAcknowledged,
+          isNew: false,
+        },
+      };
+    }
+    case "procedure-selected": {
+      const selected = PROCEDURES.find((procedure) => procedure.code === action.code);
+      return state.procedureDraft && (selected || action.code === "") ? {
+        ...state,
+        procedureDraft: {
+          ...state.procedureDraft,
+          procedureCode: selected?.code ?? "",
+          procedureLabel: selected?.label ?? "",
+        },
+      } : state;
+    }
+    case "procedure-draft-changed":
+      return state.procedureDraft ? {
+        ...state,
+        procedureDraft: { ...state.procedureDraft, [action.field]: action.value, warningAcknowledged: false } as ProcedureDraft,
+      } : state;
+    case "procedure-complication-toggled": {
+      if (!state.procedureDraft) return state;
+      const selected = state.procedureDraft.complications.includes(action.code);
+      return {
+        ...state,
+        procedureDraft: {
+          ...state.procedureDraft,
+          complications: selected
+            ? state.procedureDraft.complications.filter((code) => code !== action.code)
+            : [...state.procedureDraft.complications, action.code],
+          warningAcknowledged: false,
+        },
+      };
+    }
+    case "procedure-warning-acknowledged":
+      return state.procedureDraft ? {
+        ...state,
+        procedureDraft: { ...state.procedureDraft, warningAcknowledged: action.acknowledged },
+      } : state;
+    case "procedure-cancelled":
+      return { ...state, procedureDraft: null };
+    case "procedure-saved": {
+      const draft = state.procedureDraft;
+      if (!draft || validateProcedure(draft).errors.length) return state;
+      const procedure: ProcedureRecord = {
+        code: draft.procedureCode,
+        label: draft.procedureLabel,
+        attempts: Number(draft.attempts),
+        success: draft.success as ProcedureRecord["success"],
+        outcome: draft.outcome as ProcedureRecord["outcome"],
+        complications: draft.complications,
+        warningAcknowledged: draft.warningAcknowledged,
+      };
+      const event: EncounterEvent = {
+        id: draft.id,
+        time: draft.time,
+        kind: "procedure",
+        title: procedure.label,
+        detail: describeProcedure(procedure),
+        reference: `eProcedures.03 · SNOMED CT ${procedure.code}`,
+        visitorEntered: true,
+        procedure,
+      };
+      const withoutCurrent = state.encounter.events.filter((candidate) => candidate.id !== draft.id);
+      return {
+        ...state,
+        view: "timeline",
+        procedureDraft: null,
+        encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, event]) },
       };
     }
     case "medication-started":
@@ -251,7 +370,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
-      return { ...action.state, noteDraft: action.state.noteDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null };
+      return { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null };
     case "prototype-reset":
       return INITIAL_SHELL_STATE;
     default:

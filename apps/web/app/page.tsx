@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
+import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
 import { INITIAL_SHELL_STATE, transitionShell, type ShellView, type VitalField } from "./synthetic-encounter";
 import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
 
@@ -19,8 +20,11 @@ function localClinicalTime(): string {
 export default function Home() {
   const [shell, dispatch] = useReducer(transitionShell, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
+  const [procedureSearch, setProcedureSearch] = useState("");
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const encounter = shell.encounter;
+  const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
+  const procedureValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
   const vitalValidation = useMemo(() => shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null, [shell.vitalDraft]);
 
   useEffect(() => {
@@ -44,6 +48,11 @@ export default function Home() {
   }
   function startVitals() {
     dispatch({ type: "vitals-started", id: crypto.randomUUID(), time: localClinicalTime() });
+  }
+
+  function startProcedure() {
+    setProcedureSearch("");
+    dispatch({ type: "procedure-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
   function startMedication() {
@@ -113,14 +122,32 @@ export default function Home() {
           </div>
           <ol className="timeline-list">
             {encounter.events.map((event) => (
-              <li key={event.id} className={event.kind === "note" || event.kind === "medication" ? "editable-event" : undefined}>
+              <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`2026-04-18T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot ${event.kind}`} aria-hidden="true" />
-                {event.kind === "note" || event.kind === "medication" || event.vitals ? (
-                  <button className="timeline-event-button" type="button" onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id })}>
+                {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
+                  <button
+                    className="timeline-event-button"
+                    type="button"
+                    onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id })}
+                  >
                     <span className="event-title">{event.title}</span>
                     <span className="event-detail">{event.detail}</span>
                     <small>{event.reference} · Tap to edit</small>
+                    {event.procedure && validateProcedure({
+                      id: event.id,
+                      time: event.time,
+                      procedureCode: event.procedure.code,
+                      procedureLabel: event.procedure.label,
+                      attempts: String(event.procedure.attempts),
+                      success: event.procedure.success,
+                      outcome: event.procedure.outcome,
+                      complications: event.procedure.complications,
+                      warningAcknowledged: event.procedure.warningAcknowledged,
+                      isNew: false,
+                    }).warnings.length > 0 && !event.procedure.warningAcknowledged && (
+                      <span className="warning-pill">Review warning</span>
+                    )}
                   </button>
                 ) : (
                   <div>
@@ -165,7 +192,7 @@ export default function Home() {
       <footer className="quick-actions" aria-label="Quick actions">
         <button type="button" onClick={startVitals}>+ Vitals</button>
         <button type="button" onClick={startMedication}>+ Med</button>
-        <button type="button">+ Proc</button>
+        <button type="button" onClick={startProcedure}>+ Proc</button>
         <button type="button" onClick={startNote}>+ Note</button>
       </footer>
 
@@ -213,6 +240,132 @@ export default function Home() {
         </div>
       )}
       {shell.medicationDraft && <MedicationDialog draft={shell.medicationDraft} dispatch={dispatch} />}
+
+      {shell.procedureDraft && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
+            <div className="note-dialog-heading">
+              <div>
+                <p className="eyebrow">{shell.procedureDraft.isNew ? "New treatment event" : "Edit canonical event"}</p>
+                <h2 id="procedure-dialog-title">Procedure</h2>
+              </div>
+              <button aria-label="Close procedure editor" type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>×</button>
+            </div>
+
+            {!shell.procedureDraft.procedureCode ? (
+              <div className="procedure-search">
+                <label htmlFor="procedure-search">Search all {PROCEDURE_MANIFEST.release} procedures</label>
+                <input
+                  autoFocus
+                  id="procedure-search"
+                  type="search"
+                  placeholder="Try ECG, IV, oxygen…"
+                  value={procedureSearch}
+                  onChange={(event) => setProcedureSearch(event.target.value)}
+                />
+                <p className="catalog-caption">{procedureResults.length} shown · {PROCEDURE_MANIFEST.element} · bundled offline</p>
+                <ul className="procedure-results">
+                  {procedureResults.map((procedure) => (
+                    <li key={procedure.code}>
+                      <button type="button" onClick={() => dispatch({ type: "procedure-selected", code: procedure.code })}>
+                        <strong>{procedure.label}</strong>
+                        <span>{procedure.category}</span>
+                        <small>SNOMED CT {procedure.code} · {procedure.sourceLabel}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {!procedureResults.length && <p className="empty-results">No procedure matches all search terms.</p>}
+              </div>
+            ) : (
+              <>
+                <div className="selected-procedure">
+                  <div><strong>{shell.procedureDraft.procedureLabel}</strong><small>SNOMED CT {shell.procedureDraft.procedureCode} · eProcedures.03</small></div>
+                  <button type="button" onClick={() => dispatch({ type: "procedure-selected", code: "" })}>Change</button>
+                </div>
+                <div className="procedure-grid">
+                  <label>
+                    Procedure time <small>eProcedures.01</small>
+                    <input
+                      inputMode="numeric"
+                      maxLength={5}
+                      placeholder="HH:mm"
+                      value={shell.procedureDraft.time}
+                      onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "time", value: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Attempts <small>eProcedures.05</small>
+                    <input
+                      inputMode="numeric"
+                      min={1}
+                      max={10}
+                      type="number"
+                      value={shell.procedureDraft.attempts}
+                      onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "attempts", value: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <label>
+                  Successful <small>eProcedures.06</small>
+                  <select value={shell.procedureDraft.success} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "success", value: event.target.value })}>
+                    <option value="">Select…</option>
+                    <option value="yes">Yes (9923003)</option>
+                    <option value="no">No (9923001)</option>
+                  </select>
+                </label>
+                <label>
+                  Patient response <small>eProcedures.08</small>
+                  <select value={shell.procedureDraft.outcome} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "outcome", value: event.target.value })}>
+                    <option value="">Select…</option>
+                    {OUTCOMES.map((outcome) => <option key={outcome.value} value={outcome.value}>{outcome.label} ({outcome.code})</option>)}
+                  </select>
+                </label>
+                <fieldset className="complication-options">
+                  <legend>Complications <small>eProcedures.07</small></legend>
+                  {COMPLICATIONS.map((complication) => (
+                    <label key={complication.code}>
+                      <input
+                        type="checkbox"
+                        checked={shell.procedureDraft!.complications.includes(complication.code)}
+                        onChange={() => dispatch({ type: "procedure-complication-toggled", code: complication.code })}
+                      />
+                      <span>{complication.label}<small>{complication.code}</small></span>
+                    </label>
+                  ))}
+                </fieldset>
+
+                {procedureValidation!.errors.length > 0 && (
+                  <div className="validation-callout errors" role="alert">
+                    <strong>Complete required NEMSIS fields</strong>
+                    <ul>{procedureValidation!.errors.map((error) => <li key={error}>{error}</li>)}</ul>
+                  </div>
+                )}
+                {procedureValidation!.warnings.length > 0 && (
+                  <div className="validation-callout warnings">
+                    <strong>Review warning</strong>
+                    <ul>{procedureValidation!.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+                    <label className="acknowledge-warning">
+                      <input
+                        type="checkbox"
+                        checked={shell.procedureDraft.warningAcknowledged}
+                        onChange={(event) => dispatch({ type: "procedure-warning-acknowledged", acknowledged: event.target.checked })}
+                      />
+                      I reviewed this warning
+                    </label>
+                  </div>
+                )}
+                <div className="note-dialog-actions">
+                  <button type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>Cancel</button>
+                  <button type="button" disabled={procedureValidation!.errors.length > 0} onClick={() => dispatch({ type: "procedure-saved" })}>
+                    {shell.procedureDraft.isNew ? "Add procedure" : "Save changes"}
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
       {shell.vitalDraft && vitalValidation && (
         <div className="dialog-backdrop" role="presentation">

@@ -47,6 +47,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .event-dot.care { background: var(--green); }
 .event-dot.alert { background: #d2a820; }
 .event-dot.note { background: #3269a8; }
+.event-dot.procedure { background: #6d42a1; }
 .event-dot.medication { background: #7b4dad; }
 .timeline-list h2, .checklist-list h2 { margin: 0; font-size: 17px; line-height: 1.25; font-weight: 650; }
 .timeline-list p, .checklist-list p { margin: 4px 0; color: var(--muted); font-size: 14px; line-height: 1.35; }
@@ -55,6 +56,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .timeline-event-button { display: grid; gap: 4px; width: 100%; padding: 8px 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .event-title { font-size: 17px; line-height: 1.25; font-weight: 650; }
 .event-detail { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.warning-pill { justify-self: start; padding: 3px 7px; border: 1px solid #b27a12; border-radius: 999px; color: #754d00; background: #fff8dd; font-size: 11px; font-weight: 750; }
 .checklist-summary { display: grid; gap: 3px; margin: 0 16px 12px; padding: 13px 14px; border-left: 4px solid var(--green); background: #edf6f0; }
 .checklist-summary span { color: var(--muted); font-size: 13px; }
 .checklist-list li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 9px; align-items: start; padding: 15px 20px; border-top: 1px solid #e8e9e4; }
@@ -73,6 +75,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .note-dialog label { display: grid; gap: 7px; margin-top: 16px; color: #454944; font-size: 13px; font-weight: 750; }
 .note-dialog input, .note-dialog textarea, .note-dialog select { width: 100%; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
 .note-dialog input { min-height: 48px; padding: 0 12px; }
+.note-dialog select { min-height: 48px; padding: 0 36px 0 12px; }
 .note-dialog textarea { min-height: 130px; padding: 12px; resize: vertical; }
 .note-dialog select { min-height: 48px; padding: 0 10px; }
 .note-dialog > small { display: block; margin-top: 5px; color: var(--muted); }
@@ -80,6 +83,34 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .note-dialog-actions button { min-height: 52px; border: 1px solid #bfc3bc; border-radius: 5px; color: #30332f; background: white; font-weight: 750; cursor: pointer; }
 .note-dialog-actions button:last-child { border-color: var(--green); color: white; background: var(--green); }
 .note-dialog-actions button:disabled { border-color: #b8bbb5; color: #666a64; background: #e2e4df; cursor: not-allowed; }
+.procedure-dialog { padding-top: 16px; }
+.procedure-search > label { display: block; margin: 0 0 8px; color: #454944; font-size: 13px; font-weight: 750; }
+.procedure-search > input { padding-inline: 13px; }
+.catalog-caption { margin: 7px 0 12px; color: var(--muted); font-size: 12px; }
+.procedure-results { display: grid; margin: 0; padding: 0; list-style: none; }
+.procedure-results li { border-top: 1px solid #e6e7e2; }
+.procedure-results button { display: grid; gap: 2px; width: 100%; padding: 12px 3px; border: 0; color: inherit; background: white; text-align: left; cursor: pointer; }
+.procedure-results strong { font-size: 16px; }
+.procedure-results span { color: var(--green-dark); font-size: 12px; }
+.procedure-results small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.empty-results { padding: 24px 8px; color: var(--muted); text-align: center; }
+.selected-procedure { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-left: 4px solid var(--green); background: #edf6f0; }
+.selected-procedure > div { display: grid; gap: 3px; min-width: 0; }
+.selected-procedure small { color: var(--muted); }
+.selected-procedure button { flex: none; padding: 7px 9px; border: 1px solid #aeb2ab; border-radius: 5px; background: white; cursor: pointer; }
+.procedure-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; }
+.note-dialog label > small, .complication-options legend small { color: #8b9088; font-weight: 500; }
+.complication-options { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 18px 0 0; padding: 12px; border: 1px solid #d3d5d0; border-radius: 6px; }
+.complication-options legend { padding-inline: 5px; color: #454944; font-size: 13px; font-weight: 750; }
+.complication-options label { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 5px 0; font-weight: 600; }
+.complication-options input, .acknowledge-warning input { flex: 0 0 auto; width: 20px; min-height: 20px; margin: 0; }
+.complication-options span { display: grid; font-size: 13px; }
+.complication-options small { color: #8b9088; font-size: 10px; font-weight: 500; }
+.validation-callout { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 12px; line-height: 1.4; }
+.validation-callout ul { margin: 6px 0 0; padding-left: 18px; }
+.validation-callout.errors { border: 1px solid #c5645d; color: #7e2721; background: #fff1ef; }
+.validation-callout.warnings { border: 1px solid #d4a53e; color: #614304; background: #fff8df; }
+.validation-callout .acknowledge-warning { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin-top: 10px; color: inherit; }
 .medication-dialog { padding-top: 16px; }
 .medication-dialog .note-dialog-heading { margin-bottom: 12px; }
 .field-reference { float: right; color: #979b94; font-size: 11px; font-weight: 600; }
@@ -122,5 +153,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
   .patient-name { font-size: 25px; }
   .incident-line strong { max-width: 215px; }
   .timeline-list li, .checklist-list li { padding-inline: 16px; }
+  .note-dialog { padding-inline: 16px; }
+  .complication-options { grid-template-columns: 1fr; }
 }
 @media (min-width: 481px) { .app-shell { border-inline: 1px solid #d0d3cd; } }
