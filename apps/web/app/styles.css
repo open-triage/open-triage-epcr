@@ -48,6 +48,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .event-dot.alert { background: #d2a820; }
 .event-dot.note { background: #3269a8; }
 .event-dot.procedure { background: #6d42a1; }
+.event-dot.medication { background: #7b4dad; }
 .timeline-list h2, .checklist-list h2 { margin: 0; font-size: 17px; line-height: 1.25; font-weight: 650; }
 .timeline-list p, .checklist-list p { margin: 4px 0; color: var(--muted); font-size: 14px; line-height: 1.35; }
 .timeline-list small, .checklist-list small { color: #a0a49d; font-size: 11px; }
@@ -76,6 +77,7 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .note-dialog input { min-height: 48px; padding: 0 12px; }
 .note-dialog select { min-height: 48px; padding: 0 36px 0 12px; }
 .note-dialog textarea { min-height: 130px; padding: 12px; resize: vertical; }
+.note-dialog select { min-height: 48px; padding: 0 10px; }
 .note-dialog > small { display: block; margin-top: 5px; color: var(--muted); }
 .note-dialog-actions { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin-top: 22px; }
 .note-dialog-actions button { min-height: 52px; border: 1px solid #bfc3bc; border-radius: 5px; color: #30332f; background: white; font-weight: 750; cursor: pointer; }
@@ -109,6 +111,30 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .validation-callout.errors { border: 1px solid #c5645d; color: #7e2721; background: #fff1ef; }
 .validation-callout.warnings { border: 1px solid #d4a53e; color: #614304; background: #fff8df; }
 .validation-callout .acknowledge-warning { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin-top: 10px; color: inherit; }
+.medication-dialog { padding-top: 16px; }
+.medication-dialog .note-dialog-heading { margin-bottom: 12px; }
+.field-reference { float: right; color: #979b94; font-size: 11px; font-weight: 600; }
+.medication-search { position: relative; display: grid; gap: 7px; margin-top: 16px; color: #454944; font-size: 13px; font-weight: 750; }
+.medication-search > input { min-height: 48px; padding: 0 12px; }
+.medication-search > small { color: var(--muted); font-weight: 500; }
+.medication-results { position: relative; z-index: 2; max-height: 218px; overflow-y: auto; margin: 0; padding: 0; border: 1px solid #bfc3bc; border-radius: 6px; background: #fff; list-style: none; box-shadow: 0 8px 18px rgb(20 39 27 / 12%); }
+.medication-results li + li { border-top: 1px solid #e7e8e3; }
+.medication-results button { display: grid; gap: 2px; width: 100%; padding: 10px 12px; border: 0; background: white; text-align: left; cursor: pointer; }
+.medication-results button:hover, .medication-results button:focus { background: #edf6f0; }
+.medication-results small, .selected-medication small { color: var(--muted); font-size: 11px; font-weight: 500; }
+.no-results { padding: 13px; color: var(--muted); font-weight: 500; }
+.selected-medication { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 10px 12px; border: 1px solid #7bad8c; border-radius: 6px; background: #edf6f0; }
+.selected-medication span { grid-column: 1; color: var(--green-dark); font-size: 10px; text-transform: uppercase; }
+.selected-medication strong, .selected-medication small { grid-column: 1; }
+.selected-medication button { grid-column: 2; grid-row: 1 / 4; align-self: center; padding: 7px 9px; border: 1px solid #7bad8c; border-radius: 4px; color: var(--green-dark); background: white; cursor: pointer; }
+.medication-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.validation-box { margin-top: 16px; padding: 12px 13px; border-radius: 6px; font-size: 13px; line-height: 1.4; }
+.validation-box ul { margin: 6px 0 0; padding-left: 20px; }
+.validation-box p { margin: 5px 0 0; }
+.error-box { border: 1px solid #b4433c; color: #812b26; background: #fff1f0; }
+.warning-box { border: 1px solid #c49817; color: #644e0e; background: #fff9dc; }
+.warning-box .warning-acknowledgement { display: flex; grid-template: none; flex-direction: row; gap: 9px; align-items: flex-start; margin-top: 10px; color: #4f420f; font-weight: 650; }
+.warning-acknowledgement input { flex: 0 0 auto; width: 19px; min-height: 19px; margin: 1px 0 0; }
 .vital-dialog { padding-top: 16px; }
 .vital-dialog .note-dialog-heading { margin-bottom: 8px; }
 .vital-dialog label { margin-top: 10px; }
