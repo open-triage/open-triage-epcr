@@ -17,10 +17,12 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
     if (candidate.encounter?.scenarioId !== INITIAL_SHELL_STATE.encounter.scenarioId) return null;
     if (!Array.isArray(candidate.encounter.events)) return null;
     if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return null;
+    if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return null;
     return {
       ...candidate,
       noteDraft: candidate.noteDraft ?? null,
       vitalDraft: candidate.vitalDraft ?? null,
+      medicationDraft: candidate.medicationDraft ?? null,
       checklistValues: { ...INITIAL_CHECKLIST_VALUES, ...candidate.checklistValues },
       focusedChecklistField: null,
     } as ShellState;

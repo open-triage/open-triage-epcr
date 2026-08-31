@@ -1,0 +1,668 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.nlm.nih.gov/research/umls/rxnorm/index.html",
+            "Value": "RxNorm"
+          },
+          {
+            "url": "https://www.nlm.nih.gov/healthit/snomedct/index.html",
+            "Value": "SNOMED-CT"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "Medication"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eMedications.03",
+          "dConfiguration.09",
+          "sConfiguration.05"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "161"
+          },
+          "SourceLabel": "acetaminophen",
+          "SuggestedLabel": "Acetaminophen (Tylenol)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "296"
+          },
+          "SourceLabel": "adenosine",
+          "SuggestedLabel": "Adenosine (Adenocard)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "435"
+          },
+          "SourceLabel": "albuterol",
+          "SuggestedLabel": "Albuterol (Proventil, Ventolin, AccuNeb)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "214199"
+          },
+          "SourceLabel": "albuterol / ipratropium",
+          "SuggestedLabel": "Albuterol / Ipratropium (Combivent, Duoneb)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "703"
+          },
+          "SourceLabel": "amiodarone",
+          "SuggestedLabel": "Amiodarone (Cordarone)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1191"
+          },
+          "SourceLabel": "aspirin",
+          "SuggestedLabel": "Aspirin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1223"
+          },
+          "SourceLabel": "atropine",
+          "SuggestedLabel": "Atropine"
+        },
+        {
+          "date": "2024-07-08",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1819"
+          },
+          "SourceLabel": "buprenorphine",
+          "SuggestedLabel": "Buprenorphine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1901"
+          },
+          "SourceLabel": "calcium chloride",
+          "SuggestedLabel": "Calcium chloride"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1908"
+          },
+          "SourceLabel": "calcium gluconate",
+          "SuggestedLabel": "Calcium gluconate (Calgonate)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "2193"
+          },
+          "SourceLabel": "ceftriaxone",
+          "SuggestedLabel": "Ceftriaxone (Rocephin)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3264"
+          },
+          "SourceLabel": "dexamethasone",
+          "SuggestedLabel": "Dexamethasone (Decadron)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1795477"
+          },
+          "SourceLabel": "500 ML glucose 100 MG/ML Injection",
+          "SuggestedLabel": "Dextrose 10% (D10)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "260258"
+          },
+          "SourceLabel": "glucose 250 MG/ML Injectable Solution",
+          "SuggestedLabel": "Dextrose 25% (D25)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "237653"
+          },
+          "SourceLabel": "glucose 500 MG/ML Injectable Solution",
+          "SuggestedLabel": "Dextrose 50% (D50)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3322"
+          },
+          "SourceLabel": "diazepam",
+          "SuggestedLabel": "Diazepam (Valium)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3443"
+          },
+          "SourceLabel": "diltiazem",
+          "SuggestedLabel": "Diltiazem (Cardizem)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3498"
+          },
+          "SourceLabel": "diphenhydramine",
+          "SuggestedLabel": "Diphenhydramine (Bendadryl)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3628"
+          },
+          "SourceLabel": "dopamine",
+          "SuggestedLabel": "Dopamine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "328316"
+          },
+          "SourceLabel": "epinephrine 1 MG/ML",
+          "SuggestedLabel": "Epinephrine 1 mg/ml (Epi 1:1,000)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "317361"
+          },
+          "SourceLabel": "epinephrine 0.1 MG/ML",
+          "SuggestedLabel": "Epinephrine 0.1 mg/ml (Epi 1:10,000)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4177"
+          },
+          "SourceLabel": "etomidate",
+          "SuggestedLabel": "Etomidate (Amidate)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4337"
+          },
+          "SourceLabel": "fentanyl",
+          "SuggestedLabel": "Fentanyl"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4603"
+          },
+          "SourceLabel": "furosemide",
+          "SuggestedLabel": "Furosemide (Lasix)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4832"
+          },
+          "SourceLabel": "glucagon",
+          "SuggestedLabel": "Glucagon (GlucaGen)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4850"
+          },
+          "SourceLabel": "glucose",
+          "SuggestedLabel": "Glucose"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "5093"
+          },
+          "SourceLabel": "haloperidol",
+          "SuggestedLabel": "Haloperidol (Haldol)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "5224"
+          },
+          "SourceLabel": "heparin",
+          "SuggestedLabel": "Heparin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "3423"
+          },
+          "SourceLabel": "hydromorphone",
+          "SuggestedLabel": "Hydromorphone (Dilaudid)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1605101"
+          },
+          "SourceLabel": "insulin isophane",
+          "SuggestedLabel": "Insulin (Humulin)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7213"
+          },
+          "SourceLabel": "ipratropium",
+          "SuggestedLabel": "Ipratropium (Atrovent)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6130"
+          },
+          "SourceLabel": "ketamine",
+          "SuggestedLabel": "Ketamine (Ketalar)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "35827"
+          },
+          "SourceLabel": "ketorolac",
+          "SuggestedLabel": "Ketorolac (Toradol)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6185"
+          },
+          "SourceLabel": "labetalol",
+          "SuggestedLabel": "Labetalol (Normodyne)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "1008377"
+          },
+          "SourceLabel": "calcium chloride / lactate / potassium chloride / sodium chloride",
+          "SuggestedLabel": "Lactated ringers (LR, RL)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "237159"
+          },
+          "SourceLabel": "levalbuterol",
+          "SuggestedLabel": "Levalbuterol (Xopenex)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6387"
+          },
+          "SourceLabel": "lidocaine",
+          "SuggestedLabel": "Lidocaine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6470"
+          },
+          "SourceLabel": "lorazepam",
+          "SuggestedLabel": "Lorazepam (Ativan)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6585"
+          },
+          "SourceLabel": "magnesium sulfate",
+          "SuggestedLabel": "Magnesium sulfate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6902"
+          },
+          "SourceLabel": "methylprednisolone",
+          "SuggestedLabel": "Methylprednisolone (Solu-Medrol)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6918"
+          },
+          "SourceLabel": "metoprolol",
+          "SuggestedLabel": "Metoprolol (Lopressor)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "6960"
+          },
+          "SourceLabel": "midazolam",
+          "SuggestedLabel": "Midazolam"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7052"
+          },
+          "SourceLabel": "morphine",
+          "SuggestedLabel": "Morphine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7242"
+          },
+          "SourceLabel": "naloxone",
+          "SuggestedLabel": "Naloxone (Narcan)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7396"
+          },
+          "SourceLabel": "nicardipine",
+          "SuggestedLabel": "Nicardipine (Cardene)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "4917"
+          },
+          "SourceLabel": "nitroglycerin",
+          "SuggestedLabel": "Nitroglycerin",
+          "Note": "Includes spray, tab, paste"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7512"
+          },
+          "SourceLabel": "norepinephrine",
+          "SuggestedLabel": "Norepinephrine (Levophed)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "26225"
+          },
+          "SourceLabel": "ondansetron",
+          "SuggestedLabel": "Ondansetron (Zofran)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "7806"
+          },
+          "SourceLabel": "oxygen",
+          "SuggestedLabel": "Oxygen"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "8163"
+          },
+          "SourceLabel": "phenylephrine",
+          "SuggestedLabel": "Phenylephrine (Sudafed)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "8591"
+          },
+          "SourceLabel": "potassium chloride",
+          "SuggestedLabel": "Potassium chloride"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "8745"
+          },
+          "SourceLabel": "promethazine",
+          "SuggestedLabel": "Promethazine (Phenergan)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "8782"
+          },
+          "SourceLabel": "propofol",
+          "SuggestedLabel": "Propofol (Diprivan)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "68139"
+          },
+          "SourceLabel": "rocuronium",
+          "SuggestedLabel": "Rocuronium (Zemuron)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "36676"
+          },
+          "SourceLabel": "sodium bicarbonate",
+          "SuggestedLabel": "Sodium bicarbonate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "313002"
+          },
+          "SourceLabel": "sodium chloride 9 MG/ML Injectable Solution",
+          "SuggestedLabel": "Sodium chloride (Normal Saline)",
+          "Note": "Includes Sodium Chloride Irrigation, Sodium Chloride 0.154 Injectable; 11/20/20 Updated the RXNorm code from 1807639 to 313002 to reflect accurate EMS application. Updated RXNorm description to match the updated code."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "10154"
+          },
+          "SourceLabel": "succinylcholine",
+          "SuggestedLabel": "Succinylcholine (Anectine)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "10368"
+          },
+          "SourceLabel": "terbutaline",
+          "SuggestedLabel": "Terbutaline (Brethine)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "10454"
+          },
+          "SourceLabel": "thiamine",
+          "SuggestedLabel": "Thiamine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "10691"
+          },
+          "SourceLabel": "tranexamic acid",
+          "SuggestedLabel": "Tranexamic acid (TXA)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "11124"
+          },
+          "SourceLabel": "vancomycin",
+          "SuggestedLabel": "Vancomycin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "11149"
+          },
+          "SourceLabel": "vasopressin (USP)",
+          "SuggestedLabel": "Vasopressin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924003",
+            "Value": "71535"
+          },
+          "SourceLabel": "vecuronium",
+          "SuggestedLabel": "Vecuronium (Norcuron)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "116762002"
+          },
+          "SourceLabel": "Administration of blood product",
+          "SuggestedLabel": "Blood product"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "116795008"
+          },
+          "SourceLabel": "Transfusion of cryoprecipitate",
+          "SuggestedLabel": "Cryoprecipitate"
+        },
+        {
+          "date": "2025-01-14",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "116861002"
+          },
+          "SourceLabel": "Transfusion of fresh frozen plasma",
+          "SuggestedLabel": "Plasma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "116865006"
+          },
+          "SourceLabel": "Administration of albumin",
+          "SuggestedLabel": "Albumin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "180208003"
+          },
+          "SourceLabel": "Intravenous blood transfusion of platelets",
+          "SuggestedLabel": "Platelets"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "33389009"
+          },
+          "SourceLabel": "Transfusion of whole blood",
+          "SuggestedLabel": "Whole blood"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924005",
+            "Value": "71493000"
+          },
+          "SourceLabel": "Transfusion of packed red blood cells",
+          "SuggestedLabel": "Packed red blood cells (RBC)"
+        }
+      ]
+    }
+  }
+}
