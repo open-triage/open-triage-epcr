@@ -2,8 +2,10 @@ node_modules/
 .next/
 dist/
 coverage/
+apps/web/out/
+playwright-report/
+test-results/
 .env
 .env.local
 *.tsbuildinfo
 .DS_Store
-

@@ -8,10 +8,12 @@
     "dev": "next dev",
     "prebuild": "tsx scripts/build-service-worker.ts",
     "build": "next build",
+    "serve:static": "node scripts/serve-static.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:a11y": "playwright test --config ../../playwright.config.ts",
+    "test:deployment": "playwright test --config ../../playwright.static.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
