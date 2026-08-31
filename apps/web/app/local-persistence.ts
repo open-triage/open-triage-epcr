@@ -13,7 +13,7 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
     const value: unknown = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null");
     if (!value || typeof value !== "object") return null;
     const candidate = value as Partial<ShellState>;
-    if (candidate.view !== "timeline" && candidate.view !== "checklist") return null;
+    if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return null;
     if (candidate.encounter?.scenarioId !== INITIAL_SHELL_STATE.encounter.scenarioId) return null;
     if (!Array.isArray(candidate.encounter.events)) return null;
     if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return null;
@@ -26,6 +26,7 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
       medicationDraft: candidate.medicationDraft ?? null,
       checklistValues: { ...INITIAL_CHECKLIST_VALUES, ...candidate.checklistValues },
       focusedChecklistField: null,
+      acknowledgedWarnings: Array.isArray(candidate.acknowledgedWarnings) ? candidate.acknowledgedWarnings : [],
     } as ShellState;
   } catch {
     return null;
