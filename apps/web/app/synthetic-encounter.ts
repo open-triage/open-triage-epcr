@@ -1,13 +1,16 @@
+import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
+
 export type ShellView = "timeline" | "checklist";
 
 export type EncounterEvent = {
   readonly id: string;
   readonly time: string;
-  readonly kind: "care" | "transport" | "alert" | "note";
+  readonly kind: "care" | "transport" | "alert" | "note" | "medication";
   readonly title: string;
   readonly detail: string;
   readonly reference: string;
   readonly visitorEntered?: true;
+  readonly medication?: MedicationAdministration;
 };
 
 export type Encounter = {
@@ -69,7 +72,19 @@ export const syntheticEncounter: Encounter = {
 };
 
 export type NoteDraft = { readonly id: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
-export type ShellState = { readonly view: ShellView; readonly encounter: Encounter; readonly noteDraft: NoteDraft | null };
+export type MedicationAdministration = {
+  readonly medicationCode: string;
+  readonly codeType: "RxNorm" | "SNOMED-CT";
+  readonly label: string;
+  readonly dose: string;
+  readonly unit: string;
+  readonly route: string;
+  readonly response: string;
+  readonly warningAcknowledged: boolean;
+};
+export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly time: string; readonly isNew: boolean };
+export type MedicationField = keyof Pick<MedicationDraft, "time" | "medicationCode" | "codeType" | "label" | "dose" | "unit" | "route" | "response">;
+export type ShellState = { readonly view: ShellView; readonly encounter: Encounter; readonly noteDraft: NoteDraft | null; readonly medicationDraft: MedicationDraft | null };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "note-started"; readonly id: string; readonly time: string }
@@ -77,10 +92,32 @@ export type ShellAction =
   | { readonly type: "note-draft-changed"; readonly field: "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
   | { readonly type: "note-saved" }
+  | { readonly type: "medication-started"; readonly id: string; readonly time: string }
+  | { readonly type: "medication-opened"; readonly id: string }
+  | { readonly type: "medication-selected"; readonly code: string; readonly codeType: MedicationAdministration["codeType"]; readonly label: string }
+  | { readonly type: "medication-draft-changed"; readonly field: Exclude<MedicationField, "codeType">; readonly value: string }
+  | { readonly type: "medication-warning-acknowledged"; readonly acknowledged: boolean }
+  | { readonly type: "medication-cancelled" }
+  | { readonly type: "medication-saved" }
   | { readonly type: "state-restored"; readonly state: ShellState }
   | { readonly type: "prototype-reset" };
 
-export const INITIAL_SHELL_STATE: ShellState = { view: "timeline", encounter: syntheticEncounter, noteDraft: null };
+export const INITIAL_SHELL_STATE: ShellState = { view: "timeline", encounter: syntheticEncounter, noteDraft: null, medicationDraft: null };
+
+export type MedicationValidation = { readonly errors: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+
+export function validateMedication(draft: MedicationDraft): MedicationValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) errors.push("Enter a valid 24-hour time (eMedications.01).");
+  const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType && item.displayLabel === draft.label);
+  if (!catalogMedication) errors.push("Select a medication from the NEMSIS recommended list (eMedications.03).");
+  if (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0) errors.push("Dose must be a number greater than zero (eMedications.05).");
+  if (!(MEDICATION_DOSE_UNITS as readonly string[]).includes(draft.unit)) errors.push("Select a valid configured dose unit (eMedications.06).");
+  if (!(MEDICATION_ROUTES as readonly string[]).includes(draft.route)) errors.push("Select a valid configured administration route (eMedications.04).");
+  if (!draft.response.trim()) warnings.push("Medication response is not documented (eMedications.07). You can acknowledge this warning and add it later.");
+  return { errors, warnings };
+}
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
   return events.map((event, index) => ({ event, index })).sort((a, b) =>
@@ -122,8 +159,53 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, note]) },
       };
     }
+    case "medication-started":
+      return {
+        ...state,
+        medicationDraft: { id: action.id, time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
+      };
+    case "medication-opened": {
+      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
+      return event?.medication ? { ...state, medicationDraft: { id: event.id, time: event.time, ...event.medication, isNew: false } } : state;
+    }
+    case "medication-selected":
+      return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, medicationCode: action.code, codeType: action.codeType, label: action.label } } : state;
+    case "medication-draft-changed":
+      return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, [action.field]: action.value, warningAcknowledged: action.field === "response" ? false : state.medicationDraft.warningAcknowledged } } : state;
+    case "medication-warning-acknowledged":
+      return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, warningAcknowledged: action.acknowledged } } : state;
+    case "medication-cancelled":
+      return { ...state, medicationDraft: null };
+    case "medication-saved": {
+      const draft = state.medicationDraft;
+      if (!draft) return state;
+      const validation = validateMedication(draft);
+      if (validation.errors.length || (validation.warnings.length && !draft.warningAcknowledged)) return state;
+      const administration: MedicationAdministration = {
+        medicationCode: draft.medicationCode,
+        codeType: draft.codeType,
+        label: draft.label,
+        dose: draft.dose.trim(),
+        unit: draft.unit,
+        route: draft.route,
+        response: draft.response.trim(),
+        warningAcknowledged: draft.warningAcknowledged,
+      };
+      const medicationEvent: EncounterEvent = {
+        id: draft.id,
+        time: draft.time,
+        kind: "medication",
+        title: `${draft.label} ${administration.dose} ${administration.unit}`,
+        detail: `${administration.route}${administration.response ? ` · ${administration.response}` : " · Response not documented"}`,
+        reference: `eMedications.03 · ${administration.codeType} ${administration.medicationCode}`,
+        visitorEntered: true,
+        medication: administration,
+      };
+      const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
+      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, medicationEvent]) } };
+    }
     case "state-restored":
-      return action.state;
+      return { ...action.state, noteDraft: action.state.noteDraft ?? null, medicationDraft: action.state.medicationDraft ?? null };
     case "prototype-reset":
       return INITIAL_SHELL_STATE;
     default:
