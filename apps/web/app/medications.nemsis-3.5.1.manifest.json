@@ -1,0 +1,13 @@
+{
+  "standard": "NEMSIS",
+  "release": "3.5.1",
+  "listDate": "2025-01-14",
+  "sourceUrl": "https://git.nemsis.org/projects/NEP/repos/nemsis_public/raw/DefinedLists/Medication/Medication.json?at=refs/heads/release-3.5.1",
+  "sha256": "7c05e3abc4256465a744226892dcc85d3495b052144fe6df70061280525dbfc5",
+  "element": "eMedications.03",
+  "codeProvenance": {
+    "9924003": "RxNorm RXCUI",
+    "9924005": "SNOMED-CT blood product code"
+  },
+  "displayLabelProvenance": "NEMSIS DefinedList Codes.Code.SuggestedLabel; original terminology label retained as SourceLabel"
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { MedicationDialog } from "../components/medication-dialog";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { INITIAL_SHELL_STATE, transitionShell, type ShellView, type VitalField } from "./synthetic-encounter";
 import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
@@ -43,6 +44,10 @@ export default function Home() {
   }
   function startVitals() {
     dispatch({ type: "vitals-started", id: crypto.randomUUID(), time: localClinicalTime() });
+  }
+
+  function startMedication() {
+    dispatch({ type: "medication-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
   function resetPrototype() {
@@ -108,11 +113,11 @@ export default function Home() {
           </div>
           <ol className="timeline-list">
             {encounter.events.map((event) => (
-              <li key={event.id} className={event.kind === "note" ? "editable-event" : undefined}>
+              <li key={event.id} className={event.kind === "note" || event.kind === "medication" ? "editable-event" : undefined}>
                 <time dateTime={`2026-04-18T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot ${event.kind}`} aria-hidden="true" />
-                {event.kind === "note" || event.vitals ? (
-                  <button className="timeline-event-button" type="button" onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : "note-opened", id: event.id })}>
+                {event.kind === "note" || event.kind === "medication" || event.vitals ? (
+                  <button className="timeline-event-button" type="button" onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id })}>
                     <span className="event-title">{event.title}</span>
                     <span className="event-detail">{event.detail}</span>
                     <small>{event.reference} · Tap to edit</small>
@@ -159,7 +164,7 @@ export default function Home() {
 
       <footer className="quick-actions" aria-label="Quick actions">
         <button type="button" onClick={startVitals}>+ Vitals</button>
-        <button type="button">+ Med</button>
+        <button type="button" onClick={startMedication}>+ Med</button>
         <button type="button">+ Proc</button>
         <button type="button" onClick={startNote}>+ Note</button>
       </footer>
@@ -207,6 +212,7 @@ export default function Home() {
           </section>
         </div>
       )}
+      {shell.medicationDraft && <MedicationDialog draft={shell.medicationDraft} dispatch={dispatch} />}
 
       {shell.vitalDraft && vitalValidation && (
         <div className="dialog-backdrop" role="presentation">
