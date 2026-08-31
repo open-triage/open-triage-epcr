@@ -109,6 +109,18 @@ button:focus-visible { outline: 3px solid #f0d916; outline-offset: 2px; }
 .validation-callout.errors { border: 1px solid #c5645d; color: #7e2721; background: #fff1ef; }
 .validation-callout.warnings { border: 1px solid #d4a53e; color: #614304; background: #fff8df; }
 .validation-callout .acknowledge-warning { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 8px; margin-top: 10px; color: inherit; }
+.vital-dialog { padding-top: 16px; }
+.vital-dialog .note-dialog-heading { margin-bottom: 8px; }
+.vital-dialog label { margin-top: 10px; }
+.vital-dialog label small { margin-left: 5px; color: #92978f; font-weight: 600; }
+.vital-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.vital-inputs { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 7px; }
+.vital-inputs input { min-width: 0; }
+.validation-message { margin: 5px 0 0; padding: 7px 9px; border-radius: 4px; font-size: 12px; line-height: 1.3; }
+.validation-message.error { color: #84221d; background: #fdecea; border-left: 3px solid #b8322a; }
+.validation-message.warning { color: #665000; background: #fff8d8; border-left: 3px solid #d0a927; }
+.null-help { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+@media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }
 @media (max-width: 370px) {
   .safety-notice { align-items: flex-start; flex-direction: column; gap: 1px; }
   .encounter-header { padding-inline: 16px; }

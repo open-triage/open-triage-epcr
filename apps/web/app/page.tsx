@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
-import { INITIAL_SHELL_STATE, transitionShell, type ShellView } from "./synthetic-encounter";
+import { INITIAL_SHELL_STATE, transitionShell, type ShellView, type VitalField } from "./synthetic-encounter";
+import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -23,6 +24,7 @@ export default function Home() {
   const encounter = shell.encounter;
   const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
   const procedureValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
+  const vitalValidation = useMemo(() => shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null, [shell.vitalDraft]);
 
   useEffect(() => {
     const saved = loadShellState(window.localStorage);
@@ -42,6 +44,9 @@ export default function Home() {
 
   function startNote() {
     dispatch({ type: "note-started", id: crypto.randomUUID(), time: localClinicalTime() });
+  }
+  function startVitals() {
+    dispatch({ type: "vitals-started", id: crypto.randomUUID(), time: localClinicalTime() });
   }
 
   function startProcedure() {
@@ -115,11 +120,11 @@ export default function Home() {
               <li key={event.id} className={event.kind === "note" ? "editable-event" : undefined}>
                 <time dateTime={`2026-04-18T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot ${event.kind}`} aria-hidden="true" />
-                {event.kind === "note" || event.kind === "procedure" ? (
+                {event.kind === "note" || event.kind === "procedure" || event.vitals ? (
                   <button
                     className="timeline-event-button"
                     type="button"
-                    onClick={() => dispatch({ type: event.kind === "note" ? "note-opened" : "procedure-opened", id: event.id })}
+                    onClick={() => dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : "note-opened", id: event.id })}
                   >
                     <span className="event-title">{event.title}</span>
                     <span className="event-detail">{event.detail}</span>
@@ -180,7 +185,7 @@ export default function Home() {
       )}
 
       <footer className="quick-actions" aria-label="Quick actions">
-        <button type="button">+ Vitals</button>
+        <button type="button" onClick={startVitals}>+ Vitals</button>
         <button type="button">+ Med</button>
         <button type="button" onClick={startProcedure}>+ Proc</button>
         <button type="button" onClick={startNote}>+ Note</button>
@@ -352,6 +357,39 @@ export default function Home() {
                 </div>
               </>
             )}
+          </section>
+        </div>
+      )}
+
+      {shell.vitalDraft && vitalValidation && (
+        <div className="dialog-backdrop" role="presentation">
+          <section className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
+            <div className="note-dialog-heading">
+              <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
+              <button aria-label="Close vital signs editor" type="button" onClick={() => dispatch({ type: "vitals-cancelled" })}>×</button>
+            </div>
+            <label>Clinical time <small>eVitals.01</small>
+              <input inputMode="numeric" placeholder="HH:mm" value={shell.vitalDraft.time} onChange={(event) => dispatch({ type: "vitals-time-changed", value: event.target.value })} />
+            </label>
+            {vitalValidation.errors.time && <p className="validation-message error" role="alert">{vitalValidation.errors.time}</p>}
+            <div className="vital-grid">
+              {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (
+                <div className="vital-field" key={field}>
+                  <label htmlFor={`vital-${field}`}>{rule.label} <small>{rule.reference}</small></label>
+                  <div className="vital-inputs">
+                    <input id={`vital-${field}`} aria-invalid={Boolean(vitalValidation.errors[field])} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
+                    <select aria-label={`${rule.label} null value`} value={shell.vitalDraft!.values.nullValues[field] ?? ""} onChange={(event) => dispatch({ type: "vitals-null-changed", field, value: event.target.value as never })}>
+                      {nullOptionsFor(rule).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </div>
+                  {vitalValidation.errors[field] && <p className="validation-message error" role="alert">{vitalValidation.errors[field]}</p>}
+                  {vitalValidation.warnings[field] && <p className="validation-message warning">{vitalValidation.warnings[field]}</p>}
+                </div>
+              ))}
+            </div>
+            <p className="null-help">NV and PN choices are limited to the codes permitted for each element by the NEMSIS 3.5.1 schema.</p>
+            {vitalValidation.errors.group && <p className="validation-message error" role="alert">{vitalValidation.errors.group}</p>}
+            <div className="note-dialog-actions"><button type="button" onClick={() => dispatch({ type: "vitals-cancelled" })}>Cancel</button><button type="button" disabled={!vitalValidation.valid} onClick={() => dispatch({ type: "vitals-saved" })}>{shell.vitalDraft.isNew ? "Add vital set" : "Save changes"}</button></div>
           </section>
         </div>
       )}
