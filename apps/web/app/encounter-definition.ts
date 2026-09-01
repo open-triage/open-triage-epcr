@@ -1,6 +1,31 @@
 export type NemsisReference = `e${string}`;
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
 export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
+export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
+export type VitalNullValue = "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+
+export type VitalFieldDefinition = {
+  readonly id: VitalField;
+  readonly label: string;
+  readonly unit: string;
+  readonly required: boolean;
+  readonly reference: NemsisReference;
+  readonly boundaries: { readonly min: number; readonly max: number; readonly warningLow: number; readonly warningHigh: number };
+  readonly absenceStates: ReadonlyArray<{ readonly code: VitalNullValue; readonly kind: "NV" | "PN"; readonly label: string }>;
+};
+
+export type VitalGroupDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly labels: {
+    readonly category: string; readonly timelineTitle: string; readonly newEyebrow: string; readonly editEyebrow: string;
+    readonly editorTitle: string; readonly closeEditor: string; readonly time: string; readonly absenceHelp: string;
+    readonly cancel: string; readonly add: string; readonly save: string; readonly absentSummary: string;
+  };
+  readonly references: { readonly group: NemsisReference; readonly time: NemsisReference };
+  readonly validationMessages: { readonly invalidTime: string; readonly emptyGroup: string };
+  readonly fields: ReadonlyArray<VitalFieldDefinition>;
+  readonly summary: ReadonlyArray<{ readonly label: string; readonly fields: ReadonlyArray<VitalField>; readonly separator: string; readonly unit: string }>;
+};
 
 export type NoteEventDefinition = {
   readonly quickAction: { readonly visible: boolean; readonly label: string };
@@ -52,6 +77,50 @@ export type ProcedureEventDefinition = {
   };
 };
 
+export type MedicationFieldId = "medication" | "time" | "dose" | "unit" | "route" | "response";
+
+export type MedicationEventDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly terminology: { readonly catalog: "nemsis-3.5.1-medications" };
+  readonly fields: ReadonlyArray<{
+    readonly id: MedicationFieldId;
+    readonly label: string;
+    readonly required: boolean;
+    readonly reference: NemsisReference;
+    readonly placeholder?: string;
+    readonly warnWhenMissing?: boolean;
+  }>;
+  readonly doseUnits: ReadonlyArray<string>;
+  readonly routes: ReadonlyArray<string>;
+  readonly labels: {
+    readonly category: string;
+    readonly newEyebrow: string;
+    readonly editEyebrow: string;
+    readonly editorTitle: string;
+    readonly closeEditor: string;
+    readonly searchResults: string;
+    readonly availableOffline: string;
+    readonly noMatches: string;
+    readonly change: string;
+    readonly select: string;
+    readonly selectRoute: string;
+    readonly cancel: string;
+    readonly add: string;
+    readonly save: string;
+    readonly medicationMissing: string;
+    readonly routeMissing: string;
+    readonly responseMissing: string;
+  };
+  readonly validationMessages: {
+    readonly invalidTime: string;
+    readonly invalidMedication: string;
+    readonly invalidDose: string;
+    readonly invalidUnit: string;
+    readonly invalidRoute: string;
+    readonly responseMissing: string;
+  };
+};
+
 export type EncounterDefinition = {
   readonly schemaVersion: 1;
   readonly id: string;
@@ -74,7 +143,7 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
-  readonly events: { readonly note: NoteEventDefinition; readonly procedure: ProcedureEventDefinition };
+  readonly events: { readonly note: NoteEventDefinition; readonly procedure: ProcedureEventDefinition; readonly medication: MedicationEventDefinition; readonly vitals: VitalGroupDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
@@ -152,6 +221,71 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(warningBehavior, "events.procedure.warningBehavior", ["noneCode", "noneWithOtherMessage", "repeatedOrUnsuccessfulMessage"]);
   if (!Number.isInteger(warningBehavior.repeatedAttemptThreshold)) diagnostics.push("events.procedure.warningBehavior.repeatedAttemptThreshold must be an integer");
   requiredStrings(procedure.timeline, "events.procedure.timeline", ["attemptSingular", "attemptPlural", "successful", "unsuccessful", "complicationLabel"]);
+  const medication = isRecord(events.medication) ? events.medication : {};
+  const medicationQuickAction = isRecord(medication.quickAction) ? medication.quickAction : {};
+  if (typeof medicationQuickAction.visible !== "boolean") diagnostics.push("events.medication.quickAction.visible must be a boolean");
+  requiredStrings(medicationQuickAction, "events.medication.quickAction", ["label"]);
+  const terminology = isRecord(medication.terminology) ? medication.terminology : {};
+  if (terminology.catalog !== "nemsis-3.5.1-medications") diagnostics.push("events.medication.terminology.catalog must be nemsis-3.5.1-medications");
+  const medicationFieldIds = ["medication", "time", "dose", "unit", "route", "response"] as const;
+  if (!Array.isArray(medication.fields)) diagnostics.push("events.medication.fields must be an array");
+  else {
+    const seen = new Set<string>();
+    medication.fields.forEach((field, index) => {
+      requiredStrings(field, `events.medication.fields[${index}]`, ["id", "label", "reference"]);
+      if (!isRecord(field)) return;
+      if (!medicationFieldIds.includes(field.id as typeof medicationFieldIds[number])) diagnostics.push(`events.medication.fields[${index}].id is not supported`);
+      if (seen.has(String(field.id))) diagnostics.push(`events.medication.fields contains duplicate id ${String(field.id)}`);
+      seen.add(String(field.id));
+      if (typeof field.required !== "boolean") diagnostics.push(`events.medication.fields[${index}].required must be a boolean`);
+      if (field.warnWhenMissing !== undefined && typeof field.warnWhenMissing !== "boolean") diagnostics.push(`events.medication.fields[${index}].warnWhenMissing must be a boolean`);
+    });
+    for (const fieldId of medicationFieldIds) if (!seen.has(fieldId)) diagnostics.push(`events.medication.fields must include ${fieldId}`);
+  }
+  for (const list of ["doseUnits", "routes"] as const) {
+    if (!Array.isArray(medication[list]) || medication[list].length === 0 || medication[list].some((item) => typeof item !== "string" || !item.trim())) diagnostics.push(`events.medication.${list} must contain strings`);
+  }
+  requiredStrings(medication.labels, "events.medication.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "searchResults", "availableOffline", "noMatches", "change", "select", "selectRoute", "cancel", "add", "save", "medicationMissing", "routeMissing", "responseMissing"]);
+  requiredStrings(medication.validationMessages, "events.medication.validationMessages", ["invalidTime", "invalidMedication", "invalidDose", "invalidUnit", "invalidRoute", "responseMissing"]);
+  const vitals = isRecord(events.vitals) ? events.vitals : {};
+  const vitalQuickAction = isRecord(vitals.quickAction) ? vitals.quickAction : {};
+  if (typeof vitalQuickAction.visible !== "boolean") diagnostics.push("events.vitals.quickAction.visible must be a boolean");
+  requiredStrings(vitalQuickAction, "events.vitals.quickAction", ["label"]);
+  requiredStrings(vitals.labels, "events.vitals.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "time", "absenceHelp", "cancel", "add", "save", "absentSummary"]);
+  requiredStrings(vitals.references, "events.vitals.references", ["group", "time"]);
+  requiredStrings(vitals.validationMessages, "events.vitals.validationMessages", ["invalidTime", "emptyGroup"]);
+  const vitalFieldIds = new Set<string>();
+  if (!Array.isArray(vitals.fields) || vitals.fields.length === 0) diagnostics.push("events.vitals.fields must contain at least one field");
+  else vitals.fields.forEach((candidate, index) => {
+    const path = `events.vitals.fields[${index}]`;
+    const field = isRecord(candidate) ? candidate : {};
+    requiredStrings(field, path, ["id", "label", "unit", "reference"]);
+    if (typeof field.id === "string") {
+      if (!["systolic", "diastolic", "heartRate", "spo2", "respiratoryRate", "gcs", "pain"].includes(field.id)) diagnostics.push(`${path}.id is not a supported saved vital field`);
+      if (vitalFieldIds.has(field.id)) diagnostics.push(`${path}.id must be unique`);
+      vitalFieldIds.add(field.id);
+    }
+    if (typeof field.required !== "boolean") diagnostics.push(`${path}.required must be a boolean`);
+    const boundaries = isRecord(field.boundaries) ? field.boundaries : {};
+    for (const boundary of ["min", "max", "warningLow", "warningHigh"] as const) if (typeof boundaries[boundary] !== "number" || !Number.isFinite(boundaries[boundary])) diagnostics.push(`${path}.boundaries.${boundary} must be a finite number`);
+    if (typeof boundaries.min === "number" && typeof boundaries.max === "number" && boundaries.min > boundaries.max) diagnostics.push(`${path}.boundaries.min must not exceed max`);
+    if (!Array.isArray(field.absenceStates)) diagnostics.push(`${path}.absenceStates must be an array`);
+    else field.absenceStates.forEach((candidateState, stateIndex) => {
+      const statePath = `${path}.absenceStates[${stateIndex}]`;
+      const absenceState = isRecord(candidateState) ? candidateState : {};
+      requiredStrings(absenceState, statePath, ["code", "kind", "label"]);
+      if (absenceState.kind !== "NV" && absenceState.kind !== "PN") diagnostics.push(`${statePath}.kind must be NV or PN`);
+    });
+  });
+  if (!Array.isArray(vitals.summary) || vitals.summary.length === 0) diagnostics.push("events.vitals.summary must contain at least one item");
+  else vitals.summary.forEach((candidate, index) => {
+    const path = `events.vitals.summary[${index}]`;
+    const item = isRecord(candidate) ? candidate : {};
+    requiredStrings(item, path, ["label"]);
+    for (const displayPart of ["separator", "unit"] as const) if (typeof item[displayPart] !== "string") diagnostics.push(`${path}.${displayPart} must be a string`);
+    if (!Array.isArray(item.fields) || item.fields.length === 0) diagnostics.push(`${path}.fields must contain at least one field`);
+    else item.fields.forEach((field) => { if (typeof field !== "string" || !vitalFieldIds.has(field)) diagnostics.push(`${path}.fields contains an unconfigured field`); });
+  });
   if (diagnostics.length) throw new EncounterDefinitionError(id, diagnostics);
   return value as EncounterDefinition;
 }
