@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.dev/schemas/encounter-document/1.0.0",
+  "title": "Open Triage Encounter Document 1.0.0",
+  "description": "Canonical, portable patient encounter data addressed only by NEMSIS or namespaced custom identities.",
+  "type": "object",
+  "required": ["$schema", "documentType", "modelVersion", "dataModel", "formProfile", "encounter", "groups"],
+  "properties": {
+    "$schema": { "const": "./encounter-document.schema-1.0.0.json" },
+    "documentType": { "const": "open-triage.encounter" },
+    "modelVersion": { "const": "1.0.0" },
+    "dataModel": {
+      "type": "object",
+      "required": ["standard", "version", "dataset"],
+      "properties": {
+        "standard": { "const": "NEMSIS" },
+        "version": { "$ref": "#/$defs/nonEmptyString" },
+        "dataset": { "const": "EMSDataSet" }
+      }
+    },
+    "formProfile": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "version": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "encounter": {
+      "type": "object",
+      "required": ["id", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "identity": {
+      "description": "A NEMSIS catalog identity or reverse-DNS namespaced custom identity.",
+      "type": "string",
+      "minLength": 1
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+    },
+    "valueBase": {
+      "type": "object",
+      "required": ["kind", "occurrenceId"],
+      "properties": {
+        "kind": { "type": "string" },
+        "occurrenceId": { "$ref": "#/$defs/nonEmptyString" },
+        "attributes": { "$ref": "#/$defs/attributes" }
+      }
+    },
+    "absentValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        { "properties": { "kind": { "const": "absent" } } }
+      ]
+    },
+    "nullValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "properties": {
+            "kind": { "const": "null" },
+            "notValue": {
+              "type": "object",
+              "required": ["code"],
+              "properties": {
+                "code": { "$ref": "#/$defs/nonEmptyString" },
+                "display": { "type": "string" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "pertinentNegativeValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "required": ["code"],
+          "properties": {
+            "kind": { "const": "pertinent-negative" },
+            "code": { "$ref": "#/$defs/nonEmptyString" },
+            "display": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "codedValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "required": ["code"],
+          "properties": {
+            "kind": { "const": "coded" },
+            "code": { "$ref": "#/$defs/nonEmptyString" },
+            "system": { "type": "string" },
+            "display": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "scalarValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "required": ["value"],
+          "properties": {
+            "kind": { "const": "scalar" },
+            "value": { "type": ["string", "number", "boolean"] }
+          }
+        }
+      ]
+    },
+    "value": {
+      "oneOf": [
+        { "$ref": "#/$defs/absentValue" },
+        { "$ref": "#/$defs/nullValue" },
+        { "$ref": "#/$defs/pertinentNegativeValue" },
+        { "$ref": "#/$defs/codedValue" },
+        { "$ref": "#/$defs/scalarValue" }
+      ]
+    },
+    "element": {
+      "type": "object",
+      "required": ["id", "values"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identity" },
+        "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/value" } }
+      }
+    },
+    "groupInstance": {
+      "type": "object",
+      "required": ["instanceId", "elements"],
+      "properties": {
+        "instanceId": { "$ref": "#/$defs/nonEmptyString" },
+        "attributes": { "$ref": "#/$defs/attributes" },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["id", "instances"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identity" },
+        "instances": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/groupInstance" } }
+      }
+    }
+  }
+}
