@@ -1,0 +1,29 @@
+{
+  "$schema": "./nemsis-custom-configuration.schema-1.0.0.json",
+  "schemaVersion": "1.0.0",
+  "owner": "Example County EMS",
+  "namespace": "org.example.ems",
+  "groups": [
+    {
+      "id": "org.example.ems:stroke-assessment",
+      "title": "Stroke assessment",
+      "recurrence": "multiple",
+      "correlatesTo": "eExam.20"
+    }
+  ],
+  "elements": [
+    {
+      "id": "org.example.ems:stroke-score",
+      "title": "Local stroke score",
+      "definition": "Locally configured prehospital stroke assessment score.",
+      "datatype": "number",
+      "recurrence": "multiple",
+      "usage": "Recommended",
+      "constraints": { "minimum": 0, "maximum": 10 },
+      "potentialValues": [],
+      "permittedNV": ["7701003"],
+      "permittedPN": [],
+      "groupId": "org.example.ems:stroke-assessment"
+    }
+  ]
+}

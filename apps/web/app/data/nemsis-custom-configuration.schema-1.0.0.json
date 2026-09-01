@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.dev/schemas/nemsis-custom-configuration/1.0.0",
+  "title": "Open Triage NEMSIS Custom Configuration 1.0.0",
+  "description": "Deployment-owned NEMSIS custom element definitions. Identifiers use a reverse-DNS namespace followed by a colon, so they cannot overlap standard NEMSIS identifiers (for example org.example.ems:stroke-score).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "owner", "namespace", "groups", "elements"],
+  "properties": {
+    "$schema": { "const": "./nemsis-custom-configuration.schema-1.0.0.json" },
+    "schemaVersion": { "const": "1.0.0" },
+    "owner": { "$ref": "#/$defs/nonEmptyString", "description": "Organization responsible for the definitions." },
+    "namespace": { "$ref": "#/$defs/namespace", "description": "Reverse-DNS namespace that prefixes every element and group identifier." },
+    "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+    "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "namespace": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$" },
+    "namespacedId": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+:[A-Za-z][A-Za-z0-9._-]*$" },
+    "usage": { "enum": ["Mandatory", "Required", "Recommended", "Optional"] },
+    "recurrence": { "enum": ["single", "multiple"] },
+    "codeValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "label"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "nemsisCode": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "minLength": { "type": "integer", "minimum": 0 },
+        "maxLength": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "pattern": { "type": "string" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "recurrence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "recurrence": { "$ref": "#/$defs/recurrence" },
+        "correlatesTo": { "type": "string", "minLength": 1, "description": "Standard or namespaced custom element/group identity used for NEMSIS correlation." }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "definition", "datatype", "recurrence", "usage", "constraints", "potentialValues", "permittedNV", "permittedPN"],
+      "properties": {
+        "id": { "$ref": "#/$defs/namespacedId" },
+        "title": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "definition": { "type": "string", "minLength": 2, "maxLength": 255 },
+        "datatype": { "enum": ["binary", "dateTime", "number", "other", "string", "boolean"], "description": "Maps to NEMSIS CustomDataType codes 9902001 through 9902011." },
+        "recurrence": { "$ref": "#/$defs/recurrence" },
+        "usage": { "$ref": "#/$defs/usage" },
+        "constraints": { "$ref": "#/$defs/constraints" },
+        "potentialValues": { "type": "array", "items": { "$ref": "#/$defs/codeValue" } },
+        "permittedNV": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "permittedPN": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "groupId": { "$ref": "#/$defs/namespacedId", "description": "Grouping identity corresponding to eCustomConfiguration.09." }
+      }
+    }
+  }
+}
