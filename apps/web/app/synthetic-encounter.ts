@@ -159,7 +159,15 @@ export type ReviewFinding = {
 
 export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
   if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
+  if (event.kind === "procedure" && event.procedure) return {
+    title: event.procedure.label,
+    reference: `${definition.events.procedure.references.procedure} · ${definition.events.procedure.terminology.codeSystem} ${event.procedure.code}`,
+  };
   return { title: event.title, reference: event.reference };
+}
+
+export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): string {
+  return event.procedure ? describeProcedure(event.procedure, definition.events.procedure) : event.detail;
 }
 
 export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
@@ -212,14 +220,17 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       ];
     }
     if (event.procedure) {
+      const procedureDefinition = definition.events.procedure;
       const validation = validateProcedure({
         id: event.id, date: event.date ?? "2026-04-18", time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
         attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
         complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
-      });
+      }, procedureDefinition);
+      const presentation = encounterEventPresentation(event, definition);
+      const referenceFor = (message: string) => Object.values(procedureDefinition.references).find((reference) => message.startsWith(reference)) ?? procedureDefinition.references.complications;
       return [
-        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Procedure", "eProcedures", message, index)),
-        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Procedure", "eProcedures", message, index, event.procedure!.warningAcknowledged)),
+        ...validation.errors.map((message, index) => eventFinding(state, { ...event, ...presentation }, "error", procedureDefinition.labels.category, referenceFor(message), message, index)),
+        ...validation.warnings.map((message, index) => eventFinding(state, { ...event, ...presentation }, "warning", procedureDefinition.labels.category, procedureDefinition.references.complications, message, index, event.procedure!.warningAcknowledged)),
       ];
     }
     if (event.kind === "note") {
@@ -329,7 +340,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
           time: action.time,
           procedureCode: "",
           procedureLabel: "",
-          attempts: "1",
+          attempts: String(definition.events.procedure.attempts.defaultValue),
           success: "",
           outcome: "",
           complications: [],
@@ -358,7 +369,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       };
     }
     case "procedure-selected": {
-      const selected = PROCEDURES.find((procedure) => procedure.code === action.code);
+      const selected = definition.events.procedure.terminology.catalog === "nemsis-procedures-3.5.1" ? PROCEDURES.find((procedure) => procedure.code === action.code) : undefined;
       return state.procedureDraft && (selected || action.code === "") ? {
         ...state,
         procedureDraft: {
@@ -399,7 +410,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       if (!draft) return state;
       const procedure: ProcedureRecord = {
         code: draft.procedureCode,
-        label: draft.procedureLabel || "Procedure not selected",
+        label: draft.procedureLabel || definition.events.procedure.labels.procedure,
         attempts: Number(draft.attempts) || 0,
         success: draft.success as ProcedureRecord["success"],
         outcome: draft.outcome as ProcedureRecord["outcome"],
@@ -412,8 +423,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         time: draft.time,
         kind: "procedure",
         title: procedure.label,
-        detail: describeProcedure(procedure),
-        reference: `eProcedures.03 · SNOMED CT ${procedure.code}`,
+        detail: describeProcedure(procedure, definition.events.procedure),
+        reference: `${definition.events.procedure.references.procedure} · ${definition.events.procedure.terminology.codeSystem} ${procedure.code}`,
         visitorEntered: true,
         procedure,
       };

@@ -88,7 +88,7 @@ test("reset clears local progress and restores the version-controlled baseline",
 
 test("configured note metadata drives capture, validation, review navigation, and summary presentation", () => {
   const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: {
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: {
     ...base,
     quickAction: { visible: false, label: "Record observation" },
     labels: { ...base.labels, category: "Observation", timelineTitle: "Field observation" },
@@ -115,7 +115,7 @@ test("configured note metadata drives capture, validation, review navigation, an
 
 test("configured note requiredness can permit an empty summary", () => {
   const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: { ...base, required: { ...base.required, summary: false } } } };
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: { ...base, required: { ...base.required, summary: false } } } };
   const note: EncounterEvent = { id: "optional-note", time: "09:11", kind: "note", title: "Legacy title", detail: "", reference: "legacy" };
   const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [note, ...INITIAL_SHELL_STATE.encounter.events] } };
 
@@ -130,7 +130,7 @@ test("restored note events resolve current definition metadata instead of persis
   saveShellState(storage, state);
   const restoredEvent = loadShellState(storage)!.encounter.events.find((event) => event.id === "visitor-note-1")!;
   const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: {
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: {
     ...base,
     labels: { ...base.labels, timelineTitle: "Configured summary label" },
     references: { ...base.references, summary: "eNarrative.02" },

@@ -17,6 +17,18 @@ test("validates and serves the bundled versioned encounter definition", () => {
   assert.equal(definition.events.note.quickAction.label, "Add clinical note");
   assert.equal(definition.events.note.required.summary, true);
   assert.equal(definition.events.note.references.summary, "eNarrative.01");
+  assert.deepEqual(definition.events.procedure.fieldOrder, ["procedure", "time", "attempts", "success", "outcome", "complications"]);
+  assert.equal(definition.events.procedure.terminology.catalog, "nemsis-procedures-3.5.1");
+  assert.equal(definition.events.procedure.references.procedure, "eProcedures.03");
+});
+
+test("rejects an incomplete procedure event definition with actionable diagnostics", () => {
+  const invalid = structuredClone(adultChestPainDefinition) as unknown as { events: { procedure: Record<string, unknown> } };
+  invalid.events.procedure.fieldOrder = ["procedure", "procedure"];
+  invalid.events.procedure.required = { procedure: true };
+  assert.throws(() => validateEncounterDefinition(invalid), (error: unknown) => error instanceof EncounterDefinitionError
+    && error.message.includes("events.procedure.fieldOrder must contain every procedure field exactly once")
+    && error.message.includes("events.procedure.required.time must be a boolean"));
 });
 
 test("rejects an incomplete note event definition with actionable diagnostics", () => {
