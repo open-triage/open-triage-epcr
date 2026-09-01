@@ -1,0 +1,1164 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/",
+            "Value": "ICD-10"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "icd10Activity"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eSituation.17"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.K"
+          },
+          "Category": "Animal Care",
+          "SourceLabel": "Activities involving animal care",
+          "SuggestedLabel": "Animal care activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.K3"
+          },
+          "Category": "Animal Care",
+          "SourceLabel": "Activity, grooming and shearing an animal",
+          "SuggestedLabel": "Grooming or shearing an animal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.K2"
+          },
+          "Category": "Animal Care",
+          "SourceLabel": "Activity, milking an animal",
+          "SuggestedLabel": "Milking an animal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.K9"
+          },
+          "Category": "Animal Care",
+          "SourceLabel": "Activity, other involving animal care",
+          "SuggestedLabel": "Other activities involving animal care"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.K1"
+          },
+          "Category": "Animal Care",
+          "SourceLabel": "Activity, walking an animal",
+          "SuggestedLabel": "Walking an animal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.D"
+          },
+          "Category": "Arts and Crafts",
+          "SourceLabel": "Activities involving arts and handcrafts",
+          "SuggestedLabel": "Arts or handcrafts activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.D3"
+          },
+          "Category": "Arts and Crafts",
+          "SourceLabel": "Activity, furniture building and finishing",
+          "SuggestedLabel": "Furniture building or finishing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.D1"
+          },
+          "Category": "Arts and Crafts",
+          "SourceLabel": "Activity, knitting and crocheting",
+          "SuggestedLabel": "Knitting or crocheting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.D9"
+          },
+          "Category": "Arts and Crafts",
+          "SourceLabel": "Activity, other involving arts and handcrafts",
+          "SuggestedLabel": "Other activities involving arts or handcrafts"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.D2"
+          },
+          "Category": "Arts and Crafts",
+          "SourceLabel": "Activity, sewing",
+          "SuggestedLabel": "Sewing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activities involving other cardiorespiratory exercise",
+          "SuggestedLabel": "Cardiorespiratory exercise activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A3"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, aerobic and step exercise",
+          "SuggestedLabel": "Aerobic or step exercise"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A2"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, calisthenics",
+          "SuggestedLabel": "Calisthenics"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A4"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, circuit training",
+          "SuggestedLabel": "Circuit training"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A1"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, exercise machines primarily for cardiorespiratory conditioning",
+          "SuggestedLabel": "Exercise machines primarily for cardiorespiratory conditioning"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A6"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, grass drills",
+          "SuggestedLabel": "Grass drills"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A5"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, obstacle course",
+          "SuggestedLabel": "Obstacle course"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.A9"
+          },
+          "Category": "Cardio Activities",
+          "SourceLabel": "Activity, other involving cardiorespiratory exercise",
+          "SuggestedLabel": "Other activities involving cardiorespiratory exercise"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.F"
+          },
+          "Category": "Caregiving",
+          "SourceLabel": "Activities involving caregiving",
+          "SuggestedLabel": "Caregiving activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.F1"
+          },
+          "Category": "Caregiving",
+          "SourceLabel": "Activity, caregiving, bathing",
+          "SuggestedLabel": "Caregiving, bathing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.F2"
+          },
+          "Category": "Caregiving",
+          "SourceLabel": "Activity, caregiving, lifting",
+          "SuggestedLabel": "Caregiving, lifting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.F9"
+          },
+          "Category": "Caregiving",
+          "SourceLabel": "Activity, other caregiving",
+          "SuggestedLabel": "Other caregiving activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.3"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activities involving climbing, rappelling and jumping off",
+          "SuggestedLabel": "Climbing or jumping activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.33"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, BASE jumping",
+          "SuggestedLabel": "BASE jumping"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.34"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, bungee jumping",
+          "SuggestedLabel": "Bungee jumping"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.35"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, hang gliding",
+          "SuggestedLabel": "Hang gliding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.31"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, mountain climbing, rock climbing and wall climbing",
+          "SuggestedLabel": "Mountain climbing, rock climbing, or wall climbing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.39"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, other involving climbing, rappelling and jumping off",
+          "SuggestedLabel": "Other climbing, rappelling, or jumping off activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.32"
+          },
+          "Category": "Climb/Jumping Activities",
+          "SourceLabel": "Activity, rappelling",
+          "SuggestedLabel": "Rappelling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.6"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activities involving other sports and athletics played as a team or group",
+          "SuggestedLabel": "athletic team or group activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.62"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, american flag or touch football",
+          "SuggestedLabel": "American flag or touch football"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.61"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, american tackle football",
+          "SuggestedLabel": "American tackle football"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.64"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, baseball",
+          "SuggestedLabel": "Baseball"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.67"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, basketball",
+          "SuggestedLabel": "Basketball"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.65"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, lacrosse and field hockey",
+          "SuggestedLabel": "Lacrosse or field hockey"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.69"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, other involving other sports and athletics played as a team or group",
+          "SuggestedLabel": "Other athletics played as a team or group activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.63"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, rugby",
+          "SuggestedLabel": "Rugby"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.6A"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, physical games generally associated with school recess, summer camp and children",
+          "SuggestedLabel": "School recess, summer camp or children activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.66"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, soccer",
+          "SuggestedLabel": "Soccer"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.68"
+          },
+          "Category": "Contact Sports",
+          "SourceLabel": "Activity, volleyball (beach) (court)",
+          "SuggestedLabel": "Volleyball (beach or court)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.4"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activities involving dancing and other rhythmic movement",
+          "SuggestedLabel": "Dancing or rhythmic activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.45"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, cheerleading",
+          "SuggestedLabel": "Cheerleading"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.41"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, dancing",
+          "SuggestedLabel": "Dancing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.43"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, gymnastics",
+          "SuggestedLabel": "Gymnastic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.49"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, other involving dancing and other rhythmic movements",
+          "SuggestedLabel": "Other dancing or rhythmic movement activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.44"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, trampolining",
+          "SuggestedLabel": "Trampolining"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.42"
+          },
+          "Category": "Dancing or Rhythmic Activities",
+          "SourceLabel": "Activity, yoga",
+          "SuggestedLabel": "Yoga"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activities involving other muscle strengthening exercises",
+          "SuggestedLabel": "Muscle strengthening activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B1"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activity, exercise machines primarily for muscle strengthening",
+          "SuggestedLabel": "Exercise machines primarily for muscle strengthening"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B3"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activity, free weights",
+          "SuggestedLabel": "Free weights"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B9"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activity, other involving muscle strengthening exercises",
+          "SuggestedLabel": "Other activities involving muscle strengthening exercises"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B4"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activity, pilates",
+          "SuggestedLabel": "Pilates"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.B2"
+          },
+          "Category": "Exercise",
+          "SourceLabel": "Activity, push-ups, pull-ups, sit-ups",
+          "SuggestedLabel": "Push-ups, pull-ups, sit-ups"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.G"
+          },
+          "Category": "Food Preparation",
+          "SourceLabel": "Activities involving food preparation, cooking and grilling",
+          "SuggestedLabel": "Food preparation activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.G3"
+          },
+          "Category": "Food Preparation",
+          "SourceLabel": "Activity, cooking and baking",
+          "SuggestedLabel": "Cooking or baking"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.G1"
+          },
+          "Category": "Food Preparation",
+          "SourceLabel": "Activity, food preparation and clean up",
+          "SuggestedLabel": "Food preparation or clean up"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.G2"
+          },
+          "Category": "Food Preparation",
+          "SourceLabel": "Activity, grilling and smoking food",
+          "SuggestedLabel": "Grilling or smoking food"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.G9"
+          },
+          "Category": "Food Preparation",
+          "SourceLabel": "Activity, other involving cooking and grilling",
+          "SuggestedLabel": "Other activities involving cooking or grilling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.7"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activities involving other specified sports and athletics",
+          "SuggestedLabel": "Hand sport or athletic activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.71"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, boxing",
+          "SuggestedLabel": "Boxing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.74"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, frisbee",
+          "SuggestedLabel": "Frisbee"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.75"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, martial arts",
+          "SuggestedLabel": "Martial arts"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.79"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, other specified sports and athletics",
+          "SuggestedLabel": "Other specified sports or athletics activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.73"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, racquet and hand sports",
+          "SuggestedLabel": "Racquet or hand sports"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.72"
+          },
+          "Category": "Hand Sports",
+          "SourceLabel": "Activity, wrestling",
+          "SuggestedLabel": "Wrestling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.5"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activities involving other sports and athletics played individually",
+          "SuggestedLabel": "individual athletic activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.55"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, bike riding",
+          "SuggestedLabel": "Bike riding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.54"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, bowling",
+          "SuggestedLabel": "Bowling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.53"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, golf",
+          "SuggestedLabel": "Golf"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.52"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, horseback riding",
+          "SuggestedLabel": "Horseback riding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.56"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, jumping rope",
+          "SuggestedLabel": "Jumping rope"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.57"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, non-running track and field events",
+          "SuggestedLabel": "Non-running track or field"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.59"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, other involving other sports and athletics played individually",
+          "SuggestedLabel": "Other athletics played individually activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.51"
+          },
+          "Category": "Individual Sport",
+          "SourceLabel": "Activity, roller skating (inline) and skateboarding",
+          "SuggestedLabel": "Roller skating (inline) or skateboarding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.J"
+          },
+          "Category": "Instruments",
+          "SourceLabel": "Activities involving playing musical instrument",
+          "SuggestedLabel": "Playing musical instrument activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.J2"
+          },
+          "Category": "Instruments",
+          "SourceLabel": "Activity, drum and other percussion instrument playing",
+          "SuggestedLabel": "Drum or other percussion instrument playing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.J1"
+          },
+          "Category": "Instruments",
+          "SourceLabel": "Activity, piano playing",
+          "SuggestedLabel": "Piano playing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.J3"
+          },
+          "Category": "Instruments",
+          "SourceLabel": "Activity, string instrument playing",
+          "SuggestedLabel": "String instrument playing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.J4"
+          },
+          "Category": "Instruments",
+          "SourceLabel": "Activity, winds and brass instrument playing",
+          "SuggestedLabel": "Winds or brass instrument playing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activities involving personal hygiene and interior property and clothing maintenance",
+          "SuggestedLabel": "Personal hygiene, laundry, or interior property activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E5"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, floor mopping and cleaning",
+          "SuggestedLabel": "Floor mopping or cleaning"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E4"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, ironing",
+          "SuggestedLabel": "Ironing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E2"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, laundry",
+          "SuggestedLabel": "Laundry"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E9"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, other interior property and clothing maintenance",
+          "SuggestedLabel": "Other activities involving interior property or clothing maintenance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E8"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, other personal hygiene",
+          "SuggestedLabel": "Other personal hygiene"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E1"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, personal bathing and showering",
+          "SuggestedLabel": "Personal bathing or showering"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E6"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, residential relocation",
+          "SuggestedLabel": "Residential relocation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.E3"
+          },
+          "Category": "Personal Hygiene of Home Activity",
+          "SourceLabel": "Activity, vacuuming",
+          "SuggestedLabel": "Vacuuming"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.H"
+          },
+          "Category": "Property Management",
+          "SourceLabel": "Activities involving exterior property and land maintenance, building and construction",
+          "SuggestedLabel": "Exterior property activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.H3"
+          },
+          "Category": "Property Management",
+          "SourceLabel": "Activity, building and construction",
+          "SuggestedLabel": "Building or construction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.H1"
+          },
+          "Category": "Property Management",
+          "SourceLabel": "Activity, digging, shoveling and raking",
+          "SuggestedLabel": "Digging, shoveling, or raking"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.H2"
+          },
+          "Category": "Property Management",
+          "SourceLabel": "Activity, gardening and landscaping",
+          "SuggestedLabel": "Gardening or landscaping"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.H9"
+          },
+          "Category": "Property Management",
+          "SourceLabel": "Activity, other involving exterior property and land maintenance, building and construction",
+          "SuggestedLabel": "Other activities involving exterior property or land maintenance, building or construction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.I"
+          },
+          "Category": "Rollercoasters",
+          "SourceLabel": "Activities involving roller coasters and other types of external motion",
+          "SuggestedLabel": "Roller coaster type activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.I1"
+          },
+          "Category": "Rollercoasters",
+          "SourceLabel": "Activity, roller coaster riding",
+          "SuggestedLabel": "Roller coaster riding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.I9"
+          },
+          "Category": "Rollercoasters",
+          "SourceLabel": "Activity, other involving external motion",
+          "SuggestedLabel": "Other activities involving external motion"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.C"
+          },
+          "Category": "Technology",
+          "SourceLabel": "Activities involving computer technology and electronic devices",
+          "SuggestedLabel": "Computer or electronic device activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.C1"
+          },
+          "Category": "Technology",
+          "SourceLabel": "Activity, computer keyboarding",
+          "SuggestedLabel": "Computer keyboarding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.C2"
+          },
+          "Category": "Technology",
+          "SourceLabel": "Activity, hand held interactive electronic device",
+          "SuggestedLabel": "Hand held interactive electronic device"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.C9"
+          },
+          "Category": "Technology",
+          "SourceLabel": "Activity, other involving computer technology and electronic devices",
+          "SuggestedLabel": "Other activities involving computer technology or electronic devices"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.8"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activities, other specified",
+          "SuggestedLabel": "Unspecified activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.89"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, other specified",
+          "SuggestedLabel": "Other specified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.81"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, refereeing a sports activity",
+          "SuggestedLabel": "Refereeing a sports activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.83"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, rough housing and horseplay",
+          "SuggestedLabel": "Rough housing or horseplay"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.84"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, sleeping",
+          "SuggestedLabel": "Sleeping"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.82"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, spectator at an event",
+          "SuggestedLabel": "Spectator at an event"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.9"
+          },
+          "Category": "Unspecified Activity",
+          "SourceLabel": "Activity, unspecified",
+          "SuggestedLabel": "Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.0"
+          },
+          "Category": "Walking or Running",
+          "SourceLabel": "Activities involving walking and running",
+          "SuggestedLabel": "Walking or running activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.02"
+          },
+          "Category": "Walking or Running",
+          "SourceLabel": "Activity, running",
+          "SuggestedLabel": "Running"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.01"
+          },
+          "Category": "Walking or Running",
+          "SourceLabel": "Activity, walking, marching and hiking",
+          "SuggestedLabel": "Walking, marching, or hiking"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.1"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activities involving water and water craft",
+          "SuggestedLabel": "Water or water craft activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.19"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, other involving water and watercraft",
+          "SuggestedLabel": "Other water or water craft activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.16"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, rowing, canoeing, kayaking, rafting and tubing",
+          "SuggestedLabel": "Rowing, canoeing, kayaking, rafting, or tubing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.12"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, springboard and platform diving",
+          "SuggestedLabel": "Springboard or platform diving"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.18"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, surfing, windsurfing and boogie boarding",
+          "SuggestedLabel": "Surfing, windsurfing, or boogie boarding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.11"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, swimming",
+          "SuggestedLabel": "Swimming"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.15"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, underwater diving and snorkeling",
+          "SuggestedLabel": "Underwater diving or snorkeling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.14"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, water aerobics and water exercise",
+          "SuggestedLabel": "Water aerobics or water exercise"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.13"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, water polo",
+          "SuggestedLabel": "Water polo"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.17"
+          },
+          "Category": "Water Activities",
+          "SourceLabel": "Activity, water skiing and wake boarding",
+          "SuggestedLabel": "Water skiing or wake boarding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.2"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activities involving ice and snow",
+          "SuggestedLabel": "Ice or snow activity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.24"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activity, cross country skiing",
+          "SuggestedLabel": "Cross country skiing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.22"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activity, ice hockey",
+          "SuggestedLabel": "Ice hockey"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.21"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activity, ice skating",
+          "SuggestedLabel": "Ice skating"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.29"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activity, other involving ice and snow",
+          "SuggestedLabel": "Other ice or snow activities"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y93.23"
+          },
+          "Category": "Winter Activities",
+          "SourceLabel": "Activity, snow (alpine) (downhill) skiing, snowboarding, sledding, tobogganing and snow tubing",
+          "SuggestedLabel": "Snow (alpine or downhill) skiing, snowboarding, sledding, tobogganing, or snow Tubing"
+        }
+      ]
+    }
+  }
+}
