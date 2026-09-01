@@ -1,0 +1,703 @@
+{
+  "manifest": {
+    "sourceUrl": "https://git.nemsis.org/projects/NEP/repos/nemsis_public/browse/DefinedLists/Procedure/Procedure.json?at=445011ab34a9fc49daf8da1b7ec5f3e4d6f684c4",
+    "release": "NEMSIS 3.5.1",
+    "sourceRevision": "445011ab34a9fc49daf8da1b7ec5f3e4d6f684c4",
+    "sourceDate": "2025-01-14",
+    "sourceSha256": "a9de2dcaca0c287b063a8aff41612f7ab375b1815c2c2173b4e76ee318d3c5c0",
+    "valueSystem": "SNOMED CT",
+    "element": "eProcedures.03"
+  },
+  "procedures": [
+    {
+      "code": "18629005",
+      "label": "Drug administration",
+      "sourceLabel": "Administration of drug or medicament",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "386358000",
+      "label": "Drug administration via IV",
+      "sourceLabel": "Administration of drug or medicament via intravenous route",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "431393006",
+      "label": "IV fluid bolus",
+      "sourceLabel": "Administration of intravenous fluid bolus",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "103744005",
+      "label": "IV fluids",
+      "sourceLabel": "Administration of intravenous fluids",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "56251003",
+      "label": "Nebulizer therapy",
+      "sourceLabel": "Nebulizer therapy",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "57485005",
+      "label": "Oxygen therapy, NOS",
+      "sourceLabel": "Oxygen therapy",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "371907003",
+      "label": "Oxygen via cannula",
+      "sourceLabel": "Oxygen administration by nasal cannula",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "371908008",
+      "label": "Oxygen via mask",
+      "sourceLabel": "Oxygen administration by mask",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "116859006",
+      "label": "Transfusion of blood",
+      "sourceLabel": "Transfusion of blood product",
+      "category": "Administration (Drug, fluid, gas)"
+    },
+    {
+      "code": "230040009",
+      "label": "Airway suction",
+      "sourceLabel": "Airway suction technique",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "425447009",
+      "label": "Assist ventilations via BVM",
+      "sourceLabel": "Bag valve mask ventilation",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "243140006",
+      "label": "Assist ventilations, intubated",
+      "sourceLabel": "Lung inflation by intermittent compression of reservoir bag",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "284029005",
+      "label": "ETCO2 monitoring",
+      "sourceLabel": "Respired carbon dioxide monitoring",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "23690002",
+      "label": "Heimlich maneuver",
+      "sourceLabel": "Abdominal thrust",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "182692007",
+      "label": "Nasal airway insertion (NPA)",
+      "sourceLabel": "Nasopharyngeal airway insertion",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "7443007",
+      "label": "Oral airway insertion (OPA)",
+      "sourceLabel": "Insertion of oropharyngeal airway",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "232664002",
+      "label": "Open airway manually",
+      "sourceLabel": "Manual establishment of airway",
+      "category": "Airway, Basic"
+    },
+    {
+      "code": "243142003",
+      "label": "BiPAP",
+      "sourceLabel": "Dual pressure spontaneous ventilation support",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "47545007",
+      "label": "CPAP",
+      "sourceLabel": "Continuous positive airway pressure ventilation treatment",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "225718003",
+      "label": "ET tube, check placement",
+      "sourceLabel": "Checking position of endotracheal tube",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "425543005",
+      "label": "ETCO2 digital capnography",
+      "sourceLabel": "Digital respired carbon dioxide monitoring",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "429705000",
+      "label": "Intubation, combitube",
+      "sourceLabel": "Insertion of esophageal tracheal combitube",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "427753009",
+      "label": "Intubation, double lumen supraglottic",
+      "sourceLabel": "Insertion of esophageal tracheal double lumen supraglottic airway",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "424979004",
+      "label": "Intubation, laryngeal mask airway (LMA)",
+      "sourceLabel": "Laryngeal mask airway insertion",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "232674004",
+      "label": "Intubation, NOS",
+      "sourceLabel": "Orotracheal intubation",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "450601000124103",
+      "label": "Intubation, orotracheal",
+      "sourceLabel": "Orotracheal intubation using bougie device",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "241689008",
+      "label": "Intubation, rapid sequence intubation (RSI)",
+      "sourceLabel": "Rapid sequence induction",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "450611000124100",
+      "label": "Intubation, single lumen supraglottic",
+      "sourceLabel": "Insertion of Single Lumen Supraglottic Airway Device",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "45851008",
+      "label": "PEEP",
+      "sourceLabel": "Positive end expiratory pressure ventilation therapy, initiation and management",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "385857005",
+      "label": "Ventilator care/adjustment",
+      "sourceLabel": "Ventilator care and adjustment",
+      "category": "Airway, Advanced"
+    },
+    {
+      "code": "408994004",
+      "label": "Assessment, adult",
+      "sourceLabel": "Adult care assessment",
+      "category": "Assessment"
+    },
+    {
+      "code": "422618004",
+      "label": "Assessment, continuous",
+      "sourceLabel": "Continuous physical assessment",
+      "category": "Assessment"
+    },
+    {
+      "code": "315639002",
+      "label": "Assessment, initial",
+      "sourceLabel": "Initial patient assessment",
+      "category": "Assessment"
+    },
+    {
+      "code": "225398001",
+      "label": "Assessment, neurological",
+      "sourceLabel": "Neurological assessment",
+      "category": "Assessment"
+    },
+    {
+      "code": "423850004",
+      "label": "Assessment, pediatric",
+      "sourceLabel": "Pediatric continuous physical assessment",
+      "category": "Assessment"
+    },
+    {
+      "code": "386053000",
+      "label": "Evaluation/observation",
+      "sourceLabel": "Evaluation procedure",
+      "category": "Assessment"
+    },
+    {
+      "code": "270352002",
+      "label": "Exam, medical",
+      "sourceLabel": "Medical examinations/reports",
+      "category": "Assessment"
+    },
+    {
+      "code": "171397002",
+      "label": "Exam, medical, suspected condition",
+      "sourceLabel": "Medical examination for suspected condition",
+      "category": "Assessment"
+    },
+    {
+      "code": "182777000",
+      "label": "Patient monitoring",
+      "sourceLabel": "Monitoring of patient",
+      "category": "Assessment"
+    },
+    {
+      "code": "23852006",
+      "label": "Cardiac monitoring",
+      "sourceLabel": "Cardiac monitoring",
+      "category": "Assessment, Cardiac"
+    },
+    {
+      "code": "268400002",
+      "label": "ECG, 12 lead",
+      "sourceLabel": "12 lead electrocardiogram",
+      "category": "Assessment, Cardiac"
+    },
+    {
+      "code": "428803005",
+      "label": "ECG, 3 lead",
+      "sourceLabel": "3 lead electrocardiographic monitoring",
+      "category": "Assessment, Cardiac"
+    },
+    {
+      "code": "29303009",
+      "label": "ECG, NOS",
+      "sourceLabel": "Electrocardiographic procedure",
+      "category": "Assessment, Cardiac"
+    },
+    {
+      "code": "46825001",
+      "label": "ECG, monitoring",
+      "sourceLabel": "Electrocardiographic monitoring",
+      "category": "Assessment, Cardiac"
+    },
+    {
+      "code": "250980009",
+      "label": "Cardioversion",
+      "sourceLabel": "Cardioversion",
+      "category": "Cardiac"
+    },
+    {
+      "code": "429283006",
+      "label": "Chest compressions, mechanical",
+      "sourceLabel": "Mechanically assisted chest compression",
+      "category": "Cardiac"
+    },
+    {
+      "code": "89666000",
+      "label": "CPR, manual",
+      "sourceLabel": "Cardiopulmonary resuscitation",
+      "category": "Cardiac"
+    },
+    {
+      "code": "450661000124102",
+      "label": "Defibrillation, AED",
+      "sourceLabel": "Defibrillation using automated external cardiac defibrillator",
+      "category": "Cardiac"
+    },
+    {
+      "code": "426220008",
+      "label": "Defibrillation, manual",
+      "sourceLabel": "External ventricular defibrillation",
+      "category": "Cardiac"
+    },
+    {
+      "code": "386237008",
+      "label": "LVAD monitoring",
+      "sourceLabel": "Circulatory care: mechanical assist device",
+      "category": "Cardiac"
+    },
+    {
+      "code": "18590009",
+      "label": "Pacing",
+      "sourceLabel": "Cardiac pacing",
+      "category": "Cardiac"
+    },
+    {
+      "code": "128968000",
+      "label": "Vagal maneuver",
+      "sourceLabel": "Vagal stimulation physiologic challenge",
+      "category": "Cardiac"
+    },
+    {
+      "code": "228621007",
+      "label": "Environmental control",
+      "sourceLabel": "Provision of environmental control system",
+      "category": "Environmental"
+    },
+    {
+      "code": "431774007",
+      "label": "Patient cooling",
+      "sourceLabel": "Active external cooling of subject",
+      "category": "Environmental"
+    },
+    {
+      "code": "431949004",
+      "label": "Patient warming",
+      "sourceLabel": "Active external warming of subject",
+      "category": "Environmental"
+    },
+    {
+      "code": "87750000",
+      "label": "Nasogastric tube insertion (NG)",
+      "sourceLabel": "Insertion of nasogastric tube",
+      "category": "Gastrointestinal"
+    },
+    {
+      "code": "235425002",
+      "label": "Orogastric tube insertion (OG)",
+      "sourceLabel": "Insertion of orogastric tube",
+      "category": "Gastrointestinal"
+    },
+    {
+      "code": "33747003",
+      "label": "Blood glucose measurement",
+      "sourceLabel": "Glucose measurement, blood",
+      "category": "Glycemic Management"
+    },
+    {
+      "code": "386328006",
+      "label": "Hypoglycemia management",
+      "sourceLabel": "Hypoglycemia management",
+      "category": "Glycemic Management"
+    },
+    {
+      "code": "49689007",
+      "label": "Cervical collar",
+      "sourceLabel": "Application of cervical collar",
+      "category": "Immobilization"
+    },
+    {
+      "code": "707794004",
+      "label": "Extrication splint",
+      "sourceLabel": "Immobilization using extrication splint",
+      "category": "Immobilization"
+    },
+    {
+      "code": "450591000124106",
+      "label": "Long board",
+      "sourceLabel": "Immobilization using long board",
+      "category": "Immobilization"
+    },
+    {
+      "code": "182556001",
+      "label": "Pelvic sling",
+      "sourceLabel": "Pelvic sling",
+      "category": "Immobilization"
+    },
+    {
+      "code": "79321009",
+      "label": "Splinting, general",
+      "sourceLabel": "Application of splint",
+      "category": "Immobilization"
+    },
+    {
+      "code": "302488007",
+      "label": "Splinting, traction",
+      "sourceLabel": "Application of traction using a traction device",
+      "category": "Immobilization"
+    },
+    {
+      "code": "78086002",
+      "label": "Holding patient",
+      "sourceLabel": "Holding patient",
+      "category": "Other"
+    },
+    {
+      "code": "409582008",
+      "label": "Isolation precautions",
+      "sourceLabel": "Isolation precautions",
+      "category": "Other"
+    },
+    {
+      "code": "182705007",
+      "label": "Needle decompression",
+      "sourceLabel": "Tension pneumothorax relief",
+      "category": "Other"
+    },
+    {
+      "code": "22633006",
+      "label": "Vaginal delivery",
+      "sourceLabel": "Vaginal delivery, medical personnel present",
+      "category": "Other"
+    },
+    {
+      "code": "423184003",
+      "label": "Pain assessment, adult",
+      "sourceLabel": "Adult pain assessment",
+      "category": "Pain"
+    },
+    {
+      "code": "423401003",
+      "label": "Pain assessment, pediatric",
+      "sourceLabel": "Pediatric pain assessment",
+      "category": "Pain"
+    },
+    {
+      "code": "225399009",
+      "label": "Pain assessment, NOS",
+      "sourceLabel": "Pain assessment",
+      "category": "Pain"
+    },
+    {
+      "code": "278414003",
+      "label": "Pain management",
+      "sourceLabel": "Pain management",
+      "category": "Pain"
+    },
+    {
+      "code": "58715004",
+      "label": "Moving patient to stretcher",
+      "sourceLabel": "Moving a patient to a stretcher",
+      "category": "Patient Positioning"
+    },
+    {
+      "code": "56469005",
+      "label": "Moving patient, NOS",
+      "sourceLabel": "Moving a patient",
+      "category": "Patient Positioning"
+    },
+    {
+      "code": "225287004",
+      "label": "Patient positioning, support",
+      "sourceLabel": "Procedures relating to positioning and support",
+      "category": "Patient Positioning"
+    },
+    {
+      "code": "386423001",
+      "label": "Physical restraint",
+      "sourceLabel": "Physical restraint",
+      "category": "Patient Positioning"
+    },
+    {
+      "code": "398041008",
+      "label": "Spinal stabilization, c-spine",
+      "sourceLabel": "Cervical spine immobilization",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "449199004",
+      "label": "Spinal stabilization, manual",
+      "sourceLabel": "Manual inline stabilization of cervical spine",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "426498007",
+      "label": "Spinal stabilization, NOS",
+      "sourceLabel": "Stabilization of spine",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "445828009",
+      "label": "Spinal, advanced assessment (spinal clearance)",
+      "sourceLabel": "Assessment using functional capacity evaluation",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "284405008",
+      "label": "Spinal, c-spine exam",
+      "sourceLabel": "Examination of cervical spine",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "284394000",
+      "label": "Spinal, exam",
+      "sourceLabel": "Examination of spine",
+      "category": "Spinal Procedures"
+    },
+    {
+      "code": "304562007",
+      "label": "Contact Medical Control",
+      "sourceLabel": "Informing doctor",
+      "category": "Transfer of Care"
+    },
+    {
+      "code": "429202003",
+      "label": "Transfer of care to hospital",
+      "sourceLabel": "Transfer of care to hospital",
+      "category": "Transfer of Care"
+    },
+    {
+      "code": "308292007",
+      "label": "Transfer of care, NOS",
+      "sourceLabel": "Transfer of care",
+      "category": "Transfer of Care"
+    },
+    {
+      "code": "392247006",
+      "label": "Arterial cannulation",
+      "sourceLabel": "Insertion of catheter into artery",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "226005007",
+      "label": "Central line care",
+      "sourceLabel": "Care of central line",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "425074000",
+      "label": "Convert IV to saline lock",
+      "sourceLabel": "Conversion of intravenous infusion to saline lock",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "430824005",
+      "label": "IO cannulation",
+      "sourceLabel": "Intraosseous cannulation",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "392230005",
+      "label": "IV, insertion",
+      "sourceLabel": "Catheterization of vein",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "353008",
+      "label": "IV, monitoring",
+      "sourceLabel": "Intravenous/irrigation monitoring",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "424287005",
+      "label": "IV, removal",
+      "sourceLabel": "Removal of peripheral intravenous catheter",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "396540005",
+      "label": "Vein, blood draw",
+      "sourceLabel": "Phlebotomy",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "405427009",
+      "label": "Vein, external jugular access",
+      "sourceLabel": "Catheterization of external jugular vein",
+      "category": "Vascular Access"
+    },
+    {
+      "code": "46973005",
+      "label": "Blood pressure",
+      "sourceLabel": "Blood pressure taking",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "248753002",
+      "label": "Capillary refill",
+      "sourceLabel": "Capillary refill",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "68664003",
+      "label": "Glascow Coma Scale (GCS)",
+      "sourceLabel": "Glasgow coma testing and evaluation",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "65653002",
+      "label": "Pulse",
+      "sourceLabel": "Pulse taking",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "252465000",
+      "label": "Pulse oximetry",
+      "sourceLabel": "Pulse oximetry",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "408867002",
+      "label": "Respiratory rate",
+      "sourceLabel": "Taking respiratory rate",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "56342008",
+      "label": "Temperature",
+      "sourceLabel": "Temperature taking",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "61746007",
+      "label": "Vital signs, NOS",
+      "sourceLabel": "Taking patient vital signs",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "425058005",
+      "label": "Vital signs, orthostatic",
+      "sourceLabel": "Taking orthostatic vital signs",
+      "category": "Vital Signs"
+    },
+    {
+      "code": "447686008",
+      "label": "Apply pressure to wound",
+      "sourceLabel": "Application of pressure to wound",
+      "category": "Wound Care"
+    },
+    {
+      "code": "182555002",
+      "label": "Bandage",
+      "sourceLabel": "Application of bandage",
+      "category": "Wound Care"
+    },
+    {
+      "code": "373675000",
+      "label": "Bandage, pressure",
+      "sourceLabel": "Application of pressure bandage",
+      "category": "Wound Care"
+    },
+    {
+      "code": "133901003",
+      "label": "Burn care",
+      "sourceLabel": "Burn care",
+      "category": "Wound Care"
+    },
+    {
+      "code": "182531007",
+      "label": "Dressing",
+      "sourceLabel": "Dressing of wound",
+      "category": "Wound Care"
+    },
+    {
+      "code": "22206003",
+      "label": "Dressing, occlusive",
+      "sourceLabel": "Application of dressing, occlusive plastic",
+      "category": "Wound Care"
+    },
+    {
+      "code": "26906007",
+      "label": "Dressing, pressure",
+      "sourceLabel": "Application of dressing, pressure",
+      "category": "Wound Care"
+    },
+    {
+      "code": "372045002",
+      "label": "Hemostatic agent (i.e. QuikClot)",
+      "sourceLabel": "Application of chemical hemostatic agents",
+      "category": "Wound Care"
+    },
+    {
+      "code": "225116006",
+      "label": "Irrigation",
+      "sourceLabel": "Irrigation of wound",
+      "category": "Wound Care"
+    },
+    {
+      "code": "20655006",
+      "label": "Tourniquet",
+      "sourceLabel": "Application of tourniquet",
+      "category": "Wound Care"
+    },
+    {
+      "code": "225358003",
+      "label": "Wound care, NOS",
+      "sourceLabel": "Wound care",
+      "category": "Wound Care"
+    }
+  ]
+}

@@ -8,8 +8,12 @@
     "dev": "next dev",
     "prebuild": "tsx scripts/build-service-worker.ts",
     "build": "next build",
+    "serve:static": "node scripts/serve-static.mjs",
     "start": "next start",
     "lint": "eslint .",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:a11y": "playwright test --config ../../playwright.config.ts",
+    "test:deployment": "playwright test --config ../../playwright.static.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -20,12 +24,14 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.18.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
+    "esbuild": "^0.25.9",
     "eslint": "^9.35.0",
     "eslint-config-next": "^16.3.3",
-    "esbuild": "^0.25.9",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }

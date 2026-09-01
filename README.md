@@ -20,6 +20,54 @@ Web runs on http://localhost:3000 and the API on http://localhost:3001.
 The NestJS API uses TypeORM with `DATABASE_URL`. Supabase SQL migrations remain the single
 source of truth for schema changes; TypeORM's `synchronize` option is disabled.
 
+## Static prototype
+
+The browser-only MVP is published at
+[https://annakopp.github.io/open-triage-epcr-demo/](https://annakopp.github.io/open-triage-epcr-demo/).
+It is a synthetic-data-only usability prototype and is not for clinical use.
+
+The web app exports to static files and does not require the API, PostgreSQL,
+Supabase, authentication, or runtime terminology access:
+
+```sh
+NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo npm run build -w @open-triage/web
+npm run test:deployment -w @open-triage/web
+```
+
+Pushes and pull requests targeting `first-mvp` run the `Verify static prototype`
+workflow. It type-checks, lints, tests, exports, and exercises the browser-only
+journey before uploading `apps/web/out` as the `static-prototype` workflow
+artifact. A successful workflow run does **not** update GitHub Pages by itself.
+
+The private source repository cannot use GitHub Pages on the account's current
+plan. The public site is served from the root of the `main` branch in the
+separate public `annakopp/open-triage-epcr-demo` repository. To publish a verified
+build, a collaborator with write access to that repository must download the
+`static-prototype` artifact, replace the hosting repository's generated site
+files with the artifact contents, and push the result to `main`. GitHub Pages
+then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo/).
+
+## Prototype interaction model
+
+- Synthetic seed data contains dispatch information and timestamps only through
+  arrival on scene. It never represents a complete clinical record.
+- A sticky quick-action rail keeps vitals, medications, procedures, notes, and
+  patient information available near the top of the screen.
+- Medication and procedure capture begin with offline searchable catalogs, then
+  advance to documentation details after selection.
+- Quick capture is intentionally non-blocking: incomplete or unusual entries can
+  be saved immediately. Validation is deferred to the warnings-and-errors
+  checklist and becomes blocking only when the encounter is signed.
+- Checklist findings open the affected entry. The offending picker control is
+  framed red for an error or amber for a warning and clears as soon as the draft
+  value validates. Vitals retain explicit unavailable and pertinent-negative
+  choices behind the compact `×` control.
+- Timeline dots summarize each event's current validation state: green is clear,
+  amber is warning, and red is error.
+- Patient quick capture covers selected demographics plus medical history,
+  current medications, and allergies from the NEMSIS `ePatient` and `eHistory`
+  domains.
+
 ## Architecture rule
 
 NEMSIS identifiers are source metadata, not application structure. Form sections, labels,

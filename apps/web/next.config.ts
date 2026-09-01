@@ -1,8 +1,13 @@
 import type { NextConfig } from "next";
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
+
 const nextConfig: NextConfig = {
-  output: "standalone",
-  transpilePackages: ["@open-triage/contracts"]
+  basePath,
+  output: "export",
+  trailingSlash: true,
+  transpilePackages: ["@open-triage/contracts"],
+  agentRules: false
 };
 
 export default nextConfig;
