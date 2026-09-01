@@ -9,5 +9,13 @@ source URL, release, element, value system, and SHA-256 checksum of the upstream
 JSON. The checksum is for the source file before projection. The bundled asset is
 read directly by the application; no runtime call to NEMSIS is made.
 
+The medication picker follows the same offline model. The pinned
+`../medications.nemsis-3.5.1.json` catalog retains the recommended medication
+codes, code-system discriminator, source labels, and concise display labels used
+by search. `../medications.nemsis-3.5.1.manifest.json` records its NEMSIS release,
+source URL, source date, and upstream SHA-256 checksum. Both medication and
+procedure catalogs are searched locally and require no terminology service at
+runtime.
+
 NEMSIS and SNOMED CT terminology artifacts remain subject to their respective
 third-party terms, as noted by the repository licensing policy.

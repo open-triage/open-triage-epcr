@@ -34,10 +34,39 @@ NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo npm run build -w @open-triage/web
 npm run test:deployment -w @open-triage/web
 ```
 
+Pushes and pull requests targeting `first-mvp` run the `Verify static prototype`
+workflow. It type-checks, lints, tests, exports, and exercises the browser-only
+journey before uploading `apps/web/out` as the `static-prototype` workflow
+artifact. A successful workflow run does **not** update GitHub Pages by itself.
+
 The private source repository cannot use GitHub Pages on the account's current
-plan, so only the generated `apps/web/out` artifact is published in the public
-`annakopp/open-triage-epcr-demo` hosting repository. CI verifies that artifact
-and its browser-only journey without starting any backend service.
+plan. The public site is served from the root of the `main` branch in the
+separate public `annakopp/open-triage-epcr-demo` repository. To publish a verified
+build, a collaborator with write access to that repository must download the
+`static-prototype` artifact, replace the hosting repository's generated site
+files with the artifact contents, and push the result to `main`. GitHub Pages
+then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo/).
+
+## Prototype interaction model
+
+- Synthetic seed data contains dispatch information and timestamps only through
+  arrival on scene. It never represents a complete clinical record.
+- A sticky quick-action rail keeps vitals, medications, procedures, notes, and
+  patient information available near the top of the screen.
+- Medication and procedure capture begin with offline searchable catalogs, then
+  advance to documentation details after selection.
+- Quick capture is intentionally non-blocking: incomplete or unusual entries can
+  be saved immediately. Validation is deferred to the warnings-and-errors
+  checklist and becomes blocking only when the encounter is signed.
+- Checklist findings open the affected entry. The offending picker control is
+  framed red for an error or amber for a warning and clears as soon as the draft
+  value validates. Vitals retain explicit unavailable and pertinent-negative
+  choices behind the compact `×` control.
+- Timeline dots summarize each event's current validation state: green is clear,
+  amber is warning, and red is error.
+- Patient quick capture covers selected demographics plus medical history,
+  current medications, and allergies from the NEMSIS `ePatient` and `eHistory`
+  domains.
 
 ## Architecture rule
 
