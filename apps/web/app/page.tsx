@@ -48,11 +48,11 @@ export default function Home() {
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
   const closeActiveDialog = useCallback(() => {
-    if (shell.noteDraft) dispatch({ type: "note-cancelled" });
-    else if (shell.medicationDraft) dispatch({ type: "medication-cancelled" });
-    else if (shell.procedureDraft) dispatch({ type: "procedure-cancelled" });
-    else if (shell.vitalDraft) dispatch({ type: "vitals-cancelled" });
-  }, [shell.medicationDraft, shell.noteDraft, shell.procedureDraft, shell.vitalDraft]);
+    if (activeDialog === "note") dispatch({ type: "note-cancelled" });
+    else if (activeDialog === "medication") dispatch({ type: "medication-cancelled" });
+    else if (activeDialog === "procedure") dispatch({ type: "procedure-cancelled" });
+    else if (activeDialog === "vitals") dispatch({ type: "vitals-cancelled" });
+  }, [activeDialog]);
 
   useEffect(() => {
     const saved = loadShellState(window.localStorage);

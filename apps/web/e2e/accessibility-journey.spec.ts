@@ -91,3 +91,16 @@ test("dialog focus, touch targets, and enlarged text preserve required actions",
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await expect(page.getByRole("button", { name: "Add to timeline" })).toBeVisible();
 });
+
+test("vital fields retain focus while values are entered", async ({ page }) => {
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const systolic = page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: /Systolic BP/ });
+
+  await systolic.fill("120");
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+
+  await expect(systolic).toBeFocused();
+  await expect(systolic).toHaveValue("120");
+});
