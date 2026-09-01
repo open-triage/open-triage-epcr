@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
-import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { EMPTY_VITALS, INITIAL_SHELL_STATE, encounterEventDetail, encounterEventPresentation, reviewEncounter, syntheticEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/synthetic-encounter";
+import { loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { EMPTY_VITALS, INITIAL_SHELL_STATE, encounterEventDetail, encounterEventPresentation, reviewEncounter, bundledEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/standard-encounter";
 import { nullOptionsFor, validateVitals } from "../app/vital-validation";
 
 const normal = { ...EMPTY_VITALS, systolic: "120", diastolic: "80", heartRate: "72", spo2: "98", respiratoryRate: "16", gcs: "15", pain: "2", nullValues: {} };
 function started(id = "vital-1", time = "09:00"): ShellState { return transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id, time }); }
 function fill(state: ShellState, values = normal): ShellState {
-  for (const { id: field } of syntheticEncounterDefinition.events.vitals.fields) state = transitionShell(state, { type: "vitals-value-changed", field, value: values[field] });
+  for (const { id: field } of bundledEncounterDefinition.events.vitals.fields) state = transitionShell(state, { type: "vitals-value-changed", field, value: values[field] });
   return state;
 }
 function memoryStorage(): LocalStoragePort { const values = new Map<string, string>(); return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); } }; }
@@ -69,11 +69,11 @@ test("invalid quick captures save and remain blocking at review", () => {
 });
 
 test("configured vital metadata drives order, validation, review navigation, timeline, and summary", () => {
-  const base = adultChestPainDefinition.events.vitals;
+  const base = standardEncounterDefinition.events.vitals;
   const systolic = base.fields.find(({ id }) => id === "systolic")!;
   const definition: EncounterDefinition = {
-    ...adultChestPainDefinition,
-    events: { ...adultChestPainDefinition.events, vitals: {
+    ...standardEncounterDefinition,
+    events: { ...standardEncounterDefinition.events, vitals: {
       ...base,
       labels: { ...base.labels, category: "Measurement", timelineTitle: "Configured observations", absentSummary: "unavailable" },
       references: { group: "eVitals.ConfiguredGroup", time: "eVitals.02" },
@@ -125,6 +125,6 @@ test("legacy persisted vital entries without nullValues remain readable and edit
   assert.deepEqual(opened.vitalDraft?.values.nullValues, {});
 
   const storage = memoryStorage();
-  storage.setItem("open-triage:adult-chest-pain-v2", JSON.stringify({ ...state, vitalDraft: { id: "legacy-draft", date: "2026-04-18", time: "08:12", values: legacyValues, isNew: true } }));
+  storage.setItem(STORAGE_KEY, JSON.stringify({ ...state, vitalDraft: { id: "legacy-draft", date: "2026-04-18", time: "08:12", values: legacyValues, isNew: true } }));
   assert.deepEqual(loadShellState(storage)?.vitalDraft?.values.nullValues, {});
 });

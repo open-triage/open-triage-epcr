@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import type { ProcedureEventDefinition, ProcedureField } from "../app/encounter-definition";
 import { searchProcedures, validateProcedure, type ProcedureDraft } from "../app/procedure";
-import type { ReviewFinding, ShellAction } from "../app/synthetic-encounter";
+import type { ReviewFinding, ShellAction } from "../app/standard-encounter";
 import { TimePicker } from "./time-picker";
 
 export function ProcedureDialog({ dialogRef, draft, definition, search, onSearch, dispatch, finding }: {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type ConfiguredEventType, type QuickActionId } from "../app/encounter-definition";
-import { completedSummaryEvents, EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, type EncounterEvent } from "../app/synthetic-encounter";
+import { completedSummaryEvents, EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, type EncounterEvent } from "../app/standard-encounter";
 
 type MutableCompositionDefinition = {
   composition: {
@@ -17,7 +17,7 @@ type MutableCompositionDefinition = {
 };
 
 function mutableDefinition(): MutableCompositionDefinition {
-  return structuredClone(adultChestPainDefinition) as unknown as MutableCompositionDefinition;
+  return structuredClone(standardEncounterDefinition) as unknown as MutableCompositionDefinition;
 }
 
 test("configured quick actions control order, visibility, and accessible labels", () => {

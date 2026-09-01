@@ -4,10 +4,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, searchMedications } from "../app/medication-catalog";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type EncounterEvent, type ShellState } from "../app/synthetic-encounter";
+import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type EncounterEvent, type ShellState } from "../app/standard-encounter";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -95,11 +95,11 @@ test("multiple administrations persist distinctly and reopen for canonical editi
 });
 
 test("configured medication metadata drives validation, warnings, review, and restored presentation", () => {
-  const base = adultChestPainDefinition.events.medication;
+  const base = standardEncounterDefinition.events.medication;
   const definition: EncounterDefinition = {
-    ...adultChestPainDefinition,
+    ...standardEncounterDefinition,
     events: {
-      ...adultChestPainDefinition.events,
+      ...standardEncounterDefinition.events,
       medication: {
         ...base,
         fields: [

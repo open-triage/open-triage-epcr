@@ -49,8 +49,12 @@ then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo
 
 ## Prototype interaction model
 
+- The active application uses one clinically neutral, versioned standard encounter
+  definition. Complaint data is ordinary encounter content and never selects,
+  enables, hides, requires, reorders, or otherwise changes form behavior.
 - Synthetic seed data contains dispatch information and timestamps only through
-  arrival on scene. It never represents a complete clinical record.
+  arrival on scene. The patient, incident, address, and identifiers are explicitly
+  fictional and never represent a complete clinical record.
 - A sticky quick-action rail keeps vitals, medications, procedures, notes, and
   patient information available near the top of the screen.
 - Medication and procedure capture begin with offline searchable catalogs, then
@@ -73,6 +77,8 @@ then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo
 NEMSIS identifiers are source metadata, not application structure. Form sections, labels,
 requirements, order, and code systems belong in versioned configuration. Deployment-specific
 overrides can later replace that configuration without changing UI components or database schema.
+The standard form must remain independent of complaint and clinical category; repository tests
+reject category-specific identities and conditional form controls in active source.
 
 ## License
 

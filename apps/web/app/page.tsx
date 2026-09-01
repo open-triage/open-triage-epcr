@@ -15,13 +15,13 @@ import {
   encounterEventDetail,
   encounterEventPresentation,
   reviewEncounter,
-  syntheticEncounterReducer,
+  standardEncounterReducer,
   type ReviewFinding,
   type ShellState,
   type ShellView,
   type VitalField,
-  syntheticEncounterDefinition,
-} from "./synthetic-encounter";
+  bundledEncounterDefinition,
+} from "./standard-encounter";
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 
@@ -36,7 +36,7 @@ function localClinicalTime(): string {
 }
 
 export default function Home() {
-  const [shell, dispatch] = useReducer(syntheticEncounterReducer, INITIAL_SHELL_STATE);
+  const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
@@ -46,10 +46,10 @@ export default function Home() {
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const noteDefinition = syntheticEncounterDefinition.events.note;
-  const procedureDefinition = syntheticEncounterDefinition.events.procedure;
-  const medicationDefinition = syntheticEncounterDefinition.events.medication;
-  const vitalDefinition = syntheticEncounterDefinition.events.vitals;
+  const noteDefinition = bundledEncounterDefinition.events.note;
+  const procedureDefinition = bundledEncounterDefinition.events.procedure;
+  const medicationDefinition = bundledEncounterDefinition.events.medication;
+  const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
@@ -61,7 +61,7 @@ export default function Home() {
     return statuses;
   }, [reviewFindings]);
   const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
-  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, syntheticEncounterDefinition) : null;
+  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
   const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
@@ -197,7 +197,7 @@ export default function Home() {
       <header className="encounter-header">
         <div className="header-kicker">
           <span>{encounter.currentTime}</span>
-          <span className="prototype-status">{syntheticEncounterDefinition.labels.prototypeStatus}</span>
+          <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
         </div>
         <div className="patient-line">
           <div>
@@ -210,7 +210,7 @@ export default function Home() {
         </div>
         <div className="incident-line">
           <div>
-            <span>{syntheticEncounterDefinition.labels.incident} {encounter.incident.number}</span>
+            <span>{bundledEncounterDefinition.labels.incident} {encounter.incident.number}</span>
             <strong>{encounter.incident.complaint}</strong>
           </div>
         </div>
@@ -218,7 +218,7 @@ export default function Home() {
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(syntheticEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
+        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
       </nav>
 
       {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
@@ -260,8 +260,8 @@ export default function Home() {
           <ol className="timeline-list">
             {encounter.events.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
-              const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
-              const eventDetail = encounterEventDetail(event, syntheticEncounterDefinition);
+              const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
+              const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
@@ -338,7 +338,7 @@ export default function Home() {
           findings={reviewFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
-          groups={syntheticEncounterDefinition.composition.review.groups}
+          groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
           onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
@@ -351,7 +351,7 @@ export default function Home() {
         <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
-      {patientOpen && <PatientDialog patient={encounter.patient} definition={syntheticEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
+      {patientOpen && <PatientDialog patient={encounter.patient} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -386,7 +386,7 @@ export default function Home() {
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog definition={syntheticEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
       {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding ?? undefined} />}
 
@@ -451,7 +451,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding,
   readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
-  readonly groups: typeof syntheticEncounterDefinition.composition.review.groups;
+  readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly onFinding: (id: string) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
@@ -543,9 +543,9 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Timeline</h2>
         <ol className="summary-timeline">
-          {completedSummaryEvents(encounter.events, syntheticEncounterDefinition).map((event) => {
-            const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
-            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, syntheticEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
+          {completedSummaryEvents(encounter.events, bundledEncounterDefinition).map((event) => {
+            const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
+            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, bundledEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
           })}
         </ol>
       </section>

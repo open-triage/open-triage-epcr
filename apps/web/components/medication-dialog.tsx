@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { MEDICATIONS, searchMedicationCatalog } from "../app/medication-catalog";
 import type { EncounterDefinition, MedicationFieldId } from "../app/encounter-definition";
-import { validateMedication, type MedicationDraft, type ReviewFinding, type ShellAction } from "../app/synthetic-encounter";
+import { validateMedication, type MedicationDraft, type ReviewFinding, type ShellAction } from "../app/standard-encounter";
 import { TimePicker } from "./time-picker";
 
 type Props = {

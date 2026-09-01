@@ -1,7 +1,7 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATIONS } from "./medication-catalog";
 import { validateVitals } from "./vital-validation";
-import { adultChestPainDefinition } from "./adult-chest-pain-definition";
+import { standardEncounterDefinition } from "./standard-encounter-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 
@@ -27,7 +27,7 @@ export type VitalValues = Record<VitalField, string> & { readonly nullValues: Pa
 export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
 
 export type Encounter = {
-  readonly scenarioId: string;
+  readonly definitionId: string;
   readonly definitionVersion: number;
   readonly synthetic: true;
   readonly currentTime: string;
@@ -45,14 +45,14 @@ export type Encounter = {
   readonly events: ReadonlyArray<EncounterEvent>;
 };
 
-export const encounterDefinitionProvider = createBundledDefinitionProvider([adultChestPainDefinition]);
-export const syntheticEncounterDefinition = encounterDefinitionProvider.get("adult-chest-pain-v2");
+export const encounterDefinitionProvider = createBundledDefinitionProvider([standardEncounterDefinition]);
+export const bundledEncounterDefinition = encounterDefinitionProvider.get("standard-encounter-v1");
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
 export function createSyntheticEncounter(definition: EncounterDefinition): Encounter {
   return {
-    scenarioId: definition.id,
+    definitionId: definition.id,
     definitionVersion: definition.version,
     synthetic: true,
     currentTime: definition.dates.currentTime,
@@ -63,7 +63,7 @@ export function createSyntheticEncounter(definition: EncounterDefinition): Encou
   };
 }
 
-export const syntheticEncounter: Encounter = createSyntheticEncounter(syntheticEncounterDefinition);
+export const syntheticEncounter: Encounter = createSyntheticEncounter(bundledEncounterDefinition);
 
 export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
 export type MedicationAdministration = {
@@ -139,7 +139,7 @@ export function createInitialShellState(definition: EncounterDefinition): ShellS
   };
 }
 
-export const INITIAL_SHELL_STATE: ShellState = { ...createInitialShellState(syntheticEncounterDefinition), encounter: syntheticEncounter };
+export const INITIAL_SHELL_STATE: ShellState = { ...createInitialShellState(bundledEncounterDefinition), encounter: syntheticEncounter };
 
 export type MedicationValidationFinding = { readonly field: MedicationFieldId; readonly reference: string; readonly message: string };
 export type MedicationValidation = {
@@ -149,7 +149,7 @@ export type MedicationValidation = {
   readonly warningFindings: ReadonlyArray<MedicationValidationFinding>;
 };
 
-export function validateMedication(draft: MedicationDraft, definition: EncounterDefinition = syntheticEncounterDefinition): MedicationValidation {
+export function validateMedication(draft: MedicationDraft, definition: EncounterDefinition = bundledEncounterDefinition): MedicationValidation {
   const medication = definition.events.medication;
   const field = (id: MedicationFieldId) => medication.fields.find((candidate) => candidate.id === id)!;
   const errorFindings: MedicationValidationFinding[] = [];
@@ -179,7 +179,7 @@ export type ReviewFinding = {
   readonly acknowledged: boolean;
 };
 
-export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
+export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
   if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
   if (event.kind === "procedure" && event.procedure) return {
     title: event.procedure.label,
@@ -196,7 +196,7 @@ export function encounterEventPresentation(event: EncounterEvent, definition: En
   return { title: event.title, reference: event.reference };
 }
 
-export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): string {
+export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): string {
   if (event.procedure) return describeProcedure(event.procedure, definition.events.procedure);
   if (event.medication) {
     const medication = definition.events.medication;
@@ -205,7 +205,7 @@ export function encounterEventDetail(event: EncounterEvent, definition: Encounte
   return event.vitals ? vitalSummary(event.vitals, definition) : event.detail;
 }
 
-export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
+export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
   if (event.kind !== "note") return [];
   const note = definition.events.note;
   const findings: Array<{ reference: string; message: string }> = [];
@@ -236,7 +236,7 @@ function eventFinding(
 }
 
 /** Consolidates validation for timeline entries before signing. */
-export function reviewEncounter(state: ShellState, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<ReviewFinding> {
+export function reviewEncounter(state: ShellState, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<ReviewFinding> {
   const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
       const vitalDefinition = definition.events.vitals;
@@ -297,7 +297,7 @@ export function configuredEventType(event: EncounterEvent): ConfiguredEventType 
 }
 
 /** Orders configurable clinical event types for the completed summary, preserving order within each type. */
-export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<EncounterEvent> {
+export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<EncounterEvent> {
   const typeOrder = new Map(definition.composition.summary.eventTypeOrder.map((type, index) => [type, index]));
   return events.map((event, index) => ({ event, index })).sort((a, b) => {
     const aType = configuredEventType(a.event);
@@ -308,7 +308,7 @@ export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, de
   }).map(({ event }) => event);
 }
 
-export function vitalSummary(values: VitalValues, definition: EncounterDefinition = syntheticEncounterDefinition): string {
+export function vitalSummary(values: VitalValues, definition: EncounterDefinition = bundledEncounterDefinition): string {
   const config = definition.events.vitals;
   return config.summary.map((item) => {
     const hasDocumentedField = item.fields.some((field) => values[field] || values.nullValues?.[field]);
@@ -324,7 +324,7 @@ function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<Encou
   ).map(({ event }) => event);
 }
 
-export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = syntheticEncounterDefinition): ShellState {
+export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
   switch (action.type) {
     case "view-selected":
       return { ...state, view: action.view };
@@ -567,7 +567,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
-      return action.state.encounter.scenarioId === definition.id && action.state.encounter.definitionVersion === definition.version
+      return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version
         ? { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
         : state;
     case "prototype-reset":
@@ -577,6 +577,6 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
   }
 }
 
-export function syntheticEncounterReducer(state: ShellState, action: ShellAction): ShellState {
-  return transitionShell(state, action, syntheticEncounterDefinition);
+export function standardEncounterReducer(state: ShellState, action: ShellAction): ShellState {
+  return transitionShell(state, action, bundledEncounterDefinition);
 }

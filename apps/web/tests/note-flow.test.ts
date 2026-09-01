@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearShellState, loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { clearShellState, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
-import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/synthetic-encounter";
+import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -86,9 +86,20 @@ test("reset clears local progress and restores the version-controlled baseline",
   assert.equal(reset.encounter.events.some((event) => event.visitorEntered), false);
 });
 
+test("category-named browser state is removed instead of reinterpreted as the standard encounter", () => {
+  const storage = memoryStorage();
+  const legacyKey = LEGACY_STORAGE_KEYS[0];
+  storage.setItem(legacyKey, JSON.stringify({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, definitionId: "adult-chest-pain-v2" } }));
+
+  assert.deepEqual(loadShellStateResult(storage), { status: "legacy-reset", removedKeys: [legacyKey] });
+  assert.equal(storage.values.has(legacyKey), false);
+  assert.equal(loadShellState(storage), null);
+  assert.equal(storage.values.has(STORAGE_KEY), false);
+});
+
 test("configured note metadata drives capture, validation, review navigation, and summary presentation", () => {
-  const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: {
+  const base = standardEncounterDefinition.events.note;
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, note: {
     ...base,
     quickAction: { visible: false, label: "Record observation" },
     labels: { ...base.labels, category: "Observation", timelineTitle: "Field observation" },
@@ -114,8 +125,8 @@ test("configured note metadata drives capture, validation, review navigation, an
 });
 
 test("configured note requiredness can permit an empty summary", () => {
-  const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: { ...base, required: { ...base.required, summary: false } } } };
+  const base = standardEncounterDefinition.events.note;
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, note: { ...base, required: { ...base.required, summary: false } } } };
   const note: EncounterEvent = { id: "optional-note", time: "09:11", kind: "note", title: "Legacy title", detail: "", reference: "legacy" };
   const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [note, ...INITIAL_SHELL_STATE.encounter.events] } };
 
@@ -129,8 +140,8 @@ test("restored note events resolve current definition metadata instead of persis
   state = transitionShell(state, { type: "note-saved" });
   saveShellState(storage, state);
   const restoredEvent = loadShellState(storage)!.encounter.events.find((event) => event.id === "visitor-note-1")!;
-  const base = adultChestPainDefinition.events.note;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, note: {
+  const base = standardEncounterDefinition.events.note;
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, note: {
     ...base,
     labels: { ...base.labels, timelineTitle: "Configured summary label" },
     references: { ...base.references, summary: "eNarrative.02" },

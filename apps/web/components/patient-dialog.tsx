@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type RefObject } from "react";
-import type { Encounter } from "../app/synthetic-encounter";
+import type { Encounter } from "../app/standard-encounter";
 import type { EncounterDefinition, PatientChoiceGroup } from "../app/encounter-definition";
 
 type Patient = Encounter["patient"];
