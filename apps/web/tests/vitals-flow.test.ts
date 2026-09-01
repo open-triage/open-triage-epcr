@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type ShellState, type VitalField } from "../app/synthetic-encounter";
-import { validateVitals, VITAL_RULES } from "../app/vital-validation";
+import { EMPTY_VITALS, INITIAL_SHELL_STATE, encounterEventDetail, encounterEventPresentation, reviewEncounter, syntheticEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/synthetic-encounter";
+import { nullOptionsFor, validateVitals } from "../app/vital-validation";
 
 const normal = { ...EMPTY_VITALS, systolic: "120", diastolic: "80", heartRate: "72", spo2: "98", respiratoryRate: "16", gcs: "15", pain: "2", nullValues: {} };
 function started(id = "vital-1", time = "09:00"): ShellState { return transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id, time }); }
 function fill(state: ShellState, values = normal): ShellState {
-  for (const field of Object.keys(VITAL_RULES) as VitalField[]) state = transitionShell(state, { type: "vitals-value-changed", field, value: values[field] });
+  for (const { id: field } of syntheticEncounterDefinition.events.vitals.fields) state = transitionShell(state, { type: "vitals-value-changed", field, value: values[field] });
   return state;
 }
 function memoryStorage(): LocalStoragePort { const values = new Map<string, string>(); return { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); } }; }
@@ -64,4 +66,65 @@ test("invalid quick captures save and remain blocking at review", () => {
   assert.equal(state.vitalDraft, null);
   assert.equal(state.encounter.events.some((event) => event.id === "vital-1"), true);
   assert.ok(reviewEncounter(state).some((finding) => finding.severity === "error"));
+});
+
+test("configured vital metadata drives order, validation, review navigation, timeline, and summary", () => {
+  const base = adultChestPainDefinition.events.vitals;
+  const systolic = base.fields.find(({ id }) => id === "systolic")!;
+  const definition: EncounterDefinition = {
+    ...adultChestPainDefinition,
+    events: { ...adultChestPainDefinition.events, vitals: {
+      ...base,
+      labels: { ...base.labels, category: "Measurement", timelineTitle: "Configured observations", absentSummary: "unavailable" },
+      references: { group: "eVitals.ConfiguredGroup", time: "eVitals.02" },
+      fields: [
+        { ...systolic, label: "Configured pressure", unit: "kPa", required: true, reference: "eVitals.99", boundaries: { min: 50, max: 250, warningLow: 80, warningHigh: 200 }, absenceStates: [{ code: "7701005", kind: "NV", label: "Device unavailable (NV)" }] },
+        ...base.fields.filter(({ id }) => id !== "systolic"),
+      ],
+      summary: [{ label: "Pressure", fields: ["systolic"], separator: "", unit: " kPa" }, ...base.summary.filter(({ fields }) => !fields.some((field) => field === "systolic"))],
+    } },
+  };
+  const configuredSystolic = definition.events.vitals.fields[0]!;
+  assert.equal(configuredSystolic.id, "systolic");
+  assert.equal(configuredSystolic.unit, "kPa");
+  assert.deepEqual(nullOptionsFor(configuredSystolic).at(-1), { value: "7701005", label: "Device unavailable (NV)" });
+
+  const invalid = validateVitals("09:00", { ...normal, systolic: "251" }, definition);
+  assert.match(invalid.errors.systolic ?? "", /eVitals\.99.*50 to 250/);
+  const unusual = validateVitals("09:00", { ...normal, systolic: "60" }, definition);
+  assert.equal(unusual.valid, true);
+  assert.match(unusual.warnings.systolic ?? "", /configured pressure/);
+  const unavailable = validateVitals("09:00", { ...normal, systolic: "", nullValues: { systolic: "7701005" } }, definition);
+  assert.equal(unavailable.valid, true);
+  assert.match(vitalSummary({ ...normal, systolic: "", nullValues: { systolic: "7701005" } }, definition), /Pressure unavailable kPa/);
+
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "configured-vital", time: "09:00" }, definition);
+  for (const [field, value] of Object.entries({ ...normal, systolic: "251", nullValues: undefined })) {
+    if (field !== "nullValues") state = transitionShell(state, { type: "vitals-value-changed", field: field as keyof Omit<VitalValues, "nullValues">, value: value as string }, definition);
+  }
+  state = transitionShell(state, { type: "vitals-saved" }, definition);
+  const saved = state.encounter.events.find(({ id }) => id === "configured-vital")!;
+  assert.deepEqual(encounterEventPresentation(saved, definition), { title: "Configured observations", reference: "eVitals.ConfiguredGroup" });
+  assert.match(saved.detail, /Pressure 251 kPa/);
+  assert.match(encounterEventDetail({ ...saved, detail: "stale persisted summary" }, definition), /Pressure 251 kPa/);
+  const finding = reviewEncounter(state, definition).find(({ target }) => target.eventId === saved.id)!;
+  assert.equal(finding.category, "Measurement");
+  assert.equal(finding.reference, "eVitals.99");
+  assert.equal(finding.target.vitalField, "systolic");
+  state = transitionShell(state, { type: "review-finding-selected", id: finding.id }, definition);
+  assert.equal(state.vitalDraft?.id, saved.id);
+});
+
+test("legacy persisted vital entries without nullValues remain readable and editable", () => {
+  const legacyValues = { systolic: "118", diastolic: "76", heartRate: "70", spo2: "97", respiratoryRate: "15", gcs: "15", pain: "1" } as VitalValues;
+  const legacyEvent = { id: "legacy-vital", date: "2026-04-18", time: "08:10", kind: "care" as const, title: "Vital signs", detail: "legacy", reference: "eVitals.VitalGroup", vitals: legacyValues };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [legacyEvent, ...INITIAL_SHELL_STATE.encounter.events] } };
+  assert.equal(reviewEncounter(state).some(({ target }) => target.eventId === legacyEvent.id), false);
+  const opened = transitionShell(state, { type: "vitals-opened", id: legacyEvent.id });
+  assert.equal(opened.vitalDraft?.values.heartRate, "70");
+  assert.deepEqual(opened.vitalDraft?.values.nullValues, {});
+
+  const storage = memoryStorage();
+  storage.setItem("open-triage:adult-chest-pain-v2", JSON.stringify({ ...state, vitalDraft: { id: "legacy-draft", date: "2026-04-18", time: "08:12", values: legacyValues, isNew: true } }));
+  assert.deepEqual(loadShellState(storage)?.vitalDraft?.values.nullValues, {});
 });

@@ -19,6 +19,9 @@ test("validates and serves the bundled versioned encounter definition", () => {
   assert.equal(definition.events.note.references.summary, "eNarrative.01");
   assert.equal(definition.events.medication.terminology.catalog, "nemsis-3.5.1-medications");
   assert.deepEqual(definition.events.medication.fields.map((field) => field.id), ["medication", "time", "dose", "unit", "route", "response"]);
+  assert.deepEqual(definition.events.vitals.fields.slice(0, 3).map(({ id }) => id), ["systolic", "diastolic", "heartRate"]);
+  assert.equal(definition.events.vitals.fields[0]?.unit, "mmHg");
+  assert.equal(definition.events.vitals.fields[0]?.reference, "eVitals.06");
 });
 
 test("rejects incomplete medication configuration before the interface can consume it", () => {
@@ -33,6 +36,22 @@ test("rejects incomplete medication configuration before the interface can consu
       && error.message.includes("events.medication.fields must include medication")
       && error.message.includes("events.medication.doseUnits must contain strings")
       && error.message.includes("events.medication.validationMessages must be an object"),
+  );
+});
+
+test("rejects invalid vital configuration with actionable diagnostics", () => {
+  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  const events = (invalid.events as { vitals: { fields: Array<Record<string, unknown>>; summary: Array<Record<string, unknown>> } });
+  events.vitals.fields[0]!.required = "yes";
+  events.vitals.fields[0]!.boundaries = { min: 500, max: 0, warningLow: 70, warningHigh: 220 };
+  events.vitals.summary[0]!.fields = ["missing"];
+
+  assert.throws(
+    () => validateEncounterDefinition(invalid),
+    (error: unknown) => error instanceof EncounterDefinitionError
+      && error.message.includes("events.vitals.fields[0].required must be a boolean")
+      && error.message.includes("events.vitals.fields[0].boundaries.min must not exceed max")
+      && error.message.includes("events.vitals.summary[0].fields contains an unconfigured field"),
   );
 });
 

@@ -1,9 +1,9 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATIONS } from "./medication-catalog";
-import { validateVitals, VITAL_RULES } from "./vital-validation";
+import { validateVitals } from "./vital-validation";
 import { adultChestPainDefinition } from "./adult-chest-pain-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
-import type { EncounterDefinition, MedicationFieldId } from "./encounter-definition";
+import type { EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -21,8 +21,8 @@ export type EncounterEvent = {
   readonly vitals?: VitalValues;
 };
 
-export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
-export type NullValue = "" | "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+export type VitalField = ConfiguredVitalField;
+export type NullValue = "" | VitalNullValue;
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
 export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
 
@@ -177,13 +177,16 @@ export function encounterEventPresentation(event: EncounterEvent, definition: En
       reference: `${medication.fields.find((field) => field.id === "medication")!.reference} · ${event.medication.codeType} ${event.medication.medicationCode}`,
     };
   }
+  if (event.vitals) return { title: definition.events.vitals.labels.timelineTitle, reference: definition.events.vitals.references.group };
   return { title: event.title, reference: event.reference };
 }
 
 export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): string {
-  if (!event.medication) return event.detail;
-  const medication = definition.events.medication;
-  return `${event.medication.route || medication.labels.routeMissing}${event.medication.response ? ` · ${event.medication.response}` : ` · ${medication.labels.responseMissing}`}`;
+  if (event.medication) {
+    const medication = definition.events.medication;
+    return `${event.medication.route || medication.labels.routeMissing}${event.medication.response ? ` · ${event.medication.response}` : ` · ${medication.labels.responseMissing}`}`;
+  }
+  return event.vitals ? vitalSummary(event.vitals, definition) : event.detail;
 }
 
 export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
@@ -219,13 +222,16 @@ function eventFinding(
 export function reviewEncounter(state: ShellState, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<ReviewFinding> {
   const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
-      const validation = validateVitals(event.time, event.vitals);
+      const vitalDefinition = definition.events.vitals;
+      const validation = validateVitals(event.time, event.vitals, definition);
+      const presentedEvent = { ...event, ...encounterEventPresentation(event, definition), detail: encounterEventDetail(event, definition) };
       const errors = Object.entries(validation.errors).map(([field, message], index) => {
         const vitalField = field === "time" || field === "group" ? undefined : field as VitalField;
-        return eventFinding(state, event, "error", "Vital", vitalField ? VITAL_RULES[vitalField].reference : "eVitals.VitalGroup", message!, index, false, vitalField);
+        const reference = vitalField ? vitalDefinition.fields.find(({ id }) => id === vitalField)?.reference : field === "time" ? vitalDefinition.references.time : vitalDefinition.references.group;
+        return eventFinding(state, presentedEvent, "error", vitalDefinition.labels.category, reference ?? vitalDefinition.references.group, message!, index, false, vitalField);
       });
       const warnings = Object.entries(validation.warnings).map(([field, message], index) =>
-        eventFinding(state, event, "warning", "Vital", VITAL_RULES[field as VitalField].reference, message!, index, false, field as VitalField));
+        eventFinding(state, presentedEvent, "warning", vitalDefinition.labels.category, vitalDefinition.fields.find(({ id }) => id === field)?.reference ?? vitalDefinition.references.group, message!, index, false, field as VitalField));
       return [...errors, ...warnings];
     }
     if (event.medication) {
@@ -259,15 +265,14 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
   return events;
 }
 
-export function vitalSummary(values: VitalValues): string {
-  const shown = (field: VitalField, label: string, suffix = "") => {
-    const value = values[field];
-    if (value) return `${label} ${value}${suffix}`;
-    return values.nullValues[field] ? `${label} not recorded` : null;
-  };
-  return [values.systolic || values.diastolic ? `BP ${values.systolic || "—"}/${values.diastolic || "—"}` : null,
-    shown("heartRate", "HR"), shown("spo2", "SpO₂", "%"), shown("respiratoryRate", "RR"), shown("gcs", "GCS"), shown("pain", "pain")]
-    .filter(Boolean).join(" · ");
+export function vitalSummary(values: VitalValues, definition: EncounterDefinition = syntheticEncounterDefinition): string {
+  const config = definition.events.vitals;
+  return config.summary.map((item) => {
+    const hasDocumentedField = item.fields.some((field) => values[field] || values.nullValues?.[field]);
+    if (!hasDocumentedField) return null;
+    const rendered = item.fields.map((field) => values[field] || (values.nullValues?.[field] ? config.labels.absentSummary : "—"));
+    return `${item.label} ${rendered.join(item.separator)}${item.unit}`;
+  }).filter(Boolean).join(" · ");
 }
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
@@ -499,7 +504,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
       const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.vitals);
-      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: event.vitals, isNew: false } } : state;
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
     }
     case "vitals-time-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
@@ -514,7 +519,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft) return state;
-      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
+      const vitalDefinition = definition.events.vitals;
+      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
