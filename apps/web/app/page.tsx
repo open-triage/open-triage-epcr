@@ -9,8 +9,9 @@ import { clearShellState, loadShellState, saveShellState } from "./local-persist
 import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
 import {
   INITIAL_SHELL_STATE,
+  encounterEventPresentation,
   reviewEncounter,
-  transitionShell,
+  syntheticEncounterReducer,
   type ReviewFinding,
   type ShellState,
   type ShellView,
@@ -31,7 +32,7 @@ function localClinicalTime(): string {
 }
 
 export default function Home() {
-  const [shell, dispatch] = useReducer(transitionShell, INITIAL_SHELL_STATE);
+  const [shell, dispatch] = useReducer(syntheticEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
@@ -41,6 +42,7 @@ export default function Home() {
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
+  const noteDefinition = syntheticEncounterDefinition.events.note;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
@@ -57,7 +59,9 @@ export default function Home() {
   const procedureFindingActive = !!(editingFinding?.category === "Procedure" && procedureDraftValidation && [...procedureDraftValidation.errors, ...procedureDraftValidation.warnings].includes(editingFinding.message));
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null;
   const vitalFindingActive = !!(editingFinding?.category === "Vital" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const noteFindingActive = !!(editingFinding?.category === "Note" && shell.noteDraft && (/time/i.test(editingFinding.message) ? !/^([01]\d|2[0-3]):[0-5]\d$/.test(shell.noteDraft.time) : !shell.noteDraft.summary.trim()));
+  const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
+  const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
+  const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = patientOpen ? "patient" : shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
   const closeActiveDialog = useCallback(() => {
@@ -209,7 +213,7 @@ export default function Home() {
         <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title="Vital signs" aria-label="Add vital signs" type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>
         <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title="Medication" aria-label="Add medication" type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>
         <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
-        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title="Clinical note" aria-label="Add clinical note" type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>
+        {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
         <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
       </nav>
 
@@ -252,12 +256,13 @@ export default function Home() {
           <ol className="timeline-list">
             {encounter.events.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
+              const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
-                    aria-label={`Edit ${event.title} at ${event.time}. ${event.detail}`}
+                    aria-label={`Edit ${presentation.title} at ${event.time}. ${event.detail}`}
                     className="timeline-event-button"
                     type="button"
                     onClick={(clickEvent) => {
@@ -266,9 +271,9 @@ export default function Home() {
                       dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
                     }}
                   >
-                    <span className="event-title">{event.title}</span>
+                    <span className="event-title">{presentation.title}</span>
                     <span className="event-detail">{event.detail}</span>
-                    <small>{event.reference} · Tap to edit</small>
+                    <small>{presentation.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
                       date: event.date ?? "2026-04-18",
@@ -346,28 +351,29 @@ export default function Home() {
           <section ref={dialog} className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
             <div className="note-dialog-heading">
               <div>
-                <p className="eyebrow">{shell.noteDraft.isNew ? "New timeline event" : "Revise timeline event"}</p>
-                <h2 id="note-dialog-title">Clinical note</h2>
+                <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
+                <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button aria-label="Close note editor" type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
+              <button aria-label={noteDefinition.labels.closeEditor} type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
             </div>
-            <TimePicker className={noteFindingActive && /time/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined} label="Clinical time" date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
-            <small id="clinical-time-help">Correct the time if documentation was entered later.</small>
-            <label className={noteFindingActive && /note|summary/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-              Note summary
+            <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
+            <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
+            <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
+              {noteDefinition.labels.summary}
               <textarea
                 ref={noteSummary}
                 data-dialog-initial-focus
                 rows={5}
-                placeholder="Document the clinical observation or decision…"
+                placeholder={noteDefinition.labels.summaryPlaceholder}
+                required={noteDefinition.required.summary}
                 value={shell.noteDraft.summary}
                 onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
               />
             </label>
             <div className="note-dialog-actions">
-              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>Cancel</button>
+              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
               <button type="button" onClick={() => dispatch({ type: "note-saved" })}>
-                {shell.noteDraft.isNew ? "Add to timeline" : "Save changes"}
+                {shell.noteDraft.isNew ? noteDefinition.labels.add : noteDefinition.labels.save}
               </button>
             </div>
           </section>
@@ -622,7 +628,10 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Timeline</h2>
         <ol className="summary-timeline">
-          {encounter.events.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
+          {encounter.events.map((event) => {
+            const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
+            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{event.detail}</span><small>{presentation.reference}</small></div></li>;
+          })}
         </ol>
       </section>
       <section className="summary-section">

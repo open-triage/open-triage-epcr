@@ -1,6 +1,28 @@
 export type NemsisReference = `e${string}`;
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
 
+export type NoteEventDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly labels: {
+    readonly category: string;
+    readonly timelineTitle: string;
+    readonly newEyebrow: string;
+    readonly editEyebrow: string;
+    readonly editorTitle: string;
+    readonly closeEditor: string;
+    readonly time: string;
+    readonly timeHelp: string;
+    readonly summary: string;
+    readonly summaryPlaceholder: string;
+    readonly cancel: string;
+    readonly add: string;
+    readonly save: string;
+  };
+  readonly required: { readonly time: boolean; readonly summary: boolean };
+  readonly references: { readonly time: NemsisReference; readonly summary: NemsisReference };
+  readonly validationMessages: { readonly invalidTime: string; readonly summaryRequired: string };
+};
+
 export type EncounterDefinition = {
   readonly schemaVersion: 1;
   readonly id: string;
@@ -23,6 +45,7 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
+  readonly events: { readonly note: NoteEventDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
@@ -67,6 +90,16 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(dispatch.references, "dispatch.references", ["incidentNumber", "complaint", "address"]);
   if (!Array.isArray(dispatch.events) || dispatch.events.length === 0) diagnostics.push("dispatch.events must contain at least one event");
   else dispatch.events.forEach((event, index) => requiredStrings(event, `dispatch.events[${index}]`, ["time", "title", "detail", "reference"]));
+  const events = isRecord(root.events) ? root.events : {};
+  const note = isRecord(events.note) ? events.note : {};
+  const quickAction = isRecord(note.quickAction) ? note.quickAction : {};
+  if (typeof quickAction.visible !== "boolean") diagnostics.push("events.note.quickAction.visible must be a boolean");
+  requiredStrings(quickAction, "events.note.quickAction", ["label"]);
+  requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "time", "timeHelp", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
+  const required = isRecord(note.required) ? note.required : {};
+  for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
+  requiredStrings(note.references, "events.note.references", ["time", "summary"]);
+  requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
   if (diagnostics.length) throw new EncounterDefinitionError(id, diagnostics);
   return value as EncounterDefinition;
 }
