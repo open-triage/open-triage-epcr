@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, searchMedications } from "../app/medication-catalog";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { INITIAL_SHELL_STATE, transitionShell, validateMedication, type ShellState } from "../app/synthetic-encounter";
+import { INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type ShellState } from "../app/synthetic-encounter";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -40,14 +40,17 @@ test("searches labels, aliases, and canonical codes", () => {
   assert.equal(searchMedications("116865006")[0]?.codeType, "SNOMED-CT");
 });
 
-test("NEMSIS-referenced errors block save and response warning requires acknowledgement", () => {
+test("quick capture saves errors and warnings for review without acknowledgement", () => {
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "medication-started", id: "med-1", time: "99:99" });
   let validation = validateMedication(state.medicationDraft!);
   assert.equal(validation.errors.length, 5);
   assert.ok(validation.errors.every((error) => /eMedications\./.test(error)));
-  assert.equal(transitionShell(state, { type: "medication-saved" }).encounter.events.length, 17);
+  let saved = transitionShell(state, { type: "medication-saved" });
+  assert.equal(saved.encounter.events.length, 5);
+  assert.equal(saved.medicationDraft, null);
+  assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "error"));
 
-  state = transitionShell(state, { type: "medication-draft-changed", field: "time", value: "08:33" });
+  state = transitionShell(INITIAL_SHELL_STATE, { type: "medication-started", id: "med-2", time: "08:33" });
   state = transitionShell(state, { type: "medication-selected", code: "7052", codeType: "RxNorm", label: "Morphine" });
   state = transitionShell(state, { type: "medication-draft-changed", field: "dose", value: "4" });
   state = transitionShell(state, { type: "medication-draft-changed", field: "unit", value: "mg" });
@@ -55,9 +58,10 @@ test("NEMSIS-referenced errors block save and response warning requires acknowle
   validation = validateMedication(state.medicationDraft!);
   assert.equal(validation.errors.length, 0);
   assert.equal(validation.warnings.length, 1);
-  assert.equal(transitionShell(state, { type: "medication-saved" }).medicationDraft?.id, "med-1");
-  state = transitionShell(state, { type: "medication-warning-acknowledged", acknowledged: true });
-  assert.equal(transitionShell(state, { type: "medication-saved" }).encounter.events.length, 18);
+  saved = transitionShell(state, { type: "medication-saved" });
+  assert.equal(saved.encounter.events.length, 5);
+  assert.equal(saved.medicationDraft, null);
+  assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "warning"));
 });
 
 test("rejects included values outside the pinned medication and configured route sets", () => {

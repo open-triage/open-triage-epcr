@@ -5,11 +5,17 @@ import { INITIAL_SHELL_STATE, syntheticEncounter, transitionShell } from "../app
 test("opens directly into the fixed synthetic chest-pain encounter", () => {
   assert.equal(INITIAL_SHELL_STATE.view, "timeline");
   assert.equal(syntheticEncounter.synthetic, true);
-  assert.equal(syntheticEncounter.scenarioId, "adult-chest-pain-v1");
+  assert.equal(syntheticEncounter.scenarioId, "adult-chest-pain-v2");
   assert.equal(syntheticEncounter.patient.name, "Lindqvist, Margareta");
   assert.match(syntheticEncounter.incident.complaint, /chest pain/i);
   assert.match(syntheticEncounter.incident.address, /fictional/i);
-  assert.equal(syntheticEncounter.events.length, 17);
+  assert.equal(syntheticEncounter.events.length, 4);
+  assert.deepEqual(syntheticEncounter.events.map((event) => event.reference), [
+    "eTimes.07",
+    "eTimes.06",
+    "eTimes.03 · eDispatch.02 · eDispatch.06",
+    "eTimes.01 · eDispatch.01 · eDispatch.05",
+  ]);
 });
 
 test("Timeline and Checklist navigation preserves the encounter", () => {
@@ -19,7 +25,7 @@ test("Timeline and Checklist navigation preserves the encounter", () => {
   assert.equal(timelineState.view, "timeline");
   assert.strictEqual(checklistState.encounter, syntheticEncounter);
   assert.strictEqual(timelineState.encounter, syntheticEncounter);
-  assert.equal(timelineState.encounter.requiredRemaining, 3);
+  assert.equal(timelineState.encounter.requiredRemaining, 0);
 });
 
 test("required count matches incomplete checklist items", () => {

@@ -82,10 +82,10 @@ export const checklistFields: ReadonlyArray<ChecklistField> = [
 
 export type ChecklistValues = Readonly<Record<ChecklistFieldId, string>>;
 export const INITIAL_CHECKLIST_VALUES: ChecklistValues = {
-  "primary-symptom": "R07.9",
-  "secondary-symptom": "R61",
-  "primary-impression": "I21.3",
-  "possible-injury": "no",
+  "primary-symptom": "",
+  "secondary-symptom": "",
+  "primary-impression": "",
+  "possible-injury": "",
   "destination-condition": "",
   "unit-disposition": "",
   narrative: "",
@@ -138,56 +138,43 @@ export type Encounter = {
   readonly currentTime: string;
   readonly crew: string;
   readonly requiredRemaining: number;
-  readonly patient: { readonly name: string; readonly age: number; readonly sex: string; readonly identifier: string };
+  readonly patient: {
+    readonly name: string;
+    readonly age: number;
+    readonly sex: string;
+    readonly identifier: string;
+    readonly medicalHistory: ReadonlyArray<string>;
+    readonly currentMedications: ReadonlyArray<string>;
+    readonly allergies: ReadonlyArray<string>;
+  };
   readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
   readonly events: ReadonlyArray<EncounterEvent>;
   readonly checklist: ReadonlyArray<{ readonly title: string; readonly detail: string; readonly reference: string; readonly complete: boolean }>;
 };
 
 const baselineEvents: ReadonlyArray<Omit<EncounterEvent, "id">> = [
-  { time: "08:34", kind: "transport", title: "Handover", detail: "Coronary care nurse — condition improved", reference: "eDisposition.27" },
-  { time: "08:29", kind: "transport", title: "Arrived at destination", detail: "Karolinska University Hospital Solna", reference: "eTimes.12" },
-  { time: "08:26", kind: "care", title: "Vital signs", detail: "BP 136/84 · HR 88 · SpO₂ 97% · RR 17 · GCS 15 · pain 3", reference: "eVitals.VitalGroup", vitals: { systolic: "136", diastolic: "84", heartRate: "88", spo2: "97", respiratoryRate: "17", gcs: "15", pain: "3", nullValues: {} } },
-  { time: "08:14", kind: "transport", title: "Left scene", detail: "Priority 2, no lights or siren", reference: "eTimes.11" },
-  { time: "08:11", kind: "care", title: "Oxygen 2 l/min", detail: "Nasal cannula — SpO₂ 94 → 96%", reference: "eMedications.03" },
-  { time: "08:09", kind: "care", title: "Morphine 4 mg", detail: "IV · pain 8 → 4", reference: "eMedications.03" },
-  { time: "08:05", kind: "alert", title: "PCI on-call contacted", detail: "Karolinska Solna — accepted straight to PCI lab", reference: "eNarrative.01" },
-  { time: "08:04", kind: "alert", title: "Inferior STEMI", detail: "ST-elevation II, III, aVF — alert criteria met", reference: "eVitals.03" },
-  { time: "08:03", kind: "care", title: "12-lead ECG", detail: "1 attempt, successful — interpreted on scene", reference: "eProcedures.03" },
-  { time: "08:01", kind: "care", title: "Acetylsalicylic acid 300 mg", detail: "PO · per guideline 4.2", reference: "eMedications.03" },
-  { time: "07:58", kind: "care", title: "IV access", detail: "Left antecubital, 18 G — 1 attempt, successful", reference: "eProcedures.03" },
-  { time: "07:56", kind: "care", title: "Vital signs", detail: "BP 148/92 · HR 104 · SpO₂ 94% · RR 22 · GCS 15 · pain 8", reference: "eVitals.VitalGroup", vitals: { systolic: "148", diastolic: "92", heartRate: "104", spo2: "94", respiratoryRate: "22", gcs: "15", pain: "8", nullValues: {} } },
-  { time: "07:53", kind: "transport", title: "Patient contact", detail: "Awake, oriented, pale and diaphoretic", reference: "eTimes.09" },
   { time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Residence — stairwell access, no lift", reference: "eTimes.07" },
   { time: "07:44", kind: "transport", title: "Unit en route", detail: "Priority 1 response, lights and siren", reference: "eTimes.06" },
-  { time: "07:42", kind: "transport", title: "Unit notified", detail: "3-9-7-4-0 · EMD with pre-arrival instructions", reference: "eTimes.03 · eDispatch.02" },
-  { time: "07:40", kind: "transport", title: "Call received", detail: "Chest pain, priority 1", reference: "eTimes.01" },
+  { time: "07:42", kind: "transport", title: "Unit notified", detail: "3-9-7-4-0 · EMD with pre-arrival instructions · lights and siren", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
+  { time: "07:40", kind: "transport", title: "Call received", detail: "Chest pain · priority 1", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
 ];
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
 export const syntheticEncounter: Encounter = {
-  scenarioId: "adult-chest-pain-v1",
+  scenarioId: "adult-chest-pain-v2",
   synthetic: true,
-  currentTime: "08:34",
+  currentTime: "07:51",
   crew: "AN",
-  requiredRemaining: 3,
-  patient: { name: "Lindqvist, Margareta", age: 73, sex: "F", identifier: "19530418-XXXX" },
+  requiredRemaining: 0,
+  patient: { name: "Lindqvist, Margareta", age: 73, sex: "F", identifier: "19530418-XXXX", medicalHistory: [], currentMedications: [], allergies: [] },
   incident: {
     number: "2026-0418-113 · 3-9-7-4-0",
     complaint: "Central chest pain radiating to left arm",
     address: "Sveavägen 112, 3 tr, Stockholm (fictional)",
   },
   events: baselineEvents.map((event, index) => ({ ...event, id: `baseline-${index + 1}` })),
-  checklist: [
-    { title: "Response & scene", detail: "Incident, crew, address and scene details", reference: "eResponse · eScene", complete: true },
-    { title: "Patient", detail: "Fictional identity and demographics", reference: "ePatient", complete: true },
-    { title: "Situation & assessment", detail: "Chest pain, exam, ECG and vital signs", reference: "eSituation · eExam · eVitals", complete: true },
-    { title: "Treatment", detail: "Medication and procedure events", reference: "eMedications · eProcedures", complete: true },
-    { title: "Patient condition at destination", detail: "Not yet recorded", reference: "eDisposition.19", complete: false },
-    { title: "Receiving acknowledgement", detail: "Not yet captured", reference: "eDisposition.27", complete: false },
-    { title: "Narrative review", detail: "Not yet confirmed", reference: "eNarrative.01", complete: false },
-  ],
+  checklist: [],
 };
 
 export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
@@ -216,6 +203,7 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
+  | { readonly type: "patient-updated"; readonly patient: Encounter["patient"] }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -290,7 +278,7 @@ export type ReviewFinding = {
   readonly title: string;
   readonly reference: string;
   readonly message: string;
-  readonly target: { readonly kind: "checklist"; readonly field: ChecklistFieldId } | { readonly kind: "event"; readonly eventId: string };
+  readonly target: { readonly kind: "checklist"; readonly field: ChecklistFieldId } | { readonly kind: "event"; readonly eventId: string; readonly vitalField?: VitalField };
   readonly acknowledged: boolean;
 };
 
@@ -303,35 +291,28 @@ function eventFinding(
   message: string,
   index: number,
   recordAcknowledged = false,
+  vitalField?: VitalField,
 ): ReviewFinding {
   const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
   return {
     id, severity, category, reference, message,
     title: `${event.time} · ${event.title}`,
-    target: { kind: "event", eventId: event.id },
+    target: { kind: "event", eventId: event.id, ...(vitalField ? { vitalField } : {}) },
     acknowledged: severity === "warning" && (recordAcknowledged || state.acknowledgedWarnings.includes(id)),
   };
 }
 
-/** Consolidates validation for every canonical, editable part of the encounter. */
+/** Consolidates validation for timeline entries before signing. */
 export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding> {
-  const checklist = validateChecklist(state.checklistValues).map((finding): ReviewFinding => {
-    const field = checklistFields.find((candidate) => candidate.id === finding.fieldId)!;
-    const category = field.section === "Disposition" ? "Disposition" : field.section === "Narrative" ? "Narrative" : "Checklist";
-    return {
-      id: `checklist:${finding.fieldId}:error`, severity: "error", category,
-      title: field.label, reference: finding.reference, message: finding.message,
-      target: { kind: "checklist", field: finding.fieldId }, acknowledged: false,
-    };
-  });
-
   const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
       const validation = validateVitals(event.time, event.vitals);
-      const errors = Object.entries(validation.errors).map(([field, message], index) =>
-        eventFinding(state, event, "error", "Vital", field === "time" || field === "group" ? "eVitals.VitalGroup" : VITAL_RULES[field as VitalField].reference, message!, index));
+      const errors = Object.entries(validation.errors).map(([field, message], index) => {
+        const vitalField = field === "time" || field === "group" ? undefined : field as VitalField;
+        return eventFinding(state, event, "error", "Vital", vitalField ? VITAL_RULES[vitalField].reference : "eVitals.VitalGroup", message!, index, false, vitalField);
+      });
       const warnings = Object.entries(validation.warnings).map(([field, message], index) =>
-        eventFinding(state, event, "warning", "Vital", VITAL_RULES[field as VitalField].reference, message!, index));
+        eventFinding(state, event, "warning", "Vital", VITAL_RULES[field as VitalField].reference, message!, index, false, field as VitalField));
       return [...errors, ...warnings];
     }
     if (event.medication) {
@@ -352,6 +333,9 @@ export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding>
         ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Procedure", "eProcedures", message, index, event.procedure!.warningAcknowledged)),
       ];
     }
+    if (event.kind === "note" && !event.detail.trim()) {
+      return [eventFinding(state, event, "error", "Note", "eNarrative.01", "Add a clinical note before signing.", 0)];
+    }
     if (event.kind === "note") {
       const findings: ReviewFinding[] = [];
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Enter a valid clinical time (HH:mm).", 0));
@@ -361,7 +345,7 @@ export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding>
     return [];
   });
 
-  return [...checklist, ...events];
+  return events;
 }
 
 export function checklistDisplayValue(field: ChecklistField, value: string): string {
@@ -389,6 +373,8 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
   switch (action.type) {
     case "view-selected":
       return { ...state, view: action.view, focusedChecklistField: null };
+    case "patient-updated":
+      return { ...state, encounter: { ...state.encounter, patient: action.patient } };
     case "checklist-field-changed":
       return { ...state, checklistValues: { ...state.checklistValues, [action.field]: action.value } };
     case "validation-selected":
@@ -442,7 +428,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, noteDraft: null };
     case "note-saved": {
       const draft = state.noteDraft;
-      if (!draft || !draft.summary.trim() || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(draft.time)) return state;
+      if (!draft) return state;
       const note: EncounterEvent = {
         id: draft.id,
         date: draft.date,
@@ -537,11 +523,11 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, procedureDraft: null };
     case "procedure-saved": {
       const draft = state.procedureDraft;
-      if (!draft || validateProcedure(draft).errors.length) return state;
+      if (!draft) return state;
       const procedure: ProcedureRecord = {
         code: draft.procedureCode,
-        label: draft.procedureLabel,
-        attempts: Number(draft.attempts),
+        label: draft.procedureLabel || "Procedure not selected",
+        attempts: Number(draft.attempts) || 0,
         success: draft.success as ProcedureRecord["success"],
         outcome: draft.outcome as ProcedureRecord["outcome"],
         complications: draft.complications,
@@ -586,12 +572,10 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "medication-saved": {
       const draft = state.medicationDraft;
       if (!draft) return state;
-      const validation = validateMedication(draft);
-      if (validation.errors.length || (validation.warnings.length && !draft.warningAcknowledged)) return state;
       const administration: MedicationAdministration = {
         medicationCode: draft.medicationCode,
         codeType: draft.codeType,
-        label: draft.label,
+        label: draft.label || "Medication not selected",
         dose: draft.dose.trim(),
         unit: draft.unit,
         route: draft.route,
@@ -603,8 +587,8 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         date: draft.date,
         time: draft.time,
         kind: "medication",
-        title: `${draft.label} ${administration.dose} ${administration.unit}`,
-        detail: `${administration.route}${administration.response ? ` · ${administration.response}` : " · Response not documented"}`,
+        title: `${administration.label}${administration.dose ? ` ${administration.dose}` : ""}${administration.unit ? ` ${administration.unit}` : ""}`,
+        detail: `${administration.route || "Route not documented"}${administration.response ? ` · ${administration.response}` : " · Response not documented"}`,
         reference: `eMedications.03 · ${administration.codeType} ${administration.medicationCode}`,
         visitorEntered: true,
         medication: administration,
@@ -630,7 +614,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, vitalDraft: null };
     case "vitals-saved": {
       const draft = state.vitalDraft;
-      if (!draft || !validateVitals(draft.time, draft.values).valid) return state;
+      if (!draft) return state;
       const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }

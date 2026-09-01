@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { EMPTY_VITALS, INITIAL_SHELL_STATE, transitionShell, type ShellState, type VitalField } from "../app/synthetic-encounter";
+import { EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type ShellState, type VitalField } from "../app/synthetic-encounter";
 import { validateVitals, VITAL_RULES } from "../app/vital-validation";
 
 const normal = { ...EMPTY_VITALS, systolic: "120", diastolic: "80", heartRate: "72", spo2: "98", respiratoryRate: "16", gcs: "15", pain: "2", nullValues: {} };
@@ -59,7 +59,9 @@ test("in-progress and saved vital sets persist across refresh", () => {
   assert.equal(loadShellState(storage)?.encounter.events.some((event) => event.id === "vital-1"), true);
 });
 
-test("invalid drafts cannot enter a valid saved state", () => {
+test("invalid quick captures save and remain blocking at review", () => {
   const state = transitionShell(started(), { type: "vitals-saved" });
-  assert.notEqual(state.vitalDraft, null); assert.equal(state.encounter.events.some((event) => event.id === "vital-1"), false);
+  assert.equal(state.vitalDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "vital-1"), true);
+  assert.ok(reviewEncounter(state).some((finding) => finding.severity === "error"));
 });

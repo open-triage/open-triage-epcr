@@ -20,6 +20,10 @@ function memoryStorage(): LocalStoragePort {
 
 function completeChecklist(state: ShellState): ShellState {
   const changes = [
+    ["primary-symptom", "R07.9"],
+    ["secondary-symptom", "R61"],
+    ["primary-impression", "I21.3"],
+    ["possible-injury", "no"],
     ["destination-condition", "4219003"],
     ["unit-disposition", "4227001"],
     ["narrative", "Inferior STEMI treated on scene; pain improved before handover."],
@@ -30,10 +34,10 @@ function completeChecklist(state: ShellState): ShellState {
   );
 }
 
-test("the curated checklist starts with exactly three remaining requirements", () => {
+test("legacy assessment values are not pre-seeded", () => {
   const findings = validateChecklist(INITIAL_SHELL_STATE.checklistValues);
   assert.equal(checklistFields.length, 7);
-  assert.deepEqual(findings.map((finding) => finding.reference), ["eDisposition.19", "eDisposition.27", "eNarrative.01"]);
+  assert.equal(findings.length, 7);
 });
 
 test("assessment, disposition, and narrative use only permitted values", () => {

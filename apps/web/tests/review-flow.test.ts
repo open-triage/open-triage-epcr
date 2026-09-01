@@ -9,34 +9,28 @@ import {
   type ShellState,
 } from "../app/synthetic-encounter";
 
-function completeChecklist(state: ShellState): ShellState {
-  return ([
-    ["destination-condition", "4219003"],
-    ["unit-disposition", "4227001"],
-    ["narrative", "Inferior STEMI treated on scene; pain improved before handover."],
-  ] as const).reduce((current, [field, value]) => transitionShell(current, { type: "checklist-field-changed", field, value }), state);
-}
-
 function withEvent(state: ShellState, event: EncounterEvent): ShellState {
   return { ...state, encounter: { ...state.encounter, events: [event, ...state.encounter.events] } };
 }
 
-test("consolidates vital, medication, procedure, note, checklist, disposition, and narrative errors", () => {
+test("consolidates only timeline-entry errors and warnings", () => {
   const invalidEvents: EncounterEvent[] = [
     { id: "bad-vital", time: "28:00", kind: "care", title: "Vital signs", detail: "Invalid", reference: "eVitals.VitalGroup", vitals: { ...EMPTY_VITALS, systolic: "501", nullValues: {} } },
     { id: "bad-med", time: "08:20", kind: "medication", title: "Unknown medication", detail: "Invalid", reference: "eMedications.03", medication: { medicationCode: "bad", codeType: "RxNorm", label: "Bad", dose: "0", unit: "bad", route: "bad", response: "", warningAcknowledged: false } },
     { id: "bad-procedure", time: "08:21", kind: "procedure", title: "Unknown procedure", detail: "Invalid", reference: "eProcedures.03", procedure: { code: "bad", label: "Bad", attempts: 0, success: "no", outcome: "unchanged", complications: [], warningAcknowledged: false } },
     { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: " ", reference: "eNarrative.01" },
   ];
-  let state = invalidEvents.reduce(withEvent, INITIAL_SHELL_STATE);
-  state = transitionShell(state, { type: "checklist-field-changed", field: "primary-symptom", value: "bad" });
+  const state = invalidEvents.reduce(withEvent, INITIAL_SHELL_STATE);
   const findings = reviewEncounter(state);
-  for (const category of ["Vital", "Medication", "Procedure", "Note", "Checklist", "Disposition", "Narrative"] as const) {
+  for (const category of ["Vital", "Medication", "Procedure", "Note"] as const) {
     assert.ok(findings.some((finding) => finding.category === category && finding.severity === "error"), `missing ${category}`);
   }
+  const systolicFinding = findings.find((finding) => finding.category === "Vital" && finding.reference === "eVitals.06");
+  assert.equal(systolicFinding?.target.kind === "event" ? systolicFinding.target.vitalField : undefined, "systolic");
+  assert.equal(findings.some((finding) => finding.target.kind === "checklist"), false);
 });
 
-test("a finding opens its exact canonical event or checklist field", () => {
+test("a finding opens its exact canonical timeline event", () => {
   const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
   let state = withEvent(INITIAL_SHELL_STATE, badNote);
   let finding = reviewEncounter(state).find((candidate) => candidate.target.kind === "event" && candidate.target.eventId === "bad-note")!;
@@ -44,15 +38,12 @@ test("a finding opens its exact canonical event or checklist field", () => {
   assert.equal(state.view, "timeline");
   assert.equal(state.noteDraft?.id, "bad-note");
 
-  finding = reviewEncounter(INITIAL_SHELL_STATE).find((candidate) => candidate.category === "Disposition")!;
-  state = transitionShell(INITIAL_SHELL_STATE, { type: "review-finding-selected", id: finding.id });
-  assert.equal(state.view, "checklist");
-  assert.equal(state.focusedChecklistField, "destination-condition");
 });
 
 test("errors block finish and valid completion produces a reversible read-only state", () => {
-  assert.strictEqual(transitionShell(INITIAL_SHELL_STATE, { type: "review-finished" }), INITIAL_SHELL_STATE);
-  let complete = completeChecklist(INITIAL_SHELL_STATE);
+  const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
+  assert.notEqual(transitionShell(withEvent(INITIAL_SHELL_STATE, badNote), { type: "review-finished" }).view, "summary");
+  let complete = INITIAL_SHELL_STATE;
   for (const warning of reviewEncounter(complete).filter((finding) => finding.severity === "warning")) {
     complete = transitionShell(complete, { type: "review-warning-acknowledged", id: warning.id, acknowledged: true });
   }
@@ -65,7 +56,7 @@ test("errors block finish and valid completion produces a reversible read-only s
 });
 
 test("boundary-valid data can finish while unusual vital warnings require explicit acknowledgement", () => {
-  let state = completeChecklist(INITIAL_SHELL_STATE);
+  let state = INITIAL_SHELL_STATE;
   state = transitionShell(state, { type: "vitals-started", id: "warning-vital", time: "23:59" });
   const values = { systolic: "0", diastolic: "500", heartRate: "40", spo2: "100", respiratoryRate: "8", gcs: "15", pain: "10" } as const;
   for (const [field, value] of Object.entries(values)) state = transitionShell(state, { type: "vitals-value-changed", field: field as keyof typeof values, value });
@@ -78,10 +69,8 @@ test("boundary-valid data can finish while unusual vital warnings require explic
   assert.equal(transitionShell(state, { type: "review-finished" }).view, "summary");
 });
 
-test("missing and over-limit narrative values remain blocking findings", () => {
-  let state = completeChecklist(INITIAL_SHELL_STATE);
-  state = transitionShell(state, { type: "checklist-field-changed", field: "narrative", value: "x".repeat(2001) });
-  assert.match(reviewEncounter(state).find((finding) => finding.category === "Narrative")?.message ?? "", /2000/);
-  state = transitionShell(state, { type: "checklist-field-changed", field: "narrative", value: "" });
-  assert.match(reviewEncounter(state).find((finding) => finding.category === "Narrative")?.message ?? "", /required/);
+test("an empty quick note remains blocking until signing review", () => {
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "empty-note", time: "09:00" });
+  state = transitionShell(state, { type: "note-saved" });
+  assert.match(reviewEncounter(state).find((finding) => finding.category === "Note")?.message ?? "", /before signing/);
 });
