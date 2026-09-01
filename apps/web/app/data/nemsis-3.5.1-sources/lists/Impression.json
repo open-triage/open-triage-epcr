@@ -1,0 +1,1150 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/",
+            "Value": "ICD-10"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "ProvidersImpression"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eSituation.11",
+          "eSituation.12"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R10.0"
+          },
+          "Category": "Abdominal",
+          "SourceLabel": "Acute abdomen",
+          "SuggestedLabel": "Acute pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R10.84"
+          },
+          "Category": "Abdominal",
+          "SourceLabel": "Generalized abdominal pain",
+          "SuggestedLabel": "Generalized pain",
+          "Note": "Includes R:10.9 Unspecified abdominal pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T50.90"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Poisoning by, adverse effect of and underdosing of unspecified drugs, medicaments and biological substances",
+          "SuggestedLabel": "Adverse effect of unspecified substance",
+          "Note": "Includes T50.904, T50.904A"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.92"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Alcohol use, unspecified with intoxication",
+          "SuggestedLabel": "Alcohol intoxication"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.9"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Alcohol use, unspecified",
+          "SuggestedLabel": "Alcohol use"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.23"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Alcohol dependence with withdrawal",
+          "SuggestedLabel": "Alcohol withdrawal",
+          "Note": "Includes F10.239 Alcohol dependence with withdrawal, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F11"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Opioid related disorders",
+          "SuggestedLabel": "Suspected Opioid related"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F19"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Other psychoactive substance related disorders",
+          "SuggestedLabel": "Other psychoactive substance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F13"
+          },
+          "Category": "Alcohol/Drug Exposure",
+          "SourceLabel": "Sedative, hypnotic, or anxiolytic related disorders",
+          "SuggestedLabel": "Sedative, anti-anxiety related"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I20.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Angina pectoris, unspecified",
+          "SuggestedLabel": "Angina (pain related to heart)",
+          "Note": "Includes I20.0 Unstable angina"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I49.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiac arrhythmia, unspecified",
+          "SuggestedLabel": "Arrhythmia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I46.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiac arrest, cause unspecified",
+          "SuggestedLabel": "Cardiac arrest"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R07.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Chest pain, unspecified",
+          "SuggestedLabel": "Chest pain, NOS",
+          "Note": "Includes R07.89 Other chest pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I21"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Acute myocardial infarction",
+          "SuggestedLabel": "Myocardial Infarction, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I50.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Heart failure, unspecified",
+          "SuggestedLabel": "Heart failure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I10"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Essential (primary) hypertension",
+          "SuggestedLabel": "Hypertension"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I95.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Hypotension, unspecified",
+          "SuggestedLabel": "Hypotension"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I21.4"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Non-ST elevation (NSTEMI) myocardial infarction",
+          "SuggestedLabel": "Non-STEMI"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I99.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Unspecified disorder of circulatory system",
+          "SuggestedLabel": "Other, unspecified CV disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I21.3"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "ST elevation (STEMI) myocardial infarction of unspecified site",
+          "SuggestedLabel": "STEMI"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K92.2"
+          },
+          "Category": "Digestive",
+          "SourceLabel": "Gastrointestinal hemorrhage, unspecified",
+          "SuggestedLabel": "Blood in vomit or stool (GI bleed)",
+          "Note": "Includes K92.0 Hematemesis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K59.00"
+          },
+          "Category": "Digestive",
+          "SourceLabel": "Constipation, unspecified",
+          "SuggestedLabel": "Constipation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K59.1"
+          },
+          "Category": "Digestive",
+          "SourceLabel": "Functional diarrhea",
+          "SuggestedLabel": "Diarrhea"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R11.0"
+          },
+          "Category": "Digestive",
+          "SourceLabel": "Nausea",
+          "SuggestedLabel": "Nausea"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R11.1"
+          },
+          "Category": "Digestive",
+          "SourceLabel": "Vomiting",
+          "SuggestedLabel": "Vomiting",
+          "Note": "Includes R11.10 Vomiting, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F41.9"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Anxiety disorder, unspecified",
+          "SuggestedLabel": "Anxiety",
+          "Note": "Includes F41.1 Generalized anxiety disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F32"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Major depressive disorder, single episode",
+          "SuggestedLabel": "Depression",
+          "Note": "Includes F32.9 Major depressive disorder, single episode, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R45.85"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Homicidal and suicidal ideations",
+          "SuggestedLabel": "Homicidal ideation",
+          "Note": "8/29 removed \"and suicidal\" from EMS Description, already covered in R45.851"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F99"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Mental disorder, not otherwise specified",
+          "SuggestedLabel": "Mental illness, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R45.89"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Other symptoms and signs involving emotional state",
+          "SuggestedLabel": "Other emotional symptoms"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.8"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Other specific personality disorders",
+          "SuggestedLabel": "Other personality disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R45.851"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Suicidal ideations",
+          "SuggestedLabel": "Suicidal ideation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T14.91"
+          },
+          "Category": "Emotional State/Behavior",
+          "SourceLabel": "Suicide attempt",
+          "SuggestedLabel": "Suicide attempt"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R73.9"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Hyperglycemia, unspecified",
+          "SuggestedLabel": "Hyperglycemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E13.65"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Other specified diabetes mellitus with hyperglycemia",
+          "SuggestedLabel": "Hyperglycemia, known diabetic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E16.2"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Hypoglycemia, unspecified",
+          "SuggestedLabel": "Hypoglycemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E13.64"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Other specified diabetes mellitus with hypoglycemia",
+          "SuggestedLabel": "Hypoglycemia, known diabetic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N17.8"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Other acute kidney failure",
+          "SuggestedLabel": "Kidney failure, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.6"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "End stage renal disease",
+          "SuggestedLabel": "Kidney/renal disease requiring dialysis",
+          "Note": "Includes Z99.2 Dependence on renal dialysis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N39.0"
+          },
+          "Category": "Endocrine/Urinary",
+          "SourceLabel": "Urinary tract infection, site not specified",
+          "SuggestedLabel": "Urinary tract infection (UTI)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R50.9"
+          },
+          "Category": "Illness",
+          "SourceLabel": "Fever, unspecified",
+          "SuggestedLabel": "Fever"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R68.89"
+          },
+          "Category": "Illness",
+          "SourceLabel": "Other general symptoms and signs",
+          "SuggestedLabel": "General symptoms"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R69"
+          },
+          "Category": "Illness",
+          "SourceLabel": "Illness, unspecified",
+          "SuggestedLabel": "Illness, NOS",
+          "Note": "8/21/20 \"NOS\" added to EMS description"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A41.9"
+          },
+          "Category": "Illness",
+          "SourceLabel": "Sepsis, unspecified organism",
+          "SuggestedLabel": "Sepsis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B99.9"
+          },
+          "Category": "Illness",
+          "SourceLabel": "Unspecified infectious disease",
+          "SuggestedLabel": "Unspecified infectious disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S99.91"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of ankle",
+          "SuggestedLabel": "Ankle injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T30.0"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Burn of unspecified body region, unspecified degree",
+          "SuggestedLabel": "Burn, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S06.0X9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Concussion with loss of consciousness of unspecified duration",
+          "SuggestedLabel": "Concussion, with LOC"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S06.0"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Concussion",
+          "SuggestedLabel": "Concussion, without LOC",
+          "Note": "Includes S06.0X0A Concussion without loss of consciousness, initial encounter and S06.0X9A"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T79.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified early complication of trauma",
+          "SuggestedLabel": "Early complication of trauma",
+          "Note": "Includes T79.9XXA Unspecified early complication of trauma, initial encounter"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S09.93"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of face",
+          "SuggestedLabel": "Facial injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S99.92"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of foot",
+          "SuggestedLabel": "Foot injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S59.91"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of forearm",
+          "SuggestedLabel": "Forearm injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S09.90"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of head",
+          "SuggestedLabel": "Head injury",
+          "Note": "Includes S09.90XA Unspecified injury of head, initial encounter"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R58"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Hemorrhage, not elsewhere classified",
+          "SuggestedLabel": "Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S79.91"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of hip",
+          "SuggestedLabel": "Hip injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T14.90"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Injury, unspecified",
+          "SuggestedLabel": "Injury, unspecified",
+          "Note": "Includes T14.8 Other injury of unspecified body region"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S39.92"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of lower back",
+          "SuggestedLabel": "Lower back injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S89.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of lower leg",
+          "SuggestedLabel": "Lower leg injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T07"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified multiple injuries",
+          "SuggestedLabel": "Multiple injuries"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S19.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of neck",
+          "SuggestedLabel": "Neck injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S39.93"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of pelvis",
+          "SuggestedLabel": "Pelvis injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S49.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of shoulder and upper arm",
+          "SuggestedLabel": "Shoulder/upper arm injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S79.92"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of thigh",
+          "SuggestedLabel": "Thigh injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S29.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of thorax",
+          "SuggestedLabel": "Thorax injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "S69.9"
+          },
+          "Category": "Injury",
+          "SourceLabel": "Unspecified injury of wrist, hand and finger(s)",
+          "SuggestedLabel": "Wrist/hand/finger injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R41.82"
+          },
+          "Category": "Level of Consciousness",
+          "SourceLabel": "Altered mental status, unspecified",
+          "SuggestedLabel": "Altered mental status"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R40.4"
+          },
+          "Category": "Level of Consciousness",
+          "SourceLabel": "Transient alteration of awareness",
+          "SuggestedLabel": "Altered mental status, transient"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R41.0"
+          },
+          "Category": "Level of Consciousness",
+          "SourceLabel": "Disorientation, unspecified",
+          "SuggestedLabel": "Disoriented"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R55"
+          },
+          "Category": "Level of Consciousness",
+          "SourceLabel": "Syncope and collapse",
+          "SuggestedLabel": "Fainting/collapse"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R53.83"
+          },
+          "Category": "Malaise",
+          "SourceLabel": "Other fatigue",
+          "SuggestedLabel": "Fatigue"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R53.81"
+          },
+          "Category": "Malaise",
+          "SourceLabel": "Other malaise",
+          "SuggestedLabel": "Malaise (feeling unwell)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M62.81"
+          },
+          "Category": "Malaise",
+          "SourceLabel": "Muscle weakness (generalized)",
+          "SuggestedLabel": "Muscle weakness"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R53.1"
+          },
+          "Category": "Malaise",
+          "SourceLabel": "Weakness",
+          "SuggestedLabel": "Weakness"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z74.01"
+          },
+          "Category": "Mobility",
+          "SourceLabel": "Bed confinement status",
+          "SuggestedLabel": "Bedridden"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z74.09"
+          },
+          "Category": "Mobility",
+          "SourceLabel": "Other reduced mobility",
+          "SuggestedLabel": "Reduced mobility"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R56.9"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Unspecified convulsions",
+          "SuggestedLabel": "Convulsions, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R42"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Dizziness and giddiness",
+          "SuggestedLabel": "Lightheaded/vertigo"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.909"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Epilepsy, unspecified, not intractable, without status epilepticus",
+          "SuggestedLabel": "Seizure, epileptic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.89"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Other seizures",
+          "SuggestedLabel": "Seizure, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.901"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Epilepsy, unspecified, not intractable, with status epilepticus",
+          "SuggestedLabel": "Seizure, status epilepticus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I63.9"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Cerebral infarction, unspecified",
+          "SuggestedLabel": "Stroke"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G45.9"
+          },
+          "Category": "Neurological",
+          "SourceLabel": "Transient cerebral ischemic attack, unspecified",
+          "SuggestedLabel": "TIA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z00.00"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for general adult medical examination without abnormal findings",
+          "SuggestedLabel": "Adult general exam, no finding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z00.129"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for routine child health examination without abnormal findings",
+          "SuggestedLabel": "Child general exam, no finding"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z51.89"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for other specified aftercare",
+          "SuggestedLabel": "Encounter for aftercare"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z71.1"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Person with feared health complaint in whom no diagnosis is made",
+          "SuggestedLabel": "Encounter, feared condition not observed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z00"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for general examination without complaint, suspected or reported diagnosis",
+          "SuggestedLabel": "General exam, no complaint"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z04.9"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for examination and observation for unspecified reason",
+          "SuggestedLabel": "General exam, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z03.89"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for observation for other suspected diseases and conditions ruled out",
+          "SuggestedLabel": "Observation only"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z04.6"
+          },
+          "Category": "No Patient Complaint",
+          "SourceLabel": "Encounter for general psychiatric examination, requested by authority",
+          "SuggestedLabel": "Psych exam, requested by authority"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T76"
+          },
+          "Category": "Other",
+          "SourceLabel": "Adult and child abuse, neglect and other maltreatment, suspected",
+          "SuggestedLabel": "Abuse/Neglect NOS, suspected",
+          "Note": "Added by request Jira NEMPUB-284"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T78.40"
+          },
+          "Category": "Other",
+          "SourceLabel": "Allergy, unspecified",
+          "SuggestedLabel": "Allergic reaction, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E86.0"
+          },
+          "Category": "Other",
+          "SourceLabel": "Dehydration",
+          "SuggestedLabel": "Dehydration"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T67"
+          },
+          "Category": "Other",
+          "SourceLabel": "Effects of heat and light",
+          "SuggestedLabel": "Heat related (heat stroke/exhaustion)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D49"
+          },
+          "Category": "Other",
+          "SourceLabel": "Neoplasms of unspecified behavior",
+          "SuggestedLabel": "New growth, tumor"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R99"
+          },
+          "Category": "Other",
+          "SourceLabel": "Ill-defined and unknown cause of mortality",
+          "SuggestedLabel": "Obvious death"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M54.9"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Dorsalgia, unspecified",
+          "SuggestedLabel": "Back pain, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R51"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Headache",
+          "SuggestedLabel": "Headache"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M79.6"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pain in limb, hand, foot, fingers and toes",
+          "SuggestedLabel": "Limb/hand/foot/fingers/toes pain",
+          "Note": "Includes M79.609 Pain in unspecified limb"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M54.5"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Low back pain",
+          "SuggestedLabel": "Lower back pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G89.1"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Acute pain, not elsewhere classified",
+          "SuggestedLabel": "Pain, acute"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G89.11"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Acute pain due to trauma",
+          "SuggestedLabel": "Pain, acute due to trauma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G89.2"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Chronic pain, not elsewhere classified",
+          "SuggestedLabel": "Pain, chronic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R52"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pain, unspecified",
+          "SuggestedLabel": "Pain, NOS",
+          "Note": "Includes G89: Pain, not elsewhere classified (related to nervous system)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R10.2"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pelvic and perineal pain",
+          "SuggestedLabel": "Pelvic/perineal pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O80"
+          },
+          "Category": "Reproductive System",
+          "SourceLabel": "Encounter for full-term uncomplicated delivery",
+          "SuggestedLabel": "Normal delivery"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O26.90"
+          },
+          "Category": "Reproductive System",
+          "SourceLabel": "Pregnancy related conditions, unspecified, unspecified trimester",
+          "SuggestedLabel": "Pregnancy related"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N93.9"
+          },
+          "Category": "Reproductive System",
+          "SourceLabel": "Abnormal uterine and vaginal bleeding, unspecified",
+          "SuggestedLabel": "Vaginal bleeding, abnormal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J45"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Asthma",
+          "SuggestedLabel": "Asthma",
+          "Note": "Includes J45.901 Unspecified asthma with (acute) exacerbation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J98.01"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute bronchospasm",
+          "SuggestedLabel": "Bronchospasm, acute"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J00"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute nasopharyngitis [common cold]",
+          "SuggestedLabel": "Common cold"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J44.1"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Chronic obstructive pulmonary disease with (acute) exacerbation",
+          "SuggestedLabel": "COPD",
+          "Note": "Includes J44.9 Chronic obstructive pulmonary disease, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R06.00"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Dyspnea, unspecified",
+          "SuggestedLabel": "Difficulty breathing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J11"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Influenza due to unidentified influenza virus",
+          "SuggestedLabel": "Flu"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J81.0"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute pulmonary edema",
+          "SuggestedLabel": "Fluid in lungs"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R04.0"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Epistaxis",
+          "SuggestedLabel": "Nosebleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J18.9"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Pneumonia, unspecified organism",
+          "SuggestedLabel": "Pneumonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J80"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute respiratory distress syndrome",
+          "SuggestedLabel": "Respiratory distress"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J96.9"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Respiratory failure, unspecified",
+          "SuggestedLabel": "Respiratory failure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J98.9"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Respiratory disorder, unspecified",
+          "SuggestedLabel": "Respiratory, other disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "R06.02"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Shortness of breath",
+          "SuggestedLabel": "Shortness of breath"
+        }
+      ]
+    }
+  }
+}

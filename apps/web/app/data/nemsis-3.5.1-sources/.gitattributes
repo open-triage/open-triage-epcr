@@ -1,0 +1,3 @@
+*.txt -diff -text
+xsd/*.xsd -diff -text
+lists/*.json -diff -text

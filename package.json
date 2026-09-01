@@ -6,7 +6,9 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "concurrently -n web,api -c cyan,magenta \"npm run dev -w @open-triage/web\" \"npm run dev -w @open-triage/api\"",
-    "build": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
+    "build": "npm run check:nemsis-data-model && npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
+    "generate:nemsis-data-model": "node apps/web/scripts/generate-nemsis-data-model.mjs",
+    "check:nemsis-data-model": "node apps/web/scripts/generate-nemsis-data-model.mjs --check",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"

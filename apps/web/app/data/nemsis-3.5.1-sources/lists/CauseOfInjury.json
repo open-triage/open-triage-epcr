@@ -1,0 +1,777 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/",
+            "Value": "ICD-10"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "icd10CodeInjury"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eInjury.01"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2023-02-14",
+          "Value": {
+            "Value": "W54"
+          },
+          "Category": "Animal",
+          "SourceLabel": "Contact with dog",
+          "SuggestedLabel": "Contact with dog"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W64"
+          },
+          "Category": "Animal",
+          "SourceLabel": "Exposure to other animate mechanical forces",
+          "SuggestedLabel": "Contact with nonvenomous animal, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T71"
+          },
+          "Category": "Asphyxiation",
+          "SourceLabel": "Asphyxiation",
+          "SuggestedLabel": "Asphyxiation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T71.16"
+          },
+          "Category": "Asphyxiation",
+          "SourceLabel": "Asphyxiation due to hanging",
+          "SuggestedLabel": "Hanging"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T71.13"
+          },
+          "Category": "Asphyxiation",
+          "SourceLabel": "Asphyxiation due to being trapped in bed linens",
+          "SuggestedLabel": "Trapped in bed linens"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W51"
+          },
+          "Category": "Bodily Force",
+          "SourceLabel": "Accidental striking against or bumped into by another person",
+          "SuggestedLabel": "Hit against or bumped into by another person (accidental)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W50"
+          },
+          "Category": "Bodily Force",
+          "SourceLabel": "Accidental hit, strike, kick, twist, bite or scratch by another person",
+          "SuggestedLabel": "Hit/kick/bite/scratch by another person (accidental)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W65"
+          },
+          "Category": "Drowning",
+          "SourceLabel": "Accidental drowning and submersion while in bath-tub",
+          "SuggestedLabel": "Bath-tub"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W69"
+          },
+          "Category": "Drowning",
+          "SourceLabel": "Accidental drowning and submersion while in natural water",
+          "SuggestedLabel": "Natural water"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W74"
+          },
+          "Category": "Drowning",
+          "SourceLabel": "Unspecified cause of accidental drowning and submersion",
+          "SuggestedLabel": "Other"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W67"
+          },
+          "Category": "Drowning",
+          "SourceLabel": "Accidental drowning and submersion while in swimming-pool",
+          "SuggestedLabel": "Swimming pool"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X31"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Exposure to excessive natural cold",
+          "SuggestedLabel": "Exposure to excessive natural cold"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X30"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Exposure to excessive natural heat",
+          "SuggestedLabel": "Exposure to excessive natural heat"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X00"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Exposure to uncontrolled fire in building or structure",
+          "SuggestedLabel": "Exposure to uncontrolled fire in building or structure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W06"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall from bed",
+          "SuggestedLabel": "Bed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W07"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall from chair",
+          "SuggestedLabel": "Chair"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y30"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Falling, jumping or pushed from a high place, undetermined intent",
+          "SuggestedLabel": "Fall/jump/push from high place, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W08"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall from other furniture",
+          "SuggestedLabel": "Furniture, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W00.9"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Unspecified fall due to ice and snow",
+          "SuggestedLabel": "Ice, snow"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W11"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall on and from ladder",
+          "SuggestedLabel": "Ladder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W17"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Other fall from one level to another",
+          "SuggestedLabel": "One level to another"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W18"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Other slipping, tripping and stumbling and falls",
+          "SuggestedLabel": "Other slipping, tripping and stumbling and falls"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W09"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall on and from playground equipment",
+          "SuggestedLabel": "Playground equipment"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W01"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall on same level from slipping, tripping and stumbling",
+          "SuggestedLabel": "Same level slip, trip, stumble"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W18.30"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall on same level, unspecified",
+          "SuggestedLabel": "Same level, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W18.2"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall in (into) shower or empty bathtub",
+          "SuggestedLabel": "Shower/empty bath-tub"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W18.4"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Slipping, tripping and stumbling without falling",
+          "SuggestedLabel": "Slip, trip, stumble without fall"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W10.9"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall (on) (from) unspecified stairs and steps",
+          "SuggestedLabel": "Stairs/steps"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W18.1"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall from or off toilet",
+          "SuggestedLabel": "Toilet"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W19"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Unspecified fall",
+          "SuggestedLabel": "Unspecified fall, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W05"
+          },
+          "Category": "Fall",
+          "SourceLabel": "Fall from non-moving wheelchair, nonmotorized scooter and motorized mobility scooter",
+          "SuggestedLabel": "Wheelchair/nonmotorized scooter/motorized mobility scooter"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T76"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Adult and child abuse, neglect and other maltreatment, suspected",
+          "SuggestedLabel": "Abuse/Neglect NOS, suspected"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y00"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by blunt object",
+          "SuggestedLabel": "Assault by blunt object"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y04"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by bodily force",
+          "SuggestedLabel": "Assault by bodily force"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X95.9"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by unspecified firearm discharge",
+          "SuggestedLabel": "Assault by firearm discharge"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X99.9"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by unspecified sharp object",
+          "SuggestedLabel": "Assault by stabbing, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y08"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by other specified means",
+          "SuggestedLabel": "Assault, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y09"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Assault by unspecified means",
+          "SuggestedLabel": "Homicide (attempted), NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X74.9"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Intentional self-harm by unspecified firearm discharge",
+          "SuggestedLabel": "Intentional self-harm by firearm"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X83"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Intentional self-harm by other specified means",
+          "SuggestedLabel": "Intentional self-harm, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "X78.9"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Intentional self-harm by unspecified sharp object",
+          "SuggestedLabel": "Intentional self-harm, sharp object"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y33"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Other specified events, undetermined intent",
+          "SuggestedLabel": "Other specified events, undetermined intent"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T14.91"
+          },
+          "Category": "Intent",
+          "SourceLabel": "Suicide attempt",
+          "SuggestedLabel": "Suicide attempt"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y35"
+          },
+          "Category": "Law Enforcement",
+          "SourceLabel": "Legal intervention",
+          "SuggestedLabel": "Legal intervention"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W20"
+          },
+          "Category": "Mechanical Force",
+          "SourceLabel": "Struck by thrown, projected or falling object",
+          "SuggestedLabel": "Struck by thrown/projected/falling object"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W23"
+          },
+          "Category": "Mechanical Force",
+          "SourceLabel": "Caught, crushed, jammed or pinched in or between objects",
+          "SuggestedLabel": "Caught/crushed/jammed/pinched in or between objects"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y29"
+          },
+          "Category": "Mechanical Force",
+          "SourceLabel": "Contact with blunt object, undetermined intent",
+          "SuggestedLabel": "Contact with blunt object, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W22.8"
+          },
+          "Category": "Mechanical Force",
+          "SourceLabel": "Striking against or struck by other objects",
+          "SuggestedLabel": "Struck by other objects"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V86.99"
+          },
+          "Category": "MVC, Non-Traffic Related",
+          "SourceLabel": "Unspecified occupant of other special all-terrain or other off-road motor vehicle injured in nontraffic accident",
+          "SuggestedLabel": "All-terrain/off-road accident, nontraffic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V49.3"
+          },
+          "Category": "MVC, Non-Traffic Related",
+          "SourceLabel": "Car occupant (driver) (passenger) injured in unspecified nontraffic accident",
+          "SuggestedLabel": "Car accident NOS, nontraffic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V29.3"
+          },
+          "Category": "MVC, Non-Traffic Related",
+          "SourceLabel": "Motorcycle rider (driver) (passenger) injured in unspecified nontraffic accident",
+          "SuggestedLabel": "Motorcycle accident NOS, nontraffic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V89.0"
+          },
+          "Category": "MVC, Non-Traffic Related",
+          "SourceLabel": "Person injured in unspecified motor-vehicle accident, nontraffic",
+          "SuggestedLabel": "Other motor-vehicle accident, nontraffic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V86.31"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Unspecified occupant of ambulance or fire engine injured in traffic accident",
+          "SuggestedLabel": "Ambulance/fire engine accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V79.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Bus occupant (driver) (passenger) injured in unspecified traffic accident",
+          "SuggestedLabel": "Bus accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V49.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Car occupant (driver) (passenger) injured in unspecified traffic accident",
+          "SuggestedLabel": "Car accident, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V49"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Car occupant injured in other and unspecified transport accidents",
+          "SuggestedLabel": "Car occupant injured in transport accident, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V43"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Car occupant injured in collision with car, pick-up truck or van",
+          "SuggestedLabel": "Collision with car/truck/van, car occupant injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V40.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Unspecified car occupant injured in collision with pedestrian or animal in traffic accident",
+          "SuggestedLabel": "Collision with pedestrian/animal, car occupant injury"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V49.6"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Unspecified car occupant injured in collision with other and unspecified motor vehicles in traffic accident",
+          "SuggestedLabel": "Collision with unspecified motor vehicles, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y32"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Crashing of motor vehicle, undetermined intent",
+          "SuggestedLabel": "Crashing of motor vehicle, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V69.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Occupant (driver) (passenger) of heavy transport vehicle injured in unspecified traffic accident",
+          "SuggestedLabel": "Heavy transport vehicle accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V29.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Motorcycle rider (driver) (passenger) injured in unspecified traffic accident",
+          "SuggestedLabel": "Motorcycle accident, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V99"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Unspecified transport accident",
+          "SuggestedLabel": "Transport accident, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V59.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Occupant (driver) (passenger) of pick-up truck or van injured in unspecified traffic accident",
+          "SuggestedLabel": "Truck/van accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V87"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Traffic accident of specified type but victim's mode of transport unknown",
+          "SuggestedLabel": "Unknown mode of transport"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V89.9"
+          },
+          "Category": "MVC, Traffic Related",
+          "SourceLabel": "Person injured in unspecified vehicle accident",
+          "SuggestedLabel": "Vehicle accident, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W45"
+          },
+          "Category": "Other",
+          "SourceLabel": "Foreign body or object entering through skin",
+          "SuggestedLabel": "Foreign body or object entering through skin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T14.90"
+          },
+          "Category": "Other",
+          "SourceLabel": "Injury, unspecified",
+          "SuggestedLabel": "Injury, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T14.8"
+          },
+          "Category": "Other",
+          "SourceLabel": "Other injury of unspecified body region",
+          "SuggestedLabel": "Other injury of unspecified body region"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T75.89"
+          },
+          "Category": "Other",
+          "SourceLabel": "Other specified effects of external causes",
+          "SuggestedLabel": "Other specified effects of external causes"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V19.3"
+          },
+          "Category": "Pedal Cyclist",
+          "SourceLabel": "Pedal cyclist (driver) (passenger) injured in unspecified nontraffic accident",
+          "SuggestedLabel": "Nontraffic accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V19.9"
+          },
+          "Category": "Pedal Cyclist",
+          "SourceLabel": "Pedal cyclist (driver) (passenger) injured in unspecified traffic accident",
+          "SuggestedLabel": "Traffic accident"
+        },
+        {
+          "date": "2024-07-08",
+          "Value": {
+            "Value": "V29.91"
+          },
+          "Category": "Pedal Cyclist",
+          "SourceLabel": "Electric (assisted) bicycle rider (driver) (passenger) injured in unspecified traffic accident",
+          "SuggestedLabel": "Electric Bike"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V03.9"
+          },
+          "Category": "Pedestrian",
+          "SourceLabel": "Pedestrian injured in collision with car, pick-up truck or van, unspecified whether traffic or nontraffic accident",
+          "SuggestedLabel": "Car/truck/van, nontraffic accident"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "V03.1"
+          },
+          "Category": "Pedestrian",
+          "SourceLabel": "Pedestrian injured in collision with car, pick-up truck or van in traffic accident",
+          "SuggestedLabel": "Car/truck/van, traffic accident"
+        },
+        {
+          "date": "2024-07-08",
+          "Value": {
+            "Value": "V00.84"
+          },
+          "Category": "Pedestrian",
+          "SourceLabel": "Accident with standing micro-mobility pedestrian conveyance",
+          "SuggestedLabel": "Electric scooters/boards/skates"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T50.90"
+          },
+          "Category": "Poisoning",
+          "SourceLabel": "Poisoning by, adverse effect of and underdosing of unspecified drugs, medicaments and biological substances",
+          "SuggestedLabel": "Poisoning by unspecified substance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T51.9"
+          },
+          "Category": "Poisoning",
+          "SourceLabel": "Toxic effect of unspecified alcohol",
+          "SuggestedLabel": "Toxic effect of alcohol"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "T65.9"
+          },
+          "Category": "Poisoning",
+          "SourceLabel": "Toxic effect of unspecified substance",
+          "SuggestedLabel": "Toxic effect of unknown substance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W26"
+          },
+          "Category": "Sharp Objects",
+          "SourceLabel": "Contact with other sharp objects",
+          "SuggestedLabel": "Knife/sword/dagger"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W25"
+          },
+          "Category": "Sharp Objects",
+          "SourceLabel": "Contact with sharp glass",
+          "SuggestedLabel": "Sharp glass"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Y28.9"
+          },
+          "Category": "Sharp Objects",
+          "SourceLabel": "Contact with unspecified sharp object, undetermined intent",
+          "SuggestedLabel": "Sharp object, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "W31.9"
+          },
+          "Category": "Tools/Devices",
+          "SourceLabel": "Contact with unspecified machinery",
+          "SuggestedLabel": "Contact with machinery NOS"
+        }
+      ]
+    }
+  }
+}

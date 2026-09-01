@@ -1,5 +1,12 @@
 # Local clinical terminology assets
 
+`nemsis-data-model-3.5.1.json` is the complete, generated catalog of all 453
+standard elements reachable in the official NEMSIS 3.5.1 `EMSDataSet`. Its
+pinned XSD and machine-readable data-dictionary inputs, provenance, and
+regeneration instructions are documented in `nemsis-3.5.1-sources/README.md`.
+The application imports this bundled JSON through `nemsis-data-model.ts`; it
+does not contact NEMSIS at runtime.
+
 `nemsis-procedures.json` is a compact, offline projection of the official NEMSIS
 3.5.1 `DefinedLists/Procedure/Procedure.json` file. It retains each SNOMED CT
 code, NEMSIS suggested display label, source label, and category used by search.
