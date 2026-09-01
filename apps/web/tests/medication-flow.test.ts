@@ -4,8 +4,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, searchMedications } from "../app/medication-catalog";
+import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type ShellState } from "../app/synthetic-encounter";
+import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type EncounterEvent, type ShellState } from "../app/synthetic-encounter";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -90,4 +92,57 @@ test("multiple administrations persist distinctly and reopen for canonical editi
   const storage = memoryStorage();
   saveShellState(storage, state);
   assert.equal(loadShellState(storage)?.encounter.events.find((event) => event.id === "med-2")?.medication?.medicationCode, "1191");
+});
+
+test("configured medication metadata drives validation, warnings, review, and restored presentation", () => {
+  const base = adultChestPainDefinition.events.medication;
+  const definition: EncounterDefinition = {
+    ...adultChestPainDefinition,
+    events: {
+      ...adultChestPainDefinition.events,
+      medication: {
+        ...base,
+        fields: [
+          { ...base.fields[0]!, label: "Choose treatment" },
+          { ...base.fields[2]!, required: false },
+          { ...base.fields[3]!, required: true },
+          { ...base.fields[4]!, reference: "eMedications.04" },
+          { ...base.fields[5]!, label: "Observed effect", warnWhenMissing: true },
+          base.fields[1]!,
+        ],
+        doseUnits: ["configured-unit"],
+        routes: ["Configured route"],
+        labels: { ...base.labels, category: "Treatment", routeMissing: "Configured route missing", responseMissing: "Configured effect missing" },
+        validationMessages: { ...base.validationMessages, invalidUnit: "Choose the configured unit", responseMissing: "Record the configured effect" },
+      },
+    },
+  };
+  assert.deepEqual(definition.events.medication.fields.map((field) => field.id), ["medication", "dose", "unit", "route", "response", "time"]);
+
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "medication-started", id: "configured-med", time: "08:40" }, definition);
+  state = transitionShell(state, { type: "medication-selected", code: "7052", codeType: "RxNorm", label: "Morphine" }, definition);
+  state = transitionShell(state, { type: "medication-draft-changed", field: "unit", value: "configured-unit" }, definition);
+  state = transitionShell(state, { type: "medication-draft-changed", field: "route", value: "Configured route" }, definition);
+  assert.equal(validateMedication(state.medicationDraft!, definition).errors.length, 0, "configured optional dose is accepted");
+  state = transitionShell(state, { type: "medication-warning-acknowledged", acknowledged: true }, definition);
+  state = transitionShell(state, { type: "medication-saved" }, definition);
+
+  const saved = state.encounter.events.find((event) => event.id === "configured-med")!;
+  const warning = reviewEncounter(state, definition).find((finding) => finding.target.eventId === saved.id)!;
+  assert.equal(warning.category, "Treatment");
+  assert.equal(warning.reference, "eMedications.07");
+  assert.match(warning.message, /Record the configured effect/);
+  assert.equal(warning.acknowledged, true);
+  assert.equal(encounterEventDetail(saved, definition), "Configured route · Configured effect missing");
+
+  const legacySaved: EncounterEvent = { ...saved, title: "Old title", detail: "Old detail", reference: "old reference" };
+  assert.deepEqual(encounterEventPresentation(legacySaved, definition), { title: "Morphine configured-unit", reference: "eMedications.03 · RxNorm 7052" });
+  assert.equal(encounterEventDetail(legacySaved, definition), "Configured route · Configured effect missing");
+
+  state = transitionShell(state, { type: "medication-opened", id: saved.id }, definition);
+  state = transitionShell(state, { type: "medication-draft-changed", field: "response", value: "Pain improved" }, definition);
+  assert.equal(state.medicationDraft?.warningAcknowledged, false, "correcting the warning resets acknowledgement");
+  state = transitionShell(state, { type: "medication-saved" }, definition);
+  assert.equal(reviewEncounter(state, definition).some((finding) => finding.target.eventId === saved.id), false);
+  assert.equal(encounterEventDetail(state.encounter.events.find((event) => event.id === saved.id)!, definition), "Configured route · Pain improved");
 });

@@ -36,6 +36,29 @@ export const adultChestPainDefinition = {
       references: { time: "eNarrative.01", summary: "eNarrative.01" },
       validationMessages: { invalidTime: "Enter a valid clinical time (HH:mm).", summaryRequired: "Add a clinical note before signing." },
     },
+    medication: {
+      quickAction: { visible: true, label: "Add medication" },
+      terminology: { catalog: "nemsis-3.5.1-medications" },
+      fields: [
+        { id: "medication", label: "Search medications", required: true, reference: "eMedications.03", placeholder: "Try aspirin, fentanyl, saline…" },
+        { id: "time", label: "Medication time", required: true, reference: "eMedications.01" },
+        { id: "dose", label: "Dose", required: true, reference: "eMedications.05", placeholder: "e.g. 4" },
+        { id: "unit", label: "Unit", required: true, reference: "eMedications.06" },
+        { id: "route", label: "Route", required: true, reference: "eMedications.04" },
+        { id: "response", label: "Patient response", required: false, reference: "eMedications.07", placeholder: "e.g. pain 8 → 4; no adverse reaction", warnWhenMissing: true },
+      ],
+      doseUnits: ["mg", "mcg", "g", "mL", "units", "L/min"],
+      routes: ["PO — Oral", "IV — Intravenous", "IM — Intramuscular", "IN — Intranasal", "SL — Sublingual", "IO — Intraosseous", "Nebulized", "Topical"],
+      labels: {
+        category: "Medication", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event", editorTitle: "Medication", closeEditor: "Close medication editor",
+        searchResults: "Medication search results", availableOffline: "available offline", noMatches: "No medication matches your search.", change: "Change", select: "Select…", selectRoute: "Select route…",
+        cancel: "Cancel", add: "Add medication", save: "Save changes", medicationMissing: "Medication not selected", routeMissing: "Route not documented", responseMissing: "Response not documented",
+      },
+      validationMessages: {
+        invalidTime: "Enter a valid 24-hour time.", invalidMedication: "Select a medication from the NEMSIS recommended list.", invalidDose: "Dose must be a number greater than zero.",
+        invalidUnit: "Select a valid configured dose unit.", invalidRoute: "Select a valid configured administration route.", responseMissing: "Medication response is not documented. You can acknowledge this warning and add it later.",
+      },
+    },
     vitals: {
       quickAction: { visible: true, label: "Add vital signs" },
       labels: {

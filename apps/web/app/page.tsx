@@ -44,6 +44,7 @@ export default function Home() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const noteDefinition = syntheticEncounterDefinition.events.note;
+  const medicationDefinition = syntheticEncounterDefinition.events.medication;
   const vitalDefinition = syntheticEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
@@ -213,7 +214,7 @@ export default function Home() {
 
       <nav className="quick-actions" aria-label="Quick documentation">
         {vitalDefinition.quickAction.visible && <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title={vitalDefinition.labels.timelineTitle} aria-label={vitalDefinition.quickAction.label} type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>}
-        <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title="Medication" aria-label="Add medication" type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>
+        {medicationDefinition.quickAction.visible && <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title={medicationDefinition.labels.editorTitle} aria-label={medicationDefinition.quickAction.label} type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>}
         <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
         {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
         <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
@@ -382,7 +383,7 @@ export default function Home() {
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === "Medication" ? editingFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={syntheticEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
       {shell.procedureDraft && (
         <div className="dialog-backdrop" role="presentation">
