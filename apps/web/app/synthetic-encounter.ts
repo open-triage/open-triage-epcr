@@ -3,6 +3,7 @@ import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medicat
 import { validateVitals, VITAL_RULES } from "./vital-validation";
 import { adultChestPainDefinition } from "./adult-chest-pain-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
+import type { EncounterDefinition } from "./encounter-definition";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -148,13 +149,27 @@ export function validateMedication(draft: MedicationDraft): MedicationValidation
 export type ReviewFinding = {
   readonly id: string;
   readonly severity: "error" | "warning";
-  readonly category: "Vital" | "Medication" | "Procedure" | "Note";
+  readonly category: string;
   readonly title: string;
   readonly reference: string;
   readonly message: string;
   readonly target: { readonly eventId: string; readonly vitalField?: VitalField };
   readonly acknowledged: boolean;
 };
+
+export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
+  if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
+  return { title: event.title, reference: event.reference };
+}
+
+export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
+  if (event.kind !== "note") return [];
+  const note = definition.events.note;
+  const findings: Array<{ reference: string; message: string }> = [];
+  if (note.required.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push({ reference: note.references.time, message: note.validationMessages.invalidTime });
+  if (note.required.summary && !event.detail.trim()) findings.push({ reference: note.references.summary, message: note.validationMessages.summaryRequired });
+  return findings;
+}
 
 function eventFinding(
   state: ShellState,
@@ -177,7 +192,7 @@ function eventFinding(
 }
 
 /** Consolidates validation for timeline entries before signing. */
-export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding> {
+export function reviewEncounter(state: ShellState, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<ReviewFinding> {
   const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
       const validation = validateVitals(event.time, event.vitals);
@@ -207,14 +222,11 @@ export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding>
         ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Procedure", "eProcedures", message, index, event.procedure!.warningAcknowledged)),
       ];
     }
-    if (event.kind === "note" && !event.detail.trim()) {
-      return [eventFinding(state, event, "error", "Note", "eNarrative.01", "Add a clinical note before signing.", 0)];
-    }
     if (event.kind === "note") {
-      const findings: ReviewFinding[] = [];
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Enter a valid clinical time (HH:mm).", 0));
-      if (!event.detail.trim()) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Clinical note summary is required.", 1));
-      return findings;
+      const presentation = encounterEventPresentation(event, definition);
+      return validateNoteEvent(event, definition).map((finding, index) => eventFinding(
+        state, { ...event, ...presentation }, "error", definition.events.note.labels.category, finding.reference, finding.message, index,
+      ));
     }
     return [];
   });
@@ -239,7 +251,7 @@ function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<Encou
   ).map(({ event }) => event);
 }
 
-export function transitionShell(state: ShellState, action: ShellAction): ShellState {
+export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = syntheticEncounterDefinition): ShellState {
   switch (action.type) {
     case "view-selected":
       return { ...state, view: action.view };
@@ -248,18 +260,18 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "review-opened":
       return { ...state, view: "review", noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null };
     case "review-finding-selected": {
-      const finding = reviewEncounter(state).find((candidate) => candidate.id === action.id);
+      const finding = reviewEncounter(state, definition).find((candidate) => candidate.id === action.id);
       if (!finding) return state;
       const eventId = finding.target.eventId;
       const event = state.encounter.events.find((candidate) => candidate.id === eventId);
       if (!event) return state;
       const opened = event.vitals
-        ? transitionShell(state, { type: "vitals-opened", id: event.id })
+        ? transitionShell(state, { type: "vitals-opened", id: event.id }, definition)
         : event.kind === "medication"
-          ? transitionShell(state, { type: "medication-opened", id: event.id })
+          ? transitionShell(state, { type: "medication-opened", id: event.id }, definition)
           : event.kind === "procedure"
-            ? transitionShell(state, { type: "procedure-opened", id: event.id })
-            : transitionShell(state, { type: "note-opened", id: event.id });
+            ? transitionShell(state, { type: "procedure-opened", id: event.id }, definition)
+            : transitionShell(state, { type: "note-opened", id: event.id }, definition);
       return { ...opened, view: "timeline" };
     }
     case "review-warning-acknowledged":
@@ -270,7 +282,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
           : state.acknowledgedWarnings.filter((id) => id !== action.id),
       };
     case "review-finished": {
-      const findings = reviewEncounter(state);
+      const findings = reviewEncounter(state, definition);
       return findings.some((finding) => finding.severity === "error" || !finding.acknowledged)
         ? state
         : { ...state, view: "summary" };
@@ -295,9 +307,9 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         date: draft.date,
         time: draft.time.slice(0, 5),
         kind: "note",
-        title: "Clinical note",
+        title: definition.events.note.labels.timelineTitle,
         detail: draft.summary.trim(),
-        reference: "eNarrative.01",
+        reference: definition.events.note.references.summary,
         visitorEntered: true,
       };
       const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
@@ -486,4 +498,8 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     default:
       return state;
   }
+}
+
+export function syntheticEncounterReducer(state: ShellState, action: ShellAction): ShellState {
+  return transitionShell(state, action, syntheticEncounterDefinition);
 }

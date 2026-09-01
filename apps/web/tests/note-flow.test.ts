@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { clearShellState, loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
-import { INITIAL_SHELL_STATE, transitionShell, type ShellState } from "../app/synthetic-encounter";
+import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import type { EncounterDefinition } from "../app/encounter-definition";
+import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/synthetic-encounter";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -82,4 +84,57 @@ test("reset clears local progress and restores the version-controlled baseline",
   assert.strictEqual(reset, INITIAL_SHELL_STATE);
   assert.equal(reset.encounter.events.length, 4);
   assert.equal(reset.encounter.events.some((event) => event.visitorEntered), false);
+});
+
+test("configured note metadata drives capture, validation, review navigation, and summary presentation", () => {
+  const base = adultChestPainDefinition.events.note;
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: {
+    ...base,
+    quickAction: { visible: false, label: "Record observation" },
+    labels: { ...base.labels, category: "Observation", timelineTitle: "Field observation" },
+    references: { ...base.references, summary: "eNarrative.02" },
+    validationMessages: { ...base.validationMessages, summaryRequired: "Record the observation before finishing." },
+  } } };
+
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "configured-note", time: "09:10" }, definition);
+  state = transitionShell(state, { type: "note-saved" }, definition);
+  const saved = state.encounter.events.find((event) => event.id === "configured-note")!;
+  assert.equal(saved.title, "Field observation");
+  assert.equal(saved.reference, "eNarrative.02");
+
+  const finding = reviewEncounter(state, definition).find((candidate) => candidate.target.eventId === "configured-note")!;
+  assert.equal(finding.category, "Observation");
+  assert.equal(finding.title, "09:10 · Field observation");
+  assert.equal(finding.reference, "eNarrative.02");
+  assert.equal(finding.message, "Record the observation before finishing.");
+
+  state = transitionShell(state, { type: "review-finding-selected", id: finding.id }, definition);
+  assert.equal(state.noteDraft?.id, "configured-note");
+  assert.deepEqual(encounterEventPresentation(saved, definition), { title: "Field observation", reference: "eNarrative.02" });
+});
+
+test("configured note requiredness can permit an empty summary", () => {
+  const base = adultChestPainDefinition.events.note;
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: { ...base, required: { ...base.required, summary: false } } } };
+  const note: EncounterEvent = { id: "optional-note", time: "09:11", kind: "note", title: "Legacy title", detail: "", reference: "legacy" };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [note, ...INITIAL_SHELL_STATE.encounter.events] } };
+
+  assert.equal(reviewEncounter(state, definition).some((finding) => finding.target.eventId === note.id), false);
+});
+
+test("restored note events resolve current definition metadata instead of persisted labels", () => {
+  const storage = memoryStorage();
+  let state = beginNote();
+  state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Persisted observation" });
+  state = transitionShell(state, { type: "note-saved" });
+  saveShellState(storage, state);
+  const restoredEvent = loadShellState(storage)!.encounter.events.find((event) => event.id === "visitor-note-1")!;
+  const base = adultChestPainDefinition.events.note;
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { note: {
+    ...base,
+    labels: { ...base.labels, timelineTitle: "Configured summary label" },
+    references: { ...base.references, summary: "eNarrative.02" },
+  } } };
+
+  assert.deepEqual(encounterEventPresentation(restoredEvent, definition), { title: "Configured summary label", reference: "eNarrative.02" });
 });

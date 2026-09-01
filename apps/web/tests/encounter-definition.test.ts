@@ -13,6 +13,24 @@ test("validates and serves the bundled versioned encounter definition", () => {
   assert.equal(definition.dispatch.incident.complaint, "Central chest pain radiating to left arm");
   assert.equal(definition.patient.references.name, "ePatient.02");
   assert.equal(definition.dispatch.references.complaint, "eDispatch.01");
+  assert.equal(definition.events.note.quickAction.visible, true);
+  assert.equal(definition.events.note.quickAction.label, "Add clinical note");
+  assert.equal(definition.events.note.required.summary, true);
+  assert.equal(definition.events.note.references.summary, "eNarrative.01");
+});
+
+test("rejects an incomplete note event definition with actionable diagnostics", () => {
+  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  invalid.events = { note: { quickAction: { visible: "yes" }, required: { time: true } } };
+
+  assert.throws(
+    () => validateEncounterDefinition(invalid),
+    (error: unknown) => error instanceof EncounterDefinitionError
+      && error.message.includes("events.note.quickAction.visible must be a boolean")
+      && error.message.includes("events.note.labels must be an object")
+      && error.message.includes("events.note.required.summary must be a boolean")
+      && error.message.includes("events.note.references must be an object"),
+  );
 });
 
 test("rejects an invalid definition with actionable field diagnostics", () => {
@@ -34,4 +52,3 @@ test("reports a missing definition instead of returning partial configuration", 
   const provider = createBundledDefinitionProvider([adultChestPainDefinition]);
   assert.throws(() => provider.get("missing"), /Invalid encounter definition "missing": definition was not found/);
 });
-

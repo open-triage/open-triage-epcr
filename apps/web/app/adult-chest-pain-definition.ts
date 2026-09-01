@@ -23,4 +23,18 @@ export const adultChestPainDefinition = {
       { time: "07:40", title: "Call received", detail: "Chest pain · priority 1", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
     ],
   },
+  events: {
+    note: {
+      quickAction: { visible: true, label: "Add clinical note" },
+      labels: {
+        category: "Note", timelineTitle: "Clinical note", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event",
+        editorTitle: "Clinical note", closeEditor: "Close note editor", time: "Clinical time",
+        timeHelp: "Correct the time if documentation was entered later.", summary: "Note summary",
+        summaryPlaceholder: "Document the clinical observation or decision…", cancel: "Cancel", add: "Add to timeline", save: "Save changes",
+      },
+      required: { time: true, summary: true },
+      references: { time: "eNarrative.01", summary: "eNarrative.01" },
+      validationMessages: { invalidTime: "Enter a valid clinical time (HH:mm).", summaryRequired: "Add a clinical note before signing." },
+    },
+  },
 } as const satisfies EncounterDefinition;
