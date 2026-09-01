@@ -9,6 +9,7 @@ import { clearShellState, loadShellState, saveShellState } from "./local-persist
 import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
 import {
   INITIAL_SHELL_STATE,
+  encounterEventDetail,
   encounterEventPresentation,
   reviewEncounter,
   syntheticEncounterReducer,
@@ -18,7 +19,7 @@ import {
   type VitalField,
   syntheticEncounterDefinition,
 } from "./synthetic-encounter";
-import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
+import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
@@ -43,6 +44,7 @@ export default function Home() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const noteDefinition = syntheticEncounterDefinition.events.note;
+  const vitalDefinition = syntheticEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
@@ -57,8 +59,8 @@ export default function Home() {
   const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
   const procedureDraftValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
   const procedureFindingActive = !!(editingFinding?.category === "Procedure" && procedureDraftValidation && [...procedureDraftValidation.errors, ...procedureDraftValidation.warnings].includes(editingFinding.message));
-  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null;
-  const vitalFindingActive = !!(editingFinding?.category === "Vital" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
+  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, syntheticEncounterDefinition) : null;
+  const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
   const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
@@ -210,7 +212,7 @@ export default function Home() {
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title="Vital signs" aria-label="Add vital signs" type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>
+        {vitalDefinition.quickAction.visible && <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title={vitalDefinition.labels.timelineTitle} aria-label={vitalDefinition.quickAction.label} type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>}
         <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title="Medication" aria-label="Add medication" type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>
         <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
         {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
@@ -257,12 +259,13 @@ export default function Home() {
             {encounter.events.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
               const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
+              const eventDetail = encounterEventDetail(event, syntheticEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
-                    aria-label={`Edit ${presentation.title} at ${event.time}. ${event.detail}`}
+                    aria-label={`Edit ${presentation.title} at ${event.time}. ${eventDetail}`}
                     className="timeline-event-button"
                     type="button"
                     onClick={(clickEvent) => {
@@ -272,7 +275,7 @@ export default function Home() {
                     }}
                   >
                     <span className="event-title">{presentation.title}</span>
-                    <span className="event-detail">{event.detail}</span>
+                    <span className="event-detail">{eventDetail}</span>
                     <small>{presentation.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
@@ -482,25 +485,27 @@ export default function Home() {
         <div className="dialog-backdrop" role="presentation">
           <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
-              <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
-              <button aria-label="Close vital signs editor" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
+              <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
+              <button aria-label={vitalDefinition.labels.closeEditor} type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
             </div>
-            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label="Clinical time" date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <div className="vital-grid">
-              {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (
+              {vitalDefinition.fields.map((configuredField) => {
+                const field = configuredField.id;
+                return (
                 <div className={`vital-field ${vitalFindingActive && editingFinding?.target.vitalField === field ? `finding-frame ${editingFinding.severity}` : ""}`.trim()} key={field}>
-                  <label htmlFor={`vital-${field}`}>{rule.label}</label>
+                  <label htmlFor={`vital-${field}`}>{configuredField.label} <small>{configuredField.unit}</small></label>
                   <div className="vital-inputs">
-                    <input id={`vital-${field}`} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
+                    <input id={`vital-${field}`} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
                     <button
                       type="button"
                       className={`null-value-trigger ${shell.vitalDraft!.values.nullValues[field] ? "active" : ""}`}
-                      aria-label={`Set unavailable or pertinent-negative value for ${rule.label}`}
+                      aria-label={`Set unavailable or pertinent-negative value for ${configuredField.label}`}
                       aria-expanded={openNullField === field}
                       onClick={() => setOpenNullField((current) => current === field ? null : field)}
                     >×</button>
                     {openNullField === field && (
-                      <div className="null-value-menu" role="menu" aria-label={`${rule.label} unavailable or pertinent-negative value`}>
+                      <div className="null-value-menu" role="menu" aria-label={`${configuredField.label} unavailable or pertinent-negative value`}>
                         {shell.vitalDraft!.values.nullValues[field] && (
                           <button
                             autoFocus
@@ -509,7 +514,7 @@ export default function Home() {
                             onClick={() => { dispatch({ type: "vitals-null-changed", field, value: "" }); setOpenNullField(null); }}
                           >Clear exceptional value</button>
                         )}
-                        {nullOptionsFor(rule).filter((option) => option.value).map((option, index) => (
+                        {nullOptionsFor(configuredField).filter((option) => option.value).map((option, index) => (
                           <button
                             autoFocus={!shell.vitalDraft!.values.nullValues[field] && index === 0}
                             key={option.value}
@@ -522,10 +527,10 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
-            <p className="null-help">Unavailable and pertinent-negative choices vary by field.</p>
-            <div className="note-dialog-actions"><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>Cancel</button><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? "Add vital set" : "Save changes"}</button></div>
+            <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
+            <div className="note-dialog-actions"><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>{vitalDefinition.labels.cancel}</button><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
           </section>
         </div>
       )}
@@ -630,7 +635,7 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
         <ol className="summary-timeline">
           {encounter.events.map((event) => {
             const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
-            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{event.detail}</span><small>{presentation.reference}</small></div></li>;
+            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, syntheticEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
           })}
         </ol>
       </section>
