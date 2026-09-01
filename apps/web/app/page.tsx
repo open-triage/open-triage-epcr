@@ -9,6 +9,7 @@ import { clearShellState, loadShellState, saveShellState } from "./local-persist
 import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
 import {
   INITIAL_SHELL_STATE,
+  encounterEventDetail,
   encounterEventPresentation,
   reviewEncounter,
   syntheticEncounterReducer,
@@ -43,6 +44,7 @@ export default function Home() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const noteDefinition = syntheticEncounterDefinition.events.note;
+  const medicationDefinition = syntheticEncounterDefinition.events.medication;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
@@ -211,7 +213,7 @@ export default function Home() {
 
       <nav className="quick-actions" aria-label="Quick documentation">
         <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title="Vital signs" aria-label="Add vital signs" type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>
-        <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title="Medication" aria-label="Add medication" type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>
+        {medicationDefinition.quickAction.visible && <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title={medicationDefinition.labels.editorTitle} aria-label={medicationDefinition.quickAction.label} type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>}
         <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
         {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
         <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
@@ -257,12 +259,13 @@ export default function Home() {
             {encounter.events.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
               const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
+              const detail = encounterEventDetail(event, syntheticEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
-                    aria-label={`Edit ${presentation.title} at ${event.time}. ${event.detail}`}
+                    aria-label={`Edit ${presentation.title} at ${event.time}. ${detail}`}
                     className="timeline-event-button"
                     type="button"
                     onClick={(clickEvent) => {
@@ -272,7 +275,7 @@ export default function Home() {
                     }}
                   >
                     <span className="event-title">{presentation.title}</span>
-                    <span className="event-detail">{event.detail}</span>
+                    <span className="event-detail">{detail}</span>
                     <small>{presentation.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
@@ -379,7 +382,7 @@ export default function Home() {
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === "Medication" ? editingFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={syntheticEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
       {shell.procedureDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -630,7 +633,7 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
         <ol className="summary-timeline">
           {encounter.events.map((event) => {
             const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
-            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{event.detail}</span><small>{presentation.reference}</small></div></li>;
+            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, syntheticEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
           })}
         </ol>
       </section>

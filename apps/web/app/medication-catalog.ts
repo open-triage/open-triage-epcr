@@ -15,6 +15,7 @@ type SourceCode = {
 };
 
 export const MEDICATION_CATALOG_PROVENANCE = manifest;
+export const MEDICATION_CATALOG_ID = "nemsis-3.5.1-medications" as const;
 
 export const MEDICATIONS: ReadonlyArray<MedicationOption> = (source.DefinedList.Codes.Code as ReadonlyArray<SourceCode>).map((item) => ({
   code: item.Value.Value,
@@ -36,4 +37,9 @@ export function searchMedications(query: string, limit = 30): ReadonlyArray<Medi
   return MEDICATIONS
     .filter((item) => normalize(`${item.displayLabel} ${item.sourceLabel} ${item.code}`).includes(needle))
     .slice(0, limit);
+}
+
+export function searchMedicationCatalog(catalog: typeof MEDICATION_CATALOG_ID, query: string, limit = 30): ReadonlyArray<MedicationOption> {
+  if (catalog !== MEDICATION_CATALOG_ID) return [];
+  return searchMedications(query, limit);
 }

@@ -23,6 +23,50 @@ export type NoteEventDefinition = {
   readonly validationMessages: { readonly invalidTime: string; readonly summaryRequired: string };
 };
 
+export type MedicationFieldId = "medication" | "time" | "dose" | "unit" | "route" | "response";
+
+export type MedicationEventDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly terminology: { readonly catalog: "nemsis-3.5.1-medications" };
+  readonly fields: ReadonlyArray<{
+    readonly id: MedicationFieldId;
+    readonly label: string;
+    readonly required: boolean;
+    readonly reference: NemsisReference;
+    readonly placeholder?: string;
+    readonly warnWhenMissing?: boolean;
+  }>;
+  readonly doseUnits: ReadonlyArray<string>;
+  readonly routes: ReadonlyArray<string>;
+  readonly labels: {
+    readonly category: string;
+    readonly newEyebrow: string;
+    readonly editEyebrow: string;
+    readonly editorTitle: string;
+    readonly closeEditor: string;
+    readonly searchResults: string;
+    readonly availableOffline: string;
+    readonly noMatches: string;
+    readonly change: string;
+    readonly select: string;
+    readonly selectRoute: string;
+    readonly cancel: string;
+    readonly add: string;
+    readonly save: string;
+    readonly medicationMissing: string;
+    readonly routeMissing: string;
+    readonly responseMissing: string;
+  };
+  readonly validationMessages: {
+    readonly invalidTime: string;
+    readonly invalidMedication: string;
+    readonly invalidDose: string;
+    readonly invalidUnit: string;
+    readonly invalidRoute: string;
+    readonly responseMissing: string;
+  };
+};
+
 export type EncounterDefinition = {
   readonly schemaVersion: 1;
   readonly id: string;
@@ -45,7 +89,7 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
-  readonly events: { readonly note: NoteEventDefinition };
+  readonly events: { readonly note: NoteEventDefinition; readonly medication: MedicationEventDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
@@ -100,6 +144,32 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
   requiredStrings(note.references, "events.note.references", ["time", "summary"]);
   requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
+  const medication = isRecord(events.medication) ? events.medication : {};
+  const medicationQuickAction = isRecord(medication.quickAction) ? medication.quickAction : {};
+  if (typeof medicationQuickAction.visible !== "boolean") diagnostics.push("events.medication.quickAction.visible must be a boolean");
+  requiredStrings(medicationQuickAction, "events.medication.quickAction", ["label"]);
+  const terminology = isRecord(medication.terminology) ? medication.terminology : {};
+  if (terminology.catalog !== "nemsis-3.5.1-medications") diagnostics.push("events.medication.terminology.catalog must be nemsis-3.5.1-medications");
+  const medicationFieldIds = ["medication", "time", "dose", "unit", "route", "response"] as const;
+  if (!Array.isArray(medication.fields)) diagnostics.push("events.medication.fields must be an array");
+  else {
+    const seen = new Set<string>();
+    medication.fields.forEach((field, index) => {
+      requiredStrings(field, `events.medication.fields[${index}]`, ["id", "label", "reference"]);
+      if (!isRecord(field)) return;
+      if (!medicationFieldIds.includes(field.id as typeof medicationFieldIds[number])) diagnostics.push(`events.medication.fields[${index}].id is not supported`);
+      if (seen.has(String(field.id))) diagnostics.push(`events.medication.fields contains duplicate id ${String(field.id)}`);
+      seen.add(String(field.id));
+      if (typeof field.required !== "boolean") diagnostics.push(`events.medication.fields[${index}].required must be a boolean`);
+      if (field.warnWhenMissing !== undefined && typeof field.warnWhenMissing !== "boolean") diagnostics.push(`events.medication.fields[${index}].warnWhenMissing must be a boolean`);
+    });
+    for (const fieldId of medicationFieldIds) if (!seen.has(fieldId)) diagnostics.push(`events.medication.fields must include ${fieldId}`);
+  }
+  for (const list of ["doseUnits", "routes"] as const) {
+    if (!Array.isArray(medication[list]) || medication[list].length === 0 || medication[list].some((item) => typeof item !== "string" || !item.trim())) diagnostics.push(`events.medication.${list} must contain strings`);
+  }
+  requiredStrings(medication.labels, "events.medication.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "searchResults", "availableOffline", "noMatches", "change", "select", "selectRoute", "cancel", "add", "save", "medicationMissing", "routeMissing", "responseMissing"]);
+  requiredStrings(medication.validationMessages, "events.medication.validationMessages", ["invalidTime", "invalidMedication", "invalidDose", "invalidUnit", "invalidRoute", "responseMissing"]);
   if (diagnostics.length) throw new EncounterDefinitionError(id, diagnostics);
   return value as EncounterDefinition;
 }

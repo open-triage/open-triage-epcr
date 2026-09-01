@@ -1,9 +1,9 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
-import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
+import { MEDICATIONS } from "./medication-catalog";
 import { validateVitals, VITAL_RULES } from "./vital-validation";
 import { adultChestPainDefinition } from "./adult-chest-pain-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
-import type { EncounterDefinition } from "./encounter-definition";
+import type { EncounterDefinition, MedicationFieldId } from "./encounter-definition";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -131,19 +131,30 @@ export const INITIAL_SHELL_STATE: ShellState = {
   acknowledgedWarnings: [],
 };
 
-export type MedicationValidation = { readonly errors: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
+export type MedicationValidationFinding = { readonly field: MedicationFieldId; readonly reference: string; readonly message: string };
+export type MedicationValidation = {
+  readonly errors: ReadonlyArray<string>;
+  readonly warnings: ReadonlyArray<string>;
+  readonly errorFindings: ReadonlyArray<MedicationValidationFinding>;
+  readonly warningFindings: ReadonlyArray<MedicationValidationFinding>;
+};
 
-export function validateMedication(draft: MedicationDraft): MedicationValidation {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) errors.push("Enter a valid 24-hour time (eMedications.01).");
+export function validateMedication(draft: MedicationDraft, definition: EncounterDefinition = syntheticEncounterDefinition): MedicationValidation {
+  const medication = definition.events.medication;
+  const field = (id: MedicationFieldId) => medication.fields.find((candidate) => candidate.id === id)!;
+  const errorFindings: MedicationValidationFinding[] = [];
+  const warningFindings: MedicationValidationFinding[] = [];
+  const withReference = (message: string, reference: string) => `${message.replace(/[.\s]+$/, "")} (${reference}).`;
+  const error = (id: MedicationFieldId, message: string) => errorFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
+  const warning = (id: MedicationFieldId, message: string) => warningFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
+  if ((field("time").required || draft.time) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) error("time", medication.validationMessages.invalidTime);
   const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType && item.displayLabel === draft.label);
-  if (!catalogMedication) errors.push("Select a medication from the NEMSIS recommended list (eMedications.03).");
-  if (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0) errors.push("Dose must be a number greater than zero (eMedications.05).");
-  if (!(MEDICATION_DOSE_UNITS as readonly string[]).includes(draft.unit)) errors.push("Select a valid configured dose unit (eMedications.06).");
-  if (!(MEDICATION_ROUTES as readonly string[]).includes(draft.route)) errors.push("Select a valid configured administration route (eMedications.04).");
-  if (!draft.response.trim()) warnings.push("Medication response is not documented (eMedications.07). You can acknowledge this warning and add it later.");
-  return { errors, warnings };
+  if ((field("medication").required || draft.medicationCode) && !catalogMedication) error("medication", medication.validationMessages.invalidMedication);
+  if ((field("dose").required || draft.dose) && (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0)) error("dose", medication.validationMessages.invalidDose);
+  if ((field("unit").required || draft.unit) && !medication.doseUnits.includes(draft.unit)) error("unit", medication.validationMessages.invalidUnit);
+  if ((field("route").required || draft.route) && !medication.routes.includes(draft.route)) error("route", medication.validationMessages.invalidRoute);
+  if (!draft.response.trim() && field("response").warnWhenMissing) warning("response", medication.validationMessages.responseMissing);
+  return { errors: errorFindings.map(({ message }) => message), warnings: warningFindings.map(({ message }) => message), errorFindings, warningFindings };
 }
 
 export type ReviewFinding = {
@@ -159,7 +170,20 @@ export type ReviewFinding = {
 
 export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
   if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
+  if (event.medication) {
+    const medication = definition.events.medication;
+    return {
+      title: `${event.medication.label || medication.labels.medicationMissing}${event.medication.dose ? ` ${event.medication.dose}` : ""}${event.medication.unit ? ` ${event.medication.unit}` : ""}`,
+      reference: `${medication.fields.find((field) => field.id === "medication")!.reference} · ${event.medication.codeType} ${event.medication.medicationCode}`,
+    };
+  }
   return { title: event.title, reference: event.reference };
+}
+
+export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): string {
+  if (!event.medication) return event.detail;
+  const medication = definition.events.medication;
+  return `${event.medication.route || medication.labels.routeMissing}${event.medication.response ? ` · ${event.medication.response}` : ` · ${medication.labels.responseMissing}`}`;
 }
 
 export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
@@ -205,10 +229,11 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       return [...errors, ...warnings];
     }
     if (event.medication) {
-      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false });
+      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false }, definition);
+      const presentation = encounterEventPresentation(event, definition);
       return [
-        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Medication", "eMedications", message, index)),
-        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Medication", "eMedications.07", message, index, event.medication!.warningAcknowledged)),
+        ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
+        ...validation.warningFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "warning", definition.events.medication.labels.category, finding.reference, finding.message, index, event.medication!.warningAcknowledged)),
       ];
     }
     if (event.procedure) {
@@ -448,7 +473,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       const administration: MedicationAdministration = {
         medicationCode: draft.medicationCode,
         codeType: draft.codeType,
-        label: draft.label || "Medication not selected",
+        label: draft.label || definition.events.medication.labels.medicationMissing,
         dose: draft.dose.trim(),
         unit: draft.unit,
         route: draft.route,
@@ -460,14 +485,15 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         date: draft.date,
         time: draft.time,
         kind: "medication",
-        title: `${administration.label}${administration.dose ? ` ${administration.dose}` : ""}${administration.unit ? ` ${administration.unit}` : ""}`,
-        detail: `${administration.route || "Route not documented"}${administration.response ? ` · ${administration.response}` : " · Response not documented"}`,
-        reference: `eMedications.03 · ${administration.codeType} ${administration.medicationCode}`,
+        title: "",
+        detail: "",
+        reference: "",
         visitorEntered: true,
         medication: administration,
       };
+      const presentedMedicationEvent = { ...medicationEvent, ...encounterEventPresentation(medicationEvent, definition), detail: encounterEventDetail(medicationEvent, definition) };
       const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
-      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, medicationEvent]) } };
+      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, presentedMedicationEvent]) } };
     }
     case "vitals-started":
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
