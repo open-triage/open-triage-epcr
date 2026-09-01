@@ -1,6 +1,8 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
 import { validateVitals, VITAL_RULES } from "./vital-validation";
+import { adultChestPainDefinition } from "./adult-chest-pain-definition";
+import { createBundledDefinitionProvider } from "./encounter-definition";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -41,27 +43,19 @@ export type Encounter = {
   readonly events: ReadonlyArray<EncounterEvent>;
 };
 
-const baselineEvents: ReadonlyArray<Omit<EncounterEvent, "id">> = [
-  { time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Residence — stairwell access, no lift", reference: "eTimes.07" },
-  { time: "07:44", kind: "transport", title: "Unit en route", detail: "Priority 1 response, lights and siren", reference: "eTimes.06" },
-  { time: "07:42", kind: "transport", title: "Unit notified", detail: "3-9-7-4-0 · EMD with pre-arrival instructions · lights and siren", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
-  { time: "07:40", kind: "transport", title: "Call received", detail: "Chest pain · priority 1", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
-];
+export const encounterDefinitionProvider = createBundledDefinitionProvider([adultChestPainDefinition]);
+export const syntheticEncounterDefinition = encounterDefinitionProvider.get("adult-chest-pain-v2");
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
 export const syntheticEncounter: Encounter = {
-  scenarioId: "adult-chest-pain-v2",
+  scenarioId: syntheticEncounterDefinition.id,
   synthetic: true,
-  currentTime: "07:51",
-  crew: "AN",
-  patient: { name: "Lindqvist, Margareta", age: 73, sex: "F", identifier: "19530418-XXXX", medicalHistory: [], currentMedications: [], allergies: [] },
-  incident: {
-    number: "2026-0418-113 · 3-9-7-4-0",
-    complaint: "Central chest pain radiating to left arm",
-    address: "Sveavägen 112, 3 tr, Stockholm (fictional)",
-  },
-  events: baselineEvents.map((event, index) => ({ ...event, id: `baseline-${index + 1}` })),
+  currentTime: syntheticEncounterDefinition.dates.currentTime,
+  crew: syntheticEncounterDefinition.dispatch.crew,
+  patient: syntheticEncounterDefinition.patient.initial,
+  incident: syntheticEncounterDefinition.dispatch.incident,
+  events: syntheticEncounterDefinition.dispatch.events.map((event, index) => ({ ...event, kind: "transport", id: `baseline-${index + 1}` })),
 };
 
 export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
