@@ -28,6 +28,7 @@ export type VitalDraft = { readonly id: string; readonly date: string; readonly 
 
 export type Encounter = {
   readonly scenarioId: string;
+  readonly definitionVersion: number;
   readonly synthetic: true;
   readonly currentTime: string;
   readonly crew: string;
@@ -49,15 +50,20 @@ export const syntheticEncounterDefinition = encounterDefinitionProvider.get("adu
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
-export const syntheticEncounter: Encounter = {
-  scenarioId: syntheticEncounterDefinition.id,
-  synthetic: true,
-  currentTime: syntheticEncounterDefinition.dates.currentTime,
-  crew: syntheticEncounterDefinition.dispatch.crew,
-  patient: syntheticEncounterDefinition.patient.initial,
-  incident: syntheticEncounterDefinition.dispatch.incident,
-  events: syntheticEncounterDefinition.dispatch.events.map((event, index) => ({ ...event, kind: "transport", id: `baseline-${index + 1}` })),
-};
+export function createSyntheticEncounter(definition: EncounterDefinition): Encounter {
+  return {
+    scenarioId: definition.id,
+    definitionVersion: definition.version,
+    synthetic: true,
+    currentTime: definition.dates.currentTime,
+    crew: definition.dispatch.crew,
+    patient: definition.patient.initial,
+    incident: definition.dispatch.incident,
+    events: definition.dispatch.events.map((event, index) => ({ ...event, kind: "transport", id: `baseline-${index + 1}` })),
+  };
+}
+
+export const syntheticEncounter: Encounter = createSyntheticEncounter(syntheticEncounterDefinition);
 
 export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
 export type MedicationAdministration = {
@@ -121,15 +127,19 @@ export type ShellAction =
   | { readonly type: "prototype-reset" };
 
 export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
-export const INITIAL_SHELL_STATE: ShellState = {
-  view: "timeline",
-  encounter: syntheticEncounter,
-  noteDraft: null,
-  procedureDraft: null,
-  vitalDraft: null,
-  medicationDraft: null,
-  acknowledgedWarnings: [],
-};
+export function createInitialShellState(definition: EncounterDefinition): ShellState {
+  return {
+    view: "timeline",
+    encounter: createSyntheticEncounter(definition),
+    noteDraft: null,
+    procedureDraft: null,
+    vitalDraft: null,
+    medicationDraft: null,
+    acknowledgedWarnings: [],
+  };
+}
+
+export const INITIAL_SHELL_STATE: ShellState = { ...createInitialShellState(syntheticEncounterDefinition), encounter: syntheticEncounter };
 
 export type MedicationValidationFinding = { readonly field: MedicationFieldId; readonly reference: string; readonly message: string };
 export type MedicationValidation = {
@@ -557,9 +567,11 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
-      return { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] };
+      return action.state.encounter.scenarioId === definition.id && action.state.encounter.definitionVersion === definition.version
+        ? { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
+        : state;
     case "prototype-reset":
-      return INITIAL_SHELL_STATE;
+      return createInitialShellState(definition);
     default:
       return state;
   }

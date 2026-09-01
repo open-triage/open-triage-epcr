@@ -100,3 +100,23 @@ test("reports a missing definition instead of returning partial configuration", 
   const provider = createBundledDefinitionProvider([adultChestPainDefinition]);
   assert.throws(() => provider.get("missing"), /Invalid encounter definition "missing": definition was not found/);
 });
+
+test("rejects unsupported configuration constructs with their exact path", () => {
+  const invalid = structuredClone(adultChestPainDefinition) as unknown as { events: { note: Record<string, unknown>; vitals: { fields: Array<Record<string, unknown>> } } };
+  invalid.events.note.displayWhen = { complaint: "chest pain" };
+  invalid.events.vitals.fields[0]!.computedValue = "systolic - diastolic";
+
+  assert.throws(
+    () => validateEncounterDefinition(invalid),
+    (error: unknown) => error instanceof EncounterDefinitionError
+      && error.message.includes("events.note.displayWhen is not supported by schemaVersion 1")
+      && error.message.includes("events.vitals.fields[0].computedValue is not supported by schemaVersion 1"),
+  );
+});
+
+test("rejects duplicate bundled definition identities", () => {
+  assert.throws(
+    () => createBundledDefinitionProvider([adultChestPainDefinition, structuredClone(adultChestPainDefinition)]),
+    /bundled definition id must be unique/,
+  );
+});
