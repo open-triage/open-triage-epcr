@@ -29,6 +29,9 @@ test.beforeEach(async ({ page }) => {
 
 test("quick capture phone journey remains operable and persists", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
+    "Add vital signs", "Add medication", "Add procedure", "Add clinical note", "Edit patient information",
+  ]);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 

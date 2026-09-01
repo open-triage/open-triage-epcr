@@ -5,6 +5,7 @@ export const adultChestPainDefinition = {
   dates: { clinicalDate: "2026-04-18", currentTime: "07:51" },
   labels: { prototypeStatus: "Prototype", incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", patientName: "Patient name", age: "Age", sex: "Sex", medicalHistory: "Medical history", currentMedications: "Current medications", allergies: "Medication allergies", savePatient: "Save patient" },
   patient: {
+    quickAction: { visible: true, label: "Edit patient information", title: "Patient information" },
     initial: { name: "Lindqvist, Margareta", age: 73, sex: "F", identifier: "19530418-XXXX", medicalHistory: [], currentMedications: [], allergies: [] },
     references: { name: "ePatient.02", age: "ePatient.15", sex: "ePatient.13", identifier: "ePatient.01" },
     choices: {
@@ -22,6 +23,17 @@ export const adultChestPainDefinition = {
       { time: "07:42", title: "Unit notified", detail: "3-9-7-4-0 · EMD with pre-arrival instructions · lights and siren", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
       { time: "07:40", title: "Call received", detail: "Chest pain · priority 1", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
     ],
+  },
+  composition: {
+    quickActionOrder: ["vitals", "medication", "procedure", "note", "patient"],
+    review: {
+      groups: [
+        { severity: "error", title: "Blocking errors", empty: "No blocking errors." },
+        { severity: "warning", title: "Warnings to acknowledge", empty: "No warnings." },
+      ],
+      eventTypeOrder: ["vitals", "medication", "procedure", "note"],
+    },
+    summary: { eventTypeOrder: ["vitals", "medication", "procedure", "note"] },
   },
   events: {
     note: {

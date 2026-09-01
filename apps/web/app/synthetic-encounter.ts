@@ -3,7 +3,7 @@ import { MEDICATIONS } from "./medication-catalog";
 import { validateVitals } from "./vital-validation";
 import { adultChestPainDefinition } from "./adult-chest-pain-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
-import type { EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
+import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -160,6 +160,7 @@ export function validateMedication(draft: MedicationDraft, definition: Encounter
 export type ReviewFinding = {
   readonly id: string;
   readonly severity: "error" | "warning";
+  readonly eventType: ConfiguredEventType;
   readonly category: string;
   readonly title: string;
   readonly reference: string;
@@ -206,6 +207,7 @@ export function validateNoteEvent(event: EncounterEvent, definition: EncounterDe
 function eventFinding(
   state: ShellState,
   event: EncounterEvent,
+  eventType: ConfiguredEventType,
   severity: ReviewFinding["severity"],
   category: ReviewFinding["category"],
   reference: string,
@@ -216,7 +218,7 @@ function eventFinding(
 ): ReviewFinding {
   const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
   return {
-    id, severity, category, reference, message,
+    id, severity, eventType, category, reference, message,
     title: `${event.time} · ${event.title}`,
     target: { eventId: event.id, ...(vitalField ? { vitalField } : {}) },
     acknowledged: severity === "warning" && (recordAcknowledged || state.acknowledgedWarnings.includes(id)),
@@ -233,18 +235,18 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       const errors = Object.entries(validation.errors).map(([field, message], index) => {
         const vitalField = field === "time" || field === "group" ? undefined : field as VitalField;
         const reference = vitalField ? vitalDefinition.fields.find(({ id }) => id === vitalField)?.reference : field === "time" ? vitalDefinition.references.time : vitalDefinition.references.group;
-        return eventFinding(state, presentedEvent, "error", vitalDefinition.labels.category, reference ?? vitalDefinition.references.group, message!, index, false, vitalField);
+        return eventFinding(state, presentedEvent, "vitals", "error", vitalDefinition.labels.category, reference ?? vitalDefinition.references.group, message!, index, false, vitalField);
       });
       const warnings = Object.entries(validation.warnings).map(([field, message], index) =>
-        eventFinding(state, presentedEvent, "warning", vitalDefinition.labels.category, vitalDefinition.fields.find(({ id }) => id === field)?.reference ?? vitalDefinition.references.group, message!, index, false, field as VitalField));
+        eventFinding(state, presentedEvent, "vitals", "warning", vitalDefinition.labels.category, vitalDefinition.fields.find(({ id }) => id === field)?.reference ?? vitalDefinition.references.group, message!, index, false, field as VitalField));
       return [...errors, ...warnings];
     }
     if (event.medication) {
       const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false }, definition);
       const presentation = encounterEventPresentation(event, definition);
       return [
-        ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
-        ...validation.warningFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "warning", definition.events.medication.labels.category, finding.reference, finding.message, index, event.medication!.warningAcknowledged)),
+        ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
+        ...validation.warningFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "warning", definition.events.medication.labels.category, finding.reference, finding.message, index, event.medication!.warningAcknowledged)),
       ];
     }
     if (event.procedure) {
@@ -257,20 +259,43 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       const presentation = encounterEventPresentation(event, definition);
       const referenceFor = (message: string) => Object.values(procedureDefinition.references).find((reference) => message.startsWith(reference)) ?? procedureDefinition.references.complications;
       return [
-        ...validation.errors.map((message, index) => eventFinding(state, { ...event, ...presentation }, "error", procedureDefinition.labels.category, referenceFor(message), message, index)),
-        ...validation.warnings.map((message, index) => eventFinding(state, { ...event, ...presentation }, "warning", procedureDefinition.labels.category, procedureDefinition.references.complications, message, index, event.procedure!.warningAcknowledged)),
+        ...validation.errors.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "error", procedureDefinition.labels.category, referenceFor(message), message, index)),
+        ...validation.warnings.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "warning", procedureDefinition.labels.category, procedureDefinition.references.complications, message, index, event.procedure!.warningAcknowledged)),
       ];
     }
     if (event.kind === "note") {
       const presentation = encounterEventPresentation(event, definition);
       return validateNoteEvent(event, definition).map((finding, index) => eventFinding(
-        state, { ...event, ...presentation }, "error", definition.events.note.labels.category, finding.reference, finding.message, index,
+        state, { ...event, ...presentation }, "note", "error", definition.events.note.labels.category, finding.reference, finding.message, index,
       ));
     }
     return [];
   });
 
-  return events;
+  const typeOrder = new Map(definition.composition.review.eventTypeOrder.map((type, index) => [type, index]));
+  return events.map((finding, index) => ({ finding, index })).sort((a, b) =>
+    (typeOrder.get(a.finding.eventType) ?? Number.MAX_SAFE_INTEGER) - (typeOrder.get(b.finding.eventType) ?? Number.MAX_SAFE_INTEGER) || a.index - b.index,
+  ).map(({ finding }) => finding);
+}
+
+export function configuredEventType(event: EncounterEvent): ConfiguredEventType | null {
+  if (event.vitals) return "vitals";
+  if (event.medication) return "medication";
+  if (event.procedure) return "procedure";
+  if (event.kind === "note") return "note";
+  return null;
+}
+
+/** Orders configurable clinical event types for the completed summary, preserving order within each type. */
+export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, definition: EncounterDefinition = syntheticEncounterDefinition): ReadonlyArray<EncounterEvent> {
+  const typeOrder = new Map(definition.composition.summary.eventTypeOrder.map((type, index) => [type, index]));
+  return events.map((event, index) => ({ event, index })).sort((a, b) => {
+    const aType = configuredEventType(a.event);
+    const bType = configuredEventType(b.event);
+    const aOrder = aType ? typeOrder.get(aType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+    const bOrder = bType ? typeOrder.get(bType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder || a.index - b.index;
+  }).map(({ event }) => event);
 }
 
 export function vitalSummary(values: VitalValues, definition: EncounterDefinition = syntheticEncounterDefinition): string {

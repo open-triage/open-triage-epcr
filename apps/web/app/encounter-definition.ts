@@ -1,4 +1,7 @@
 export type NemsisReference = `e${string}`;
+export type ConfiguredEventType = "vitals" | "medication" | "procedure" | "note";
+export type QuickActionId = ConfiguredEventType | "patient";
+export type ReviewSeverity = "error" | "warning";
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
 export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
@@ -133,6 +136,7 @@ export type EncounterDefinition = {
     readonly currentMedications: string; readonly allergies: string; readonly savePatient: string;
   };
   readonly patient: {
+    readonly quickAction: { readonly visible: boolean; readonly label: string; readonly title: string };
     readonly initial: { readonly name: string; readonly age: number; readonly sex: string; readonly identifier: string; readonly medicalHistory: ReadonlyArray<string>; readonly currentMedications: ReadonlyArray<string>; readonly allergies: ReadonlyArray<string> };
     readonly references: { readonly name: NemsisReference; readonly age: NemsisReference; readonly sex: NemsisReference; readonly identifier: NemsisReference };
     readonly choices: Record<PatientChoiceGroup, ReadonlyArray<{ readonly label: string; readonly reference: NemsisReference }>>;
@@ -143,10 +147,31 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
+  readonly composition: {
+    readonly quickActionOrder: ReadonlyArray<QuickActionId>;
+    readonly review: {
+      readonly groups: ReadonlyArray<{ readonly severity: ReviewSeverity; readonly title: string; readonly empty: string }>;
+      readonly eventTypeOrder: ReadonlyArray<ConfiguredEventType>;
+    };
+    readonly summary: { readonly eventTypeOrder: ReadonlyArray<ConfiguredEventType> };
+  };
   readonly events: { readonly note: NoteEventDefinition; readonly procedure: ProcedureEventDefinition; readonly medication: MedicationEventDefinition; readonly vitals: VitalGroupDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
+
+export type ConfiguredQuickAction = { readonly id: QuickActionId; readonly label: string; readonly title: string };
+
+export function configuredQuickActions(definition: EncounterDefinition): ReadonlyArray<ConfiguredQuickAction> {
+  const actions: Record<QuickActionId, { readonly visible: boolean; readonly label: string; readonly title: string }> = {
+    vitals: { ...definition.events.vitals.quickAction, title: definition.events.vitals.labels.timelineTitle },
+    medication: { ...definition.events.medication.quickAction, title: definition.events.medication.labels.editorTitle },
+    procedure: { ...definition.events.procedure.quickAction, title: definition.events.procedure.labels.editorTitle },
+    note: { ...definition.events.note.quickAction, title: definition.events.note.labels.timelineTitle },
+    patient: definition.patient.quickAction,
+  };
+  return definition.composition.quickActionOrder.flatMap((id) => actions[id].visible ? [{ id, label: actions[id].label, title: actions[id].title }] : []);
+}
 
 export class EncounterDefinitionError extends Error {
   constructor(readonly definitionId: string, readonly diagnostics: ReadonlyArray<string>) {
@@ -173,6 +198,9 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(root.dates, "dates", ["clinicalDate", "currentTime"]);
   requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "patientName", "age", "sex", "medicalHistory", "currentMedications", "allergies", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
+  const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
+  if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");
+  requiredStrings(patientQuickAction, "patient.quickAction", ["label", "title"]);
   requiredStrings(patient.initial, "patient.initial", ["name", "sex", "identifier"]);
   if (!isRecord(patient.initial) || typeof patient.initial.age !== "number" || patient.initial.age < 0) diagnostics.push("patient.initial.age must be a non-negative number");
   for (const group of ["medicalHistory", "currentMedications", "allergies"] as const) if (!isRecord(patient.initial) || !Array.isArray(patient.initial[group])) diagnostics.push(`patient.initial.${group} must be an array`);
@@ -188,6 +216,37 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(dispatch.references, "dispatch.references", ["incidentNumber", "complaint", "address"]);
   if (!Array.isArray(dispatch.events) || dispatch.events.length === 0) diagnostics.push("dispatch.events must contain at least one event");
   else dispatch.events.forEach((event, index) => requiredStrings(event, `dispatch.events[${index}]`, ["time", "title", "detail", "reference"]));
+  const composition = isRecord(root.composition) ? root.composition : {};
+  const quickActionIds = ["vitals", "medication", "procedure", "note", "patient"] as const;
+  if (!Array.isArray(composition.quickActionOrder)
+    || composition.quickActionOrder.length !== quickActionIds.length
+    || new Set(composition.quickActionOrder).size !== quickActionIds.length
+    || composition.quickActionOrder.some((id) => !quickActionIds.includes(id as QuickActionId))) {
+    diagnostics.push("composition.quickActionOrder must contain every supported quick action exactly once");
+  }
+  const review = isRecord(composition.review) ? composition.review : {};
+  const severities = ["error", "warning"] as const;
+  if (!Array.isArray(review.groups)
+    || review.groups.length !== severities.length
+    || new Set(review.groups.map((group) => isRecord(group) ? group.severity : undefined)).size !== severities.length) {
+    diagnostics.push("composition.review.groups must contain error and warning exactly once");
+  } else review.groups.forEach((group, index) => {
+    const candidate = isRecord(group) ? group : {};
+    if (!severities.includes(candidate.severity as ReviewSeverity)) diagnostics.push(`composition.review.groups[${index}].severity is not supported`);
+    requiredStrings(candidate, `composition.review.groups[${index}]`, ["title", "empty"]);
+  });
+  const eventTypeIds = ["vitals", "medication", "procedure", "note"] as const;
+  const validateEventTypeOrder = (candidate: unknown, path: string) => {
+    if (!Array.isArray(candidate)
+      || candidate.length !== eventTypeIds.length
+      || new Set(candidate).size !== eventTypeIds.length
+      || candidate.some((id) => !eventTypeIds.includes(id as ConfiguredEventType))) {
+      diagnostics.push(`${path} must contain every supported event type exactly once`);
+    }
+  };
+  validateEventTypeOrder(review.eventTypeOrder, "composition.review.eventTypeOrder");
+  const summary = isRecord(composition.summary) ? composition.summary : {};
+  validateEventTypeOrder(summary.eventTypeOrder, "composition.summary.eventTypeOrder");
   const events = isRecord(root.events) ? root.events : {};
   const note = isRecord(events.note) ? events.note : {};
   const quickAction = isRecord(note.quickAction) ? note.quickAction : {};

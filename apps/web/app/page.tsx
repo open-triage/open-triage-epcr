@@ -8,7 +8,9 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
+import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
+  completedSummaryEvents,
   INITIAL_SHELL_STATE,
   encounterEventDetail,
   encounterEventPresentation,
@@ -181,6 +183,10 @@ export default function Home() {
     dispatch({ type: "prototype-reset" });
   }
 
+  const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
+    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
+  };
+
   return (
     <main className="app-shell">
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
@@ -212,11 +218,7 @@ export default function Home() {
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        {vitalDefinition.quickAction.visible && <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title={vitalDefinition.labels.timelineTitle} aria-label={vitalDefinition.quickAction.label} type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>}
-        {medicationDefinition.quickAction.visible && <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title={medicationDefinition.labels.editorTitle} aria-label={medicationDefinition.quickAction.label} type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>}
-        {procedureDefinition.quickAction.visible && <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title={procedureDefinition.labels.editorTitle} aria-label={procedureDefinition.quickAction.label} type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>}
-        {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
-        <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
+        {configuredQuickActions(syntheticEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
       </nav>
 
       {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
@@ -333,8 +335,10 @@ export default function Home() {
 
       {shell.view === "review" && (
         <ReviewPanel
+          findings={reviewFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
+          groups={syntheticEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
           onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
@@ -443,9 +447,11 @@ export default function Home() {
   );
 }
 
-function ReviewPanel({ errors, warnings, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+  readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
+  readonly groups: typeof syntheticEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly onFinding: (id: string) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
@@ -460,8 +466,7 @@ function ReviewPanel({ errors, warnings, canFinish, onFinding, onWarning, onCont
       </div>
       <p className="review-intro">Resolve every blocking error and acknowledge each warning before producing the prototype summary.</p>
 
-      <FindingGroup title="Blocking errors" empty="No blocking errors." findings={errors} onFinding={onFinding} onWarning={onWarning} />
-      <FindingGroup title="Warnings to acknowledge" empty="No warnings." findings={warnings} onFinding={onFinding} onWarning={onWarning} />
+      {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
 
       <div className="review-actions">
         <button type="button" onClick={onContinue}>Continue editing</button>
@@ -538,7 +543,7 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Timeline</h2>
         <ol className="summary-timeline">
-          {encounter.events.map((event) => {
+          {completedSummaryEvents(encounter.events, syntheticEncounterDefinition).map((event) => {
             const presentation = encounterEventPresentation(event, syntheticEncounterDefinition);
             return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, syntheticEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
           })}
