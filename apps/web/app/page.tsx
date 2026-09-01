@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { PatientDialog } from "../components/patient-dialog";
+import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
-import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
+import { validateProcedure } from "./procedure";
 import {
   INITIAL_SHELL_STATE,
   encounterEventDetail,
@@ -44,6 +45,7 @@ export default function Home() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const noteDefinition = syntheticEncounterDefinition.events.note;
+  const procedureDefinition = syntheticEncounterDefinition.events.procedure;
   const medicationDefinition = syntheticEncounterDefinition.events.medication;
   const vitalDefinition = syntheticEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
@@ -57,9 +59,6 @@ export default function Home() {
     return statuses;
   }, [reviewFindings]);
   const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
-  const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
-  const procedureDraftValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
-  const procedureFindingActive = !!(editingFinding?.category === "Procedure" && procedureDraftValidation && [...procedureDraftValidation.errors, ...procedureDraftValidation.warnings].includes(editingFinding.message));
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, syntheticEncounterDefinition) : null;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
@@ -215,7 +214,7 @@ export default function Home() {
       <nav className="quick-actions" aria-label="Quick documentation">
         {vitalDefinition.quickAction.visible && <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title={vitalDefinition.labels.timelineTitle} aria-label={vitalDefinition.quickAction.label} type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>}
         {medicationDefinition.quickAction.visible && <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title={medicationDefinition.labels.editorTitle} aria-label={medicationDefinition.quickAction.label} type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>}
-        <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
+        {procedureDefinition.quickAction.visible && <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title={procedureDefinition.labels.editorTitle} aria-label={procedureDefinition.quickAction.label} type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>}
         {noteDefinition.quickAction.visible && <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title={noteDefinition.labels.timelineTitle} aria-label={noteDefinition.quickAction.label} type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>}
         <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
       </nav>
@@ -290,8 +289,8 @@ export default function Home() {
                       complications: event.procedure.complications,
                       warningAcknowledged: event.procedure.warningAcknowledged,
                       isNew: false,
-                    }).warnings.length > 0 && !event.procedure.warningAcknowledged && (
-                      <span className="warning-pill">⚠ Warning: review needed</span>
+                    }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && (
+                      <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>
                     )}
                   </button>
                 ) : (
@@ -385,102 +384,7 @@ export default function Home() {
       )}
       {shell.medicationDraft && <MedicationDialog definition={syntheticEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
-      {shell.procedureDraft && (
-        <div className="dialog-backdrop" role="presentation">
-          <section ref={dialog} className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
-            <div className="note-dialog-heading">
-              <div>
-                <p className="eyebrow">{shell.procedureDraft.isNew ? "New treatment event" : "Edit canonical event"}</p>
-                <h2 id="procedure-dialog-title">Procedure</h2>
-              </div>
-              <button aria-label="Close procedure editor" type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>×</button>
-            </div>
-
-            {!shell.procedureDraft.procedureCode ? (
-              <div className={`catalog-picker ${procedureFindingActive && /Select a procedure|display label/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                <label htmlFor="procedure-search">Search procedures</label>
-                <input
-                  autoFocus
-                  data-dialog-initial-focus
-                  id="procedure-search"
-                  type="search"
-                  placeholder="Try ECG, IV, oxygen…"
-                  value={procedureSearch}
-                  onChange={(event) => setProcedureSearch(event.target.value)}
-                />
-                <p className="catalog-caption">{procedureResults.length} shown · available offline</p>
-                <ul className="catalog-results">
-                  {procedureResults.map((procedure) => (
-                    <li key={procedure.code}>
-                      <button type="button" onClick={() => dispatch({ type: "procedure-selected", code: procedure.code })}>
-                        <strong>{procedure.label}</strong>
-                        <span>{procedure.category}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {!procedureResults.length && <p className="empty-results">No procedure matches all search terms.</p>}
-              </div>
-            ) : (
-              <>
-                <div className={`selected-catalog-item ${procedureFindingActive && /Select a procedure|display label/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                  <strong>{shell.procedureDraft.procedureLabel}</strong>
-                  <button type="button" onClick={() => { setProcedureSearch(""); dispatch({ type: "procedure-selected", code: "" }); }}>Change</button>
-                </div>
-                <div className="procedure-grid">
-                  <TimePicker className={procedureFindingActive && /time/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined} label="Procedure time" date={shell.procedureDraft.date} onDateChange={(value) => dispatch({ type: "procedure-draft-changed", field: "date", value })} value={shell.procedureDraft.time} onChange={(value) => dispatch({ type: "procedure-draft-changed", field: "time", value })} />
-                  <label className={procedureFindingActive && /Attempts/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                    Attempts
-                    <input
-                      inputMode="numeric"
-                      min={1}
-                      max={10}
-                      type="number"
-                      value={shell.procedureDraft.attempts}
-                      onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "attempts", value: event.target.value })}
-                    />
-                  </label>
-                </div>
-                <label className={procedureFindingActive && /successful/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                  Successful
-                  <select value={shell.procedureDraft.success} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "success", value: event.target.value })}>
-                    <option value="">Select…</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </label>
-                <label className={procedureFindingActive && /response/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                  Patient response
-                  <select value={shell.procedureDraft.outcome} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "outcome", value: event.target.value })}>
-                    <option value="">Select…</option>
-                    {OUTCOMES.map((outcome) => <option key={outcome.value} value={outcome.value}>{outcome.label}</option>)}
-                  </select>
-                </label>
-                <fieldset className={`complication-options ${procedureFindingActive && /complication/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                  <legend>Complications</legend>
-                  {COMPLICATIONS.map((complication) => (
-                    <label key={complication.code}>
-                      <input
-                        type="checkbox"
-                        checked={shell.procedureDraft!.complications.includes(complication.code)}
-                        onChange={() => dispatch({ type: "procedure-complication-toggled", code: complication.code })}
-                      />
-                      <span>{complication.label}</span>
-                    </label>
-                  ))}
-                </fieldset>
-
-                <div className="note-dialog-actions">
-                  <button type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>Cancel</button>
-                  <button type="button" onClick={() => dispatch({ type: "procedure-saved" })}>
-                    {shell.procedureDraft.isNew ? "Add procedure" : "Save changes"}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
-      )}
+      {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding ?? undefined} />}
 
       {shell.vitalDraft && (
         <div className="dialog-backdrop" role="presentation">

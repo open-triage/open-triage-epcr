@@ -109,6 +109,7 @@ input, select, textarea { touch-action: manipulation; }
 .note-dialog-actions button:last-child { border-color: var(--green); color: white; background: var(--green); }
 .note-dialog-actions button:disabled { border-color: #b8bbb5; color: #666a64; background: #e2e4df; cursor: not-allowed; }
 .procedure-dialog { padding-top: 16px; }
+.procedure-fields { display: flex; flex-direction: column; gap: 12px; }
 .catalog-picker > label { display: block; margin: 0 0 8px; color: #454944; font-size: 13px; font-weight: 750; }
 .catalog-picker > input { padding-inline: 13px; }
 .catalog-caption { margin: 7px 0 12px; color: var(--muted); font-size: 12px; }

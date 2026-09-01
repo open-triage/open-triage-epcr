@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
+import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import type { EncounterDefinition } from "../app/encounter-definition";
 import {
   PROCEDURES,
   PROCEDURE_MANIFEST,
@@ -8,7 +10,7 @@ import {
   validateProcedure,
   type ProcedureDraft,
 } from "../app/procedure";
-import { INITIAL_SHELL_STATE, transitionShell, type ShellState } from "../app/synthetic-encounter";
+import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type ShellState } from "../app/synthetic-encounter";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -102,4 +104,65 @@ test("drafts, coded records, and warning acknowledgements survive refresh", () =
   const record = loadShellState(storage)!.encounter.events.find((event) => event.id === "procedure-warning")?.procedure;
   assert.equal(record?.code, "268400002");
   assert.equal(record?.warningAcknowledged, true);
+});
+
+test("configured procedure metadata drives capture, validation, warnings, review, and summary", () => {
+  const base = adultChestPainDefinition.events.procedure;
+  const procedure = {
+    ...base,
+    fieldOrder: ["procedure", "outcome", "success", "attempts", "time", "complications"] as const,
+    labels: { ...base.labels, category: "Intervention", attempts: "Tries", warningPill: "Review intervention" },
+    references: { ...base.references, attempts: "eProcedures.05" as const, complications: "eProcedures.07" as const },
+    attempts: { defaultValue: 2, min: 1, max: 4 },
+    validationMessages: { ...base.validationMessages, invalidAttempts: "Tries must be between 1 and 4." },
+    warningBehavior: { ...base.warningBehavior, repeatedAttemptThreshold: 1, repeatedOrUnsuccessfulMessage: "Configured intervention warning." },
+    timeline: { ...base.timeline, attemptSingular: "try", attemptPlural: "tries", complicationLabel: "Adverse event" },
+  };
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure } };
+
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "configured-procedure", time: "09:14" }, definition);
+  assert.equal(state.procedureDraft?.attempts, "2");
+  state = transitionShell(state, { type: "procedure-selected", code: "268400002" }, definition);
+  assert.equal(state.procedureDraft?.procedureLabel, "ECG, 12 lead");
+  state = transitionShell(state, { type: "procedure-draft-changed", field: "success", value: "no" }, definition);
+  state = transitionShell(state, { type: "procedure-draft-changed", field: "outcome", value: "unchanged" }, definition);
+  state = transitionShell(state, { type: "procedure-complication-toggled", code: "3907033" }, definition);
+  state = transitionShell(state, { type: "procedure-saved" }, definition);
+
+  const event = state.encounter.events.find((candidate) => candidate.id === "configured-procedure")!;
+  assert.equal(encounterEventDetail(event, definition), "2 tries, unsuccessful · Unchanged · Adverse event: None");
+  assert.equal(encounterEventPresentation(event, definition).reference, "eProcedures.03 · SNOMED CT 268400002");
+  const warning = reviewEncounter(state, definition).find((finding) => finding.target.eventId === event.id)!;
+  assert.equal(warning.category, "Intervention");
+  assert.equal(warning.reference, "eProcedures.07");
+  assert.equal(warning.message, "Configured intervention warning.");
+  state = transitionShell(state, { type: "review-finding-selected", id: warning.id }, definition);
+  assert.equal(state.procedureDraft?.id, event.id);
+  state = transitionShell(state, { type: "procedure-warning-acknowledged", acknowledged: true }, definition);
+  state = transitionShell(state, { type: "procedure-saved" }, definition);
+  assert.equal(reviewEncounter(state, definition).find((finding) => finding.target.eventId === event.id)?.acknowledged, true);
+});
+
+test("configured requiredness and validation messages control incomplete capture", () => {
+  const base = adultChestPainDefinition.events.procedure;
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure: {
+    ...base,
+    required: { ...base.required, outcome: false, complications: false },
+    attempts: { defaultValue: 1, min: 2, max: 3 },
+    validationMessages: { ...base.validationMessages, invalidAttempts: "Use two or three attempts." },
+  } } };
+  const draft: ProcedureDraft = { id: "incomplete", date: "2026-04-18", time: "09:15", procedureCode: "268400002", procedureLabel: "ECG, 12 lead", attempts: "1", success: "yes", outcome: "", complications: [], warningAcknowledged: false, isNew: true };
+  assert.deepEqual(validateProcedure(draft, definition.events.procedure).errors, ["eProcedures.05 (Required): Use two or three attempts."]);
+});
+
+test("saved procedure records remain readable with current configured presentation", () => {
+  const storage = memoryStorage();
+  let state = transitionShell(completedProcedure("legacy-procedure", "09:16"), { type: "procedure-saved" });
+  saveShellState(storage, state);
+  state = loadShellState(storage)!;
+  const event = state.encounter.events.find((candidate) => candidate.id === "legacy-procedure")!;
+  const base = adultChestPainDefinition.events.procedure;
+  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure: { ...base, timeline: { ...base.timeline, attemptSingular: "configured attempt" } } } };
+  assert.match(encounterEventDetail(event, definition), /^1 configured attempt,/);
+  assert.equal(event.procedure?.code, "268400002");
 });

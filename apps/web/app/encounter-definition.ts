@@ -1,5 +1,6 @@
 export type NemsisReference = `e${string}`;
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
+export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
 export type VitalNullValue = "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
 
@@ -46,6 +47,34 @@ export type NoteEventDefinition = {
   readonly required: { readonly time: boolean; readonly summary: boolean };
   readonly references: { readonly time: NemsisReference; readonly summary: NemsisReference };
   readonly validationMessages: { readonly invalidTime: string; readonly summaryRequired: string };
+};
+
+export type ProcedureEventDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly fieldOrder: ReadonlyArray<ProcedureField>;
+  readonly labels: {
+    readonly category: string; readonly newEyebrow: string; readonly editEyebrow: string; readonly editorTitle: string;
+    readonly closeEditor: string; readonly search: string; readonly searchPlaceholder: string; readonly offlineCaption: string;
+    readonly noResults: string; readonly change: string; readonly procedure: string; readonly time: string; readonly attempts: string;
+    readonly success: string; readonly outcome: string; readonly complications: string; readonly select: string;
+    readonly cancel: string; readonly add: string; readonly save: string; readonly warningPill: string;
+  };
+  readonly terminology: { readonly catalog: "nemsis-procedures-3.5.1"; readonly codeSystem: "SNOMED CT" };
+  readonly required: Record<ProcedureField, boolean>;
+  readonly references: Record<ProcedureField, NemsisReference>;
+  readonly attempts: { readonly defaultValue: number; readonly min: number; readonly max: number };
+  readonly successOptions: ReadonlyArray<{ readonly value: "yes" | "no"; readonly label: string }>;
+  readonly outcomeOptions: ReadonlyArray<{ readonly value: "improved" | "unchanged" | "worse" | "not-applicable"; readonly code: string; readonly label: string }>;
+  readonly complicationOptions: ReadonlyArray<{ readonly code: string; readonly label: string }>;
+  readonly validationMessages: Record<"procedureRequired" | "labelMismatch" | "invalidTime" | "invalidAttempts" | "successRequired" | "complicationsRequired" | "outcomeRequired", string>;
+  readonly warningBehavior: {
+    readonly noneCode: string; readonly repeatedAttemptThreshold: number;
+    readonly noneWithOtherMessage: string; readonly repeatedOrUnsuccessfulMessage: string;
+  };
+  readonly timeline: {
+    readonly attemptSingular: string; readonly attemptPlural: string; readonly successful: string; readonly unsuccessful: string;
+    readonly complicationLabel: string;
+  };
 };
 
 export type MedicationFieldId = "medication" | "time" | "dose" | "unit" | "route" | "response";
@@ -114,7 +143,7 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
-  readonly events: { readonly note: NoteEventDefinition; readonly medication: MedicationEventDefinition; readonly vitals: VitalGroupDefinition };
+  readonly events: { readonly note: NoteEventDefinition; readonly procedure: ProcedureEventDefinition; readonly medication: MedicationEventDefinition; readonly vitals: VitalGroupDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
@@ -169,6 +198,29 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
   requiredStrings(note.references, "events.note.references", ["time", "summary"]);
   requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
+  const procedure = isRecord(events.procedure) ? events.procedure : {};
+  const procedureQuickAction = isRecord(procedure.quickAction) ? procedure.quickAction : {};
+  if (typeof procedureQuickAction.visible !== "boolean") diagnostics.push("events.procedure.quickAction.visible must be a boolean");
+  requiredStrings(procedureQuickAction, "events.procedure.quickAction", ["label"]);
+  const procedureFields = ["procedure", "time", "attempts", "success", "outcome", "complications"] as const;
+  if (!Array.isArray(procedure.fieldOrder) || procedure.fieldOrder.length !== procedureFields.length || new Set(procedure.fieldOrder).size !== procedureFields.length || procedure.fieldOrder.some((field) => !procedureFields.includes(field as ProcedureField))) {
+    diagnostics.push("events.procedure.fieldOrder must contain every procedure field exactly once");
+  }
+  requiredStrings(procedure.labels, "events.procedure.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "search", "searchPlaceholder", "offlineCaption", "noResults", "change", "procedure", "time", "attempts", "success", "outcome", "complications", "select", "cancel", "add", "save", "warningPill"]);
+  requiredStrings(procedure.terminology, "events.procedure.terminology", ["catalog", "codeSystem"]);
+  const procedureRequired = isRecord(procedure.required) ? procedure.required : {};
+  for (const field of procedureFields) if (typeof procedureRequired[field] !== "boolean") diagnostics.push(`events.procedure.required.${field} must be a boolean`);
+  requiredStrings(procedure.references, "events.procedure.references", procedureFields);
+  const attempts = isRecord(procedure.attempts) ? procedure.attempts : {};
+  for (const field of ["defaultValue", "min", "max"] as const) if (!Number.isInteger(attempts[field])) diagnostics.push(`events.procedure.attempts.${field} must be an integer`);
+  for (const optionGroup of ["successOptions", "outcomeOptions", "complicationOptions"] as const) {
+    if (!Array.isArray(procedure[optionGroup]) || procedure[optionGroup].length === 0) diagnostics.push(`events.procedure.${optionGroup} must contain options`);
+  }
+  requiredStrings(procedure.validationMessages, "events.procedure.validationMessages", ["procedureRequired", "labelMismatch", "invalidTime", "invalidAttempts", "successRequired", "complicationsRequired", "outcomeRequired"]);
+  const warningBehavior = isRecord(procedure.warningBehavior) ? procedure.warningBehavior : {};
+  requiredStrings(warningBehavior, "events.procedure.warningBehavior", ["noneCode", "noneWithOtherMessage", "repeatedOrUnsuccessfulMessage"]);
+  if (!Number.isInteger(warningBehavior.repeatedAttemptThreshold)) diagnostics.push("events.procedure.warningBehavior.repeatedAttemptThreshold must be an integer");
+  requiredStrings(procedure.timeline, "events.procedure.timeline", ["attemptSingular", "attemptPlural", "successful", "unsuccessful", "complicationLabel"]);
   const medication = isRecord(events.medication) ? events.medication : {};
   const medicationQuickAction = isRecord(medication.quickAction) ? medication.quickAction : {};
   if (typeof medicationQuickAction.visible !== "boolean") diagnostics.push("events.medication.quickAction.visible must be a boolean");
