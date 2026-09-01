@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { INITIAL_SHELL_STATE, syntheticEncounter, transitionShell } from "../app/synthetic-encounter";
+import { INITIAL_SHELL_STATE, syntheticEncounter, syntheticEncounterDefinition, transitionShell } from "../app/synthetic-encounter";
 
 test("opens directly into the fixed synthetic chest-pain encounter", () => {
   assert.equal(INITIAL_SHELL_STATE.view, "timeline");
@@ -10,6 +10,8 @@ test("opens directly into the fixed synthetic chest-pain encounter", () => {
   assert.match(syntheticEncounter.incident.complaint, /chest pain/i);
   assert.match(syntheticEncounter.incident.address, /fictional/i);
   assert.equal(syntheticEncounter.events.length, 4);
+  assert.equal(syntheticEncounter.patient, syntheticEncounterDefinition.patient.initial);
+  assert.equal(syntheticEncounter.incident, syntheticEncounterDefinition.dispatch.incident);
   assert.deepEqual(syntheticEncounter.events.map((event) => event.reference), [
     "eTimes.07",
     "eTimes.06",

@@ -15,6 +15,7 @@ import {
   type ShellState,
   type ShellView,
   type VitalField,
+  syntheticEncounterDefinition,
 } from "./synthetic-encounter";
 import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
@@ -184,7 +185,7 @@ export default function Home() {
       <header className="encounter-header">
         <div className="header-kicker">
           <span>{encounter.currentTime}</span>
-          <span className="prototype-status">Prototype</span>
+          <span className="prototype-status">{syntheticEncounterDefinition.labels.prototypeStatus}</span>
         </div>
         <div className="patient-line">
           <div>
@@ -197,7 +198,7 @@ export default function Home() {
         </div>
         <div className="incident-line">
           <div>
-            <span>Incident {encounter.incident.number}</span>
+            <span>{syntheticEncounterDefinition.labels.incident} {encounter.incident.number}</span>
             <strong>{encounter.incident.complaint}</strong>
           </div>
         </div>
@@ -338,7 +339,7 @@ export default function Home() {
         <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
-      {patientOpen && <PatientDialog patient={encounter.patient} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
+      {patientOpen && <PatientDialog patient={encounter.patient} definition={syntheticEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
