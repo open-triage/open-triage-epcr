@@ -195,6 +195,13 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
     if (!isRecord(candidate)) { diagnostics.push(`${path} must be an object`); return; }
     for (const key of keys) if (typeof candidate[key] !== "string" || !(candidate[key] as string).trim()) diagnostics.push(`${path}.${key} is required`);
   };
+  const rejectUnsupportedKeys = (candidate: unknown, path: string, supported: readonly string[]) => {
+    if (!isRecord(candidate)) return;
+    for (const key of Object.keys(candidate)) {
+      if (!supported.includes(key)) diagnostics.push(`${path ? `${path}.` : ""}${key} is not supported by schemaVersion 1`);
+    }
+  };
+  rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "dates", "labels", "patient", "dispatch", "composition", "events"]);
   requiredStrings(root.dates, "dates", ["clinicalDate", "currentTime"]);
   requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "patientName", "age", "sex", "medicalHistory", "currentMedications", "allergies", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
@@ -217,6 +224,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (!Array.isArray(dispatch.events) || dispatch.events.length === 0) diagnostics.push("dispatch.events must contain at least one event");
   else dispatch.events.forEach((event, index) => requiredStrings(event, `dispatch.events[${index}]`, ["time", "title", "detail", "reference"]));
   const composition = isRecord(root.composition) ? root.composition : {};
+  rejectUnsupportedKeys(composition, "composition", ["quickActionOrder", "review", "summary"]);
   const quickActionIds = ["vitals", "medication", "procedure", "note", "patient"] as const;
   if (!Array.isArray(composition.quickActionOrder)
     || composition.quickActionOrder.length !== quickActionIds.length
@@ -248,7 +256,9 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   const summary = isRecord(composition.summary) ? composition.summary : {};
   validateEventTypeOrder(summary.eventTypeOrder, "composition.summary.eventTypeOrder");
   const events = isRecord(root.events) ? root.events : {};
+  rejectUnsupportedKeys(events, "events", ["note", "procedure", "medication", "vitals"]);
   const note = isRecord(events.note) ? events.note : {};
+  rejectUnsupportedKeys(note, "events.note", ["quickAction", "labels", "required", "references", "validationMessages"]);
   const quickAction = isRecord(note.quickAction) ? note.quickAction : {};
   if (typeof quickAction.visible !== "boolean") diagnostics.push("events.note.quickAction.visible must be a boolean");
   requiredStrings(quickAction, "events.note.quickAction", ["label"]);
@@ -258,6 +268,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(note.references, "events.note.references", ["time", "summary"]);
   requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
   const procedure = isRecord(events.procedure) ? events.procedure : {};
+  rejectUnsupportedKeys(procedure, "events.procedure", ["quickAction", "fieldOrder", "labels", "terminology", "required", "references", "attempts", "successOptions", "outcomeOptions", "complicationOptions", "validationMessages", "warningBehavior", "timeline"]);
   const procedureQuickAction = isRecord(procedure.quickAction) ? procedure.quickAction : {};
   if (typeof procedureQuickAction.visible !== "boolean") diagnostics.push("events.procedure.quickAction.visible must be a boolean");
   requiredStrings(procedureQuickAction, "events.procedure.quickAction", ["label"]);
@@ -281,6 +292,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (!Number.isInteger(warningBehavior.repeatedAttemptThreshold)) diagnostics.push("events.procedure.warningBehavior.repeatedAttemptThreshold must be an integer");
   requiredStrings(procedure.timeline, "events.procedure.timeline", ["attemptSingular", "attemptPlural", "successful", "unsuccessful", "complicationLabel"]);
   const medication = isRecord(events.medication) ? events.medication : {};
+  rejectUnsupportedKeys(medication, "events.medication", ["quickAction", "terminology", "fields", "doseUnits", "routes", "labels", "validationMessages"]);
   const medicationQuickAction = isRecord(medication.quickAction) ? medication.quickAction : {};
   if (typeof medicationQuickAction.visible !== "boolean") diagnostics.push("events.medication.quickAction.visible must be a boolean");
   requiredStrings(medicationQuickAction, "events.medication.quickAction", ["label"]);
@@ -293,6 +305,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
     medication.fields.forEach((field, index) => {
       requiredStrings(field, `events.medication.fields[${index}]`, ["id", "label", "reference"]);
       if (!isRecord(field)) return;
+      rejectUnsupportedKeys(field, `events.medication.fields[${index}]`, ["id", "label", "required", "reference", "placeholder", "warnWhenMissing"]);
       if (!medicationFieldIds.includes(field.id as typeof medicationFieldIds[number])) diagnostics.push(`events.medication.fields[${index}].id is not supported`);
       if (seen.has(String(field.id))) diagnostics.push(`events.medication.fields contains duplicate id ${String(field.id)}`);
       seen.add(String(field.id));
@@ -307,6 +320,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   requiredStrings(medication.labels, "events.medication.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "searchResults", "availableOffline", "noMatches", "change", "select", "selectRoute", "cancel", "add", "save", "medicationMissing", "routeMissing", "responseMissing"]);
   requiredStrings(medication.validationMessages, "events.medication.validationMessages", ["invalidTime", "invalidMedication", "invalidDose", "invalidUnit", "invalidRoute", "responseMissing"]);
   const vitals = isRecord(events.vitals) ? events.vitals : {};
+  rejectUnsupportedKeys(vitals, "events.vitals", ["quickAction", "labels", "references", "validationMessages", "fields", "summary"]);
   const vitalQuickAction = isRecord(vitals.quickAction) ? vitals.quickAction : {};
   if (typeof vitalQuickAction.visible !== "boolean") diagnostics.push("events.vitals.quickAction.visible must be a boolean");
   requiredStrings(vitalQuickAction, "events.vitals.quickAction", ["label"]);
@@ -318,6 +332,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   else vitals.fields.forEach((candidate, index) => {
     const path = `events.vitals.fields[${index}]`;
     const field = isRecord(candidate) ? candidate : {};
+    rejectUnsupportedKeys(field, path, ["id", "label", "unit", "required", "reference", "boundaries", "absenceStates"]);
     requiredStrings(field, path, ["id", "label", "unit", "reference"]);
     if (typeof field.id === "string") {
       if (!["systolic", "diastolic", "heartRate", "spo2", "respiratoryRate", "gcs", "pain"].includes(field.id)) diagnostics.push(`${path}.id is not a supported saved vital field`);
@@ -350,6 +365,11 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
 }
 
 export function createBundledDefinitionProvider(definitions: ReadonlyArray<unknown>): EncounterDefinitionProvider {
-  const validated = new Map(definitions.map((definition) => { const parsed = validateEncounterDefinition(definition); return [parsed.id, parsed] as const; }));
+  const validated = new Map<string, EncounterDefinition>();
+  for (const definition of definitions) {
+    const parsed = validateEncounterDefinition(definition);
+    if (validated.has(parsed.id)) throw new EncounterDefinitionError(parsed.id, ["bundled definition id must be unique"]);
+    validated.set(parsed.id, parsed);
+  }
   return { get(id) { const definition = validated.get(id); if (!definition) throw new EncounterDefinitionError(id, ["definition was not found"]); return definition; } };
 }
