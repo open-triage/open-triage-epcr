@@ -25,10 +25,4 @@ test("Timeline and Checklist navigation preserves the encounter", () => {
   assert.equal(timelineState.view, "timeline");
   assert.strictEqual(checklistState.encounter, syntheticEncounter);
   assert.strictEqual(timelineState.encounter, syntheticEncounter);
-  assert.equal(timelineState.encounter.requiredRemaining, 0);
-});
-
-test("required count matches incomplete checklist items", () => {
-  const incomplete = syntheticEncounter.checklist.filter((item) => !item.complete);
-  assert.equal(incomplete.length, syntheticEncounter.requiredRemaining);
 });

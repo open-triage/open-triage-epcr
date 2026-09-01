@@ -6,7 +6,8 @@ const nextConfig: NextConfig = {
   basePath,
   output: "export",
   trailingSlash: true,
-  transpilePackages: ["@open-triage/contracts"]
+  transpilePackages: ["@open-triage/contracts"],
+  agentRules: false
 };
 
 export default nextConfig;

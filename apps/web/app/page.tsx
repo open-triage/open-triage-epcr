@@ -8,8 +8,6 @@ import { TimePicker } from "../components/time-picker";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
 import {
-  checklistFields,
-  checklistDisplayValue,
   INITIAL_SHELL_STATE,
   reviewEncounter,
   transitionShell,
@@ -48,7 +46,6 @@ export default function Home() {
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
     for (const finding of reviewFindings) {
-      if (finding.target.kind !== "event") continue;
       if (finding.severity === "error" || !statuses.has(finding.target.eventId)) statuses.set(finding.target.eventId, finding.severity);
     }
     return statuses;
@@ -134,7 +131,7 @@ export default function Home() {
     returnFocus.current = element;
   }
 
-  function editChecklistFinding(finding: ReviewFinding, trigger: HTMLElement) {
+  function editValidationFinding(finding: ReviewFinding, trigger: HTMLElement) {
     rememberTrigger(trigger);
     setEditingFinding(finding);
     setOpenNullField(null);
@@ -236,6 +233,12 @@ export default function Home() {
         ))}
       </nav>}
 
+      {(shell.view === "timeline" || shell.view === "checklist") && (
+        <div className="sign-action-bar">
+          <button type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
+        </div>
+      )}
+
       {shell.view === "timeline" && (
         <section className="content-panel" aria-labelledby="timeline-heading">
           <div className="section-heading">
@@ -306,11 +309,11 @@ export default function Home() {
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
-                  <button type="button" onClick={(event) => editChecklistFinding(finding, event.currentTarget)}>
+                  <button type="button" onClick={(event) => editValidationFinding(finding, event.currentTarget)}>
                     <span className="finding-category">{finding.severity === "error" ? "Error" : "Warning"} · {finding.category}</span>
                     <strong>{finding.title}</strong>
                     <span>{finding.message}</span>
-                    <small>{finding.target.kind === "event" && finding.target.vitalField ? "Edit value or choose PN/NV × →" : "Edit affected entry →"}</small>
+                    <small>{finding.target.vitalField ? "Edit value or choose PN/NV × →" : "Edit affected entry →"}</small>
                   </button>
                 </li>
               ))}
@@ -475,10 +478,10 @@ export default function Home() {
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
               <button aria-label="Close vital signs editor" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
             </div>
-            <TimePicker className={vitalFindingActive && editingFinding?.target.kind === "event" && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label="Clinical time" date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label="Clinical time" date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <div className="vital-grid">
               {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (
-                <div className={`vital-field ${vitalFindingActive && editingFinding?.target.kind === "event" && editingFinding.target.vitalField === field ? `finding-frame ${editingFinding.severity}` : ""}`.trim()} key={field}>
+                <div className={`vital-field ${vitalFindingActive && editingFinding?.target.vitalField === field ? `finding-frame ${editingFinding.severity}` : ""}`.trim()} key={field}>
                   <label htmlFor={`vital-${field}`}>{rule.label}</label>
                   <div className="vital-inputs">
                     <input id={`vital-${field}`} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
@@ -620,10 +623,6 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
         <ol className="summary-timeline">
           {encounter.events.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
         </ol>
-      </section>
-      <section className="summary-section">
-        <h2>Checklist</h2>
-        <dl>{checklistFields.map((field) => <div key={field.id}><dt>{field.label} <small>{field.reference}</small></dt><dd>{checklistDisplayValue(field, shell.checklistValues[field.id])}</dd></div>)}</dl>
       </section>
       <section className="summary-section">
         <h2>Warning acknowledgements</h2>

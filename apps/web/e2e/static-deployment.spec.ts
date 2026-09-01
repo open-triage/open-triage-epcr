@@ -43,6 +43,12 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await expect(page.getByText("No warnings or errors")).toBeVisible();
   await expect(safetyNotice).toContainText("Synthetic data only");
 
+  await page.getByRole("button", { name: "Review & sign" }).click();
+  await expect(page.getByRole("heading", { name: "Review and finish" })).toBeVisible();
+  await page.getByRole("button", { name: "Finish prototype" }).click();
+  await expect(page.getByRole("heading", { name: "Encounter summary" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue editing" }).click();
+
   await page.getByRole("button", { name: /Timeline/ }).click();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   page.once("dialog", (dialog) => dialog.accept());

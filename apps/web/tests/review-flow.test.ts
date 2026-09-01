@@ -13,7 +13,7 @@ function withEvent(state: ShellState, event: EncounterEvent): ShellState {
   return { ...state, encounter: { ...state.encounter, events: [event, ...state.encounter.events] } };
 }
 
-test("consolidates only timeline-entry errors and warnings", () => {
+test("consolidates timeline-entry errors and warnings", () => {
   const invalidEvents: EncounterEvent[] = [
     { id: "bad-vital", time: "28:00", kind: "care", title: "Vital signs", detail: "Invalid", reference: "eVitals.VitalGroup", vitals: { ...EMPTY_VITALS, systolic: "501", nullValues: {} } },
     { id: "bad-med", time: "08:20", kind: "medication", title: "Unknown medication", detail: "Invalid", reference: "eMedications.03", medication: { medicationCode: "bad", codeType: "RxNorm", label: "Bad", dose: "0", unit: "bad", route: "bad", response: "", warningAcknowledged: false } },
@@ -26,18 +26,21 @@ test("consolidates only timeline-entry errors and warnings", () => {
     assert.ok(findings.some((finding) => finding.category === category && finding.severity === "error"), `missing ${category}`);
   }
   const systolicFinding = findings.find((finding) => finding.category === "Vital" && finding.reference === "eVitals.06");
-  assert.equal(systolicFinding?.target.kind === "event" ? systolicFinding.target.vitalField : undefined, "systolic");
-  assert.equal(findings.some((finding) => finding.target.kind === "checklist"), false);
+  assert.equal(systolicFinding?.target.vitalField, "systolic");
 });
 
 test("a finding opens its exact canonical timeline event", () => {
   const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
   let state = withEvent(INITIAL_SHELL_STATE, badNote);
-  let finding = reviewEncounter(state).find((candidate) => candidate.target.kind === "event" && candidate.target.eventId === "bad-note")!;
+  const finding = reviewEncounter(state).find((candidate) => candidate.target.eventId === "bad-note")!;
   state = transitionShell(state, { type: "review-finding-selected", id: finding.id });
   assert.equal(state.view, "timeline");
   assert.equal(state.noteDraft?.id, "bad-note");
 
+});
+
+test("review can be opened directly from capture views", () => {
+  assert.equal(transitionShell(INITIAL_SHELL_STATE, { type: "review-opened" }).view, "review");
 });
 
 test("errors block finish and valid completion produces a reversible read-only state", () => {
@@ -52,7 +55,6 @@ test("errors block finish and valid completion produces a reversible read-only s
   const editing = transitionShell(summary, { type: "summary-editing-continued" });
   assert.equal(editing.view, "timeline");
   assert.strictEqual(editing.encounter, complete.encounter);
-  assert.deepEqual(editing.checklistValues, complete.checklistValues);
 });
 
 test("boundary-valid data can finish while unusual vital warnings require explicit acknowledgement", () => {

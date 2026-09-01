@@ -1,4 +1,4 @@
-import { INITIAL_CHECKLIST_VALUES, INITIAL_SHELL_STATE, type ShellState } from "./synthetic-encounter";
+import { INITIAL_SHELL_STATE, type ShellState } from "./synthetic-encounter";
 
 export const STORAGE_KEY = "open-triage:adult-chest-pain-v2";
 
@@ -34,8 +34,6 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
       procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? "2026-04-18" } : null,
       vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? "2026-04-18" } : null,
       medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? "2026-04-18" } : null,
-      checklistValues: { ...INITIAL_CHECKLIST_VALUES, ...candidate.checklistValues },
-      focusedChecklistField: null,
       acknowledgedWarnings: Array.isArray(candidate.acknowledgedWarnings) ? candidate.acknowledgedWarnings : [],
     } as ShellState;
   } catch {

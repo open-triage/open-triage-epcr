@@ -13,7 +13,7 @@ async function expectPhoneLayout(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 
-  for (const control of await page.locator(".view-switcher button, .quick-actions button, .reset-prototype").all()) {
+  for (const control of await page.locator(".view-switcher button, .sign-action-bar button, .quick-actions button, .reset-prototype").all()) {
     const box = await control.boundingBox();
     expect(box, `missing control bounds for ${await control.getAttribute("aria-label") ?? await control.textContent()}`).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -36,6 +36,11 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
   await expect(page.getByText("No warnings or errors")).toBeVisible();
   await expectNoBlockingAccessibilityViolations(page);
+  await page.getByRole("button", { name: "Review & sign" }).click();
+  await expect(page.getByRole("heading", { name: "Review and finish" })).toBeVisible();
+  await page.getByRole("button", { name: "Finish prototype" }).click();
+  await expect(page.getByRole("heading", { name: "Encounter summary" })).toBeVisible();
+  await page.getByRole("button", { name: "Continue editing" }).click();
   await page.getByRole("button", { name: /Timeline/ }).click();
   const addNote = page.getByRole("button", { name: "Add clinical note" });
   await addNote.click();
