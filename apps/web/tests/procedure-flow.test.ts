@@ -35,7 +35,7 @@ test("the full pinned NEMSIS 3.5.1 procedure list includes auditable provenance"
   assert.equal(PROCEDURES.length, 115);
   assert.equal(PROCEDURE_MANIFEST.release, "NEMSIS 3.5.1");
   assert.equal(PROCEDURE_MANIFEST.element, "eProcedures.03");
-  assert.match(PROCEDURE_MANIFEST.sourceUrl, /^https:\/\/git\.nemsis\.org\//);
+  assert.match(PROCEDURE_MANIFEST.sourceUrl, /^https:\/\/nemsis\.org\//);
   assert.match(PROCEDURE_MANIFEST.sourceSha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(PROCEDURES.find((entry) => entry.code === "268400002"), {
     code: "268400002",

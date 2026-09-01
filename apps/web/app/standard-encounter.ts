@@ -431,7 +431,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       };
     }
     case "procedure-selected": {
-      const selected = definition.events.procedure.terminology.catalog === "nemsis-procedures-3.5.1" ? PROCEDURES.find((procedure) => procedure.code === action.code) : undefined;
+      const selected = definition.events.procedure.terminology.catalog === "eProcedures.03" ? PROCEDURES.find((procedure) => procedure.code === action.code) : undefined;
       return state.procedureDraft && (selected || action.code === "") ? {
         ...state,
         procedureDraft: {

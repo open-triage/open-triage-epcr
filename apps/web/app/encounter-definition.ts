@@ -5,7 +5,7 @@ export type ReviewSeverity = "error" | "warning";
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
 export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
-export type VitalNullValue = "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+export type VitalNullValue = string;
 
 export type VitalFieldDefinition = {
   readonly id: VitalField;
@@ -62,7 +62,7 @@ export type ProcedureEventDefinition = {
     readonly success: string; readonly outcome: string; readonly complications: string; readonly select: string;
     readonly cancel: string; readonly add: string; readonly save: string; readonly warningPill: string;
   };
-  readonly terminology: { readonly catalog: "nemsis-procedures-3.5.1"; readonly codeSystem: "SNOMED CT" };
+  readonly terminology: { readonly catalog: NemsisReference; readonly codeSystem: string };
   readonly required: Record<ProcedureField, boolean>;
   readonly references: Record<ProcedureField, NemsisReference>;
   readonly attempts: { readonly defaultValue: number; readonly min: number; readonly max: number };
@@ -84,7 +84,7 @@ export type MedicationFieldId = "medication" | "time" | "dose" | "unit" | "route
 
 export type MedicationEventDefinition = {
   readonly quickAction: { readonly visible: boolean; readonly label: string };
-  readonly terminology: { readonly catalog: "nemsis-3.5.1-medications" };
+  readonly terminology: { readonly catalog: NemsisReference };
   readonly fields: ReadonlyArray<{
     readonly id: MedicationFieldId;
     readonly label: string;
@@ -297,7 +297,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (typeof medicationQuickAction.visible !== "boolean") diagnostics.push("events.medication.quickAction.visible must be a boolean");
   requiredStrings(medicationQuickAction, "events.medication.quickAction", ["label"]);
   const terminology = isRecord(medication.terminology) ? medication.terminology : {};
-  if (terminology.catalog !== "nemsis-3.5.1-medications") diagnostics.push("events.medication.terminology.catalog must be nemsis-3.5.1-medications");
+  if (terminology.catalog !== "eMedications.03") diagnostics.push("events.medication.terminology.catalog must reference eMedications.03");
   const medicationFieldIds = ["medication", "time", "dose", "unit", "route", "response"] as const;
   if (!Array.isArray(medication.fields)) diagnostics.push("events.medication.fields must be an array");
   else {

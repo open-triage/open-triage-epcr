@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { NEMSIS_DATA_MODEL, NEMSIS_ELEMENT_IDS, getNemsisDataElement, resolveNemsisElementValues } from "../app/nemsis-data-model";
 import catalog from "../app/data/nemsis-data-model-3.5.1.json";
 
@@ -37,8 +37,8 @@ test("contains the complete official EMSDataSet element universe", () => {
 test("resolves source datatypes to form-usable bases and constraints", () => {
   const record = getNemsisDataElement("eRecord.01");
   assert.equal(record?.sourceDatatype, "PatientCareReportNumber");
-  assert.deepEqual(record?.datatype, { base: "string", xsdBase: "xs:string", constraints: { minLength: 3, maxLength: 50 } });
-  assert.deepEqual(getNemsisDataElement("eVitals.06")?.datatype, { base: "integer", xsdBase: "xs:integer", constraints: { minInclusive: 0, maxInclusive: 500 } });
+  assert.deepEqual(record?.datatype, { base: "string", xsdBase: "xs:string", typeChain: ["PatientCareReportNumber"], constraints: { minLength: 3, maxLength: 50 } });
+  assert.deepEqual(getNemsisDataElement("eVitals.06")?.datatype, { base: "integer", xsdBase: "xs:integer", typeChain: ["SBP"], constraints: { minInclusive: 0, maxInclusive: 500 } });
   assert.equal(getNemsisDataElement("eProcedures.03")?.datatype.constraints.maxInclusive, "999999999999999999");
   assert.deepEqual(getNemsisDataElement("eHistory.08")?.occurrence, { min: 0, max: "unbounded" });
 });
@@ -84,7 +84,7 @@ test("pins all official defined and suggested lists without treating them as exh
 });
 
 test("every field rendered by the app resolves entirely through the generated catalog", () => {
-  const renderedElementIds = new Set(JSON.stringify(adultChestPainDefinition).match(/e[A-Za-z]+\.\d{2}/g) ?? []);
+  const renderedElementIds = new Set(JSON.stringify(standardEncounterDefinition).match(/e[A-Za-z]+\.\d{2}/g) ?? []);
   assert.ok(renderedElementIds.size > 20);
   for (const id of renderedElementIds) {
     const element = getNemsisDataElement(id);
@@ -125,4 +125,46 @@ test("production loader reads only the bundled catalog", () => {
   assert.equal(NEMSIS_DATA_MODEL, catalog);
   const loader = readFileSync(fileURLToPath(new URL("../app/nemsis-data-model.ts", import.meta.url)), "utf8");
   assert.doesNotMatch(loader, /fetch\s*\(|https?:\/\//);
+});
+
+test("preserves stable group paths, group cardinality, nillability, and permitted attributes", () => {
+  assert.equal(catalog.schemaVersion, "1.0.0");
+  assert.equal(new Set(catalog.groups.map((group) => group.id)).size, catalog.groups.length);
+  const systolic = getNemsisDataElement("eVitals.06")!;
+  assert.deepEqual(systolic.groupPath, ["EMSDataSet", "HeaderGroup", "PatientCareReportGroup", "eVitalsSection", "eVitals.VitalGroup", "eVitals.BloodPressureGroup"]);
+  assert.deepEqual(catalog.groups.find((group) => group.id === "eVitals.VitalGroup")?.occurrence, { min: 1, max: "unbounded" });
+  assert.deepEqual(systolic.attributes, { NV: true, PN: true });
+  assert.equal(systolic.nillable, true);
+});
+
+test("representatives from every EMS section match the pinned XSD structure", async () => {
+  // @ts-expect-error The dependency-free generator is intentionally plain ESM.
+  const { parseXsdStructure } = await import("../scripts/generate-nemsis-data-model.mjs") as { parseXsdStructure: (files: Array<{ relativePath: string; content: Buffer }>) => { elements: Map<string, { groupPath: string[]; occurrence: unknown; nillable: boolean; attributes: unknown }> } };
+  const xsdRoot = fileURLToPath(new URL("../app/data/nemsis-3.5.1-sources/xsd/", import.meta.url));
+  const xsdFiles = readdirSync(xsdRoot).filter((name) => name.endsWith(".xsd")).map((name) => ({ relativePath: `xsd/${name}`, content: readFileSync(`${xsdRoot}/${name}`) }));
+  const pinned = parseXsdStructure(xsdFiles).elements;
+  const representatives = new Map<string, typeof catalog.elements[number]>();
+  for (const element of catalog.elements) if (!representatives.has(element.section)) representatives.set(element.section, element);
+  assert.equal(representatives.size, 27);
+  for (const element of representatives.values()) {
+    const source = pinned.get(element.id);
+    assert.ok(source, `${element.id} is absent from pinned XSD structure`);
+    assert.deepEqual({ groupPath: element.groupPath, occurrence: element.occurrence, nillable: element.nillable, attributes: element.attributes }, { groupPath: source.groupPath, occurrence: source.occurrence, nillable: source.nillable, attributes: source.attributes }, element.id);
+  }
+});
+
+test("the versioned schema rejects unsupported catalog structures with actionable paths", async () => {
+  // @ts-expect-error The dependency-free generator is intentionally plain ESM.
+  const { validateCatalog } = await import("../scripts/generate-nemsis-data-model.mjs") as { validateCatalog: (value: unknown) => Promise<void> };
+  const malformed = structuredClone(catalog) as unknown as { elements: Array<Record<string, unknown>> };
+  delete malformed.elements[0]!.xsdId;
+  await assert.rejects(validateCatalog(malformed), /\/elements\/0[\s\S]*required property 'xsdId'/);
+});
+
+test("catalog-only guardrails reject duplicated profile metadata while allowing presentation", async () => {
+  // @ts-expect-error The guardrail is intentionally plain ESM.
+  const { catalogGuardrailViolations } = await import("../scripts/check-nemsis-catalog-guardrails.mjs") as { catalogGuardrailViolations: (source: string, path: string) => string[] };
+  assert.deepEqual(catalogGuardrailViolations(`export const field = { reference: "eVitals.06", label: "Systolic", warningLow: 70 };`, "app/example-profile.ts"), []);
+  assert.ok(catalogGuardrailViolations(`export const field = { reference: "eVitals.06", boundaries: { min: 0, max: 500 } };`, "app/example-profile.ts").length);
+  assert.ok(catalogGuardrailViolations(`export const field = { reference: "eVitals.06", absenceStates: [{ code: "7701003" }] };`, "app/example-profile.ts").length);
 });

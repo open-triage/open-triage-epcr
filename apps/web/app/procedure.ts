@@ -1,4 +1,4 @@
-import catalog from "./data/nemsis-procedures.json";
+import { NEMSIS_DATA_MODEL, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
 import { standardEncounterDefinition } from "./standard-encounter-definition";
 import type { ProcedureEventDefinition } from "./encounter-definition";
 
@@ -41,8 +41,14 @@ export type ProcedureValidation = {
   readonly warnings: ReadonlyArray<string>;
 };
 
-export const PROCEDURE_MANIFEST = catalog.manifest;
-export const PROCEDURES: ReadonlyArray<ProcedureOption> = catalog.procedures;
+const procedureSource = NEMSIS_DATA_MODEL.provenance.sources.find((source) => source.path.endsWith("/Procedure.json"))!;
+export const PROCEDURE_MANIFEST = { release: NEMSIS_DATA_MODEL.provenance.release, element: "eProcedures.03", sourceUrl: procedureSource.url, sourceSha256: procedureSource.sha256 };
+export const PROCEDURES: ReadonlyArray<ProcedureOption> = resolveNemsisElementValues(requireNemsisDataElement("eProcedures.03")).permissibleValues.map((value) => ({
+  code: value.code,
+  label: value.label,
+  sourceLabel: "sourceLabel" in value ? value.sourceLabel : value.label,
+  category: "category" in value ? value.category ?? "" : "",
+}));
 
 const normalized = PROCEDURES.map((procedure, index) => ({
   procedure,
@@ -54,7 +60,7 @@ export const COMPLICATIONS = standardEncounterDefinition.events.procedure.compli
 export const OUTCOMES = standardEncounterDefinition.events.procedure.outcomeOptions;
 
 export function searchProcedures(query: string, limit = 30, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): ReadonlyArray<ProcedureOption> {
-  if (definition.terminology.catalog !== "nemsis-procedures-3.5.1") throw new Error(`Unsupported procedure catalog: ${definition.terminology.catalog}`);
+  if (definition.terminology.catalog !== "eProcedures.03") throw new Error(`Unsupported procedure catalog: ${definition.terminology.catalog}`);
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return normalized
     .filter(({ haystack }) => terms.every((term) => haystack.includes(term)))

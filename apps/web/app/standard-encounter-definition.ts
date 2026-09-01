@@ -1,4 +1,13 @@
 import type { EncounterDefinition } from "./encounter-definition";
+import { medicationElementMetadata, procedureElementMetadata, vitalElementMetadata } from "./nemsis-form-profile";
+
+const procedureReferences = { procedure: "eProcedures.03", time: "eProcedures.01", attempts: "eProcedures.05", success: "eProcedures.06", complications: "eProcedures.07", outcome: "eProcedures.08" } as const;
+const procedureMetadata = procedureElementMetadata(procedureReferences);
+const medicationReferences = [
+  { id: "medication", reference: "eMedications.03" }, { id: "time", reference: "eMedications.01" }, { id: "dose", reference: "eMedications.05" },
+  { id: "unit", reference: "eMedications.06" }, { id: "route", reference: "eMedications.04" }, { id: "response", reference: "eMedications.07" },
+] as const;
+const medicationMetadata = medicationElementMetadata(medicationReferences);
 
 export const standardEncounterDefinition = {
   schemaVersion: 1, id: "standard-encounter-v1", version: 1, synthetic: true,
@@ -59,22 +68,13 @@ export const standardEncounterDefinition = {
         complications: "Complications", select: "Select…", cancel: "Cancel", add: "Add procedure", save: "Save changes",
         warningPill: "⚠ Warning: review needed",
       },
-      terminology: { catalog: "nemsis-procedures-3.5.1", codeSystem: "SNOMED CT" },
-      required: { procedure: true, time: true, attempts: true, success: true, outcome: true, complications: true },
-      references: { procedure: "eProcedures.03", time: "eProcedures.01", attempts: "eProcedures.05", success: "eProcedures.06", complications: "eProcedures.07", outcome: "eProcedures.08" },
-      attempts: { defaultValue: 1, min: 1, max: 10 },
-      successOptions: [{ value: "yes", label: "Yes" }, { value: "no", label: "No" }],
-      outcomeOptions: [
-        { value: "improved", code: "9916001", label: "Improved" }, { value: "unchanged", code: "9916003", label: "Unchanged" },
-        { value: "worse", code: "9916005", label: "Worse" }, { value: "not-applicable", code: "7701001", label: "Not applicable" },
-      ],
-      complicationOptions: [
-        ["3907001", "Altered mental status"], ["3907003", "Apnea"], ["3907033", "None"], ["3907005", "Bleeding"], ["3907007", "Bradypnea"],
-        ["3907047", "Bradycardia"], ["3907009", "Diarrhea"], ["3907011", "Esophageal intubation—immediately"], ["3907013", "Esophageal intubation—other"],
-        ["3907015", "Extravasation"], ["3907017", "Hypertension"], ["3907019", "Hyperthermia"], ["3907021", "Hypotension"], ["3907023", "Hypothermia"],
-        ["3907025", "Hypoxia"], ["3907027", "Injury"], ["3907031", "Nausea"], ["3907035", "Other"], ["3907039", "Respiratory distress"],
-        ["3907041", "Tachycardia"], ["3907043", "Tachypnea"], ["3907045", "Vomiting"], ["3907049", "Itching"], ["3907051", "Urticaria"],
-      ].map(([code, label]) => ({ code: code!, label: label! })),
+      terminology: procedureMetadata.terminology,
+      required: procedureMetadata.required,
+      references: procedureReferences,
+      attempts: procedureMetadata.attempts,
+      successOptions: procedureMetadata.successOptions,
+      outcomeOptions: procedureMetadata.outcomeOptions,
+      complicationOptions: procedureMetadata.complicationOptions,
       validationMessages: {
         procedureRequired: "Select a procedure from the pinned NEMSIS list.", labelMismatch: "The display label must match the selected SNOMED CT code.",
         invalidTime: "Enter the procedure time as HH:mm.", invalidAttempts: "Attempts must be a whole number from 1 to 10.",
@@ -82,7 +82,7 @@ export const standardEncounterDefinition = {
         outcomeRequired: "Record the patient's response to the procedure.",
       },
       warningBehavior: {
-        noneCode: "3907033", repeatedAttemptThreshold: 1,
+        noneCode: procedureMetadata.noneCode, repeatedAttemptThreshold: 1,
         noneWithOtherMessage: "nemSch_e158: “None” should not be recorded with another procedure complication.",
         repeatedOrUnsuccessfulMessage: "Standard encounter warning: Review whether a complication should be documented for repeated or unsuccessful attempts.",
       },
@@ -90,17 +90,17 @@ export const standardEncounterDefinition = {
     },
     medication: {
       quickAction: { visible: true, label: "Add medication" },
-      terminology: { catalog: "nemsis-3.5.1-medications" },
+      terminology: { catalog: "eMedications.03" },
       fields: [
-        { id: "medication", label: "Search medications", required: true, reference: "eMedications.03", placeholder: "Try aspirin, fentanyl, saline…" },
-        { id: "time", label: "Medication time", required: true, reference: "eMedications.01" },
-        { id: "dose", label: "Dose", required: true, reference: "eMedications.05", placeholder: "e.g. 4" },
-        { id: "unit", label: "Unit", required: true, reference: "eMedications.06" },
-        { id: "route", label: "Route", required: true, reference: "eMedications.04" },
-        { id: "response", label: "Patient response", required: false, reference: "eMedications.07", placeholder: "e.g. pain 8 → 4; no adverse reaction", warnWhenMissing: true },
+        { id: "medication", label: "Search medications", required: medicationMetadata.required.get("medication")!, reference: "eMedications.03", placeholder: "Try aspirin, fentanyl, saline…" },
+        { id: "time", label: "Medication time", required: medicationMetadata.required.get("time")!, reference: "eMedications.01" },
+        { id: "dose", label: "Dose", required: medicationMetadata.required.get("dose")!, reference: "eMedications.05", placeholder: "e.g. 4" },
+        { id: "unit", label: "Unit", required: medicationMetadata.required.get("unit")!, reference: "eMedications.06" },
+        { id: "route", label: "Route", required: medicationMetadata.required.get("route")!, reference: "eMedications.04" },
+        { id: "response", label: "Patient response", required: medicationMetadata.required.get("response")!, reference: "eMedications.07", placeholder: "e.g. pain 8 → 4; no adverse reaction", warnWhenMissing: true },
       ],
-      doseUnits: ["mg", "mcg", "g", "mL", "units", "L/min"],
-      routes: ["PO — Oral", "IV — Intravenous", "IM — Intramuscular", "IN — Intranasal", "SL — Sublingual", "IO — Intraosseous", "Nebulized", "Topical"],
+      doseUnits: medicationMetadata.doseUnits,
+      routes: medicationMetadata.routes,
       labels: {
         category: "Medication", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event", editorTitle: "Medication", closeEditor: "Close medication editor",
         searchResults: "Medication search results", availableOffline: "available offline", noMatches: "No medication matches your search.", change: "Change", select: "Select…", selectRoute: "Select route…",
@@ -122,34 +122,13 @@ export const standardEncounterDefinition = {
       references: { group: "eVitals.VitalGroup", time: "eVitals.01" },
       validationMessages: { invalidTime: "eVitals.01 requires a valid clinical time (HH:mm).", emptyGroup: "eVitals.VitalGroup requires at least one documented vital element." },
       fields: [
-        { id: "systolic", label: "Systolic BP", unit: "mmHg", required: true, reference: "eVitals.06", boundaries: { min: 0, max: 500, warningLow: 70, warningHigh: 220 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801005", kind: "PN", label: "Finding not present (PN)" }, { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "diastolic", label: "Diastolic BP", unit: "mmHg", required: true, reference: "eVitals.07", boundaries: { min: 0, max: 500, warningLow: 40, warningHigh: 130 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" }, { code: "7701005", kind: "NV", label: "Not reporting (NV)" },
-          { code: "8801005", kind: "PN", label: "Finding not present (PN)" }, { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "heartRate", label: "Heart rate", unit: "bpm", required: true, reference: "eVitals.10", boundaries: { min: 0, max: 500, warningLow: 40, warningHigh: 180 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801005", kind: "PN", label: "Finding not present (PN)" }, { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "spo2", label: "SpO₂", unit: "%", required: false, reference: "eVitals.12", boundaries: { min: 0, max: 100, warningLow: 90, warningHigh: 100 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801005", kind: "PN", label: "Finding not present (PN)" }, { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "respiratoryRate", label: "Respiratory rate", unit: "breaths/min", required: false, reference: "eVitals.14", boundaries: { min: 0, max: 300, warningLow: 8, warningHigh: 35 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801005", kind: "PN", label: "Finding not present (PN)" }, { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "gcs", label: "GCS total", unit: "score", required: false, reference: "eVitals.21", boundaries: { min: 3, max: 15, warningLow: 12, warningHigh: 15 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
-        { id: "pain", label: "Pain score", unit: "score", required: false, reference: "eVitals.27", boundaries: { min: 0, max: 10, warningLow: 0, warningHigh: 7 }, absenceStates: [
-          { code: "7701001", kind: "NV", label: "Not applicable (NV)" }, { code: "7701003", kind: "NV", label: "Not recorded (NV)" },
-          { code: "8801019", kind: "PN", label: "Refused (PN)" }, { code: "8801023", kind: "PN", label: "Unable to complete (PN)" },
-        ] },
+        { id: "systolic", label: "Systolic BP", unit: "mmHg", reference: "eVitals.06", ...vitalElementMetadata("eVitals.06", 70, 220) },
+        { id: "diastolic", label: "Diastolic BP", unit: "mmHg", reference: "eVitals.07", ...vitalElementMetadata("eVitals.07", 40, 130) },
+        { id: "heartRate", label: "Heart rate", unit: "bpm", reference: "eVitals.10", ...vitalElementMetadata("eVitals.10", 40, 180) },
+        { id: "spo2", label: "SpO₂", unit: "%", reference: "eVitals.12", ...vitalElementMetadata("eVitals.12", 90, 100) },
+        { id: "respiratoryRate", label: "Respiratory rate", unit: "breaths/min", reference: "eVitals.14", ...vitalElementMetadata("eVitals.14", 8, 35) },
+        { id: "gcs", label: "GCS total", unit: "score", reference: "eVitals.23", ...vitalElementMetadata("eVitals.23", 12, 15) },
+        { id: "pain", label: "Pain score", unit: "score", reference: "eVitals.27", ...vitalElementMetadata("eVitals.27", 0, 7) },
       ],
       summary: [
         { label: "BP", fields: ["systolic", "diastolic"], separator: "/", unit: "" },

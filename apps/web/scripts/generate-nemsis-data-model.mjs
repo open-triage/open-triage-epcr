@@ -10,6 +10,7 @@ const listRoot = path.join(sourceRoot, "lists");
 const dictionaryPath = path.join(sourceRoot, "Combined_ElementDetails_Full.txt");
 const enumerationsPath = path.join(sourceRoot, "Combined_ElementEnumerations.txt");
 const outputPath = path.join(webRoot, "app/data/nemsis-data-model-3.5.1.json");
+const schemaPath = path.join(webRoot, "app/data/nemsis-data-model.schema-1.0.0.json");
 const releaseBaseUrl = "https://nemsis.org/media/nemsis_v3/release-3.5.1";
 const masterBaseUrl = "https://nemsis.org/media/nemsis_v3/master";
 const retrievalDate = "2026-09-01";
@@ -65,6 +66,101 @@ function decodeXml(value) {
     .replaceAll("&quot;", '"').replaceAll("&apos;", "'").replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">").replaceAll("&amp;", "&").replace(/\s+/g, " ").trim();
 }
+
+function parseXml(content, sourceName) {
+  const document = { name: "#document", attributes: {}, children: [] };
+  const stack = [document];
+  const tokens = content.toString("utf8").match(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<[^>]+>|[^<]+/g) ?? [];
+  for (const token of tokens) {
+    if (!token.startsWith("<") || token.startsWith("<!--") || token.startsWith("<?") || token.startsWith("<!")) continue;
+    if (token.startsWith("</")) {
+      const name = token.slice(2, -1).trim();
+      const closed = stack.pop();
+      if (!closed || closed.name !== name) throw new Error(`${sourceName}: unexpected closing tag ${name}`);
+      continue;
+    }
+    const selfClosing = token.endsWith("/>");
+    const body = token.slice(1, selfClosing ? -2 : -1).trim();
+    const name = body.match(/^\S+/)?.[0];
+    if (!name) throw new Error(`${sourceName}: malformed XML tag`);
+    const attributes = {};
+    const attributeBody = body.slice(name.length);
+    let consumed = "";
+    for (const match of attributeBody.matchAll(/\s+([^\s=]+)\s*=\s*(["'])([\s\S]*?)\2/g)) {
+      attributes[match[1]] = decodeXml(match[3]);
+      consumed += match[0];
+    }
+    if (consumed.replace(/\s/g, "") !== attributeBody.replace(/\s/g, "")) throw new Error(`${sourceName}: unsupported attributes on ${name}`);
+    const node = { name, attributes, children: [] };
+    stack.at(-1).children.push(node);
+    if (!selfClosing) stack.push(node);
+  }
+  if (stack.length !== 1) throw new Error(`${sourceName}: unclosed XML tag ${stack.at(-1).name}`);
+  return document;
+}
+function children(node, name) { return node.children.filter((child) => child.name === name); }
+function child(node, name) { return children(node, name)[0]; }
+function descendants(node, name) { return node.children.flatMap((candidate) => [candidate, ...descendants(candidate, name)]).filter((candidate) => candidate.name === name); }
+function occurrence(attributes) {
+  const min = attributes.minOccurs === undefined ? 1 : Number(attributes.minOccurs);
+  const max = attributes.maxOccurs === "unbounded" ? "unbounded" : attributes.maxOccurs === undefined ? 1 : Number(attributes.maxOccurs);
+  if (!Number.isInteger(min) || !(max === "unbounded" || Number.isInteger(max))) throw new Error(`Invalid XSD occurrence ${attributes.minOccurs ?? "1"}..${attributes.maxOccurs ?? "1"}`);
+  return { min, max };
+}
+
+export function parseXsdStructure(xsdFiles) {
+  const documents = xsdFiles.map(({ relativePath, content }) => ({ relativePath, root: parseXml(content, relativePath) }));
+  const complexTypes = new Map();
+  for (const { relativePath, root } of documents) {
+    const schema = child(root, "xs:schema");
+    for (const type of children(schema, "xs:complexType")) {
+      const name = type.attributes.name;
+      if (complexTypes.has(name)) throw new Error(`Duplicate XSD complex type ${name} in ${relativePath}`);
+      complexTypes.set(name, type);
+    }
+  }
+  const emsDocument = documents.find(({ relativePath }) => path.basename(relativePath) === "EMSDataSet_v3.xsd");
+  const schema = child(emsDocument.root, "xs:schema");
+  const rootElement = children(schema, "xs:element").find((node) => node.attributes.name === "EMSDataSet");
+  if (!rootElement) throw new Error("EMSDataSet root element is absent from the pinned XSD");
+  const groups = new Map();
+  const elements = new Map();
+  const elementPattern = /^(?:dAgency|e[A-Za-z]+)\.\d{2}$/;
+  function particleElements(container) {
+    const sequence = child(container, "xs:sequence") ?? child(child(container, "xs:complexType") ?? { children: [] }, "xs:sequence");
+    return sequence ? children(sequence, "xs:element") : [];
+  }
+  function walk(node, groupPath) {
+    const name = node.attributes.name;
+    if (elementPattern.test(name)) {
+      if (elements.has(name)) throw new Error(`Element ${name} occurs more than once in the EMS dataset structure`);
+      const attributeNames = new Set(descendants(node, "xs:attribute").map((attribute) => attribute.attributes.name));
+      elements.set(name, {
+        xsdId: node.attributes.id,
+        groupPath,
+        occurrence: occurrence(node.attributes),
+        nillable: node.attributes.nillable === "true",
+        attributes: { NV: attributeNames.has("NV"), PN: attributeNames.has("PN") },
+      });
+      return;
+    }
+    const id = node.attributes.id ?? name;
+    if (!id) throw new Error("Structural XSD element has neither id nor name");
+    const structuralOccurrence = occurrence(node.attributes);
+    const nextPath = [...groupPath, id];
+    const structural = { id, name, parentId: groupPath.at(-1) ?? null, path: nextPath, occurrence: structuralOccurrence, repeating: structuralOccurrence.max === "unbounded" };
+    const previous = groups.get(id);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(structural)) throw new Error(`Conflicting structural group identity ${id}`);
+    groups.set(id, structural);
+    const inlineType = child(node, "xs:complexType");
+    const namedType = node.attributes.type ? complexTypes.get(node.attributes.type) : undefined;
+    const content = inlineType ?? namedType;
+    if (node.attributes.type && !content && (name === "EMSDataSet" || name.startsWith("e") || name === "PatientCareReport")) throw new Error(`Could not resolve structural type ${node.attributes.type} for ${name}`);
+    for (const nested of content ? particleElements(content) : []) walk(nested, nextPath);
+  }
+  walk(rootElement, []);
+  return { groups: [...groups.values()], elements };
+}
 function tag(block, name) {
   const match = block.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`));
   return match ? decodeXml(match[1]) : "";
@@ -110,17 +206,21 @@ function parseSimpleTypes(xsdFiles) {
   return types;
 }
 
-function resolveXsdBase(sourceDatatype, simpleTypes) {
+function resolveXsdType(sourceDatatype, simpleTypes) {
   let current = sourceDatatype;
   const visited = new Set();
+  const chain = [];
+  const facets = {};
   while (!current.startsWith("xs:")) {
     if (visited.has(current)) throw new Error(`Circular XSD datatype definition for ${sourceDatatype}`);
     visited.add(current);
     const definition = simpleTypes.get(current);
     if (!definition) throw new Error(`Could not resolve XSD datatype ${sourceDatatype} (stopped at ${current})`);
+    chain.push(current);
+    for (const [facet, value] of Object.entries(definition.facets)) if (facets[facet] === undefined) facets[facet] = value;
     current = definition.base;
   }
-  return current;
+  return { xsdBase: current, typeChain: chain, facets };
 }
 function usableBase(xsdBase) {
   const primitive = xsdBase.replace(/^xs:/, "");
@@ -200,7 +300,9 @@ export async function generateCatalog() {
   if (dictionaryIds.size !== rows.length) throw new Error("Data dictionary contains duplicate EMSDataSet element identifiers");
   const xsdDocumentation = parseXsdDocumentation(xsdFiles);
   const simpleTypes = parseSimpleTypes(xsdFiles);
+  const structure = parseXsdStructure(xsdFiles);
   compareElementIds(dictionaryIds, new Set(xsdDocumentation.keys()), "data dictionary", "XSD");
+  compareElementIds(dictionaryIds, new Set(structure.elements.keys()), "data dictionary", "XSD structure");
 
   const enumerationExport = parseDelimited(enumerations);
   const inlineValues = new Map();
@@ -231,11 +333,15 @@ export async function generateCatalog() {
     const minimum = Number(row[index.MinOccurs]);
     const maximum = row[index.MaxOccurs] === "M" ? "unbounded" : Number(row[index.MaxOccurs]);
     if (!Number.isInteger(minimum) || !(maximum === "unbounded" || Number.isInteger(maximum))) throw new Error(`${id} has invalid occurrence metadata`);
-    const xsdBase = resolveXsdBase(sourceDatatype, simpleTypes);
+    const resolvedType = resolveXsdType(sourceDatatype, simpleTypes);
+    const xsdBase = resolvedType.xsdBase;
     const base = usableBase(xsdBase);
     const constraints = {};
     for (const facet of facets) {
-      const value = parseConstraint(row[index[facet]], facet, base);
+      const xsdValue = parseConstraint(resolvedType.facets[facet], facet, base);
+      const dictionaryValue = parseConstraint(row[index[facet]], facet, base);
+      if (xsdValue !== dictionaryValue) throw new Error(`${id} ${facet} differs between resolved XSD type ${sourceDatatype} and data dictionary (${String(xsdValue)} != ${String(dictionaryValue)})`);
+      const value = xsdValue;
       if (value !== undefined) constraints[facet] = value;
     }
     const notValues = parseNamedChoices(row[index.NVList], simpleTypes, id, "NV");
@@ -249,10 +355,17 @@ export async function generateCatalog() {
     else if (bundledListIds.length) valueSource = { kind: "bundled-list", exhaustive: false, bundledListIds };
     else if (elementInlineValues.length) valueSource = { kind: "inline-enumerated", exhaustive: true, values: elementInlineValues };
     else valueSource = { kind: "scalar" };
+    const structural = structure.elements.get(id);
+    const dictionaryNillable = row[index.IsNillable] === "Nillable";
+    const dictionaryNV = row[index.NV] === "NV";
+    const dictionaryPN = row[index.PN] === "PN";
+    if (structural.nillable !== dictionaryNillable || structural.attributes.NV !== dictionaryNV || structural.attributes.PN !== dictionaryPN) throw new Error(`${id} nillability or NV/PN attributes differ between XSD and data dictionary`);
+    if (JSON.stringify(structural.occurrence) !== JSON.stringify({ min: minimum, max: maximum })) throw new Error(`${id} occurrence differs between XSD and data dictionary`);
     return {
       id, section: id.split(".")[0], name: metadata.name, definition: metadata.definition,
       national: metadata.national, state: metadata.state, usage: metadata.usage, sourceDatatype,
-      datatype: { base, xsdBase, constraints }, occurrence: { min: minimum, max: maximum },
+      datatype: { base, xsdBase, typeChain: resolvedType.typeChain, constraints }, occurrence: structural.occurrence,
+      xsdId: structural.xsdId, groupPath: structural.groupPath, nillable: structural.nillable, attributes: structural.attributes,
       permittedNotValues: notValues, permittedPertinentNegatives: pertinentNegatives, valueSource,
     };
   }).sort(elementOrder);
@@ -264,6 +377,7 @@ export async function generateCatalog() {
     ...listFiles.map(({ specification, content }) => ({ role: `${specification.classification}-list`, path: `nemsis-3.5.1-sources/lists/${specification.filename}`, url: `${masterBaseUrl}/${specification.remotePath}`, content })),
   ].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const catalog = {
+    $schema: "./nemsis-data-model.schema-1.0.0.json", schemaVersion: "1.0.0",
     catalog: "nemsis-ems-data-model", release: "3.5.1", dataset: "EMSDataSet", elementCount: elements.length,
     statistics: {
       inlineEnumerationElements: inlineValues.size,
@@ -280,9 +394,20 @@ export async function generateCatalog() {
       generator: "apps/web/scripts/generate-nemsis-data-model.mjs",
       sources: sourceEntries.map(({ role, path: sourcePath, url, content }) => ({ role, path: sourcePath, url, sha256: sha256(content) })),
     },
-    bundledLists, elements,
+    groups: structure.groups, bundledLists, elements,
   };
+  await validateCatalog(catalog);
   return `${JSON.stringify(catalog, null, 2)}\n`;
+}
+
+export async function validateCatalog(catalog) {
+  const schema = JSON.parse(await readFile(schemaPath, "utf8"));
+  const { default: Ajv2020 } = await import("ajv/dist/2020.js");
+  const { default: addFormats } = await import("ajv-formats");
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+  if (!validate(catalog)) throw new Error(`Catalog schema validation failed:\n${validate.errors.map((error) => `${error.instancePath || "/"} ${error.message}`).join("\n")}`);
 }
 
 async function main() {
