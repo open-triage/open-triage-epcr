@@ -1,5 +1,30 @@
 export type NemsisReference = `e${string}`;
 export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
+export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
+export type VitalNullValue = "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+
+export type VitalFieldDefinition = {
+  readonly id: VitalField;
+  readonly label: string;
+  readonly unit: string;
+  readonly required: boolean;
+  readonly reference: NemsisReference;
+  readonly boundaries: { readonly min: number; readonly max: number; readonly warningLow: number; readonly warningHigh: number };
+  readonly absenceStates: ReadonlyArray<{ readonly code: VitalNullValue; readonly kind: "NV" | "PN"; readonly label: string }>;
+};
+
+export type VitalGroupDefinition = {
+  readonly quickAction: { readonly visible: boolean; readonly label: string };
+  readonly labels: {
+    readonly category: string; readonly timelineTitle: string; readonly newEyebrow: string; readonly editEyebrow: string;
+    readonly editorTitle: string; readonly closeEditor: string; readonly time: string; readonly absenceHelp: string;
+    readonly cancel: string; readonly add: string; readonly save: string; readonly absentSummary: string;
+  };
+  readonly references: { readonly group: NemsisReference; readonly time: NemsisReference };
+  readonly validationMessages: { readonly invalidTime: string; readonly emptyGroup: string };
+  readonly fields: ReadonlyArray<VitalFieldDefinition>;
+  readonly summary: ReadonlyArray<{ readonly label: string; readonly fields: ReadonlyArray<VitalField>; readonly separator: string; readonly unit: string }>;
+};
 
 export type NoteEventDefinition = {
   readonly quickAction: { readonly visible: boolean; readonly label: string };
@@ -45,7 +70,7 @@ export type EncounterDefinition = {
     readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
     readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
-  readonly events: { readonly note: NoteEventDefinition };
+  readonly events: { readonly note: NoteEventDefinition; readonly vitals: VitalGroupDefinition };
 };
 
 export interface EncounterDefinitionProvider { get(id: string): EncounterDefinition }
@@ -100,6 +125,45 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
   requiredStrings(note.references, "events.note.references", ["time", "summary"]);
   requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
+  const vitals = isRecord(events.vitals) ? events.vitals : {};
+  const vitalQuickAction = isRecord(vitals.quickAction) ? vitals.quickAction : {};
+  if (typeof vitalQuickAction.visible !== "boolean") diagnostics.push("events.vitals.quickAction.visible must be a boolean");
+  requiredStrings(vitalQuickAction, "events.vitals.quickAction", ["label"]);
+  requiredStrings(vitals.labels, "events.vitals.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "time", "absenceHelp", "cancel", "add", "save", "absentSummary"]);
+  requiredStrings(vitals.references, "events.vitals.references", ["group", "time"]);
+  requiredStrings(vitals.validationMessages, "events.vitals.validationMessages", ["invalidTime", "emptyGroup"]);
+  const vitalFieldIds = new Set<string>();
+  if (!Array.isArray(vitals.fields) || vitals.fields.length === 0) diagnostics.push("events.vitals.fields must contain at least one field");
+  else vitals.fields.forEach((candidate, index) => {
+    const path = `events.vitals.fields[${index}]`;
+    const field = isRecord(candidate) ? candidate : {};
+    requiredStrings(field, path, ["id", "label", "unit", "reference"]);
+    if (typeof field.id === "string") {
+      if (!["systolic", "diastolic", "heartRate", "spo2", "respiratoryRate", "gcs", "pain"].includes(field.id)) diagnostics.push(`${path}.id is not a supported saved vital field`);
+      if (vitalFieldIds.has(field.id)) diagnostics.push(`${path}.id must be unique`);
+      vitalFieldIds.add(field.id);
+    }
+    if (typeof field.required !== "boolean") diagnostics.push(`${path}.required must be a boolean`);
+    const boundaries = isRecord(field.boundaries) ? field.boundaries : {};
+    for (const boundary of ["min", "max", "warningLow", "warningHigh"] as const) if (typeof boundaries[boundary] !== "number" || !Number.isFinite(boundaries[boundary])) diagnostics.push(`${path}.boundaries.${boundary} must be a finite number`);
+    if (typeof boundaries.min === "number" && typeof boundaries.max === "number" && boundaries.min > boundaries.max) diagnostics.push(`${path}.boundaries.min must not exceed max`);
+    if (!Array.isArray(field.absenceStates)) diagnostics.push(`${path}.absenceStates must be an array`);
+    else field.absenceStates.forEach((candidateState, stateIndex) => {
+      const statePath = `${path}.absenceStates[${stateIndex}]`;
+      const absenceState = isRecord(candidateState) ? candidateState : {};
+      requiredStrings(absenceState, statePath, ["code", "kind", "label"]);
+      if (absenceState.kind !== "NV" && absenceState.kind !== "PN") diagnostics.push(`${statePath}.kind must be NV or PN`);
+    });
+  });
+  if (!Array.isArray(vitals.summary) || vitals.summary.length === 0) diagnostics.push("events.vitals.summary must contain at least one item");
+  else vitals.summary.forEach((candidate, index) => {
+    const path = `events.vitals.summary[${index}]`;
+    const item = isRecord(candidate) ? candidate : {};
+    requiredStrings(item, path, ["label"]);
+    for (const displayPart of ["separator", "unit"] as const) if (typeof item[displayPart] !== "string") diagnostics.push(`${path}.${displayPart} must be a string`);
+    if (!Array.isArray(item.fields) || item.fields.length === 0) diagnostics.push(`${path}.fields must contain at least one field`);
+    else item.fields.forEach((field) => { if (typeof field !== "string" || !vitalFieldIds.has(field)) diagnostics.push(`${path}.fields contains an unconfigured field`); });
+  });
   if (diagnostics.length) throw new EncounterDefinitionError(id, diagnostics);
   return value as EncounterDefinition;
 }
