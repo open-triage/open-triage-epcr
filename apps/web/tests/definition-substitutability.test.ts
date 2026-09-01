@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import {
@@ -11,32 +11,32 @@ import {
   reviewEncounter,
   transitionShell,
   vitalSummary,
-} from "../app/synthetic-encounter";
+} from "../app/standard-encounter";
 import { validateVitals } from "../app/vital-validation";
 
 function alternateDefinition(): EncounterDefinition {
-  const pain = adultChestPainDefinition.events.vitals.fields.find(({ id }) => id === "pain")!;
-  const otherVitals = adultChestPainDefinition.events.vitals.fields.filter(({ id }) => id !== "pain");
+  const pain = standardEncounterDefinition.events.vitals.fields.find(({ id }) => id === "pain")!;
+  const otherVitals = standardEncounterDefinition.events.vitals.fields.filter(({ id }) => id !== "pain");
   return validateEncounterDefinition({
-    ...structuredClone(adultChestPainDefinition),
+    ...structuredClone(standardEncounterDefinition),
     id: "test-only-community-response",
     version: 7,
     composition: {
-      ...structuredClone(adultChestPainDefinition.composition),
+      ...structuredClone(standardEncounterDefinition.composition),
       quickActionOrder: ["patient", "vitals", "medication", "procedure", "note"],
       summary: { eventTypeOrder: ["vitals", "note", "medication", "procedure"] },
     },
     events: {
-      ...structuredClone(adultChestPainDefinition.events),
+      ...structuredClone(standardEncounterDefinition.events),
       note: {
-        ...structuredClone(adultChestPainDefinition.events.note),
+        ...structuredClone(standardEncounterDefinition.events.note),
         quickAction: { visible: false, label: "Record narrative" },
       },
       vitals: {
-        ...structuredClone(adultChestPainDefinition.events.vitals),
+        ...structuredClone(standardEncounterDefinition.events.vitals),
         quickAction: { visible: true, label: "Record field observations" },
         labels: {
-          ...structuredClone(adultChestPainDefinition.events.vitals.labels),
+          ...structuredClone(standardEncounterDefinition.events.vitals.labels),
           category: "Field observations",
           timelineTitle: "Community observations",
           editorTitle: "Community observations",
@@ -47,7 +47,7 @@ function alternateDefinition(): EncounterDefinition {
         ],
         summary: [
           { label: "Discomfort", fields: ["pain"], separator: "", unit: "" },
-          ...structuredClone(adultChestPainDefinition.events.vitals.summary).filter(({ fields }) => !fields.some((field) => field === "pain")),
+          ...structuredClone(standardEncounterDefinition.events.vitals.summary).filter(({ fields }) => !fields.some((field) => field === "pain")),
         ],
       },
     },
@@ -99,7 +99,7 @@ test("saved state retains definition identity and restores only for an exact com
 
   const compatible = loadShellStateResult(storage, definition);
   assert.equal(compatible.status, "restored");
-  assert.equal(loadShellState(storage, definition)?.encounter.scenarioId, definition.id);
+  assert.equal(loadShellState(storage, definition)?.encounter.definitionId, definition.id);
   assert.equal(loadShellState(storage, definition)?.encounter.definitionVersion, definition.version);
 
   const nextVersion = validateEncounterDefinition({ ...structuredClone(definition), version: definition.version + 1 });
@@ -114,5 +114,5 @@ test("saved state retains definition identity and restores only for an exact com
 
 test("the production provider does not bundle the test-only alternate definition", () => {
   assert.throws(() => encounterDefinitionProvider.get(alternateDefinition().id), /definition was not found/);
-  assert.equal(encounterDefinitionProvider.get(adultChestPainDefinition.id).id, adultChestPainDefinition.id);
+  assert.equal(encounterDefinitionProvider.get(standardEncounterDefinition.id).id, standardEncounterDefinition.id);
 });

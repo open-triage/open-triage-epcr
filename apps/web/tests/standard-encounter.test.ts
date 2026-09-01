@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { INITIAL_SHELL_STATE, syntheticEncounter, syntheticEncounterDefinition, transitionShell } from "../app/synthetic-encounter";
+import { INITIAL_SHELL_STATE, syntheticEncounter, bundledEncounterDefinition, transitionShell } from "../app/standard-encounter";
 
-test("opens directly into the fixed synthetic chest-pain encounter", () => {
+test("opens directly into the fictional neutral standard encounter", () => {
   assert.equal(INITIAL_SHELL_STATE.view, "timeline");
   assert.equal(syntheticEncounter.synthetic, true);
-  assert.equal(syntheticEncounter.scenarioId, "adult-chest-pain-v2");
-  assert.equal(syntheticEncounter.patient.name, "Lindqvist, Margareta");
-  assert.match(syntheticEncounter.incident.complaint, /chest pain/i);
+  assert.equal(syntheticEncounter.definitionId, "standard-encounter-v1");
+  assert.equal(syntheticEncounter.patient.name, "Rivera, Jordan");
+  assert.equal(syntheticEncounter.incident.complaint, "Medical assistance requested");
   assert.match(syntheticEncounter.incident.address, /fictional/i);
   assert.equal(syntheticEncounter.events.length, 4);
-  assert.equal(syntheticEncounter.patient, syntheticEncounterDefinition.patient.initial);
-  assert.equal(syntheticEncounter.incident, syntheticEncounterDefinition.dispatch.incident);
+  assert.equal(syntheticEncounter.patient, bundledEncounterDefinition.patient.initial);
+  assert.equal(syntheticEncounter.incident, bundledEncounterDefinition.dispatch.incident);
   assert.deepEqual(syntheticEncounter.events.map((event) => event.reference), [
     "eTimes.07",
     "eTimes.06",

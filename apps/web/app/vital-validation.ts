@@ -1,6 +1,6 @@
-import { adultChestPainDefinition } from "./adult-chest-pain-definition";
+import { standardEncounterDefinition } from "./standard-encounter-definition";
 import type { EncounterDefinition, VitalField, VitalFieldDefinition, VitalNullValue } from "./encounter-definition";
-import type { VitalValues } from "./synthetic-encounter";
+import type { VitalValues } from "./standard-encounter";
 
 export type NullValue = "" | VitalNullValue;
 
@@ -15,7 +15,7 @@ export type VitalValidation = {
 };
 
 /** Validates stored vital values exclusively against the selected encounter definition. */
-export function validateVitals(time: string, values: VitalValues, definition: EncounterDefinition = adultChestPainDefinition): VitalValidation {
+export function validateVitals(time: string, values: VitalValues, definition: EncounterDefinition = standardEncounterDefinition): VitalValidation {
   const config = definition.events.vitals;
   const errors: VitalValidation["errors"] = {};
   const warnings: VitalValidation["warnings"] = {};

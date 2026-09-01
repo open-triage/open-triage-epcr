@@ -7,7 +7,7 @@ import {
   transitionShell,
   type EncounterEvent,
   type ShellState,
-} from "../app/synthetic-encounter";
+} from "../app/standard-encounter";
 
 function withEvent(state: ShellState, event: EncounterEvent): ShellState {
   return { ...state, encounter: { ...state.encounter, events: [event, ...state.encounter.events] } };

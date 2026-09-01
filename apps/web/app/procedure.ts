@@ -1,5 +1,5 @@
 import catalog from "./data/nemsis-procedures.json";
-import { adultChestPainDefinition } from "./adult-chest-pain-definition";
+import { standardEncounterDefinition } from "./standard-encounter-definition";
 import type { ProcedureEventDefinition } from "./encounter-definition";
 
 export type ProcedureOption = {
@@ -50,10 +50,10 @@ const normalized = PROCEDURES.map((procedure, index) => ({
   haystack: `${procedure.label} ${procedure.sourceLabel} ${procedure.category} ${procedure.code}`.toLocaleLowerCase(),
 }));
 
-export const COMPLICATIONS = adultChestPainDefinition.events.procedure.complicationOptions;
-export const OUTCOMES = adultChestPainDefinition.events.procedure.outcomeOptions;
+export const COMPLICATIONS = standardEncounterDefinition.events.procedure.complicationOptions;
+export const OUTCOMES = standardEncounterDefinition.events.procedure.outcomeOptions;
 
-export function searchProcedures(query: string, limit = 30, definition: ProcedureEventDefinition = adultChestPainDefinition.events.procedure): ReadonlyArray<ProcedureOption> {
+export function searchProcedures(query: string, limit = 30, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): ReadonlyArray<ProcedureOption> {
   if (definition.terminology.catalog !== "nemsis-procedures-3.5.1") throw new Error(`Unsupported procedure catalog: ${definition.terminology.catalog}`);
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return normalized
@@ -71,7 +71,7 @@ export function searchProcedures(query: string, limit = 30, definition: Procedur
     .map(({ procedure }) => procedure);
 }
 
-export function validateProcedure(draft: ProcedureDraft, definition: ProcedureEventDefinition = adultChestPainDefinition.events.procedure): ProcedureValidation {
+export function validateProcedure(draft: ProcedureDraft, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): ProcedureValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const attempts = Number(draft.attempts);
@@ -108,7 +108,7 @@ export function validateProcedure(draft: ProcedureDraft, definition: ProcedureEv
   return { errors, warnings };
 }
 
-export function describeProcedure(record: ProcedureRecord, definition: ProcedureEventDefinition = adultChestPainDefinition.events.procedure): string {
+export function describeProcedure(record: ProcedureRecord, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): string {
   const success = record.success === "yes" ? definition.timeline.successful : definition.timeline.unsuccessful;
   const outcome = definition.outcomeOptions.find((candidate) => candidate.value === record.outcome)?.label ?? record.outcome;
   const complications = record.complications

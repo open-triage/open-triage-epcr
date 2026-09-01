@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import {
   PROCEDURES,
@@ -10,7 +10,7 @@ import {
   validateProcedure,
   type ProcedureDraft,
 } from "../app/procedure";
-import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type ShellState } from "../app/synthetic-encounter";
+import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type ShellState } from "../app/standard-encounter";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -70,7 +70,7 @@ test("NEMSIS-required procedure values produce direct errors and configured warn
   const repeated = { ...blank, time: "08:04", procedureCode: "268400002", procedureLabel: "ECG, 12 lead", attempts: "2", success: "no" as const, outcome: "unchanged" as const, complications: ["3907033"] };
   const review = validateProcedure(repeated);
   assert.deepEqual(review.errors, []);
-  assert.match(review.warnings[0]!, /Chest-pain form warning/);
+  assert.match(review.warnings[0]!, /Standard encounter warning/);
 });
 
 test("multiple procedures persist as distinct events and reopen for canonical editing", () => {
@@ -107,7 +107,7 @@ test("drafts, coded records, and warning acknowledgements survive refresh", () =
 });
 
 test("configured procedure metadata drives capture, validation, warnings, review, and summary", () => {
-  const base = adultChestPainDefinition.events.procedure;
+  const base = standardEncounterDefinition.events.procedure;
   const procedure = {
     ...base,
     fieldOrder: ["procedure", "outcome", "success", "attempts", "time", "complications"] as const,
@@ -118,7 +118,7 @@ test("configured procedure metadata drives capture, validation, warnings, review
     warningBehavior: { ...base.warningBehavior, repeatedAttemptThreshold: 1, repeatedOrUnsuccessfulMessage: "Configured intervention warning." },
     timeline: { ...base.timeline, attemptSingular: "try", attemptPlural: "tries", complicationLabel: "Adverse event" },
   };
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure } };
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, procedure } };
 
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "configured-procedure", time: "09:14" }, definition);
   assert.equal(state.procedureDraft?.attempts, "2");
@@ -144,8 +144,8 @@ test("configured procedure metadata drives capture, validation, warnings, review
 });
 
 test("configured requiredness and validation messages control incomplete capture", () => {
-  const base = adultChestPainDefinition.events.procedure;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure: {
+  const base = standardEncounterDefinition.events.procedure;
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, procedure: {
     ...base,
     required: { ...base.required, outcome: false, complications: false },
     attempts: { defaultValue: 1, min: 2, max: 3 },
@@ -161,8 +161,8 @@ test("saved procedure records remain readable with current configured presentati
   saveShellState(storage, state);
   state = loadShellState(storage)!;
   const event = state.encounter.events.find((candidate) => candidate.id === "legacy-procedure")!;
-  const base = adultChestPainDefinition.events.procedure;
-  const definition: EncounterDefinition = { ...adultChestPainDefinition, events: { ...adultChestPainDefinition.events, procedure: { ...base, timeline: { ...base.timeline, attemptSingular: "configured attempt" } } } };
+  const base = standardEncounterDefinition.events.procedure;
+  const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, procedure: { ...base, timeline: { ...base.timeline, attemptSingular: "configured attempt" } } } };
   assert.match(encounterEventDetail(event, definition), /^1 configured attempt,/);
   assert.equal(event.procedure?.code, "268400002");
 });

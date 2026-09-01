@@ -1,12 +1,14 @@
 import type { EncounterDefinition } from "./encounter-definition";
-import { syntheticEncounterDefinition, type ShellState } from "./synthetic-encounter";
+import { bundledEncounterDefinition, type ShellState } from "./standard-encounter";
 
-export const STORAGE_KEY = "open-triage:adult-chest-pain-v2";
+export const STORAGE_KEY = "open-triage:standard-encounter-v1";
+export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type ShellStateLoadResult =
   | { readonly status: "empty" }
+  | { readonly status: "legacy-reset"; readonly removedKeys: ReadonlyArray<string> }
   | { readonly status: "invalid"; readonly reason: string }
   | { readonly status: "incompatible"; readonly savedDefinition: { readonly id: string | null; readonly version: number | null }; readonly expectedDefinition: { readonly id: string; readonly version: number } }
   | { readonly status: "restored"; readonly state: ShellState };
@@ -15,15 +17,17 @@ export function saveShellState(storage: LocalStoragePort, state: ShellState): vo
   storage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = syntheticEncounterDefinition): ShellStateLoadResult {
+export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition): ShellStateLoadResult {
+  const removedKeys = LEGACY_STORAGE_KEYS.filter((key) => storage.getItem(key) !== null);
+  removedKeys.forEach((key) => storage.removeItem(key));
   const serialized = storage.getItem(STORAGE_KEY);
-  if (serialized === null) return { status: "empty" };
+  if (serialized === null) return removedKeys.length > 0 ? { status: "legacy-reset", removedKeys } : { status: "empty" };
   try {
     const value: unknown = JSON.parse(serialized);
     if (!value || typeof value !== "object") return { status: "invalid", reason: "saved state must be an object" };
     const candidate = value as Partial<ShellState>;
     const savedDefinition = {
-      id: typeof candidate.encounter?.scenarioId === "string" ? candidate.encounter.scenarioId : null,
+      id: typeof candidate.encounter?.definitionId === "string" ? candidate.encounter.definitionId : null,
       version: Number.isInteger(candidate.encounter?.definitionVersion) ? candidate.encounter!.definitionVersion! : null,
     };
     const expectedDefinition = { id: definition.id, version: definition.version };
@@ -62,11 +66,12 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
   }
 }
 
-export function loadShellState(storage: LocalStoragePort, definition: EncounterDefinition = syntheticEncounterDefinition): ShellState | null {
+export function loadShellState(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition): ShellState | null {
   const result = loadShellStateResult(storage, definition);
   return result.status === "restored" ? result.state : null;
 }
 
 export function clearShellState(storage: LocalStoragePort): void {
   storage.removeItem(STORAGE_KEY);
+  LEGACY_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
 }

@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adultChestPainDefinition } from "../app/adult-chest-pain-definition";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { createBundledDefinitionProvider, EncounterDefinitionError, validateEncounterDefinition } from "../app/encounter-definition";
 
 test("validates and serves the bundled versioned encounter definition", () => {
-  const provider = createBundledDefinitionProvider([adultChestPainDefinition]);
-  const definition = provider.get("adult-chest-pain-v2");
+  const provider = createBundledDefinitionProvider([standardEncounterDefinition]);
+  const definition = provider.get("standard-encounter-v1");
 
   assert.equal(definition.schemaVersion, 1);
   assert.equal(definition.version, 1);
-  assert.equal(definition.patient.initial.name, "Lindqvist, Margareta");
-  assert.equal(definition.dispatch.incident.complaint, "Central chest pain radiating to left arm");
+  assert.equal(definition.patient.initial.name, "Rivera, Jordan");
+  assert.equal(definition.dispatch.incident.complaint, "Medical assistance requested");
   assert.equal(definition.patient.references.name, "ePatient.02");
   assert.equal(definition.dispatch.references.complaint, "eDispatch.01");
   assert.equal(definition.events.note.quickAction.visible, true);
@@ -28,7 +28,7 @@ test("validates and serves the bundled versioned encounter definition", () => {
 });
 
 test("rejects an incomplete procedure event definition with actionable diagnostics", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as { events: { procedure: Record<string, unknown> } };
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as { events: { procedure: Record<string, unknown> } };
   invalid.events.procedure.fieldOrder = ["procedure", "procedure"];
   invalid.events.procedure.required = { procedure: true };
   assert.throws(() => validateEncounterDefinition(invalid), (error: unknown) => error instanceof EncounterDefinitionError
@@ -37,7 +37,7 @@ test("rejects an incomplete procedure event definition with actionable diagnosti
 });
 
 test("rejects incomplete medication configuration before the interface can consume it", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as Record<string, unknown>;
   const events = invalid.events as Record<string, unknown>;
   events.medication = { quickAction: { visible: true, label: "Add treatment" }, terminology: { catalog: "remote" }, fields: [], doseUnits: [], routes: [] };
 
@@ -52,7 +52,7 @@ test("rejects incomplete medication configuration before the interface can consu
 });
 
 test("rejects invalid vital configuration with actionable diagnostics", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as Record<string, unknown>;
   const events = (invalid.events as { vitals: { fields: Array<Record<string, unknown>>; summary: Array<Record<string, unknown>> } });
   events.vitals.fields[0]!.required = "yes";
   events.vitals.fields[0]!.boundaries = { min: 500, max: 0, warningLow: 70, warningHigh: 220 };
@@ -68,7 +68,7 @@ test("rejects invalid vital configuration with actionable diagnostics", () => {
 });
 
 test("rejects an incomplete note event definition with actionable diagnostics", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as Record<string, unknown>;
   invalid.events = { note: { quickAction: { visible: "yes" }, required: { time: true } } };
 
   assert.throws(
@@ -82,7 +82,7 @@ test("rejects an incomplete note event definition with actionable diagnostics", 
 });
 
 test("rejects an invalid definition with actionable field diagnostics", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as Record<string, unknown>;
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as Record<string, unknown>;
   invalid.version = 0;
   invalid.dispatch = { crew: "", events: [] };
 
@@ -97,13 +97,13 @@ test("rejects an invalid definition with actionable field diagnostics", () => {
 });
 
 test("reports a missing definition instead of returning partial configuration", () => {
-  const provider = createBundledDefinitionProvider([adultChestPainDefinition]);
+  const provider = createBundledDefinitionProvider([standardEncounterDefinition]);
   assert.throws(() => provider.get("missing"), /Invalid encounter definition "missing": definition was not found/);
 });
 
 test("rejects unsupported configuration constructs with their exact path", () => {
-  const invalid = structuredClone(adultChestPainDefinition) as unknown as { events: { note: Record<string, unknown>; vitals: { fields: Array<Record<string, unknown>> } } };
-  invalid.events.note.displayWhen = { complaint: "chest pain" };
+  const invalid = structuredClone(standardEncounterDefinition) as unknown as { events: { note: Record<string, unknown>; vitals: { fields: Array<Record<string, unknown>> } } };
+  invalid.events.note.displayWhen = { dispatchReason: "medical assistance" };
   invalid.events.vitals.fields[0]!.computedValue = "systolic - diastolic";
 
   assert.throws(
@@ -116,7 +116,7 @@ test("rejects unsupported configuration constructs with their exact path", () =>
 
 test("rejects duplicate bundled definition identities", () => {
   assert.throws(
-    () => createBundledDefinitionProvider([adultChestPainDefinition, structuredClone(adultChestPainDefinition)]),
+    () => createBundledDefinitionProvider([standardEncounterDefinition, structuredClone(standardEncounterDefinition)]),
     /bundled definition id must be unique/,
   );
 });
