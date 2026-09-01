@@ -17,3 +17,24 @@ separate application-owned medication or procedure catalogs.
 
 NEMSIS and SNOMED CT terminology artifacts remain subject to their respective
 third-party terms, as noted by the repository licensing policy.
+
+## Canonical encounter document
+
+The shared `@open-triage/contracts` package owns
+`encounter-document.schema-1.0.0.json` and its matching TypeScript contract.
+`synthetic-encounter-document.json` is a small, pretty-printed example that
+validates against that schema and the pinned NEMSIS 3.5.1 catalog.
+
+Documents identify their own model version, NEMSIS data-model version, form
+profile version, and encounter metadata. Patient data is grouped only by stable
+NEMSIS identities such as `eVitals.VitalGroup` or reverse-DNS custom identities
+such as `org.example.ems:stroke-assessment`. UI field and component names are
+never part of the persisted model.
+
+Every repeating group has an `instanceId`, and every element occurrence has an
+`occurrenceId`. Values use explicit `absent`, `null`,
+`pertinent-negative`, `coded`, or `scalar` variants; sentinel strings are
+not interpreted. NEMSIS NV codes live in a null value's `notValue` object.
+Attributes are retained on group and value occurrences. Unknown compatible
+properties and namespaced custom groups/elements are preserved losslessly by
+the loader and serializer.

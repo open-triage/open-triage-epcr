@@ -1,0 +1,107 @@
+{
+  "$schema": "./encounter-document.schema-1.0.0.json",
+  "documentType": "open-triage.encounter",
+  "modelVersion": "1.0.0",
+  "dataModel": {
+    "standard": "NEMSIS",
+    "version": "3.5.1",
+    "dataset": "EMSDataSet"
+  },
+  "formProfile": {
+    "id": "standard-encounter-v1",
+    "version": "1"
+  },
+  "encounter": {
+    "id": "synthetic-encounter-001",
+    "createdAt": "2026-04-18T14:30:00-04:00",
+    "updatedAt": "2026-04-18T14:42:00-04:00",
+    "synthetic": true
+  },
+  "groups": [
+    {
+      "id": "ePatient.PatientNameGroup",
+      "instances": [
+        {
+          "instanceId": "patient-name-1",
+          "elements": [
+            {
+              "id": "ePatient.02",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "patient-last-name-1",
+                  "value": "Example"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eVitals.VitalGroup",
+      "instances": [
+        {
+          "instanceId": "blood-pressure-1",
+          "attributes": { "correlationId": "vitals-1435" },
+          "elements": [
+            {
+              "id": "eVitals.06",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "systolic-1",
+                  "value": 118,
+                  "attributes": { "units": "mmHg" }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "instanceId": "blood-pressure-2",
+          "attributes": { "correlationId": "vitals-1440" },
+          "elements": [
+            {
+              "id": "eVitals.06",
+              "values": [
+                {
+                  "kind": "null",
+                  "occurrenceId": "systolic-2",
+                  "notValue": {
+                    "code": "7701003",
+                    "display": "Not Recorded"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.example.ems:stroke-assessment",
+      "instances": [
+        {
+          "instanceId": "stroke-assessment-1",
+          "elements": [
+            {
+              "id": "org.example.ems:stroke-score",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "stroke-score-1",
+                  "value": 2
+                }
+              ],
+              "org.example.ems:review": { "reviewed": true }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "org.example.partner:transfer": {
+    "source": "synthetic-fixture"
+  }
+}
