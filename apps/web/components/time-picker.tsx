@@ -14,9 +14,10 @@ type Props = {
   readonly describedBy?: string;
   readonly invalid?: boolean;
   readonly initialFocus?: boolean;
+  readonly className?: string;
 };
 
-export function TimePicker({ label, value, onChange, date = localClinicalDate(), onDateChange, describedBy, invalid, initialFocus }: Props) {
+export function TimePicker({ label, value, onChange, date = localClinicalDate(), onDateChange, describedBy, invalid, initialFocus, className }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => parseClinicalTime(value));
   const [draftDate, setDraftDate] = useState(date);
@@ -42,11 +43,12 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
   }
 
   return (
-    <div className="time-picker-field">
+    <div className={`time-picker-field ${className ?? ""}`.trim()}>
       <span className="time-picker-label">{label}</span>
       <button
         type="button"
         className="time-picker-trigger"
+        aria-label={typeof label === "string" ? `${label}: ${formatClinicalDate(date)} at ${value}. Change` : undefined}
         aria-describedby={describedBy}
         aria-haspopup="dialog"
         data-invalid={invalid || undefined}

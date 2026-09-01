@@ -1,122 +1,54 @@
 "use client";
 
 import { useMemo, useRef, useState, type RefObject } from "react";
-import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, searchMedications } from "../app/medication-catalog";
-import { validateMedication, type MedicationDraft, type ShellAction } from "../app/synthetic-encounter";
+import { MEDICATIONS, MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, searchMedications } from "../app/medication-catalog";
+import { validateMedication, type MedicationDraft, type ReviewFinding, type ShellAction } from "../app/synthetic-encounter";
 import { TimePicker } from "./time-picker";
 
-type Props = {
-  readonly draft: MedicationDraft;
-  readonly dispatch: React.Dispatch<ShellAction>;
-  readonly dialogRef: RefObject<HTMLElement | null>;
-};
+type Props = { readonly draft: MedicationDraft; readonly dispatch: React.Dispatch<ShellAction>; readonly dialogRef: RefObject<HTMLElement | null>; readonly finding?: Pick<ReviewFinding, "severity" | "message"> };
 
-export function MedicationDialog({ draft, dispatch, dialogRef }: Props) {
-  const [query, setQuery] = useState(draft.label);
-  const [submitted, setSubmitted] = useState(false);
+export function MedicationDialog({ draft, dispatch, dialogRef, finding }: Props) {
+  const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const results = useMemo(() => searchMedications(query), [query]);
-  const validation = validateMedication(draft);
-  const hasUnacknowledgedWarning = validation.warnings.length > 0 && !draft.warningAcknowledged;
+  const currentFindings = validateMedication(draft);
+  const findingActive = finding ? [...currentFindings.errors, ...currentFindings.warnings].includes(finding.message) : false;
+  const frame = (pattern: RegExp) => finding && findingActive && pattern.test(finding.message) ? `finding-frame ${finding.severity}` : undefined;
 
-  function save() {
-    setSubmitted(true);
-    if (!validation.errors.length && !hasUnacknowledgedWarning) dispatch({ type: "medication-saved" });
-  }
+  return <div className="dialog-backdrop" role="presentation">
+    <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
+      <div className="note-dialog-heading">
+        <div><p className="eyebrow">{draft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="medication-dialog-title">Medication</h2></div>
+        <button aria-label="Close medication editor" type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>×</button>
+      </div>
 
-  return (
-    <div className="dialog-backdrop" role="presentation">
-      <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
-        <div className="note-dialog-heading">
-          <div>
-            <p className="eyebrow">{draft.isNew ? "New timeline event" : "Revise timeline event"}</p>
-            <h2 id="medication-dialog-title">Medication administration</h2>
-          </div>
-          <button aria-label="Close medication editor" type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>×</button>
+      {!draft.medicationCode ? <div className={`catalog-picker ${frame(/Select a medication/i) ?? ""}`.trim()}>
+        <label htmlFor="medication-query">Search medications</label>
+        <input id="medication-query" ref={searchInput} autoFocus data-dialog-initial-focus autoComplete="off" placeholder="Try aspirin, fentanyl, saline…" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <p className="catalog-caption">{results.length} shown · {MEDICATIONS.length} available offline</p>
+        <ul className="catalog-results" aria-label="Medication search results">
+          {results.map((medication) => <li key={`${medication.codeType}-${medication.code}`}>
+            <button type="button" onClick={() => dispatch({ type: "medication-selected", code: medication.code, codeType: medication.codeType, label: medication.displayLabel })}><strong>{medication.displayLabel}</strong></button>
+          </li>)}
+        </ul>
+        {!results.length && <p className="empty-results">No medication matches your search.</p>}
+      </div> : <>
+        <div className={`selected-catalog-item ${frame(/Select a medication|display label/i) ?? ""}`.trim()}>
+          <strong>{draft.label}</strong>
+          <button type="button" onClick={() => { dispatch({ type: "medication-selected", code: "", codeType: "RxNorm", label: "" }); setQuery(""); }}>Change</button>
         </div>
-
-        <TimePicker label={<>Clinical time <span className="field-reference">eMedications.01</span></>} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} invalid={submitted && validation.errors.some((error) => error.includes("eMedications.01"))} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />
-
-        <div className="medication-search">
-          <label htmlFor="medication-query">Medication <span className="field-reference">eMedications.03</span></label>
-          <input
-            id="medication-query"
-            ref={searchInput}
-            autoFocus
-            data-dialog-initial-focus
-            aria-invalid={submitted && !draft.medicationCode}
-            autoComplete="off"
-            placeholder="Search name or code…"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {query !== draft.label && (
-            <ul id="medication-results" className="medication-results" aria-label="Medication search results">
-              {results.map((medication) => (
-                <li key={`${medication.codeType}-${medication.code}`}>
-                  <button type="button" onClick={() => {
-                    dispatch({ type: "medication-selected", code: medication.code, codeType: medication.codeType, label: medication.displayLabel });
-                    setQuery(medication.displayLabel);
-                  }}>
-                    <strong>{medication.displayLabel}</strong>
-                    <small>{medication.codeType} {medication.code}</small>
-                  </button>
-                </li>
-              ))}
-              {!results.length && <li className="no-results">No medication in the pinned NEMSIS list.</li>}
-            </ul>
-          )}
-          {draft.medicationCode && query === draft.label && (
-            <div className="selected-medication">
-              <span>Selected</span><strong>{draft.label}</strong><small>{draft.codeType} {draft.medicationCode}</small>
-              <button type="button" onClick={() => { setQuery(""); searchInput.current?.focus(); }}>Change</button>
-            </div>
-          )}
-          <small>{MEDICATIONS.length} locally bundled choices · NEMSIS {MEDICATION_CATALOG_PROVENANCE.release}, list {MEDICATION_CATALOG_PROVENANCE.listDate}</small>
-        </div>
-
+        <TimePicker className={frame(/time/i)} label="Medication time" date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />
         <div className="medication-field-row">
-          <label>
-            Dose <span className="field-reference">eMedications.05</span>
-            <input aria-invalid={submitted && validation.errors.some((error) => error.includes("eMedications.05"))} inputMode="decimal" placeholder="e.g. 4" value={draft.dose} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} />
-          </label>
-          <label>
-            Unit <span className="field-reference">eMedications.06</span>
-            <select aria-invalid={submitted && !draft.unit} value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}>
-              <option value="">Select…</option>
-              {MEDICATION_DOSE_UNITS.map((unit) => <option key={unit}>{unit}</option>)}
-            </select>
-          </label>
+          <label className={frame(/Dose must/i)}>Dose<input inputMode="decimal" placeholder="e.g. 4" value={draft.dose} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>
+          <label className={frame(/dose unit/i)}>Unit<select value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}><option value="">Select…</option>{MEDICATION_DOSE_UNITS.map((unit) => <option key={unit}>{unit}</option>)}</select></label>
         </div>
-
-        <label>
-          Route <span className="field-reference">eMedications.04</span>
-          <select aria-invalid={submitted && !draft.route} value={draft.route} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "route", value: event.target.value })}>
-            <option value="">Select route…</option>
-            {MEDICATION_ROUTES.map((route) => <option key={route}>{route}</option>)}
-          </select>
-        </label>
-        <label>
-          Patient response <span className="field-reference">eMedications.07</span>
-          <textarea rows={3} placeholder="e.g. pain 8 → 4; no adverse reaction" value={draft.response} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "response", value: event.target.value })} />
-        </label>
-
-        {submitted && validation.errors.length > 0 && (
-          <div className="validation-box error-box" role="alert"><strong>Errors: fix before saving</strong><ul>{validation.errors.map((error) => <li key={error}>{error}</li>)}</ul></div>
-        )}
-        {validation.warnings.length > 0 && (
-          <div className="validation-box warning-box">
-            <strong>Warning: response missing</strong><p>{validation.warnings[0]}</p>
-            <label className="warning-acknowledgement"><input type="checkbox" checked={draft.warningAcknowledged} onChange={(event) => dispatch({ type: "medication-warning-acknowledged", acknowledged: event.target.checked })} /> Acknowledge and save; I’ll document the response later.</label>
-          </div>
-        )}
-
+        <label className={frame(/route/i)}>Route<select value={draft.route} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "route", value: event.target.value })}><option value="">Select route…</option>{MEDICATION_ROUTES.map((route) => <option key={route}>{route}</option>)}</select></label>
+        <label className={frame(/response/i)}>Patient response<textarea rows={3} placeholder="e.g. pain 8 → 4; no adverse reaction" value={draft.response} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "response", value: event.target.value })} /></label>
         <div className="note-dialog-actions">
           <button type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>Cancel</button>
-          <button type="button" onClick={save}>{draft.isNew ? "Add to timeline" : "Save changes"}</button>
+          <button type="button" onClick={() => dispatch({ type: "medication-saved" })}>{draft.isNew ? "Add medication" : "Save changes"}</button>
         </div>
-      </section>
-    </div>
-  );
+      </>}
+    </section>
+  </div>;
 }

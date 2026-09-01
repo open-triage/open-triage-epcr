@@ -30,7 +30,7 @@ function normalize(value: string): string {
   return value.toLocaleLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-export function searchMedications(query: string, limit = 12): ReadonlyArray<MedicationOption> {
+export function searchMedications(query: string, limit = 30): ReadonlyArray<MedicationOption> {
   const needle = normalize(query);
   if (!needle) return MEDICATIONS.slice(0, limit);
   return MEDICATIONS
