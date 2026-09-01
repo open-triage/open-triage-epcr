@@ -4,6 +4,7 @@ import { validateVitals } from "./vital-validation";
 import { standardEncounterDefinition } from "./standard-encounter-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
+import type { CustomDataSet } from "./custom-data-elements";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -43,6 +44,8 @@ export type Encounter = {
   };
   readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
   readonly events: ReadonlyArray<EncounterEvent>;
+  /** Namespaced NEMSIS custom results. Unknown compatible entries are deliberately retained by persistence. */
+  readonly customData?: CustomDataSet;
 };
 
 export const encounterDefinitionProvider = createBundledDefinitionProvider([standardEncounterDefinition]);
