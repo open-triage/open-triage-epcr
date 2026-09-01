@@ -37,9 +37,18 @@ export type NemsisValueSource =
   | { readonly kind: "external-code-system"; readonly exhaustive: false; readonly systems: ReadonlyArray<NemsisCodeSystem>; readonly bundledListIds: ReadonlyArray<string> };
 
 export type NemsisOccurrence = { readonly min: number; readonly max: number | "unbounded" };
+export type NemsisGroup = {
+  readonly id: string;
+  readonly name: string;
+  readonly parentId: string | null;
+  readonly path: ReadonlyArray<string>;
+  readonly occurrence: NemsisOccurrence;
+  readonly repeating: boolean;
+};
 export type NemsisDatatype = {
   readonly base: string;
   readonly xsdBase: string;
+  readonly typeChain: ReadonlyArray<string>;
   readonly constraints: Readonly<Record<string, string | number>>;
 };
 
@@ -54,12 +63,18 @@ export type NemsisDataElement = {
   readonly sourceDatatype: string;
   readonly datatype: NemsisDatatype;
   readonly occurrence: NemsisOccurrence;
+  readonly xsdId: string;
+  readonly groupPath: ReadonlyArray<string>;
+  readonly nillable: boolean;
+  readonly attributes: { readonly NV: boolean; readonly PN: boolean };
   readonly permittedNotValues: ReadonlyArray<NemsisCodeValue>;
   readonly permittedPertinentNegatives: ReadonlyArray<NemsisCodeValue>;
   readonly valueSource: NemsisValueSource;
 };
 
 export type NemsisDataModel = {
+  readonly $schema: "./nemsis-data-model.schema-1.0.0.json";
+  readonly schemaVersion: "1.0.0";
   readonly catalog: "nemsis-ems-data-model";
   readonly release: "3.5.1";
   readonly dataset: "EMSDataSet";
@@ -74,6 +89,7 @@ export type NemsisDataModel = {
     readonly sources: ReadonlyArray<{ readonly role: string; readonly path: string; readonly url: string; readonly sha256: string }>;
   };
   readonly bundledLists: ReadonlyArray<NemsisBundledList>;
+  readonly groups: ReadonlyArray<NemsisGroup>;
   readonly elements: ReadonlyArray<NemsisDataElement>;
 };
 
@@ -89,12 +105,24 @@ export type ResolvedNemsisElementValues = {
 export const NEMSIS_DATA_MODEL = source as unknown as NemsisDataModel;
 export const NEMSIS_ELEMENT_IDS: ReadonlySet<string> = new Set(NEMSIS_DATA_MODEL.elements.map((element) => element.id));
 const bundledListsById = new Map(NEMSIS_DATA_MODEL.bundledLists.map((list) => [list.id, list]));
+const groupsById = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
 
 if (NEMSIS_DATA_MODEL.elementCount !== NEMSIS_ELEMENT_IDS.size) throw new Error("Bundled NEMSIS data model contains duplicate or missing elements");
 if (bundledListsById.size !== NEMSIS_DATA_MODEL.bundledLists.length) throw new Error("Bundled NEMSIS data model contains duplicate list identifiers");
+if (groupsById.size !== NEMSIS_DATA_MODEL.groups.length) throw new Error("Bundled NEMSIS data model contains duplicate structural group identifiers");
 
 export function getNemsisDataElement(id: string): NemsisDataElement | undefined {
   return NEMSIS_DATA_MODEL.elements.find((element) => element.id === id);
+}
+
+export function getNemsisGroup(id: string): NemsisGroup | undefined {
+  return groupsById.get(id);
+}
+
+export function requireNemsisDataElement(id: string): NemsisDataElement {
+  const element = getNemsisDataElement(id);
+  if (!element) throw new Error(`Unknown NEMSIS data element ${id}`);
+  return element;
 }
 
 export function resolveNemsisElementValues(element: NemsisDataElement): ResolvedNemsisElementValues {

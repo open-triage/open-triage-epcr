@@ -18,9 +18,9 @@ test("validates and serves the bundled versioned encounter definition", () => {
   assert.equal(definition.events.note.required.summary, true);
   assert.equal(definition.events.note.references.summary, "eNarrative.01");
   assert.deepEqual(definition.events.procedure.fieldOrder, ["procedure", "time", "attempts", "success", "outcome", "complications"]);
-  assert.equal(definition.events.procedure.terminology.catalog, "nemsis-procedures-3.5.1");
+  assert.equal(definition.events.procedure.terminology.catalog, "eProcedures.03");
   assert.equal(definition.events.procedure.references.procedure, "eProcedures.03");
-  assert.equal(definition.events.medication.terminology.catalog, "nemsis-3.5.1-medications");
+  assert.equal(definition.events.medication.terminology.catalog, "eMedications.03");
   assert.deepEqual(definition.events.medication.fields.map((field) => field.id), ["medication", "time", "dose", "unit", "route", "response"]);
   assert.deepEqual(definition.events.vitals.fields.slice(0, 3).map(({ id }) => id), ["systolic", "diastolic", "heartRate"]);
   assert.equal(definition.events.vitals.fields[0]?.unit, "mmHg");
@@ -44,7 +44,7 @@ test("rejects incomplete medication configuration before the interface can consu
   assert.throws(
     () => validateEncounterDefinition(invalid),
     (error: unknown) => error instanceof EncounterDefinitionError
-      && error.message.includes("events.medication.terminology.catalog must be nemsis-3.5.1-medications")
+      && error.message.includes("events.medication.terminology.catalog must reference eMedications.03")
       && error.message.includes("events.medication.fields must include medication")
       && error.message.includes("events.medication.doseUnits must contain strings")
       && error.message.includes("events.medication.validationMessages must be an object"),

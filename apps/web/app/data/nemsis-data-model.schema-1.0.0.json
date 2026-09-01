@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.dev/schemas/nemsis-data-model/1.0.0",
+  "title": "Open Triage NEMSIS EMS Data Model Catalog 1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "catalog", "release", "dataset", "elementCount", "statistics", "provenance", "groups", "bundledLists", "elements"],
+  "properties": {
+    "$schema": { "const": "./nemsis-data-model.schema-1.0.0.json" },
+    "schemaVersion": { "const": "1.0.0" },
+    "catalog": { "const": "nemsis-ems-data-model" },
+    "release": { "const": "3.5.1" },
+    "dataset": { "const": "EMSDataSet" },
+    "elementCount": { "type": "integer", "minimum": 1 },
+    "statistics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inlineEnumerationElements", "inlineEnumerationValues", "bundledLists", "bundledListValues", "elementsWithNotValues", "notValues", "elementsWithPertinentNegatives", "pertinentNegatives"],
+      "properties": {
+        "inlineEnumerationElements": { "$ref": "#/$defs/count" },
+        "inlineEnumerationValues": { "$ref": "#/$defs/count" },
+        "bundledLists": { "$ref": "#/$defs/count" },
+        "bundledListValues": { "$ref": "#/$defs/count" },
+        "elementsWithNotValues": { "$ref": "#/$defs/count" },
+        "notValues": { "$ref": "#/$defs/count" },
+        "elementsWithPertinentNegatives": { "$ref": "#/$defs/count" },
+        "pertinentNegatives": { "$ref": "#/$defs/count" }
+      }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "groups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/group" } },
+    "bundledLists": { "type": "array", "items": { "$ref": "#/$defs/bundledList" } },
+    "elements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/element" } }
+  },
+  "$defs": {
+    "count": { "type": "integer", "minimum": 0 },
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "elementId": { "type": "string", "pattern": "^(dAgency|e[A-Za-z]+)\\.[0-9]{2}$" },
+    "occurrence": {
+      "type": "object", "additionalProperties": false, "required": ["min", "max"],
+      "properties": { "min": { "type": "integer", "minimum": 0 }, "max": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "const": "unbounded" }] } }
+    },
+    "codeValue": {
+      "type": "object", "additionalProperties": false, "required": ["code", "label"],
+      "properties": { "code": { "$ref": "#/$defs/nonEmptyString" }, "label": { "$ref": "#/$defs/nonEmptyString" } }
+    },
+    "listValue": {
+      "type": "object", "additionalProperties": false, "required": ["code", "label", "sourceLabel"],
+      "properties": {
+        "code": { "$ref": "#/$defs/nonEmptyString" }, "label": { "$ref": "#/$defs/nonEmptyString" }, "sourceLabel": { "$ref": "#/$defs/nonEmptyString" },
+        "codeSystem": { "$ref": "#/$defs/nonEmptyString" }, "category": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "codeSystem": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label", "url"],
+      "properties": { "id": { "$ref": "#/$defs/nonEmptyString" }, "label": { "$ref": "#/$defs/nonEmptyString" }, "url": { "type": "string" } }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "parentId", "path", "occurrence", "repeating"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" }, "name": { "$ref": "#/$defs/nonEmptyString" },
+        "parentId": { "oneOf": [{ "$ref": "#/$defs/nonEmptyString" }, { "type": "null" }] },
+        "path": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "occurrence": { "$ref": "#/$defs/occurrence" }, "repeating": { "type": "boolean" }
+      }
+    },
+    "constraints": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "length": { "type": "integer", "minimum": 0 }, "minLength": { "type": "integer", "minimum": 0 }, "maxLength": { "type": "integer", "minimum": 0 },
+        "minInclusive": { "oneOf": [{ "type": "number" }, { "type": "string" }] }, "maxInclusive": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "minExclusive": { "oneOf": [{ "type": "number" }, { "type": "string" }] }, "maxExclusive": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "totalDigits": { "type": "integer", "minimum": 1 }, "fractionDigits": { "type": "integer", "minimum": 0 }, "pattern": { "type": "string" }
+      }
+    },
+    "valueSource": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "scalar" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "exhaustive", "values"], "properties": { "kind": { "const": "inline-enumerated" }, "exhaustive": { "const": true }, "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/codeValue" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "exhaustive", "bundledListIds"], "properties": { "kind": { "const": "bundled-list" }, "exhaustive": { "const": false }, "bundledListIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "exhaustive", "systems", "bundledListIds"], "properties": { "kind": { "const": "external-code-system" }, "exhaustive": { "const": false }, "systems": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/codeSystem" } }, "bundledListIds": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } } } }
+      ]
+    },
+    "element": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "section", "name", "definition", "national", "state", "usage", "sourceDatatype", "datatype", "occurrence", "xsdId", "groupPath", "nillable", "attributes", "permittedNotValues", "permittedPertinentNegatives", "valueSource"],
+      "properties": {
+        "id": { "$ref": "#/$defs/elementId" }, "section": { "$ref": "#/$defs/nonEmptyString" }, "name": { "$ref": "#/$defs/nonEmptyString" }, "definition": { "$ref": "#/$defs/nonEmptyString" },
+        "national": { "type": "boolean" }, "state": { "type": "boolean" }, "usage": { "enum": ["Mandatory", "Required", "Recommended", "Optional"] },
+        "sourceDatatype": { "$ref": "#/$defs/nonEmptyString" },
+        "datatype": {
+          "type": "object", "additionalProperties": false, "required": ["base", "xsdBase", "typeChain", "constraints"],
+          "properties": { "base": { "enum": ["string", "integer", "decimal", "boolean", "date", "dateTime", "time", "duration", "binary", "anyURI"] }, "xsdBase": { "type": "string", "pattern": "^xs:" }, "typeChain": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } }, "constraints": { "$ref": "#/$defs/constraints" } }
+        },
+        "occurrence": { "$ref": "#/$defs/occurrence" }, "xsdId": { "$ref": "#/$defs/nonEmptyString" },
+        "groupPath": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmptyString" } }, "nillable": { "type": "boolean" },
+        "attributes": { "type": "object", "additionalProperties": false, "required": ["NV", "PN"], "properties": { "NV": { "type": "boolean" }, "PN": { "type": "boolean" } } },
+        "permittedNotValues": { "type": "array", "items": { "$ref": "#/$defs/codeValue" } }, "permittedPertinentNegatives": { "type": "array", "items": { "$ref": "#/$defs/codeValue" } },
+        "valueSource": { "$ref": "#/$defs/valueSource" }
+      }
+    },
+    "bundledList": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "classification", "publishedAt", "exhaustive", "applicableElements", "applicableDatatypes", "systems", "valueCount", "values"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmptyString" }, "name": { "$ref": "#/$defs/nonEmptyString" }, "classification": { "enum": ["defined", "suggested"] }, "publishedAt": { "$ref": "#/$defs/nonEmptyString" }, "exhaustive": { "const": false },
+        "applicableElements": { "type": "array", "items": { "$ref": "#/$defs/elementId" } }, "applicableDatatypes": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
+        "systems": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/codeSystem" } }, "valueCount": { "$ref": "#/$defs/count" }, "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/listValue" } }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["publisher", "release", "retrievedAt", "retrievalMethod", "generator", "sources"],
+      "properties": {
+        "publisher": { "$ref": "#/$defs/nonEmptyString" }, "release": { "$ref": "#/$defs/nonEmptyString" }, "retrievedAt": { "type": "string", "format": "date" }, "retrievalMethod": { "$ref": "#/$defs/nonEmptyString" }, "generator": { "$ref": "#/$defs/nonEmptyString" },
+        "sources": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["role", "path", "url", "sha256"], "properties": { "role": { "$ref": "#/$defs/nonEmptyString" }, "path": { "$ref": "#/$defs/nonEmptyString" }, "url": { "type": "string", "format": "uri-reference" }, "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" } } } }
+      }
+    }
+  }
+}
