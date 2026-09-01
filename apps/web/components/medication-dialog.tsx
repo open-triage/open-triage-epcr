@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
 import { MEDICATIONS, MEDICATION_CATALOG_PROVENANCE, MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, searchMedications } from "../app/medication-catalog";
 import { validateMedication, type MedicationDraft, type ShellAction } from "../app/synthetic-encounter";
+import { TimePicker } from "./time-picker";
 
 type Props = {
   readonly draft: MedicationDraft;
@@ -34,10 +35,7 @@ export function MedicationDialog({ draft, dispatch, dialogRef }: Props) {
           <button aria-label="Close medication editor" type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>×</button>
         </div>
 
-        <label>
-          Clinical time <span className="field-reference">eMedications.01</span>
-          <input aria-invalid={submitted && validation.errors.some((error) => error.includes("eMedications.01"))} inputMode="numeric" maxLength={5} placeholder="HH:mm" value={draft.time} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "time", value: event.target.value })} />
-        </label>
+        <TimePicker label={<>Clinical time <span className="field-reference">eMedications.01</span></>} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} invalid={submitted && validation.errors.some((error) => error.includes("eMedications.01"))} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />
 
         <div className="medication-search">
           <label htmlFor="medication-query">Medication <span className="field-reference">eMedications.03</span></label>

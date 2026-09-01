@@ -22,6 +22,7 @@ export type ProcedureRecord = {
 
 export type ProcedureDraft = {
   readonly id: string;
+  readonly date: string;
   readonly time: string;
   readonly procedureCode: string;
   readonly procedureLabel: string;

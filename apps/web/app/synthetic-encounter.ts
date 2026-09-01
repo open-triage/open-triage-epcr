@@ -115,6 +115,7 @@ export function validateChecklist(values: ChecklistValues): ReadonlyArray<Valida
 
 export type EncounterEvent = {
   readonly id: string;
+  readonly date?: string;
   readonly time: string;
   readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication";
   readonly title: string;
@@ -129,7 +130,7 @@ export type EncounterEvent = {
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
 export type NullValue = "" | "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
-export type VitalDraft = { readonly id: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
+export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
 
 export type Encounter = {
   readonly scenarioId: string;
@@ -189,7 +190,7 @@ export const syntheticEncounter: Encounter = {
   ],
 };
 
-export type NoteDraft = { readonly id: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
+export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
 export type MedicationAdministration = {
   readonly medicationCode: string;
   readonly codeType: "RxNorm" | "SNOMED-CT";
@@ -200,8 +201,8 @@ export type MedicationAdministration = {
   readonly response: string;
   readonly warningAcknowledged: boolean;
 };
-export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly time: string; readonly isNew: boolean };
-export type MedicationField = keyof Pick<MedicationDraft, "time" | "medicationCode" | "codeType" | "label" | "dose" | "unit" | "route" | "response">;
+export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly date: string; readonly time: string; readonly isNew: boolean };
+export type MedicationField = keyof Pick<MedicationDraft, "date" | "time" | "medicationCode" | "codeType" | "label" | "dose" | "unit" | "route" | "response">;
 export type ShellState = {
   readonly view: ShellView;
   readonly encounter: Encounter;
@@ -215,9 +216,9 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
-  | { readonly type: "note-started"; readonly id: string; readonly time: string }
+  | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
-  | { readonly type: "note-draft-changed"; readonly field: "time" | "summary"; readonly value: string }
+  | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
   | { readonly type: "note-saved" }
   | { readonly type: "checklist-field-changed"; readonly field: ChecklistFieldId; readonly value: string }
@@ -228,24 +229,25 @@ export type ShellAction =
   | { readonly type: "review-warning-acknowledged"; readonly id: string; readonly acknowledged: boolean }
   | { readonly type: "review-finished" }
   | { readonly type: "summary-editing-continued" }
-  | { readonly type: "procedure-started"; readonly id: string; readonly time: string }
+  | { readonly type: "procedure-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "procedure-opened"; readonly id: string }
   | { readonly type: "procedure-selected"; readonly code: string }
-  | { readonly type: "procedure-draft-changed"; readonly field: "time" | "attempts" | "success" | "outcome"; readonly value: string }
+  | { readonly type: "procedure-draft-changed"; readonly field: "date" | "time" | "attempts" | "success" | "outcome"; readonly value: string }
   | { readonly type: "procedure-complication-toggled"; readonly code: string }
   | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "procedure-cancelled" }
   | { readonly type: "procedure-saved" }
-  | { readonly type: "medication-started"; readonly id: string; readonly time: string }
+  | { readonly type: "medication-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "medication-opened"; readonly id: string }
   | { readonly type: "medication-selected"; readonly code: string; readonly codeType: MedicationAdministration["codeType"]; readonly label: string }
   | { readonly type: "medication-draft-changed"; readonly field: Exclude<MedicationField, "codeType">; readonly value: string }
   | { readonly type: "medication-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "medication-cancelled" }
   | { readonly type: "medication-saved" }
-  | { readonly type: "vitals-started"; readonly id: string; readonly time: string }
+  | { readonly type: "vitals-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "vitals-opened"; readonly id: string }
   | { readonly type: "vitals-time-changed"; readonly value: string }
+  | { readonly type: "vitals-date-changed"; readonly value: string }
   | { readonly type: "vitals-value-changed"; readonly field: VitalField; readonly value: string }
   | { readonly type: "vitals-null-changed"; readonly field: VitalField; readonly value: NullValue }
   | { readonly type: "vitals-cancelled" }
@@ -333,7 +335,7 @@ export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding>
       return [...errors, ...warnings];
     }
     if (event.medication) {
-      const validation = validateMedication({ id: event.id, time: event.time, ...event.medication, isNew: false });
+      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false });
       return [
         ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Medication", "eMedications", message, index)),
         ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Medication", "eMedications.07", message, index, event.medication!.warningAcknowledged)),
@@ -341,7 +343,7 @@ export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding>
     }
     if (event.procedure) {
       const validation = validateProcedure({
-        id: event.id, time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
+        id: event.id, date: event.date ?? "2026-04-18", time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
         attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
         complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
       });
@@ -379,7 +381,7 @@ export function vitalSummary(values: VitalValues): string {
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
   return events.map((event, index) => ({ event, index })).sort((a, b) =>
-    b.event.time.localeCompare(a.event.time) || a.index - b.index,
+    `${b.event.date ?? "2026-04-18"}T${b.event.time}`.localeCompare(`${a.event.date ?? "2026-04-18"}T${a.event.time}`) || a.index - b.index,
   ).map(({ event }) => event);
 }
 
@@ -429,10 +431,10 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "summary-editing-continued":
       return { ...state, view: "timeline" };
     case "note-started":
-      return { ...state, noteDraft: { id: action.id, time: action.time, summary: "", isNew: true } };
+      return { ...state, noteDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, summary: "", isNew: true } };
     case "note-opened": {
       const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "note");
-      return event ? { ...state, noteDraft: { id: event.id, time: event.time, summary: event.detail, isNew: false } } : state;
+      return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, summary: event.detail, isNew: false } } : state;
     }
     case "note-draft-changed":
       return state.noteDraft ? { ...state, noteDraft: { ...state.noteDraft, [action.field]: action.value } } : state;
@@ -443,6 +445,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       if (!draft || !draft.summary.trim() || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(draft.time)) return state;
       const note: EncounterEvent = {
         id: draft.id,
+        date: draft.date,
         time: draft.time.slice(0, 5),
         kind: "note",
         title: "Clinical note",
@@ -463,6 +466,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         ...state,
         procedureDraft: {
           id: action.id,
+          date: action.date ?? "2026-04-18",
           time: action.time,
           procedureCode: "",
           procedureLabel: "",
@@ -481,6 +485,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         ...state,
         procedureDraft: {
           id: event.id,
+          date: event.date ?? "2026-04-18",
           time: event.time,
           procedureCode: event.procedure.code,
           procedureLabel: event.procedure.label,
@@ -544,6 +549,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       };
       const event: EncounterEvent = {
         id: draft.id,
+        date: draft.date,
         time: draft.time,
         kind: "procedure",
         title: procedure.label,
@@ -563,11 +569,11 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "medication-started":
       return {
         ...state,
-        medicationDraft: { id: action.id, time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
+        medicationDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
       };
     case "medication-opened": {
       const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
-      return event?.medication ? { ...state, medicationDraft: { id: event.id, time: event.time, ...event.medication, isNew: false } } : state;
+      return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false } } : state;
     }
     case "medication-selected":
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, medicationCode: action.code, codeType: action.codeType, label: action.label } } : state;
@@ -594,6 +600,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       };
       const medicationEvent: EncounterEvent = {
         id: draft.id,
+        date: draft.date,
         time: draft.time,
         kind: "medication",
         title: `${draft.label} ${administration.dose} ${administration.unit}`,
@@ -606,13 +613,15 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, medicationEvent]) } };
     }
     case "vitals-started":
-      return { ...state, vitalDraft: { id: action.id, time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
+      return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
       const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.vitals);
-      return event?.vitals ? { ...state, vitalDraft: { id: event.id, time: event.time, values: event.vitals, isNew: false } } : state;
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: event.vitals, isNew: false } } : state;
     }
     case "vitals-time-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
+    case "vitals-date-changed":
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value } } : state;
     case "vitals-value-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: action.value, nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: "" } } } } : state;
     case "vitals-null-changed":
@@ -622,7 +631,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft || !validateVitals(draft.time, draft.values).valid) return state;
-      const event: EncounterEvent = { id: draft.id, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
+      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":

@@ -26,6 +26,7 @@ test("a quick-action note is timestamped and inserted newest first", () => {
   assert.equal(state.encounter.events.length, 18);
   assert.deepEqual(state.encounter.events[0], {
     id: "visitor-note-1",
+    date: "2026-04-18",
     time: "09:02",
     kind: "note",
     title: "Clinical note",

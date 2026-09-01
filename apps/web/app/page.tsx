@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
+import { TimePicker } from "../components/time-picker";
 import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
 import { COMPLICATIONS, OUTCOMES, PROCEDURE_MANIFEST, searchProcedures, validateProcedure } from "./procedure";
 import {
@@ -18,6 +19,7 @@ import {
   type VitalField,
 } from "./synthetic-encounter";
 import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
+import { localClinicalDate } from "./time-picker";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -122,22 +124,22 @@ export default function Home() {
 
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
-    dispatch({ type: "note-started", id: crypto.randomUUID(), time: localClinicalTime() });
+    dispatch({ type: "note-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
-    dispatch({ type: "vitals-started", id: crypto.randomUUID(), time: localClinicalTime() });
+    dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
 
   function startProcedure(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setProcedureSearch("");
-    dispatch({ type: "procedure-started", id: crypto.randomUUID(), time: localClinicalTime() });
+    dispatch({ type: "procedure-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
 
   function startMedication(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
-    dispatch({ type: "medication-started", id: crypto.randomUUID(), time: localClinicalTime() });
+    dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
 
   function resetPrototype() {
@@ -207,7 +209,7 @@ export default function Home() {
           <ol className="timeline-list">
             {encounter.events.map((event) => (
               <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={`2026-04-18T${event.time}:00`}>{event.time}</time>
+                <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot ${event.kind}`} aria-hidden="true" />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
@@ -224,6 +226,7 @@ export default function Home() {
                     <small>{event.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
+                      date: event.date ?? "2026-04-18",
                       time: event.time,
                       procedureCode: event.procedure.code,
                       procedureLabel: event.procedure.label,
@@ -330,19 +333,7 @@ export default function Home() {
               </div>
               <button aria-label="Close note editor" type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
             </div>
-            <label>
-              Clinical time
-              <input
-                aria-describedby="clinical-time-help"
-                inputMode="numeric"
-                maxLength={5}
-                pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
-                placeholder="HH:mm"
-                type="text"
-                value={shell.noteDraft.time}
-                onChange={(event) => dispatch({ type: "note-draft-changed", field: "time", value: event.target.value })}
-              />
-            </label>
+            <TimePicker label="Clinical time" date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
             <small id="clinical-time-help">Correct the time if documentation was entered later.</small>
             <label>
               Note summary
@@ -410,16 +401,7 @@ export default function Home() {
                   <button type="button" onClick={() => dispatch({ type: "procedure-selected", code: "" })}>Change</button>
                 </div>
                 <div className="procedure-grid">
-                  <label>
-                    Procedure time <small>eProcedures.01</small>
-                    <input
-                      inputMode="numeric"
-                      maxLength={5}
-                      placeholder="HH:mm"
-                      value={shell.procedureDraft.time}
-                      onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "time", value: event.target.value })}
-                    />
-                  </label>
+                  <TimePicker label={<>Procedure time <small>eProcedures.01</small></>} date={shell.procedureDraft.date} onDateChange={(value) => dispatch({ type: "procedure-draft-changed", field: "date", value })} value={shell.procedureDraft.time} onChange={(value) => dispatch({ type: "procedure-draft-changed", field: "time", value })} />
                   <label>
                     Attempts <small>eProcedures.05</small>
                     <input
@@ -500,9 +482,7 @@ export default function Home() {
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
               <button aria-label="Close vital signs editor" type="button" onClick={() => dispatch({ type: "vitals-cancelled" })}>×</button>
             </div>
-            <label>Clinical time <small>eVitals.01</small>
-              <input autoFocus data-dialog-initial-focus aria-invalid={Boolean(vitalValidation.errors.time)} aria-describedby={vitalValidation.errors.time ? "vital-time-error" : undefined} inputMode="numeric" placeholder="HH:mm" value={shell.vitalDraft.time} onChange={(event) => dispatch({ type: "vitals-time-changed", value: event.target.value })} />
-            </label>
+            <TimePicker initialFocus label={<>Clinical time <small>eVitals.01</small></>} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} invalid={Boolean(vitalValidation.errors.time)} describedBy={vitalValidation.errors.time ? "vital-time-error" : undefined} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             {vitalValidation.errors.time && <p id="vital-time-error" className="validation-message error" role="alert">Error: {vitalValidation.errors.time}</p>}
             <div className="vital-grid">
               {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (

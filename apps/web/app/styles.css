@@ -105,6 +105,32 @@ input, select, textarea { touch-action: manipulation; }
 .note-dialog textarea { min-height: 130px; padding: 12px; resize: vertical; }
 .note-dialog select { min-height: 48px; padding: 0 10px; }
 .note-dialog > small { display: block; margin-top: 5px; color: var(--muted); }
+.time-picker-field { position: relative; display: grid; gap: 7px; margin-top: 16px; }
+.time-picker-label { color: #454944; font-size: 13px; font-weight: 750; }
+.time-picker-label small { margin-left: 5px; color: #5d625b; font-weight: 600; }
+.time-picker-trigger { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 0 13px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; text-align: left; cursor: pointer; }
+.time-picker-trigger > span:first-child { color: var(--green-dark); font-size: 23px; }
+.time-picker-trigger strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.time-picker-trigger > span:last-child { color: var(--green-dark); font-size: 13px; font-weight: 750; }
+.time-picker-trigger[data-invalid="true"] { border-color: #a5342d; box-shadow: 0 0 0 1px #a5342d; }
+.time-picker-popover { position: fixed; z-index: 60; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); left: 12px; width: min(430px, calc(100% - 24px)); margin: auto; padding: 18px; border: 1px solid #c7cac3; border-radius: 14px; background: white; box-shadow: 0 14px 50px rgb(10 20 13 / 35%); }
+.time-picker-heading { display: grid; gap: 3px; text-align: center; }
+.time-picker-heading strong { font-size: 20px; }
+.time-picker-heading span { color: var(--muted); font-size: 12px; }
+.time-wheels { display: grid; grid-template-columns: 1.45fr 1fr auto 1fr; align-items: center; gap: 8px; margin-top: 14px; }
+.time-wheel-group { display: grid; gap: 5px; text-align: center; }
+.time-wheel-group > span { color: var(--muted); font-size: 11px; font-weight: 750; text-transform: uppercase; }
+.time-wheel-group > button { min-height: 38px; border: 0; color: var(--green-dark); background: transparent; cursor: pointer; }
+.time-wheel { display: grid; height: 128px; place-items: center; padding: 8px; border: 1px solid #bfc3bc; border-radius: 10px; background: linear-gradient(#f0f2ed, white 35%, white 65%, #f0f2ed); cursor: ns-resize; touch-action: none; user-select: none; }
+.time-wheel strong { font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.time-wheel small { color: #8a8e87; font-size: 16px; font-variant-numeric: tabular-nums; }
+.date-wheel strong { font-size: 23px; white-space: nowrap; }
+.date-wheel small { font-size: 13px; white-space: nowrap; }
+.time-separator { padding-top: 25px; font-size: 30px; font-weight: 800; }
+.time-picker-output { display: block; margin-top: 8px; color: var(--green-dark); text-align: center; font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.time-picker-actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 9px; margin-top: 12px; }
+.time-picker-actions button { min-height: 48px; border: 1px solid #bfc3bc; border-radius: 6px; background: white; font-weight: 750; cursor: pointer; }
+.time-picker-actions button:last-child { border-color: var(--green); color: white; background: var(--green); }
 .note-dialog-actions { position: sticky; z-index: 3; bottom: calc(-20px - env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin: 10px 0 calc(-20px - env(safe-area-inset-bottom)); padding: 12px 0 calc(20px + env(safe-area-inset-bottom)); background: linear-gradient(to bottom, rgb(255 255 255 / 94%), #fff 12px); }
 .note-dialog-actions button { min-height: 52px; border: 1px solid #bfc3bc; border-radius: 5px; color: #30332f; background: white; font-weight: 750; cursor: pointer; }
 .note-dialog-actions button:last-child { border-color: var(--green); color: white; background: var(--green); }

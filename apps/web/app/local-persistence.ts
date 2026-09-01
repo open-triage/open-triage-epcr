@@ -20,10 +20,11 @@ export function loadShellState(storage: LocalStoragePort): ShellState | null {
     if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return null;
     return {
       ...candidate,
-      noteDraft: candidate.noteDraft ?? null,
-      procedureDraft: candidate.procedureDraft ?? null,
-      vitalDraft: candidate.vitalDraft ?? null,
-      medicationDraft: candidate.medicationDraft ?? null,
+      encounter: { ...candidate.encounter, events: candidate.encounter.events.map((event) => ({ ...event, date: event.date ?? "2026-04-18" })) },
+      noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? "2026-04-18" } : null,
+      procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? "2026-04-18" } : null,
+      vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? "2026-04-18" } : null,
+      medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? "2026-04-18" } : null,
       checklistValues: { ...INITIAL_CHECKLIST_VALUES, ...candidate.checklistValues },
       focusedChecklistField: null,
       acknowledgedWarnings: Array.isArray(candidate.acknowledgedWarnings) ? candidate.acknowledgedWarnings : [],

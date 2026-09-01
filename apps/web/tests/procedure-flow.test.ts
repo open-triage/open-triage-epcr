@@ -57,7 +57,7 @@ test("local search covers label, clinical source term, category, and code withou
 
 test("NEMSIS-required procedure values produce direct errors and configured warnings stay distinct", () => {
   const blank: ProcedureDraft = {
-    id: "p1", time: "26:91", procedureCode: "made-up", procedureLabel: "Invalid", attempts: "0",
+    id: "p1", date: "2026-04-18", time: "26:91", procedureCode: "made-up", procedureLabel: "Invalid", attempts: "0",
     success: "", outcome: "", complications: [], warningAcknowledged: false, isNew: true,
   };
   const invalid = validateProcedure(blank);
