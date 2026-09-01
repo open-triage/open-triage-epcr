@@ -1,0 +1,6533 @@
+{
+  "catalog": "nemsis-ems-data-model",
+  "release": "3.5.1",
+  "dataset": "EMSDataSet",
+  "elementCount": 453,
+  "provenance": {
+    "publisher": "National Emergency Medical Services Information System (NEMSIS)",
+    "release": "NEMSIS 3.5.1",
+    "retrievedAt": "2026-09-01",
+    "retrievalMethod": "HTTPS download of the official versioned XSD archive and data-dictionary export",
+    "generator": "apps/web/scripts/generate-nemsis-data-model.mjs",
+    "sources": [
+      {
+        "role": "data-dictionary",
+        "path": "nemsis-3.5.1-sources/Combined_ElementDetails_Full.txt",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DataDictionary/Ancillary/DEMEMS/Combined_ElementDetails_Full.txt",
+        "sha256": "f34d2404a99f8cfac6e76cef44af36431d706d092fe7cf71868bd90f2fecf3d8"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/EMSDataSet_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/EMSDataSet_v3.xsd",
+        "sha256": "8f31a3c1b0ea50859c8039c862480b36c71bf94bf4fb3b7bc51877a34041dfcb"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/commonTypes_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/commonTypes_v3.xsd",
+        "sha256": "2c7127c28649f3a77ab4ee1354765025afec14f2609fb24759e407f67b99f386"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/dAgency_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/dAgency_v3.xsd",
+        "sha256": "45045b335846e47535f3c568f6a61979f31ab52692ba85b5637ac16a125b9eb4"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eAirway_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eAirway_v3.xsd",
+        "sha256": "94ac9cb1454c0dd54e8e81f2493f9e731742415fc8b7e57527c6802391935ad7"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eArrest_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eArrest_v3.xsd",
+        "sha256": "fd1a128028484bfd9ba6f1380bb4184873f49a4742cbba221bedea4a373c9d0c"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eCrew_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eCrew_v3.xsd",
+        "sha256": "d9ba9e7708be96455d29aa97371e9991c4af6643d9331dbac4e1fac60b7650aa"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eCustom_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eCustom_v3.xsd",
+        "sha256": "ac84b4f76015b04d47cd445080d86f2a5a4377602677c805063524f4c2b70d70"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eDevice_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eDevice_v3.xsd",
+        "sha256": "790f0a7000a27ec94251492a8d78ed9057f0c5bededea714e9eff590c0b9d358"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eDispatch_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eDispatch_v3.xsd",
+        "sha256": "a4e72d90acc5fffe542203c18f12ae9e5ff56459213388a7e58686c66219224f"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eDisposition_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eDisposition_v3.xsd",
+        "sha256": "eb785386fbb4d97b473dae9fec1184c9adeb9a805e0f895b31893a701c022c27"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eExam_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eExam_v3.xsd",
+        "sha256": "243c8e1092af77d4764911123b9fdce07201080c200bb665bd62850c78e71755"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eHistory_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eHistory_v3.xsd",
+        "sha256": "5a2a5171705dc2c12c1941358a58d526693af498b29663dba1e21fb954e3a627"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eInjury_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eInjury_v3.xsd",
+        "sha256": "5de231aeb40f96f905a93fd324b959a576be7fec93c0e2db8dfea7640e392fc6"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eLabs_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eLabs_v3.xsd",
+        "sha256": "68e91445c075dd192b0a39c09b5fd65d9d4427e386a284f9960b0c31e4e62a84"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eMedications_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eMedications_v3.xsd",
+        "sha256": "8ed06dae63dd834f3197866dee170418e709276c33d905defd67ab7e9d52b223"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eNarrative_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eNarrative_v3.xsd",
+        "sha256": "2828fc904acec947964088fed82b8ceb128cbc4c1ae0c454de227da3228889a9"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eOther_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eOther_v3.xsd",
+        "sha256": "5b9dc8e0337554cbb903c5f9744c9062894799325ef4d69e8d372cc7d22c972b"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eOutcome_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eOutcome_v3.xsd",
+        "sha256": "0f404bbfad352374c5fef43d95a63a391b79f175143f3b7719a814f41a2ebc96"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/ePatient_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/ePatient_v3.xsd",
+        "sha256": "ac59fbf5dbfc709871844c4639162f199faeb90bcd7a5b0566f79f523f4e72af"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/ePayment_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/ePayment_v3.xsd",
+        "sha256": "5d7f1bc84eeaef3342fc674451c18ad37505e604d5b8187951d1662f43b7279c"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eProcedures_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eProcedures_v3.xsd",
+        "sha256": "8ce8ebe465b4dcb3ce97f6af5151033711b078936f84791a5a1f8784c7ded6b8"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eProtocols_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eProtocols_v3.xsd",
+        "sha256": "a0c3d5739c632d1a179a7cafe697166f2180844fc757a4e02dcb8df3c62c70cb"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eRecord_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eRecord_v3.xsd",
+        "sha256": "86ad03c806339035981f569eb156eb887494930a3788c986003afed47bd73b38"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eResponse_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eResponse_v3.xsd",
+        "sha256": "9f6f2dc0dca1c32fb7b31d27c0d716afbb30d7e349fc226c54e9ad796fa31e98"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eScene_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eScene_v3.xsd",
+        "sha256": "63459f3680d9e4e7ab2af5aa2251f2191ee8d09fa681342f2580085031d74799"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eSituation_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eSituation_v3.xsd",
+        "sha256": "d015f08a1d57cb380c0658ae7515d3ffd6b035aa2837bb407b2f7f41234d3e92"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eTimes_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eTimes_v3.xsd",
+        "sha256": "ec96140fccbd1a647eda0cea678bc840a37ebb1f4aa938f0cf44b7fabc8caa92"
+      },
+      {
+        "role": "xsd",
+        "path": "nemsis-3.5.1-sources/xsd/eVitals_v3.xsd",
+        "url": "https://nemsis.org/media/nemsis_v3/release-3.5.1/XSDs/NEMSIS_XSDs.zip#NEMSIS_XSDs/eVitals_v3.xsd",
+        "sha256": "c78982b83e58349d0bcb7900649e06c4be941dfabd879dd5d1c87cf5ef1dae56"
+      }
+    ]
+  },
+  "elements": [
+    {
+      "id": "dAgency.01",
+      "section": "dAgency",
+      "name": "EMS Agency Unique State ID",
+      "definition": "The unique ID assigned to the EMS Agency which is associated with all state licensure numbers and information.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSAgencyStateID",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "dAgency.02",
+      "section": "dAgency",
+      "name": "EMS Agency Number",
+      "definition": "The state-assigned provider number of the responding agency.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSAgencyNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "dAgency.04",
+      "section": "dAgency",
+      "name": "EMS Agency State",
+      "definition": "The state/territory which assigned the EMS agency number.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.01",
+      "section": "eAirway",
+      "name": "Indications for Invasive Airway",
+      "definition": "The clinical indication for performing invasive airway management.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "AirwayIndications",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eAirway.02",
+      "section": "eAirway",
+      "name": "Date/Time Airway Device Placement Confirmation",
+      "definition": "The date and time the airway device placement was confirmed.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.03",
+      "section": "eAirway",
+      "name": "Airway Device Being Confirmed",
+      "definition": "The airway device in which placement is being confirmed.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DeviceBeingConfirmed",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.04",
+      "section": "eAirway",
+      "name": "Airway Device Placement Confirmed Method",
+      "definition": "The method used to confirm the airway device placement.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DeviceConfirmedMethods",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eAirway.05",
+      "section": "eAirway",
+      "name": "Tube Depth",
+      "definition": "The measurement at the patient's teeth/lip of the tube depth in centimeters (cm) of the invasive airway placed.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TubeDepth",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.06",
+      "section": "eAirway",
+      "name": "Type of Individual Confirming Airway Device Placement",
+      "definition": "The type of individual who confirmed the airway device placement.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "IndividualDetails",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.07",
+      "section": "eAirway",
+      "name": "Crew Member ID",
+      "definition": "The statewide assigned ID number of the EMS crew member confirming the airway placement.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.08",
+      "section": "eAirway",
+      "name": "Airway Complications Encountered",
+      "definition": "The airway management complications encountered during the patient care episode.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "ComplicationsEncountered",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eAirway.09",
+      "section": "eAirway",
+      "name": "Suspected Reasons for Failed Airway Management",
+      "definition": "The reason(s) the airway was unable to be successfully managed.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "ReasonsForFailure",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eAirway.10",
+      "section": "eAirway",
+      "name": "Date/Time Decision to Manage the Patient with an Invasive Airway",
+      "definition": "The date and time the decision was made to manage the patient's airway with an invasive airway device.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eAirway.11",
+      "section": "eAirway",
+      "name": "Date/Time Invasive Airway Placement Attempts Abandoned",
+      "definition": "The date and time that the invasive airway attempts were abandoned for the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.01",
+      "section": "eArrest",
+      "name": "Cardiac Arrest",
+      "definition": "Indication of the presence of a cardiac arrest at any time during this EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CardiacArrest",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.02",
+      "section": "eArrest",
+      "name": "Cardiac Arrest Etiology",
+      "definition": "Indication of the etiology or cause of the cardiac arrest (classified as cardiac, non-cardiac, etc.).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CardiacArrestEtiology",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.03",
+      "section": "eArrest",
+      "name": "Resuscitation Attempted By EMS",
+      "definition": "Indication of an attempt to resuscitate the patient who is in cardiac arrest (attempted, not attempted due to DNR, etc.) by any EMS.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ResuscitationAttempted",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eArrest.04",
+      "section": "eArrest",
+      "name": "Arrest Witnessed By",
+      "definition": "Indication of who the cardiac arrest was witnessed by.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ArrestWitnessedBy",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eArrest.07",
+      "section": "eArrest",
+      "name": "AED Use Prior to EMS Arrival",
+      "definition": "Documentation of AED use Prior to EMS Arrival.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AEDUse",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.09",
+      "section": "eArrest",
+      "name": "Type of CPR Provided",
+      "definition": "Documentation of the type/technique of CPR used by EMS.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CPRType",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eArrest.10",
+      "section": "eArrest",
+      "name": "Therapeutic Hypothermia by EMS",
+      "definition": "Documentation of EMS initiation of Therapeutic Hypothermia.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.11",
+      "section": "eArrest",
+      "name": "First Monitored Arrest Rhythm of the Patient",
+      "definition": "Documentation of what the first monitored arrest rhythm which was noted.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "FirstMonitoredRhythm",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.12",
+      "section": "eArrest",
+      "name": "Any Return of Spontaneous Circulation",
+      "definition": "Indication whether or not there was any return of spontaneous circulation.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ReturnOfSpontaneousCirculation",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eArrest.13",
+      "section": "eArrest",
+      "name": "Neurological Outcome at Hospital Discharge",
+      "definition": "The level of cerebral performance of the patient at the time of discharge from the Hospital.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "NeurologicalOutcomeAtDischarge",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.14",
+      "section": "eArrest",
+      "name": "Date/Time of Cardiac Arrest",
+      "definition": "The date/time of the cardiac arrest (if not known, please estimate).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.15",
+      "section": "eArrest",
+      "name": "Date/Time Resuscitation Discontinued",
+      "definition": "The date/time resuscitation was discontinued.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.16",
+      "section": "eArrest",
+      "name": "Reason CPR/Resuscitation Discontinued",
+      "definition": "The reason that CPR or the resuscitation efforts were discontinued.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ReasonCPRDiscontinued",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.17",
+      "section": "eArrest",
+      "name": "Cardiac Rhythm on Arrival at Destination",
+      "definition": "The patient's cardiac rhythm upon delivery or transfer to the destination.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CardiacRhythm",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eArrest.18",
+      "section": "eArrest",
+      "name": "End of EMS Cardiac Arrest Event",
+      "definition": "The patient's outcome at the end of the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CardiacArrestOutcome",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.19",
+      "section": "eArrest",
+      "name": "Date/Time of Initial CPR",
+      "definition": "The initial date and time that CPR was started by anyone.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.20",
+      "section": "eArrest",
+      "name": "Who First Initiated CPR",
+      "definition": "Who first initiated CPR for this EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "WhoFirstInitiatedCPR",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.21",
+      "section": "eArrest",
+      "name": "Who First Applied the AED",
+      "definition": "Documentation of who first applied the AED for this EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "WhoFirstAppliedAED",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eArrest.22",
+      "section": "eArrest",
+      "name": "Who First Defibrillated the Patient",
+      "definition": "Documentation of who first defibrillated the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "WhoFirstDefibrillated",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCrew.01",
+      "section": "eCrew",
+      "name": "Crew Member ID",
+      "definition": "The state certification/licensure ID number assigned to the crew member.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCrew.02",
+      "section": "eCrew",
+      "name": "Crew Member Level",
+      "definition": "The functioning level of the crew member ID during this EMS patient encounter.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "MemberLevel",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCrew.03",
+      "section": "eCrew",
+      "name": "Crew Member Response Role",
+      "definition": "The role(s) of the crew member during response, at scene treatment, and/or transport.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberRoles",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.01",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Title",
+      "definition": "This is the title of the custom data element created to collect information that is not defined formally in NEMSIS Version 3.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "CustomTitle",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomConfiguration.02",
+      "section": "eCustomConfiguration",
+      "name": "Custom Definition",
+      "definition": "The definition of the custom element and how it should be used.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "CustomDefinition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomConfiguration.03",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Type",
+      "definition": "The data type of the custom element.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "CustomDataType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomConfiguration.04",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Recurrence",
+      "definition": "Indication if the data element will accept multiple values.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomConfiguration.05",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Usage",
+      "definition": "The Usage (Mandatory, Required, Recommended or Optional) for the Custom Data Element.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "ElementUsage",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomConfiguration.06",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Potential Values",
+      "definition": "The values which are associated with the Custom Data Element. Values would be the choices provided to the user when they document the Custom Data Element.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CustomValue",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.07",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Potential NOT Values (NV)",
+      "definition": "NOT Values (NV) associated with the custom element.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "NV",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.08",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Potential Pertinent Negative Values (PN)",
+      "definition": "Pertinent Negative Values (PN) associated with the custom element.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PN",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.09",
+      "section": "eCustomConfiguration",
+      "name": "Custom Data Element Grouping ID",
+      "definition": "ID for custom element grouping.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CorrelationID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomResults.01",
+      "section": "eCustomResults",
+      "name": "Custom Data Element Result",
+      "definition": "The actual value or values chosen (if values listed in eCustomConfiguration.06) or result (free text, Date/Time, or number) documented for the Custom Data Element.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "CustomResults",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eCustomResults.02",
+      "section": "eCustomResults",
+      "name": "Custom Element ID Referenced",
+      "definition": "References the CustomElementID attribute for eCustomConfiguration.CustomGroup.",
+      "national": false,
+      "state": false,
+      "usage": "Mandatory",
+      "sourceDatatype": "CorrelationID",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eCustomResults.03",
+      "section": "eCustomResults",
+      "name": "CorrelationID of PatientCareReport Element or Group",
+      "definition": "References the CorrelationID attribute of an element or group in the PatientCareReport section.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CorrelationID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.01",
+      "section": "eDevice",
+      "name": "Medical Device Serial Number",
+      "definition": "The unique manufacturer's serial number associated with a medical device.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DeviceSerialNumber",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.02",
+      "section": "eDevice",
+      "name": "Date/Time of Event (per Medical Device)",
+      "definition": "The time of the event recorded by the device's internal clock.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.03",
+      "section": "eDevice",
+      "name": "Medical Device Event Type",
+      "definition": "The type of event documented by the medical device.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MedicalDeviceEventType",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDevice.04",
+      "section": "eDevice",
+      "name": "Medical Device Waveform Graphic Type",
+      "definition": "The description of the waveform file stored in Waveform Graphic (eDevice.05).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GraphicType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.05",
+      "section": "eDevice",
+      "name": "Medical Device Waveform Graphic",
+      "definition": "The graphic waveform file.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "WaveformGraphic",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.06",
+      "section": "eDevice",
+      "name": "Medical Device Mode (Manual, AED, Pacing, CO2, O2, etc)",
+      "definition": "The mode of operation the device is operating in during the defibrillation, pacing, or rhythm analysis by the device (if appropriate for the event).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AEDPacingOrCO2Mode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.07",
+      "section": "eDevice",
+      "name": "Medical Device ECG Lead",
+      "definition": "The lead or source which the medical device used to obtain the rhythm (if appropriate for the event).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ECGLead",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDevice.08",
+      "section": "eDevice",
+      "name": "Medical Device ECG Interpretation",
+      "definition": "The interpretation of the rhythm by the device (if appropriate for the event).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ECGInterpretation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.09",
+      "section": "eDevice",
+      "name": "Type of Shock",
+      "definition": "The type of shock used by the device for the defibrillation (if appropriate for the event).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TypeOfShock",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.10",
+      "section": "eDevice",
+      "name": "Shock or Pacing Energy",
+      "definition": "The energy (in joules) used for the shock or pacing (if appropriate for the event).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ShockOrPacingEnergy",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.11",
+      "section": "eDevice",
+      "name": "Total Number of Shocks Delivered",
+      "definition": "The number of times the patient was defibrillated, if the patient was defibrillated during the patient encounter.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TotalNumberOfShocks",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDevice.12",
+      "section": "eDevice",
+      "name": "Pacing Rate",
+      "definition": "The rate the device was calibrated to pace during the event, if appropriate.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PacingRate",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.01",
+      "section": "eDispatch",
+      "name": "Dispatch Reason",
+      "definition": "The dispatch reason reported to the responding unit.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "DispatchReason",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.02",
+      "section": "eDispatch",
+      "name": "EMD Performed",
+      "definition": "Indication of whether Emergency Medical Dispatch was performed for this EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMDPerformed",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.03",
+      "section": "eDispatch",
+      "name": "EMD Determinant Code",
+      "definition": "The EMD determinant code reported by dispatch, consisting of the card number, dispatch level, and dispatch mode.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EMDDeterminantCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.04",
+      "section": "eDispatch",
+      "name": "Dispatch Center Name or ID",
+      "definition": "The name or ID of the dispatch center providing electronic data to the PCR for the EMS agency, if applicable.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ComputerAidedDispatchCADNameorID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.05",
+      "section": "eDispatch",
+      "name": "Dispatch Priority (Patient Acuity)",
+      "definition": "The actual, apparent, or potential acuity of the patient's condition as determined through information obtained during the EMD process.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DispatchPriority",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDispatch.06",
+      "section": "eDispatch",
+      "name": "Unit Dispatched CAD Record ID",
+      "definition": "The unique ID assigned by the CAD system for the specific unit response.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "UnitDispatchedCADRecordID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.01",
+      "section": "eDisposition",
+      "name": "Destination/Transferred To, Name",
+      "definition": "The destination the patient was delivered or transferred to.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DestinationTransferredToName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.02",
+      "section": "eDisposition",
+      "name": "Destination/Transferred To, Code",
+      "definition": "The code of the destination the patient was delivered or transferred to.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DestinationTransferredToCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.03",
+      "section": "eDisposition",
+      "name": "Destination Street Address",
+      "definition": "The street address of the destination the patient was delivered or transferred to.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.04",
+      "section": "eDisposition",
+      "name": "Destination City",
+      "definition": "The city of the destination the patient was delivered or transferred to (physical address).",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "CityGnisCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.05",
+      "section": "eDisposition",
+      "name": "Destination State",
+      "definition": "The state of the destination the patient was delivered or transferred to.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.06",
+      "section": "eDisposition",
+      "name": "Destination County",
+      "definition": "The destination county in which  the patient was delivered or transferred to.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSICountyCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.07",
+      "section": "eDisposition",
+      "name": "Destination ZIP Code",
+      "definition": "The destination ZIP code in which  the patient was delivered or transferred to.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.08",
+      "section": "eDisposition",
+      "name": "Destination Country",
+      "definition": "The country of the destination.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.09",
+      "section": "eDisposition",
+      "name": "Destination GPS Location",
+      "definition": "The destination GPS Coordinates to which  the patient was delivered or transferred to.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GPSLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.10",
+      "section": "eDisposition",
+      "name": "Destination Location US National Grid Coordinates",
+      "definition": "The US National Grid Coordinates for the Destination Location. This may be the Healthcare Facility US National Grid Coordinates.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "USNG",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.11",
+      "section": "eDisposition",
+      "name": "Number of Patients Transported in this EMS Unit",
+      "definition": "The number of patients transported by this EMS crew and unit.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "NumberOfPatients",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.13",
+      "section": "eDisposition",
+      "name": "How Patient Was Moved to Ambulance",
+      "definition": "The method by which the patient was moved to the ambulance from the scene.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "HowPatientWasMovedToFromAmbulance",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.14",
+      "section": "eDisposition",
+      "name": "Position of Patient During Transport",
+      "definition": "The position of the patient during transport from the scene.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PositionOfPatientDuringTransport",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.15",
+      "section": "eDisposition",
+      "name": "How Patient Was Moved From Ambulance",
+      "definition": "The method by which the patient was moved from the ambulance to the destination.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "HowPatientWasMovedToFromAmbulance",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.16",
+      "section": "eDisposition",
+      "name": "EMS Transport Method",
+      "definition": "The method of transport by this EMS Unit.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSTransportMethod",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.17",
+      "section": "eDisposition",
+      "name": "Transport Mode from Scene",
+      "definition": "Indication whether the transport was emergent or non-emergent.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TransportModeFromScene",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.18",
+      "section": "eDisposition",
+      "name": "Additional Transport Mode Descriptors",
+      "definition": "The documentation of transport mode techniques for this EMS response.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AdditionalTransportModeDescriptors",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.19",
+      "section": "eDisposition",
+      "name": "Acuity Upon EMS Release of Patient",
+      "definition": "The acuity of the patient's condition after this EMS unit's release of the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AcuityUponEMSReleaseOfPatient",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.20",
+      "section": "eDisposition",
+      "name": "Reason for Choosing Destination",
+      "definition": "The reason(s) this EMS unit delivered or transferred the patient to the destination.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ReasonForChoosingDestination",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.21",
+      "section": "eDisposition",
+      "name": "Type of Destination",
+      "definition": "The type of destination the patient was delivered or transferred to.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TypeOfDestination",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.22",
+      "section": "eDisposition",
+      "name": "Hospital In-Patient Destination",
+      "definition": "The location within the hospital that the patient was taken directly by EMS (e.g., Cath Lab, ICU, etc.).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "HospitalInPatientDestination",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.23",
+      "section": "eDisposition",
+      "name": "Hospital Capability",
+      "definition": "The primary hospital capability associated with the patient's condition for this transport (e.g., Trauma, STEMI, Peds, etc.).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "HospitalDesignation",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.24",
+      "section": "eDisposition",
+      "name": "Destination Team Pre-Arrival Alert or Activation",
+      "definition": "Indication that an alert (or activation) was called by EMS to the appropriate destination healthcare facility team. The alert (or activation) should occur prior to the EMS Unit arrival at the destination with the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DestinationPrearrivalActivation",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.25",
+      "section": "eDisposition",
+      "name": "Date/Time of Destination Prearrival Alert or Activation",
+      "definition": "The Date/Time EMS alerted, notified, or activated the Destination Healthcare Facility prior to EMS arrival. The EMS assessment identified the patient as acutely ill or injured based on exam and possibly specified alert criteria.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.26",
+      "section": "eDisposition",
+      "name": "Disposition Instructions Provided",
+      "definition": "Information provided to patient during disposition for patients not transported or treated.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DispositionInstruction",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.27",
+      "section": "eDisposition",
+      "name": "Unit Disposition",
+      "definition": "The unit disposition for an EMS event identifying whether patient contact was made by this EMS unit/crew.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "UnitDisposition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.28",
+      "section": "eDisposition",
+      "name": "Patient Evaluation/Care",
+      "definition": "The patient disposition for an EMS event identifying whether a patient was evaluated and care or services were provided.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "PatientEvaluationCare",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.29",
+      "section": "eDisposition",
+      "name": "Crew Disposition",
+      "definition": "The crew disposition for this EMS event identifying which crew provided primary patient care or whether support services were required.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CrewDisposition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.30",
+      "section": "eDisposition",
+      "name": "Transport Disposition",
+      "definition": "The transport disposition for an EMS event identifying whether a transport occurred and by which unit.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TransportDisposition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eDisposition.31",
+      "section": "eDisposition",
+      "name": "Reason for Refusal/Release",
+      "definition": "Describes reason(s) for the patient's refusal of care/transport OR the EMS clinician's decision to release the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ReasonForRefusalRelease",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eDisposition.32",
+      "section": "eDisposition",
+      "name": "Level of Care Provided per Protocol",
+      "definition": "The general level of care provided to this patient as defined per provider level in local EMS protocols or clinical guidelines.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "LevelofCareProvidedperProtocol",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.01",
+      "section": "eExam",
+      "name": "Estimated Body Weight in Kilograms",
+      "definition": "The patient's body weight in kilograms either measured or estimated.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "EstimatedBodyWeight",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.02",
+      "section": "eExam",
+      "name": "Length Based Tape Measure",
+      "definition": "The length-based color as taken from the tape.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "BroselowLutenColor",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.03",
+      "section": "eExam",
+      "name": "Date/Time of Assessment",
+      "definition": "The date/time of the assessment.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.04",
+      "section": "eExam",
+      "name": "Skin Assessment",
+      "definition": "The assessment findings associated with the patient's skin.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SkinAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.05",
+      "section": "eExam",
+      "name": "Head Assessment",
+      "definition": "The assessment findings associated with the patient's head.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "HeadAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.06",
+      "section": "eExam",
+      "name": "Face Assessment",
+      "definition": "The assessment findings associated with the patient's face.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "FaceAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.07",
+      "section": "eExam",
+      "name": "Neck Assessment",
+      "definition": "The assessment findings associated with the patient's neck.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "NeckAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.09",
+      "section": "eExam",
+      "name": "Heart Assessment",
+      "definition": "The assessment findings associated with the patient's heart.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "HeartAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.10",
+      "section": "eExam",
+      "name": "Abdominal Assessment Finding Location",
+      "definition": "The location of the patient's abdomen assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AbdominalExamFindingLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.11",
+      "section": "eExam",
+      "name": "Abdomen Assessment",
+      "definition": "The assessment findings associated with the patient's abdomen.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AbdomenAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.12",
+      "section": "eExam",
+      "name": "Pelvis/Genitourinary Assessment",
+      "definition": "The assessment findings associated with the patient's pelvis/genitourinary.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GUAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.13",
+      "section": "eExam",
+      "name": "Back and Spine Assessment Finding Location",
+      "definition": "The location of the patient's back and spine assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "BackAndSpineAssessmentLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.14",
+      "section": "eExam",
+      "name": "Back and Spine Assessment",
+      "definition": "The assessment findings associated with the patient's spine (Cervical, Thoracic, Lumbar, and Sacral) and back exam.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "BackAndSpineAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.15",
+      "section": "eExam",
+      "name": "Extremity Assessment Finding Location",
+      "definition": "The location of the patient's extremity assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ExtremityAssessmentLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.16",
+      "section": "eExam",
+      "name": "Extremities Assessment",
+      "definition": "The assessment findings associated with the patient's extremities.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ExtremitiesAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.17",
+      "section": "eExam",
+      "name": "Eye Assessment Finding Location",
+      "definition": "The location of the patient's eye assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EyesAssessmentLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.18",
+      "section": "eExam",
+      "name": "Eye Assessment",
+      "definition": "The assessment findings of the patient's eye examination.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EyesAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.19",
+      "section": "eExam",
+      "name": "Mental Status Assessment",
+      "definition": "The assessment findings of the patient's mental status examination.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MentalStatusAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.20",
+      "section": "eExam",
+      "name": "Neurological Assessment",
+      "definition": "The assessment findings of the patient's neurological examination.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "NeurologicalAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.21",
+      "section": "eExam",
+      "name": "Stroke/CVA Symptoms Resolved",
+      "definition": "Indication if the Stroke/CVA Symptoms resolved and when.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "StrokeCVASymptomsResolved",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.22",
+      "section": "eExam",
+      "name": "Lung Assessment Finding Location",
+      "definition": "The location of the patient's lung assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "LungAssessmentLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.23",
+      "section": "eExam",
+      "name": "Lung Assessment",
+      "definition": "The assessment findings associated with the patient's lungs.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "LungAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eExam.24",
+      "section": "eExam",
+      "name": "Chest Assessment Finding Location",
+      "definition": "The location of the patient's chest assessment findings.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ChestAssessmentLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eExam.25",
+      "section": "eExam",
+      "name": "Chest Assessment",
+      "definition": "The assessment findings associated with the patient's chest.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ChestAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.01",
+      "section": "eHistory",
+      "name": "Barriers to Patient Care",
+      "definition": "Indication of whether or not there were any patient specific barriers to serving the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "BarriersToPatientCare",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.02",
+      "section": "eHistory",
+      "name": "Last Name of Patient's Practitioner",
+      "definition": "The last name of the patient's practitioner.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.03",
+      "section": "eHistory",
+      "name": "First Name of Patient's Practitioner",
+      "definition": "The first name of the patient's practitioner.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.04",
+      "section": "eHistory",
+      "name": "Middle Name/Initial of Patient's Practitioner",
+      "definition": "The middle name or initial of the patient's practitioner.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonMiddleName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.05",
+      "section": "eHistory",
+      "name": "Advance Directives",
+      "definition": "The presence of a valid DNR form, living will, or document directing end of life or healthcare treatment decisions.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "AdvanceDirectives",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.06",
+      "section": "eHistory",
+      "name": "Medication Allergies",
+      "definition": "The patient's medication allergies.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "MedicationAllergies",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.07",
+      "section": "eHistory",
+      "name": "Environmental/Food Allergies",
+      "definition": "The patient's known allergies to food or environmental agents.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "snomed",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.08",
+      "section": "eHistory",
+      "name": "Medical/Surgical History",
+      "definition": "The patient's pre-existing medical and surgery history of the patient.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "icd10MedSurge",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.09",
+      "section": "eHistory",
+      "name": "Medical History Obtained From",
+      "definition": "Type of person medical history obtained from.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MedicalHistoryObtainedFrom",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.10",
+      "section": "eHistory",
+      "name": "The Patient's Type of Immunization",
+      "definition": "The immunization type of the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ImmunizationType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.11",
+      "section": "eHistory",
+      "name": "Immunization Year",
+      "definition": "The year associated with each immunization type.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Year",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.12",
+      "section": "eHistory",
+      "name": "Current Medications",
+      "definition": "The medications the patient currently takes.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "Medication",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.13",
+      "section": "eHistory",
+      "name": "Current Medication Dose",
+      "definition": "The numeric dose or amount of the patient's current medication.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CurrentMedicationDose",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.14",
+      "section": "eHistory",
+      "name": "Current Medication Dosage Unit",
+      "definition": "The dosage unit of the patient's current medication.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CurrentMedicationDosageUnit",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.15",
+      "section": "eHistory",
+      "name": "Current Medication Administration Route",
+      "definition": "The administration route (po, SQ, etc.) of the patient's current medication.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CurrentMedicationAdministrationRoute",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.16",
+      "section": "eHistory",
+      "name": "Presence of Emergency Information Form",
+      "definition": "Indication of the presence of the Emergency Information Form associated with patient's with special healthcare needs.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.17",
+      "section": "eHistory",
+      "name": "Alcohol/Drug Use Indicators",
+      "definition": "Indicators for the potential use of alcohol or drugs by the patient related to the patient's current illness or injury.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AlcoholDrugUseIndicators",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eHistory.18",
+      "section": "eHistory",
+      "name": "Pregnancy",
+      "definition": "Indication of the possibility by the patient's history of current pregnancy.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Pregnancy",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.19",
+      "section": "eHistory",
+      "name": "Last Oral Intake",
+      "definition": "Date and Time of last oral intake.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eHistory.20",
+      "section": "eHistory",
+      "name": "Current Medication Frequency",
+      "definition": "The frequency of administration of the patient's current medication.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CurrentMedicationFrequency",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.01",
+      "section": "eInjury",
+      "name": "Cause of Injury",
+      "definition": "The category of the reported/suspected external cause of the injury.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "icd10CodeInjury",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.02",
+      "section": "eInjury",
+      "name": "Mechanism of Injury",
+      "definition": "The mechanism of the event which caused the injury.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "MechanismOfInjury",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.03",
+      "section": "eInjury",
+      "name": "Trauma Triage Criteria (High Risk for Serious Injury)",
+      "definition": "Trauma triage criteria for the red boxes (Injury Patterns and Mental Status and Vital Signs) in the 2021 ACS National Guideline for the Field Triage of Injured Patients.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TraumaTriageCriteriaSteps1and2",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.04",
+      "section": "eInjury",
+      "name": "Trauma Triage Criteria (Moderate Risk for Serious Injury)",
+      "definition": "Trauma triage criteria for the yellow boxes (Mechanism of Injury and EMS Judgment) in the 2021 ACS National Guideline for the Field Triage of Injured Patients.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TraumaTriageCriteriaSteps3and4",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.05",
+      "section": "eInjury",
+      "name": "Main Area of the Vehicle Impacted by the Collision",
+      "definition": "The area or location of initial impact on the vehicle based on 12-point clock diagram.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "AreaOfVehicleImpact",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.06",
+      "section": "eInjury",
+      "name": "Location of Patient in Vehicle",
+      "definition": "The seat row location of the vehicle at the time of the crash with the front seat numbered as 1.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "SeatRowLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.07",
+      "section": "eInjury",
+      "name": "Use of Occupant Safety Equipment",
+      "definition": "Safety equipment in use by the patient at the time of the injury.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "UseOfOccupantSafetyEquipment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.08",
+      "section": "eInjury",
+      "name": "Airbag Deployment",
+      "definition": "Indication of Airbag Deployment.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "AirbagDeployment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.09",
+      "section": "eInjury",
+      "name": "Height of Fall (feet)",
+      "definition": "The distance in feet the patient fell, measured from the lowest point of the patient to the ground.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "HeightOfFall",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.10",
+      "section": "eInjury",
+      "name": "OSHA Personal Protective Equipment Used",
+      "definition": "Documentation of the use of OSHA required protective equipment used by the patient at the time of injury.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EquipmentUsed",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.11",
+      "section": "eInjury",
+      "name": "ACN System/Company Providing ACN Data",
+      "definition": "The agency providing the Automated Collision Notification (ACN) Data.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Company",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.12",
+      "section": "eInjury",
+      "name": "ACN Incident ID",
+      "definition": "The Automated Collision Notification Incident ID.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "IncidentID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.13",
+      "section": "eInjury",
+      "name": "ACN Call Back Phone Number",
+      "definition": "The Automated Collision Notification Call Back Phone Number (US Only).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PhoneNumber",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.14",
+      "section": "eInjury",
+      "name": "Date/Time of ACN Incident",
+      "definition": "The Automated Collision Notification Incident Date and Time.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.15",
+      "section": "eInjury",
+      "name": "ACN Incident Location",
+      "definition": "The Automated Collision Notification GPS Location.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GPSLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.16",
+      "section": "eInjury",
+      "name": "ACN Incident Vehicle Body Type",
+      "definition": "The Automated Collision Notification Vehicle Body Type.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "BodyType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.17",
+      "section": "eInjury",
+      "name": "ACN Incident Vehicle Manufacturer",
+      "definition": "The Automated Collision Notification Vehicle Manufacturer (e.g., General Motors, Ford, BMW, etc.).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Manufacturer",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.18",
+      "section": "eInjury",
+      "name": "ACN Incident Vehicle Make",
+      "definition": "The Automated Collision Notification Vehicle Make (e.g., Cadillac, Ford, BMW, etc.).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Make",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.19",
+      "section": "eInjury",
+      "name": "ACN Incident Vehicle Model",
+      "definition": "The Automated Collision Notification Vehicle Model (e.g., Escalade, Taurus, X6M, etc.).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Model",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.20",
+      "section": "eInjury",
+      "name": "ACN Incident Vehicle Model Year",
+      "definition": "The Automated Collision Notification Vehicle Model Year (e.g., 2010).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Year",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.21",
+      "section": "eInjury",
+      "name": "ACN Incident Multiple Impacts",
+      "definition": "The Automated Collision Notification Indication of Multiple Impacts associated with the collision.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.22",
+      "section": "eInjury",
+      "name": "ACN Incident Delta Velocity",
+      "definition": "The Automated Collision Notification Delta Velocity (Delta V) force associated with the crash.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DeltaVelocity",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eInjury.23",
+      "section": "eInjury",
+      "name": "ACN High Probability of Injury",
+      "definition": "The Automated Collision Notification of the High Probability of Injury.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.24",
+      "section": "eInjury",
+      "name": "ACN Incident PDOF",
+      "definition": "The Automated Collision Notification Principal Direction of Force (PDOF).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PDOF",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.25",
+      "section": "eInjury",
+      "name": "ACN Incident Rollover",
+      "definition": "The Automated Collision Notification Indication that the Vehicle Rolled Over.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ACNYesNoType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.26",
+      "section": "eInjury",
+      "name": "ACN Vehicle Seat Location",
+      "definition": "The Automated Collision Notification Indication of the Occupant(s) Seat Location(s) within the vehicle.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SeatLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.27",
+      "section": "eInjury",
+      "name": "Seat Occupied",
+      "definition": "Indication if seat is occupied based on seat sensor data.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ACNYesNoType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.28",
+      "section": "eInjury",
+      "name": "ACN Incident Seatbelt Use",
+      "definition": "The Automated Collision Notification Indication of Seatbelt use by the occupant(s).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ACNYesNoType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eInjury.29",
+      "section": "eInjury",
+      "name": "ACN Incident Airbag Deployed",
+      "definition": "The Automated Collision Notification Indication of Airbag Deployment.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ACNYesNoType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.01",
+      "section": "eLabs",
+      "name": "Date/Time of Laboratory or Imaging Result",
+      "definition": "The date and time for the specific laboratory result.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.02",
+      "section": "eLabs",
+      "name": "Study/Result Prior to this Unit's EMS Care",
+      "definition": "Indicates that the laboratory result occurred prior to this EMS units care.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.03",
+      "section": "eLabs",
+      "name": "Laboratory Result Type",
+      "definition": "The type of the laboratory value.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "LaboratoryResultType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.04",
+      "section": "eLabs",
+      "name": "Laboratory Result",
+      "definition": "The value or result of the laboratory test (Units may vary).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "LaboratoryResult",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.05",
+      "section": "eLabs",
+      "name": "Imaging Study Type",
+      "definition": "The type of x-ray or imaging study.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ImagingStudyType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.06",
+      "section": "eLabs",
+      "name": "Imaging Study Results",
+      "definition": "The description or interpretation of the results of the imaging study.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ImagingStudyResults",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.07",
+      "section": "eLabs",
+      "name": "Imaging Study File or Waveform Graphic Type",
+      "definition": "The description of the image study file or waveform graphic stored in Imaging Study File or Waveform Graphic (eLabs.08).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GraphicType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eLabs.08",
+      "section": "eLabs",
+      "name": "Imaging Study File or Waveform Graphic",
+      "definition": "The imaging study file.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "WaveformGraphic",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.01",
+      "section": "eMedications",
+      "name": "Date/Time Medication Administered",
+      "definition": "The date/time medication administered to the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.02",
+      "section": "eMedications",
+      "name": "Medication Administered Prior to this Unit's EMS Care",
+      "definition": "Indicates that the medication administration which is documented was administered prior to this EMS units care.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.03",
+      "section": "eMedications",
+      "name": "Medication Administered",
+      "definition": "The medication administered to the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Medication",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.04",
+      "section": "eMedications",
+      "name": "Medication Administered Route",
+      "definition": "The route medication was administered to the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CurrentMedicationAdministrationRoute",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.05",
+      "section": "eMedications",
+      "name": "Medication Dosage",
+      "definition": "The dose or amount of the medication administered to the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "MedicationDosage",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.06",
+      "section": "eMedications",
+      "name": "Medication Dosage Units",
+      "definition": "The unit of medication dosage administered to patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "MedicationDosageUnits",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.07",
+      "section": "eMedications",
+      "name": "Response to Medication",
+      "definition": "The patient's response to the medication.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Response",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.08",
+      "section": "eMedications",
+      "name": "Medication Complication",
+      "definition": "Any complication (abnormal effect on the patient) associated with the administration of the medication to the patient by EMS.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "MedicationComplication",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eMedications.09",
+      "section": "eMedications",
+      "name": "Medication Crew (Healthcare Professionals) ID",
+      "definition": "The statewide assigned ID number of the EMS crew member giving the treatment to the patient.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.10",
+      "section": "eMedications",
+      "name": "Role/Type of Person Administering Medication",
+      "definition": "The type (level) of EMS or Healthcare Professional Administering the Medication. For medications administered prior to EMS arrival, this may be a non-EMS healthcare professional.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSCaregiverLevel",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.11",
+      "section": "eMedications",
+      "name": "Medication Authorization",
+      "definition": "The type of treatment authorization obtained.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TxAuthorization",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.12",
+      "section": "eMedications",
+      "name": "Medication Authorizing Physician",
+      "definition": "The name of the authorizing physician ordering the medication administration if the order was provided by any manner other than protocol (standing order) in eMedications.11.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eMedications.13",
+      "section": "eMedications",
+      "name": "Medication Administered by Another Unit",
+      "definition": "Indicates the medication was administered by someone other than the EMS clinicians in this EMS unit.  This is not for prior to arrival medications, but for medications administered when multiple units/caregivers are on scene simultaneously providing patient care.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eNarrative.01",
+      "section": "eNarrative",
+      "name": "Patient Care Report Narrative",
+      "definition": "The narrative of the patient care report (PCR).",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "PCRNarrative",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.01",
+      "section": "eOther",
+      "name": "Review Requested",
+      "definition": "Indication of whether the PCR needs review by anyone.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.02",
+      "section": "eOther",
+      "name": "Potential System of Care/Specialty/Registry Patient",
+      "definition": "An indication if the patient may meet the entry criteria for an injury or illness specific registry.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PotentialRegistryCandidate",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOther.03",
+      "section": "eOther",
+      "name": "Personal Protective Equipment Used",
+      "definition": "The personal protective equipment which was used by EMS personnel during this EMS patient contact.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonalProtectiveEquipmentUsed",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOther.04",
+      "section": "eOther",
+      "name": "EMS Professional (Crew Member) ID",
+      "definition": "The ID number of the EMS Crew Member associated with eOther.03, eOther.05, eOther.06.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.05",
+      "section": "eOther",
+      "name": "Suspected EMS Work Related Exposure, Injury, or Death",
+      "definition": "Indication of an EMS work related exposure, injury, or death associated with this EMS event.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.06",
+      "section": "eOther",
+      "name": "The Type of Work-Related Injury, Death or Suspected Exposure",
+      "definition": "The type of EMS crew member work-related injury, death, or suspected exposure related to the EMS response.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "TypeOfInjuryDeathOrSuspectedExposure",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOther.07",
+      "section": "eOther",
+      "name": "Natural, Suspected, Intentional, or Unintentional Disaster",
+      "definition": "Event caused by natural forces or Suspected and Intentional/Unintentional Disasters (terrorism).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SuspectedIntentionalOrUnintentionalDisaster",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOther.08",
+      "section": "eOther",
+      "name": "Crew Member Completing this Report",
+      "definition": "The statewide assigned ID number of the EMS crew member which completed this patient care report.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.09",
+      "section": "eOther",
+      "name": "External Electronic Document Type",
+      "definition": "Document type which has been electronically stored with PCR.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ExternalElectronicDocuments",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.10",
+      "section": "eOther",
+      "name": "File Attachment Type",
+      "definition": "The description of the file attachment stored in File Attachment Image (eOther.11).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GraphicType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.11",
+      "section": "eOther",
+      "name": "File Attachment Image",
+      "definition": "The file that is attached electronically to the patient care report.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "FileImage",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.12",
+      "section": "eOther",
+      "name": "Type of Person Signing",
+      "definition": "The individual's signature associated with eOther.15 (Signature Status).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SignatureType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.13",
+      "section": "eOther",
+      "name": "Signature Reason",
+      "definition": "The reason for the individuals signature.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SignatureReason",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOther.14",
+      "section": "eOther",
+      "name": "Type Of Patient Representative",
+      "definition": "If Patient Representative is chosen as the owner of the signature, this documents the relationship of the individual signing to the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "RelationshipSignature",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.15",
+      "section": "eOther",
+      "name": "Signature Status",
+      "definition": "Indication that the signature for the Type of Person Signing and Signature Reason has been collected or attempted to be collected.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SignatureStatus",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.16",
+      "section": "eOther",
+      "name": "Signature File Name",
+      "definition": "The name of the graphic file for the signature.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "FileName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.17",
+      "section": "eOther",
+      "name": "Signature File Type",
+      "definition": "The description of the file attachment stored in Signature Graphic (eOther.18).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GraphicType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.18",
+      "section": "eOther",
+      "name": "Signature Graphic",
+      "definition": "The graphic file for the signature.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Graphic",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.19",
+      "section": "eOther",
+      "name": "Date/Time of Signature",
+      "definition": "The date and time the crew member, patient, patient representative, or facility representative signature was captured.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.20",
+      "section": "eOther",
+      "name": "Signature Last Name",
+      "definition": "The last name of the crew member, patient, patient representative, or facility representative associated with the signature group.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.21",
+      "section": "eOther",
+      "name": "Signature First Name",
+      "definition": "The first name of the crew member, patient, patient representative, or facility representative associated with the signature group.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOther.22",
+      "section": "eOther",
+      "name": "File Attachment Name",
+      "definition": "The name of the attached file.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "FileName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.01",
+      "section": "eOutcome",
+      "name": "Emergency Department Disposition",
+      "definition": "The known disposition of the patient from the Emergency Department (ED).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EmergencyDepartmentDisposition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.02",
+      "section": "eOutcome",
+      "name": "Hospital Disposition",
+      "definition": "The known disposition of the patient from the hospital, if admitted.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "HospitalDisposition",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.03",
+      "section": "eOutcome",
+      "name": "External Report ID/Number Type",
+      "definition": "The Type of External Report or Record associated with the Report/ID Number.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ExternalReportIDType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.04",
+      "section": "eOutcome",
+      "name": "External Report ID/Number",
+      "definition": "The ID or Number of the external report or record in eOutcome.03.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ExternalReportID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.05",
+      "section": "eOutcome",
+      "name": "Other Report Registry Type",
+      "definition": "The type of external report/registry that was documented as \"other\" in eOutcome.03",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "OtherReportRegistryType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.09",
+      "section": "eOutcome",
+      "name": "Emergency Department Procedures",
+      "definition": "The procedures performed on the patient during the emergency department visit.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "icd10CodeOutcomeProcedures",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.10",
+      "section": "eOutcome",
+      "name": "Emergency Department Diagnosis",
+      "definition": "The practitioner's description of the condition or problem for which Emergency Department services were provided.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "icd10Code",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOutcome.11",
+      "section": "eOutcome",
+      "name": "Date/Time of Hospital Admission",
+      "definition": "The date and time the patient was admitted to the hospital.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.12",
+      "section": "eOutcome",
+      "name": "Hospital Procedures",
+      "definition": "Hospital Procedures performed on the patient during the hospital admission.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "icd10CodeOutcomeProcedures",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.13",
+      "section": "eOutcome",
+      "name": "Hospital Diagnosis",
+      "definition": "The hospital diagnosis of the patient associated with the hospital admission.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "icd10Code",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eOutcome.16",
+      "section": "eOutcome",
+      "name": "Date/Time of Hospital Discharge",
+      "definition": "The date the patient was discharged from the hospital.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.18",
+      "section": "eOutcome",
+      "name": "Date/Time of Emergency Department Admission",
+      "definition": "The date and time the patient was admitted to the emergency department.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.19",
+      "section": "eOutcome",
+      "name": "Date/Time Emergency Department Procedure Performed",
+      "definition": "The date/time the emergency department procedure was performed on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.20",
+      "section": "eOutcome",
+      "name": "Date/Time Hospital Procedure Performed",
+      "definition": "The date/time the hospital procedure was performed on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eOutcome.21",
+      "section": "eOutcome",
+      "name": "Injury Severity Score",
+      "definition": "The patient's total Injury Severity Score.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InjurySeverityScore",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.01",
+      "section": "ePatient",
+      "name": "EMS Patient ID",
+      "definition": "The unique ID for the patient within the Agency.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PatientID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.02",
+      "section": "ePatient",
+      "name": "Last Name",
+      "definition": "The patient's last (family) name.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.03",
+      "section": "ePatient",
+      "name": "First Name",
+      "definition": "The patient's first (given) name.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.04",
+      "section": "ePatient",
+      "name": "Middle Initial/Name",
+      "definition": "The patient's middle name, if any.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonMiddleName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.05",
+      "section": "ePatient",
+      "name": "Patient's Home Address",
+      "definition": "Patient's address of residence.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.06",
+      "section": "ePatient",
+      "name": "Patient's Home City",
+      "definition": "The patient's primary city or township of residence.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "CityGnisCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.07",
+      "section": "ePatient",
+      "name": "Patient's Home County",
+      "definition": "The patient's home county or parish of residence.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSICountyCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.08",
+      "section": "ePatient",
+      "name": "Patient's Home State",
+      "definition": "The state, territory, or province where the patient resides.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.09",
+      "section": "ePatient",
+      "name": "Patient's Home ZIP Code",
+      "definition": "The patient's ZIP code of residence.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.10",
+      "section": "ePatient",
+      "name": "Patient's Country of Residence",
+      "definition": "The country of residence of the patient.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.11",
+      "section": "ePatient",
+      "name": "Patient Home Census Tract",
+      "definition": "The census tract in which the patient lives.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CensusTracts",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.12",
+      "section": "ePatient",
+      "name": "Social Security Number",
+      "definition": "The patient's social security number.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SocialSecurityNumber",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.13",
+      "section": "ePatient",
+      "name": "Gender (DEPRECATED)",
+      "definition": "The patient's gender. (DEPRECATED)",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Gender",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.14",
+      "section": "ePatient",
+      "name": "Race",
+      "definition": "The patient's race as defined by the OMB (US Office of Management and Budget).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Race",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePatient.15",
+      "section": "ePatient",
+      "name": "Age",
+      "definition": "The patient's age (either calculated from date of birth or best approximation) at the time of the incident.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Age",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.16",
+      "section": "ePatient",
+      "name": "Age Units",
+      "definition": "The unit used to define the patient's age.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AgeUnits",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.17",
+      "section": "ePatient",
+      "name": "Date of Birth",
+      "definition": "The patient's date of birth.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DateOfBirth",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.18",
+      "section": "ePatient",
+      "name": "Patient's Phone Number",
+      "definition": "The patient's phone number.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PhoneNumber",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePatient.19",
+      "section": "ePatient",
+      "name": "Patient's Email Address",
+      "definition": "The email address of the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EmailAddress",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePatient.20",
+      "section": "ePatient",
+      "name": "State Issuing Driver's License",
+      "definition": "The state that issued the drivers license.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.21",
+      "section": "ePatient",
+      "name": "Driver's License Number",
+      "definition": "The patient's drivers license number.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DriversLicenseNumber",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.22",
+      "section": "ePatient",
+      "name": "Alternate Home Residence",
+      "definition": "Documentation of the type of patient without a home ZIP/Postal Code.",
+      "national": false,
+      "state": false,
+      "usage": "Recommended",
+      "sourceDatatype": "AlternateHomeResidence",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.23",
+      "section": "ePatient",
+      "name": "Name Suffix",
+      "definition": "The patient's name component following family name that may be used to describe a person's position in a family.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonNameSuffix",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePatient.24",
+      "section": "ePatient",
+      "name": "Patient's Preferred Language(s)",
+      "definition": "The patient's preferred language(s).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PatientPreferredLanguage",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePatient.25",
+      "section": "ePatient",
+      "name": "Sex",
+      "definition": "The patient's sex.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Sex",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.01",
+      "section": "ePayment",
+      "name": "Primary Method of Payment",
+      "definition": "The primary method of payment or type of insurance associated with this EMS encounter.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "PrimaryMethodOfPayment",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.02",
+      "section": "ePayment",
+      "name": "Physician Certification Statement",
+      "definition": "Indication of whether a physician certification statement (PCS) is available documenting the medical necessity or the EMS encounter.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoUnkValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.03",
+      "section": "ePayment",
+      "name": "Date Physician Certification Statement Signed",
+      "definition": "The date the Physician Certification Statement was signed.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.04",
+      "section": "ePayment",
+      "name": "Reason for Physician Certification Statement",
+      "definition": "The reason for EMS transport noted on the Physician Certification Statement.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Reason",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.05",
+      "section": "ePayment",
+      "name": "Healthcare Provider Type Signing Physician Certification Statement",
+      "definition": "The type of healthcare provider who signed the Physician Certification Statement.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "HealthcareProviderType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.06",
+      "section": "ePayment",
+      "name": "Last Name of Individual Signing Physician Certification Statement",
+      "definition": "The last name of the healthcare provider who signed the Physician Certification Statement.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.07",
+      "section": "ePayment",
+      "name": "First Name of Individual Signing Physician Certification Statement",
+      "definition": "The first name of the healthcare provider who signed the Physician Certification Statement.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.08",
+      "section": "ePayment",
+      "name": "Patient Resides in Service Area",
+      "definition": "An indication of whether the patient's current residence is within the EMS agency service area.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ResidencyStatusOfThePatient",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.09",
+      "section": "ePayment",
+      "name": "Insurance Company ID",
+      "definition": "The ID Number of the patient's insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsuranceCompanyID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.10",
+      "section": "ePayment",
+      "name": "Insurance Company Name",
+      "definition": "The name of the patient's insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsuranceCompanyName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.11",
+      "section": "ePayment",
+      "name": "Insurance Company Billing Priority",
+      "definition": "The billing priority or order for the insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsuranceCompanyBillingPriority",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.12",
+      "section": "ePayment",
+      "name": "Insurance Company Address",
+      "definition": "The mailing address of the Insurance Company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.13",
+      "section": "ePayment",
+      "name": "Insurance Company City",
+      "definition": "The insurance company's city or township used for mailing purposes.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CityGnisCodePayment",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.14",
+      "section": "ePayment",
+      "name": "Insurance Company State",
+      "definition": "The insurance company's state, territory, or province, or District of Columbia.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.15",
+      "section": "ePayment",
+      "name": "Insurance Company ZIP Code",
+      "definition": "The insurance company's ZIP Code.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.16",
+      "section": "ePayment",
+      "name": "Insurance Company Country",
+      "definition": "The insurance company's country.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.17",
+      "section": "ePayment",
+      "name": "Insurance Group ID",
+      "definition": "The ID number of the patient's insurance group.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsuranceGroupID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.18",
+      "section": "ePayment",
+      "name": "Insurance Policy ID Number",
+      "definition": "The ID number of the patient's insurance policy.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsurancePolicyIDNumber",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.19",
+      "section": "ePayment",
+      "name": "Last Name of the Insured",
+      "definition": "The last (family) name of the person insured by the insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.20",
+      "section": "ePayment",
+      "name": "First Name of the Insured",
+      "definition": "The first (given) name of the person insured by the insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.21",
+      "section": "ePayment",
+      "name": "Middle Initial/Name of the Insured",
+      "definition": "The middle name, if any, of the person insured by the insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonMiddleName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.22",
+      "section": "ePayment",
+      "name": "Relationship to the Insured",
+      "definition": "The relationship of the patient to the primary insured person.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "RelationshipToInsured",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.23",
+      "section": "ePayment",
+      "name": "Closest Relative/Guardian Last Name",
+      "definition": "The last (family) name of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonLastName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.24",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian First Name",
+      "definition": "The first (given) name of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonFirstName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.25",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian Middle Initial/Name",
+      "definition": "The middle name/initial, if any, of the closest patient's relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonMiddleName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.26",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian Street Address",
+      "definition": "The street address of the residence of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.27",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian City",
+      "definition": "The primary city or township of residence of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CityGnisCodePayment",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.28",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian State",
+      "definition": "The state of residence of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.29",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian ZIP Code",
+      "definition": "The ZIP Code of the residence of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.30",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian Country",
+      "definition": "The country of residence of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.31",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian Phone Number",
+      "definition": "The phone number of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PhoneNumber",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.32",
+      "section": "ePayment",
+      "name": "Closest Relative/ Guardian Relationship",
+      "definition": "The relationship of the patient's closest relative or guardian.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ClosestRelativeGuardianRelationship",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.33",
+      "section": "ePayment",
+      "name": "Patient's Employer",
+      "definition": "The patient's employer's name.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EmployerName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.34",
+      "section": "ePayment",
+      "name": "Patient's Employer's Address",
+      "definition": "The street address of the patient's employer.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.35",
+      "section": "ePayment",
+      "name": "Patient's Employer's City",
+      "definition": "The city or township of the patient's employer used for mailing purposes.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CityGnisCodePayment",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.36",
+      "section": "ePayment",
+      "name": "Patient's Employer's State",
+      "definition": "The state of the patient's employer.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.37",
+      "section": "ePayment",
+      "name": "Patient's Employer's ZIP Code",
+      "definition": "The ZIP Code of the patient's employer.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.38",
+      "section": "ePayment",
+      "name": "Patient's Employer's Country",
+      "definition": "The country of the patient's employer.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.39",
+      "section": "ePayment",
+      "name": "Patient's Employer's Primary Phone Number",
+      "definition": "The employer's primary phone number.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PhoneNumber",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.40",
+      "section": "ePayment",
+      "name": "Response Urgency",
+      "definition": "The urgency in which the EMS agency began to mobilize resources for this EMS encounter.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ResponseUrgency",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.41",
+      "section": "ePayment",
+      "name": "Patient Transport Assessment",
+      "definition": "Documentation of the patient's transport need based on mobility and/or physical capability.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TransportAssessment",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.42",
+      "section": "ePayment",
+      "name": "Specialty Care Transport Care Provider",
+      "definition": "Documentation to show the patient care provided to the patient met the Specialty Care Transport Base Rate requirements.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TransportCareProvider",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.44",
+      "section": "ePayment",
+      "name": "Ambulance Transport Reason Code",
+      "definition": "The CMS Ambulance Transport Reason Code for the transport.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AmbulanceReasonCode",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.45",
+      "section": "ePayment",
+      "name": "Round Trip Purpose Description",
+      "definition": "Free text description providing the purpose of the round trip EMS transport based on CR109 field for CMS.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TripPurposeDesciption",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.46",
+      "section": "ePayment",
+      "name": "Stretcher Purpose Description",
+      "definition": "Free Text Documentation providing the reason for use of a stretcher in the EMS patient transport.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "StretcherPurposeDesciption",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.47",
+      "section": "ePayment",
+      "name": "Ambulance Conditions Indicator",
+      "definition": "Documentation of the CRC03 through CRC07 requirements for CMS billing using X12 transactions.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AmbulanceConditionsIndicator",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.48",
+      "section": "ePayment",
+      "name": "Mileage to Closest Hospital Facility",
+      "definition": "The mileage to the closest hospital facility from the scene. Documented only if the patient was transported to a facility farther away than the closest hospital.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "Mileage",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.49",
+      "section": "ePayment",
+      "name": "ALS Assessment Performed and Warranted",
+      "definition": "Documentation that the patient required an ALS assessment and it was performed.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.50",
+      "section": "ePayment",
+      "name": "CMS Service Level",
+      "definition": "The CMS service level for this EMS encounter.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CMSServiceLevel",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.51",
+      "section": "ePayment",
+      "name": "EMS Condition Code",
+      "definition": "The condition code associated with the CMS EMS negotiated rule-making process.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "icd10Code",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.52",
+      "section": "ePayment",
+      "name": "CMS Transportation Indicator",
+      "definition": "The CMS Ambulance Fee Schedule Transportation and Air Medical Transportation Indicators are used to better describe why it was necessary for the patient to be transported in a particular way or circumstance.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CMSTransportationIndicator",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.53",
+      "section": "ePayment",
+      "name": "Transport Authorization Code",
+      "definition": "Prior authorization code provided by the insurance carrier/payer.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "AuthorizationCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.54",
+      "section": "ePayment",
+      "name": "Prior Authorization Code Payer",
+      "definition": "The Payer who has provided the Prior Authorization Code.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.55",
+      "section": "ePayment",
+      "name": "Supply Item Used Name",
+      "definition": "The name of the supply used on the patient by the EMS Crew during the EMS event.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SupplyUsed",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.56",
+      "section": "ePayment",
+      "name": "Number of Supply Item(s) Used",
+      "definition": "The number of the specific supply item used on the patient by the EMS Crew during the EMS event.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SupplyCount",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.57",
+      "section": "ePayment",
+      "name": "Payer Type",
+      "definition": "Payer type according to X12 standard.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PayerType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.58",
+      "section": "ePayment",
+      "name": "Insurance Group Name",
+      "definition": "The name of the patient's insurance group.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "InsuranceGroupName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "ePayment.59",
+      "section": "ePayment",
+      "name": "Insurance Company Phone Number",
+      "definition": "The phone number for the patient's insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PhoneNumber",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "ePayment.60",
+      "section": "ePayment",
+      "name": "Date of Birth of the Insured",
+      "definition": "The date of birth of the person insured by the insurance company.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateOfBirth",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.01",
+      "section": "eProcedures",
+      "name": "Date/Time Procedure Performed",
+      "definition": "The date/time the procedure was performed on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.02",
+      "section": "eProcedures",
+      "name": "Procedure Performed Prior to this Unit's EMS Care",
+      "definition": "Indicates that the procedure which was performed and documented was performed prior to this EMS units care.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.03",
+      "section": "eProcedures",
+      "name": "Procedure",
+      "definition": "The procedure performed on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "snomed",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.04",
+      "section": "eProcedures",
+      "name": "Size of Procedure Equipment",
+      "definition": "The size of the equipment used in the procedure on the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "SizeOfProcedureEquipment",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.05",
+      "section": "eProcedures",
+      "name": "Number of Procedure Attempts",
+      "definition": "The number of attempts taken to complete a procedure or intervention regardless of success.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "NumberOfProcedureAttempts",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.06",
+      "section": "eProcedures",
+      "name": "Procedure Successful",
+      "definition": "Indicates that this individual procedure attempt which was performed on the patient was successful.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.07",
+      "section": "eProcedures",
+      "name": "Procedure Complication",
+      "definition": "Any complication (abnormal effect on the patient) associated with the performance of the procedure on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ProcedureComplication",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eProcedures.08",
+      "section": "eProcedures",
+      "name": "Response to Procedure",
+      "definition": "The patient's response to the procedure.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "Response",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.09",
+      "section": "eProcedures",
+      "name": "Procedure Crew Members ID",
+      "definition": "The statewide assigned ID number of the EMS crew member performing the procedure on the patient.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CrewMemberID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.10",
+      "section": "eProcedures",
+      "name": "Role/Type of Person Performing the Procedure",
+      "definition": "The type (level) of EMS or Healthcare Professional performing the procedure. For procedures performed prior to EMS arrival, this may be a non-EMS healthcare professional.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSCaregiverLevel",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.11",
+      "section": "eProcedures",
+      "name": "Procedure Authorization",
+      "definition": "The type of treatment authorization obtained.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "TxAuthorization",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.12",
+      "section": "eProcedures",
+      "name": "Procedure Authorizing Physician",
+      "definition": "The name of the authorizing physician ordering the procedure, if the order was provided by any manner other than protocol (standing order) in eProcedures.11.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PersonName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.13",
+      "section": "eProcedures",
+      "name": "Vascular Access Location",
+      "definition": "The location of the vascular access site attempt on the patient, if applicable.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "VascularAccessLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProcedures.14",
+      "section": "eProcedures",
+      "name": "Airway Placement Technique",
+      "definition": "The manner/equipment used during the placement of the advanced airway.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "AirwayPlacementTechnique",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eProcedures.15",
+      "section": "eProcedures",
+      "name": "Procedure Performed by Another Unit",
+      "definition": "Indicates the procedure was performed by someone other than the EMS clinicians in this EMS unit.  This is not for prior to arrival procedures, but for procedures performed when multiple units/caregivers are on scene simultaneously providing patient care.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProtocols.01",
+      "section": "eProtocols",
+      "name": "Protocols Used",
+      "definition": "The protocol used by EMS personnel to direct the clinical care of the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ProtocolsUsed",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eProtocols.02",
+      "section": "eProtocols",
+      "name": "Protocol Age Category",
+      "definition": "The age group the protocol is written to address.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "ProtocolAgeCategory",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eRecord.01",
+      "section": "eRecord",
+      "name": "Patient Care Report Number",
+      "definition": "The unique number automatically assigned by the EMS agency for each Patient Care Report (PCR). This should be a unique number for the EMS agency for all of time.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "PatientCareReportNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eRecord.02",
+      "section": "eRecord",
+      "name": "Software Creator",
+      "definition": "The name of the vendor, manufacturer, and developer who designed the application that created this record.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "SoftwareCreator",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eRecord.03",
+      "section": "eRecord",
+      "name": "Software Name",
+      "definition": "The name of the application used to create this record.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "SoftwareName",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eRecord.04",
+      "section": "eRecord",
+      "name": "Software Version",
+      "definition": "The version of the application used to create this record.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "SoftwareVersion",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.01",
+      "section": "eResponse",
+      "name": "EMS Agency Number",
+      "definition": "The state-assigned provider number of the responding agency.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSAgencyNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.02",
+      "section": "eResponse",
+      "name": "EMS Agency Name",
+      "definition": "The EMS agency's name.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "EMSAgencyName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.03",
+      "section": "eResponse",
+      "name": "Incident Number",
+      "definition": "The incident number assigned by the 911 Dispatch System.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSIncidentNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.04",
+      "section": "eResponse",
+      "name": "EMS Response Number",
+      "definition": "The internal EMS response number which is unique for each EMS Vehicle's (Unit) response to an incident within an EMS Agency.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSResponseNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.05",
+      "section": "eResponse",
+      "name": "Type of Service Requested",
+      "definition": "The type of service or category of service requested of the EMS Agency responding for this specific EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSServiceCat",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.06",
+      "section": "eResponse",
+      "name": "Standby Purpose",
+      "definition": "The main reason the EMS Unit is on Standby as the Primary Type of Service for the EMS event.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EMSStandByReason",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.07",
+      "section": "eResponse",
+      "name": "Unit Transport and Equipment Capability",
+      "definition": "The transport and equipment capabilities of the EMS Unit which responded to this specific EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "UnitTransportEquipmentCapability",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.08",
+      "section": "eResponse",
+      "name": "Type of Dispatch Delay",
+      "definition": "The dispatch delays, if any, associated with the dispatch of the EMS unit to the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSDispatchDelayReason",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eResponse.09",
+      "section": "eResponse",
+      "name": "Type of Response Delay",
+      "definition": "The response delays, if any, of the EMS unit associated with the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSUnitDelayReason",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eResponse.10",
+      "section": "eResponse",
+      "name": "Type of Scene Delay",
+      "definition": "The scene delays, if any, of the EMS unit associated with the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSSceneUnitDelayReason",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eResponse.11",
+      "section": "eResponse",
+      "name": "Type of Transport Delay",
+      "definition": "The transport delays, if any, of the EMS unit associated with the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSTransportUnitDelayReason",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eResponse.12",
+      "section": "eResponse",
+      "name": "Type of Turn-Around Delay",
+      "definition": "The turn-around delays, if any, of EMS unit associated with the EMS event.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSTurnaroundUnitDelayReason",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eResponse.13",
+      "section": "eResponse",
+      "name": "EMS Vehicle (Unit) Number",
+      "definition": "The unique physical vehicle number of the responding unit.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSVehicleNumber",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.14",
+      "section": "eResponse",
+      "name": "EMS Unit Call Sign",
+      "definition": "The EMS unit number used to dispatch and communicate with the unit. This may be the same as the EMS Unit/Vehicle Number in many agencies.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSUnitCallSign",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.16",
+      "section": "eResponse",
+      "name": "Vehicle Dispatch Location",
+      "definition": "The geographic location of the EMS unit or crew at the time of dispatch.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "VehicleDispatchLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.17",
+      "section": "eResponse",
+      "name": "Vehicle Dispatch GPS Location",
+      "definition": "The GPS coordinates associated with the EMS unit at the time of dispatch documented in decimal degrees.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "GPSLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.18",
+      "section": "eResponse",
+      "name": "Vehicle Dispatch Location US National Grid Coordinates",
+      "definition": "The US National Grid Coordinates for the EMS Vehicle's Dispatch Location.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "USNG",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.19",
+      "section": "eResponse",
+      "name": "Beginning Odometer Reading of Responding Vehicle",
+      "definition": "The mileage (counter or odometer reading) of the vehicle at the beginning of the call (when the wheels begin moving). If EMS vehicle/unit is via water or air travel document the number in \"hours\" as it relates to the documentation of Boat, Fixed Wing, or Rotor Craft in eDisposition.16 (EMS Transport Method).",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "EMSMileageOdometer",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.20",
+      "section": "eResponse",
+      "name": "On-Scene Odometer Reading of Responding Vehicle",
+      "definition": "The mileage (counter or odometer reading) of the vehicle when it arrives at the scene. If EMS vehicle/unit is via water or air travel document the number in \"hours\" as it relates to the documentation of Boat, Fixed Wing, or Rotor Craft in eDisposition.16 (EMS Transport Method).",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "EMSMileageOdometer",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.21",
+      "section": "eResponse",
+      "name": "Patient Destination Odometer Reading of Responding Vehicle",
+      "definition": "The mileage (counter or odometer reading) of the vehicle when it arrives at the patient's destination. If EMS vehicle/unit is via water or air travel document the number in \"hours\" as it relates to the documentation of Boat, Fixed Wing, or Rotor Craft in eDisposition.16 (EMS Transport Method).",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "EMSMileageOdometer",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.22",
+      "section": "eResponse",
+      "name": "Ending Odometer Reading of Responding Vehicle",
+      "definition": "If using a counter, this is the mileage traveled beginning with dispatch through the transport of the patient to their destination and ending when back in service, starting from 0. If EMS vehicle/unit is via water or air travel document the number in \"hours\" as it relates to the documentation of boat, Fixed Wing, or Rotor Craft in eDisposition.16.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "EMSMileageOdometer",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.23",
+      "section": "eResponse",
+      "name": "Response Mode to Scene",
+      "definition": "The indication whether the response was emergent or non-emergent. An emergent response is an immediate response.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "EMSResponseMode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eResponse.24",
+      "section": "eResponse",
+      "name": "Additional Response Mode Descriptors",
+      "definition": "The documentation of response mode techniques used for this EMS response.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "EMSAdditionalResponseMode",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eScene.01",
+      "section": "eScene",
+      "name": "First EMS Unit on Scene",
+      "definition": "Documentation that this EMS Unit was the first EMS Unit among all EMS Agencies on the Scene.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.02",
+      "section": "eScene",
+      "name": "Other EMS or Public Safety Agencies at Scene",
+      "definition": "The name(s) of other EMS or public safety agencies at the scene.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "OtherEMSAgenciesAtScene",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.03",
+      "section": "eScene",
+      "name": "Other EMS or Public Safety Agency ID Number",
+      "definition": "The ID number for the EMS Agency or Other Public Safety listed in eScene.02.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "EMSAgencyID",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.04",
+      "section": "eScene",
+      "name": "Type of Other Service at Scene",
+      "definition": "The type of public safety or EMS service associated with Other Agencies on Scene.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "OtherServicesAtScene",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.05",
+      "section": "eScene",
+      "name": "Date/Time Initial Responder Arrived on Scene",
+      "definition": "The time that the initial responder arrived on the scene, if applicable.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.06",
+      "section": "eScene",
+      "name": "Number of Patients at Scene",
+      "definition": "Indicator of how many total patients were at the scene.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "NumberOfPatientsAtScene",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.07",
+      "section": "eScene",
+      "name": "Mass Casualty Incident",
+      "definition": "Indicator if this event would be considered a mass casualty incident (overwhelmed existing EMS resources).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.08",
+      "section": "eScene",
+      "name": "Triage Classification for MCI Patient",
+      "definition": "The color associated with the initial triage assessment/classification of the MCI patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TriageClassification",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.09",
+      "section": "eScene",
+      "name": "Incident Location Type",
+      "definition": "The kind of location where the incident happened.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "IncidentLocationType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.10",
+      "section": "eScene",
+      "name": "Incident Facility Code",
+      "definition": "The state, regulatory, or other unique number (code) associated with the facility if the Incident is a Healthcare Facility.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "IncidentFacilityCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.11",
+      "section": "eScene",
+      "name": "Scene GPS Location",
+      "definition": "The GPS coordinates associated with the Scene.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "GPSLocation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.12",
+      "section": "eScene",
+      "name": "Scene US National Grid Coordinates",
+      "definition": "The US National Grid Coordinates for the Scene.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "USNG",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.13",
+      "section": "eScene",
+      "name": "Incident Facility or Location Name",
+      "definition": "The name of the facility, business, building, etc. associated with the scene of the EMS event.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "IncidentFacilityName",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.14",
+      "section": "eScene",
+      "name": "Mile Post or Major Roadway",
+      "definition": "The mile post or major roadway associated with the incident locations.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "MilePostOrMajorRoadway",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.15",
+      "section": "eScene",
+      "name": "Incident Street Address",
+      "definition": "The street address where the patient was found, or, if no patient, the address to which the unit responded.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "StreetAddress",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.16",
+      "section": "eScene",
+      "name": "Incident Apartment, Suite, or Room",
+      "definition": "The number of the specific apartment, suite, or room where the incident occurred.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "SceneApartment",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.17",
+      "section": "eScene",
+      "name": "Incident City",
+      "definition": "The city or township (if applicable) where the patient was found or to which the unit responded (or best approximation).",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CityGnisCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.18",
+      "section": "eScene",
+      "name": "Incident State",
+      "definition": "The state, territory, or province where the patient was found or to which the unit responded (or best approximation).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSIStateCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.19",
+      "section": "eScene",
+      "name": "Incident ZIP Code",
+      "definition": "The ZIP code of the incident location.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ZIP",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.20",
+      "section": "eScene",
+      "name": "Scene Cross Street or Directions",
+      "definition": "The nearest cross street to the incident address or directions from a recognized landmark or the second street name of an intersection.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "SceneCrossStreet",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.21",
+      "section": "eScene",
+      "name": "Incident County",
+      "definition": "The county or parish where the patient was found or to which the unit responded (or best approximation).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ANSICountyCode",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.22",
+      "section": "eScene",
+      "name": "Incident Country",
+      "definition": "The country of the incident location.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "ANSICountryCode",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.23",
+      "section": "eScene",
+      "name": "Incident Census Tract",
+      "definition": "The census tract in which the incident occurred.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "CensusTracts",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.24",
+      "section": "eScene",
+      "name": "First Other EMS or Public Safety Agency at Scene to Provide Patient Care",
+      "definition": "When there are multiple other EMS Agencies or Public Safety Agencies at the scene, this element documents the other EMS or public safety agency that was first to provide care to the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eScene.25",
+      "section": "eScene",
+      "name": "Transferred Patient/Care To/From Agency",
+      "definition": "Whether primary responsibility for the care of the patient was transferred in the field to or from the EMS agency listed in eScene.02.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "TransferOfPatientCare",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.01",
+      "section": "eSituation",
+      "name": "Date/Time of Symptom Onset",
+      "definition": "The date and time the symptom began (or was discovered) as it relates to this EMS event. This is described or estimated by the patient, family, and/or healthcare professionals.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.02",
+      "section": "eSituation",
+      "name": "Possible Injury",
+      "definition": "Indication whether or not there was an injury.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoUnkValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.03",
+      "section": "eSituation",
+      "name": "Complaint Type",
+      "definition": "The type of patient healthcare complaint being documented.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "ComplaintType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.04",
+      "section": "eSituation",
+      "name": "Complaint",
+      "definition": "The statement of the problem by the patient or the history provider.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "Complaint",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.05",
+      "section": "eSituation",
+      "name": "Duration of Complaint",
+      "definition": "The duration of the complaint.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DurationComplaint",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.06",
+      "section": "eSituation",
+      "name": "Time Units of Duration of Complaint",
+      "definition": "The time units of the duration of the patient's complaint.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "TimeUnitsOfChiefComplaint",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.07",
+      "section": "eSituation",
+      "name": "Chief Complaint Anatomic Location",
+      "definition": "The primary anatomic location of the chief complaint as identified by EMS personnel.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ComplaintAnatomicLocation",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.08",
+      "section": "eSituation",
+      "name": "Chief Complaint Organ System",
+      "definition": "The primary organ system of the patient injured or medically affected.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ComplaintOrganSystem",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.09",
+      "section": "eSituation",
+      "name": "Primary Symptom",
+      "definition": "The primary sign and symptom present in the patient or observed by EMS personnel.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AssociatedSymptoms",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.10",
+      "section": "eSituation",
+      "name": "Other Associated Symptoms",
+      "definition": "Other symptoms identified by the patient or observed by EMS personnel.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "AssociatedSymptoms",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eSituation.11",
+      "section": "eSituation",
+      "name": "Provider's Primary Impression",
+      "definition": "The EMS personnel's impression of the patient's primary problem or most significant condition which led to the management given to the patient (treatments, medications, or procedures).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ProvidersImpression",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.12",
+      "section": "eSituation",
+      "name": "Provider's Secondary Impressions",
+      "definition": "The EMS personnel's impression of the patient's secondary problem or most significant condition which led to the management given to the patient (treatments, medications, or procedures).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ProvidersImpression",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eSituation.13",
+      "section": "eSituation",
+      "name": "Initial Patient Acuity",
+      "definition": "The acuity of the patient's condition upon this EMS unit's arrival at scene.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "InitialPatientAcuity",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.14",
+      "section": "eSituation",
+      "name": "Work-Related Illness/Injury",
+      "definition": "Indication of whether or not the illness or injury is work related.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "YesNoUnkValues",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.15",
+      "section": "eSituation",
+      "name": "Patient's Occupational Industry",
+      "definition": "The occupational industry of the patient's work.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "OccupationIndustry",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.16",
+      "section": "eSituation",
+      "name": "Patient's Occupation",
+      "definition": "The occupation of the patient.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PatientsOccupation",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.17",
+      "section": "eSituation",
+      "name": "Patient Activity",
+      "definition": "The activity the patient was involved in at the time the patient experienced the onset of symptoms or experienced an injury.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "icd10Activity",
+      "occurrence": {
+        "min": 0,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eSituation.18",
+      "section": "eSituation",
+      "name": "Date/Time Last Known Well",
+      "definition": "The estimated date and time the patient was last known to be well or in their usual state of health. This is described or estimated by the patient, family, and/or bystanders.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.19",
+      "section": "eSituation",
+      "name": "Justification for Transfer or Encounter",
+      "definition": "The ordering physician or medical provider diagnosis or stated reason for a hospital-to-hospital transfer, other medical transport, or Mobile Integrated Healthcare encounter.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "JustificationforTransferorEncounter",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eSituation.20",
+      "section": "eSituation",
+      "name": "Reason for Interfacility Transfer/Medical Transport",
+      "definition": "The general categories of the reason for an interfacility transfer/medical transport.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ReasonforInterfacilityTransfer",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.01",
+      "section": "eTimes",
+      "name": "PSAP Call Date/Time",
+      "definition": "The date/time the phone rings (911 call to public safety answering point or other designated entity) requesting EMS services.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.02",
+      "section": "eTimes",
+      "name": "Dispatch Notified Date/Time",
+      "definition": "The date/time dispatch was notified by the 911 call taker (if a separate entity).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.03",
+      "section": "eTimes",
+      "name": "Unit Notified by Dispatch Date/Time",
+      "definition": "The date/time the responding unit was notified by dispatch.",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.04",
+      "section": "eTimes",
+      "name": "Dispatch Acknowledged Date/Time",
+      "definition": "The date/time the dispatch was acknowledged by the EMS Unit.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.05",
+      "section": "eTimes",
+      "name": "Unit En Route Date/Time",
+      "definition": "The date/time the unit responded; that is, the time the vehicle started moving.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.06",
+      "section": "eTimes",
+      "name": "Unit Arrived on Scene Date/Time",
+      "definition": "The date/time the responding unit arrived on the scene; that is, the time the vehicle stopped moving at the scene.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.07",
+      "section": "eTimes",
+      "name": "Arrived at Patient Date/Time",
+      "definition": "The date/time the responding unit arrived at the patient's side.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.08",
+      "section": "eTimes",
+      "name": "Transfer of EMS Patient Care Date/Time",
+      "definition": "The date/time the patient was transferred from this EMS agency to another EMS agency for care.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.09",
+      "section": "eTimes",
+      "name": "Unit Left Scene Date/Time",
+      "definition": "The date/time the responding unit left the scene (started moving).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.10",
+      "section": "eTimes",
+      "name": "Arrival at Destination Landing Area Date/Time",
+      "definition": "The date/time the Air Medical vehicle arrived at the destination landing area.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.11",
+      "section": "eTimes",
+      "name": "Patient Arrived at Destination Date/Time",
+      "definition": "The date/time the responding unit arrived with the patient at the destination or transfer point.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.12",
+      "section": "eTimes",
+      "name": "Destination Patient Transfer of Care Date/Time",
+      "definition": "The date/time that patient care was transferred to the destination healthcare staff.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.13",
+      "section": "eTimes",
+      "name": "Unit Back in Service Date/Time",
+      "definition": "The date/time the unit was back in service and available for response (finished with call, but not necessarily back in home location).",
+      "national": true,
+      "state": true,
+      "usage": "Mandatory",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.14",
+      "section": "eTimes",
+      "name": "Unit Canceled Date/Time",
+      "definition": "The date/time the unit was canceled.",
+      "national": false,
+      "state": true,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.15",
+      "section": "eTimes",
+      "name": "Unit Back at Home Location Date/Time",
+      "definition": "The date/time the responding unit was back in their service area. With agencies who utilized Agency Status Management, home location means the service area as assigned through the agency status management protocol.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.16",
+      "section": "eTimes",
+      "name": "EMS Call Completed Date/Time",
+      "definition": "The date/time the responding unit completed all tasks associated with the event including transfer of the patient, and such things as cleaning and restocking.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eTimes.17",
+      "section": "eTimes",
+      "name": "Unit Arrived at Staging Area Date/Time",
+      "definition": "The date/time the responding unit arrived at a staging area, prior to arrival on scene.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.01",
+      "section": "eVitals",
+      "name": "Date/Time Vital Signs Taken",
+      "definition": "The date/time vital signs were taken on the patient.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "DateTimeType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.02",
+      "section": "eVitals",
+      "name": "Obtained Prior to this Unit's EMS Care",
+      "definition": "Indicates that the information which is documented was obtained prior to the documenting EMS units care.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "YesNoValues",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.03",
+      "section": "eVitals",
+      "name": "Cardiac Rhythm / Electrocardiography (ECG)",
+      "definition": "The cardiac rhythm / ECG and other electrocardiography findings of the patient as interpreted by EMS personnel.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CardiacRhythm",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eVitals.04",
+      "section": "eVitals",
+      "name": "ECG Type",
+      "definition": "The type of ECG associated with the cardiac rhythm.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ECGType",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.05",
+      "section": "eVitals",
+      "name": "Method of ECG Interpretation",
+      "definition": "The method of ECG interpretation.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ECGMethod",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eVitals.06",
+      "section": "eVitals",
+      "name": "SBP (Systolic Blood Pressure)",
+      "definition": "The patient's systolic blood pressure.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "SBP",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.07",
+      "section": "eVitals",
+      "name": "DBP (Diastolic Blood Pressure)",
+      "definition": "The patient's diastolic blood pressure.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "DBP",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.08",
+      "section": "eVitals",
+      "name": "Method of Blood Pressure Measurement",
+      "definition": "Indication of method of blood pressure measurement.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "BloodPressureMethod",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.09",
+      "section": "eVitals",
+      "name": "Mean Arterial Pressure",
+      "definition": "The patient's mean arterial pressure.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MAP",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.10",
+      "section": "eVitals",
+      "name": "Heart Rate",
+      "definition": "The patient's heart rate expressed as a number per minute.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "HeartRate",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.11",
+      "section": "eVitals",
+      "name": "Method of Heart Rate Measurement",
+      "definition": "The method in which the Heart Rate was measured. Values include auscultated, palpated, electronic monitor.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MethodMeasureHeartRate",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.12",
+      "section": "eVitals",
+      "name": "Pulse Oximetry",
+      "definition": "The patient's oxygen saturation.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "PulseOximetry",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.13",
+      "section": "eVitals",
+      "name": "Pulse Rhythm",
+      "definition": "The clinical rhythm of the patient's pulse.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "PulseRhythm",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.14",
+      "section": "eVitals",
+      "name": "Respiratory Rate",
+      "definition": "The patient's respiratory rate expressed as a number per minute.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "RespiratoryRate",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.15",
+      "section": "eVitals",
+      "name": "Respiratory Effort",
+      "definition": "The patient's respiratory effort.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "RespiratoryEffort",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.16",
+      "section": "eVitals",
+      "name": "End Tidal Carbon Dioxide (ETCO2)",
+      "definition": "The numeric value of the patient's exhaled end tidal carbon dioxide (ETCO2) level measured as a unit of pressure in millimeters of mercury (mmHg), percentage or, kilopascal (kPa).",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "CO2",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.17",
+      "section": "eVitals",
+      "name": "Carbon Monoxide (CO)",
+      "definition": "The numeric value of the patient's carbon monoxide level measured as a percentage (%) of carboxyhemoglobin (COHb).",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "CarbonMonoxideLevel",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.18",
+      "section": "eVitals",
+      "name": "Blood Glucose Level",
+      "definition": "The patient's blood glucose level.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "BloodGlucoseLevel",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.19",
+      "section": "eVitals",
+      "name": "Glasgow Coma Score-Eye",
+      "definition": "The patient's Glasgow Coma Score Eye opening response.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "GlasgowComaScoreEyes",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.20",
+      "section": "eVitals",
+      "name": "Glasgow Coma Score-Verbal",
+      "definition": "The patient's Glasgow Coma Score Verbal response.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "GlasgowComaScoreVerbal",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.21",
+      "section": "eVitals",
+      "name": "Glasgow Coma Score-Motor",
+      "definition": "The patient's Glasgow Coma Score Motor response.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "GlasgowComaScoreMotor",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.22",
+      "section": "eVitals",
+      "name": "Glasgow Coma Score-Qualifier",
+      "definition": "Documentation of factors which make the GCS score more meaningful.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "GCSScoreQualifier",
+      "occurrence": {
+        "min": 1,
+        "max": "unbounded"
+      }
+    },
+    {
+      "id": "eVitals.23",
+      "section": "eVitals",
+      "name": "Total Glasgow Coma Score",
+      "definition": "The patient's total Glasgow Coma Score.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "TotalGCS",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.24",
+      "section": "eVitals",
+      "name": "Temperature",
+      "definition": "The patient's body temperature in degrees Celsius/centigrade.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "BodyTemperature",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.25",
+      "section": "eVitals",
+      "name": "Temperature Method",
+      "definition": "The method used to obtain the patient's body temperature.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "MethodBodyTemp",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.26",
+      "section": "eVitals",
+      "name": "Level of Responsiveness (AVPU)",
+      "definition": "The patient's highest level of responsiveness.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "PatientsHighestLevelResponsiveness",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.27",
+      "section": "eVitals",
+      "name": "Pain Scale Score",
+      "definition": "The patient's indication of pain from a scale of 0-10.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "PainScale",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.28",
+      "section": "eVitals",
+      "name": "Pain Scale Type",
+      "definition": "The type of pain scale used.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "TypeOfPainScale",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.29",
+      "section": "eVitals",
+      "name": "Stroke Scale Result",
+      "definition": "The findings or results of the Stroke Scale Type (eVitals.30) used to assess the patient exhibiting stroke-like symptoms.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "StrokeScale",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.30",
+      "section": "eVitals",
+      "name": "Stroke Scale Type",
+      "definition": "The type of stroke scale used.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "TypeOfStrokeScale",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.31",
+      "section": "eVitals",
+      "name": "Reperfusion Checklist",
+      "definition": "The results of the patient's Reperfusion Checklist for potential Thrombolysis use.",
+      "national": true,
+      "state": true,
+      "usage": "Required",
+      "sourceDatatype": "ReperfusionChecklist",
+      "occurrence": {
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.32",
+      "section": "eVitals",
+      "name": "APGAR",
+      "definition": "The patient's total APGAR score (0-10).",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "APGAR",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.33",
+      "section": "eVitals",
+      "name": "Revised Trauma Score",
+      "definition": "The patient's Revised Trauma Score.",
+      "national": false,
+      "state": false,
+      "usage": "Optional",
+      "sourceDatatype": "RTS",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    },
+    {
+      "id": "eVitals.34",
+      "section": "eVitals",
+      "name": "Stroke Scale Score",
+      "definition": "The stroke score value associated with the stroke scale type listed in eVitals.30.",
+      "national": false,
+      "state": true,
+      "usage": "Recommended",
+      "sourceDatatype": "StrokeScore",
+      "occurrence": {
+        "min": 0,
+        "max": 1
+      }
+    }
+  ]
+}
