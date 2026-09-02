@@ -1009,7 +1009,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         throw error;
       }
       await execFileAsync(process.execPath, [projector], {
-        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
+        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" },
+        timeout: 10_000
       });
 
       const destination = `s3://open-triage-retention-archive/integration/${organizationId}/`;
