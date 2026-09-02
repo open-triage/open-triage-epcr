@@ -38,3 +38,4 @@ jobs:
       - run: npm ci
       - run: npm run check:database
       - run: npm run test:integration -w @open-triage/database
+      - run: npm run test:integration -w @open-triage/api
