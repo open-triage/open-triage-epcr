@@ -3045,7 +3045,7 @@ for each row execute function public.prevent_update_or_delete();
 create table operations.query_audit_event (
   id bigint generated always as identity primary key,
   occurred_at timestamptz not null default clock_timestamp(),
-  session_id uuid not null check (public.is_uuid_v4(session_id)),
+  session_id uuid not null check (substring(session_id::text from 15 for 1) = '4'),
   database_role text not null check (database_role in ('open_triage_analyst', 'open_triage_identified_analyst')),
   analyst_contract text not null check (analyst_contract in (
     'analytics.epcr', 'analytics.epcr_repeatable_element', 'analytics.element_dictionary',
