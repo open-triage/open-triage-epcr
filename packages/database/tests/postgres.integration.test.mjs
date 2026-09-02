@@ -213,6 +213,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
+        has_function_privilege('open_triage_retention_executor', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as retention_delete,
+        not has_function_privilege('open_triage_operational', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as no_operational_delete,
         to_regclass('auth.users') is null as no_supabase_auth_dependency
     `);
     assert.deepEqual(grants.rows[0], {
@@ -223,6 +225,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       projector_run_insert: true,
       operational_health: true,
       operational_failures: true,
+      retention_delete: true,
+      no_operational_delete: true,
       no_supabase_auth_dependency: true
     });
   });
@@ -390,7 +394,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await t.test("projects one signed report from the outbox into lossless analyst contracts", async () => {
+  await t.test("projects one signed report from the outbox into lossless analyst contracts", async (projectionTest) => {
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
       incident: "36000000-0000-4000-8000-000000000002",
@@ -404,6 +408,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       waveformGroup: "36000000-0000-4000-8000-00000000000a"
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
+    const administratorId = "32000000-0000-4000-8000-000000000002";
     const clinicianId = "32000000-0000-4000-8000-000000000003";
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
     const formVersionId = "32000000-0000-4000-8000-000000000008";
@@ -995,5 +1000,113 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       env: { ...process.env, DATABASE_URL: databaseUrl }
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
+
+    await projectionTest.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
+      const heldReportId = "39000000-0000-4000-8000-000000000001";
+      const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
+      await client.query(`insert into clinical.report
+        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+         form_version_id, catalog_release_id, documenting_user_id)
+        values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [heldReportId, organizationId, ids.incident, ids.patient, agencyVersionId,
+        formVersionId, releaseId, clinicianId]);
+      await client.query("begin");
+      try {
+        await client.query(`update clinical.report set status = 'signed', revision = 1,
+          reporting_date = '2043-03-05', reporting_date_source = 'service-date' where id = $1`,
+        [heldReportId]);
+        await client.query(`insert into clinical.signed_snapshot
+          (id, report_id, signed_revision, form_version_id, catalog_release_id, signer_id,
+           signed_at, canonical_sha256, attestation)
+          values ($1, $2, 1, $3, $4, $5, '2043-03-05T12:00:00Z', repeat('d', 64),
+            '{"statement":"retention hold fixture"}')`,
+        [heldSnapshotId, heldReportId, formVersionId, releaseId, clinicianId]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+      await execFileAsync(process.execPath, [projector], {
+        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
+      });
+
+      const destination = `s3://open-triage-retention-archive/integration/${organizationId}/`;
+      await client.query(`insert into retention.policy
+        (organization_id, retention_years, archive_destination_uri)
+        values ($1, 10, $2)`, [organizationId, destination]);
+      await assert.rejects(
+        client.query("select retention.prepare_archive_batch($1, '2054-01-01', 'operator-a')", [organizationId]),
+        /installation-owner approval is required/
+      );
+      await client.query(`update retention.policy set review_status = 'approved-installation-owner',
+        approved_by = 'integration-owner', approved_at = now(), approval_note = 'integration only'
+        where organization_id = $1`, [organizationId]);
+
+      const hold = await client.query(`insert into retention.legal_hold
+        (organization_id, report_id, reason, authority_reference, placed_by)
+        values ($1, $2, 'Preserve test record', 'CASE-042', 'legal-user') returning id`,
+      [organizationId, heldReportId]);
+      const failedBatch = (await client.query(
+        "select retention.prepare_archive_batch($1, '2054-01-01', 'operator-a') as id",
+        [organizationId]
+      )).rows[0].id;
+      const failedMembers = await client.query(
+        "select report_id from retention.archive_batch_report where batch_id = $1", [failedBatch]
+      );
+      assert.deepEqual(failedMembers.rows, [{ report_id: ids.report }]);
+      await client.query("select retention.fail_archive($1, 'operator-a', 'UPLOAD_FAILED', 'simulated')", [failedBatch]);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 1);
+
+      const batch = (await client.query(
+        "select retention.prepare_archive_batch($1, '2054-01-01', 'operator-b') as id",
+        [organizationId]
+      )).rows[0].id;
+      const archive = (await client.query(
+        "select archive_sha256 from retention.archive_batch where id = $1", [batch]
+      )).rows[0];
+      await assert.rejects(client.query(
+        "select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
+        [batch, `${destination}${batch}.ndjson`, "0".repeat(64)]
+      ), /checksum does not match/);
+      await client.query("select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
+        [batch, `${destination}${batch}.ndjson`, archive.archive_sha256]);
+
+      await assert.rejects(
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, clinicianId]),
+        /active installation administrator/
+      );
+
+      const lateHold = await client.query(`insert into retention.legal_hold
+        (organization_id, report_id, reason, authority_reference, placed_by)
+        values ($1, $2, 'Late preservation request', 'CASE-LATE', 'legal-user') returning id`,
+      [organizationId, ids.report]);
+      await assert.rejects(
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, administratorId]),
+        /legal hold now protects/
+      );
+      await client.query(`update retention.legal_hold set released_by = 'legal-user', released_at = now(),
+        release_reason = 'Late request withdrawn' where id = $1`, [lateHold.rows[0].id]);
+      const deletion = (await client.query(
+        "select retention.delete_verified_batch($1, $2) as evidence", [batch, administratorId]
+      )).rows[0].evidence;
+      assert.equal(deletion.reports, 1);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 0);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [heldReportId])).rows[0].count, 1);
+      assert.equal((await client.query("select count(*)::integer as count from analytics_private.epcr where report_id = $1", [heldReportId])).rows[0].count, 1);
+      await client.query("select retention.maintain_partitions($1, 'maintenance-operator')", [batch]);
+      assert.equal((await client.query("select to_regclass('analytics_private.epcr_y2043') is not null as retained")).rows[0].retained, true);
+
+      const evidence = await client.query(`select sequence, event_type, actor, previous_hash, event_hash
+        from retention.evidence where batch_id = $1 order by sequence`, [batch]);
+      assert.deepEqual(evidence.rows.map((row) => row.event_type), ["prepared", "archive_verified", "deleted", "partition_maintained"]);
+      assert.equal(evidence.rows[0].previous_hash, null);
+      assert.equal(evidence.rows[1].previous_hash, evidence.rows[0].event_hash);
+      assert.equal(evidence.rows[2].previous_hash, evidence.rows[1].event_hash);
+      assert.equal(evidence.rows[2].actor, administratorId);
+      assert.equal(evidence.rows[3].previous_hash, evidence.rows[2].event_hash);
+      await assert.rejects(client.query("delete from retention.evidence where batch_id = $1", [batch]), /append-only/);
+      assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);
+      assert.equal(hold.rowCount, 1);
+    });
   });
 });

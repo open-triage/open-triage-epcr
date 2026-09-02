@@ -10,6 +10,7 @@ create schema if not exists analytics_private;
 create schema if not exists analytics;
 create schema if not exists operations;
 create schema if not exists clinical_history;
+create schema if not exists retention;
 
 revoke all on schema analytics_private from public;
 revoke all on schema operations from public;
@@ -20,6 +21,13 @@ returns trigger
 language plpgsql
 as $$
 begin
+  if tg_op = 'DELETE'
+    and tg_table_schema in ('clinical', 'clinical_audit')
+    and retention.deletion_is_authorized(
+      retention.report_id_for_deleted_row(tg_table_schema, tg_table_name, to_jsonb(old))
+    ) then
+    return old;
+  end if;
   raise exception '% is append-only', tg_table_schema || '.' || tg_table_name;
 end;
 $$;
@@ -928,6 +936,12 @@ declare
   parent_report_id uuid;
   parent_status text;
 begin
+  if tg_op = 'DELETE' and retention.deletion_is_authorized(
+    coalesce((to_jsonb(old)->>'report_id')::uuid,
+      case when tg_table_name = 'report' then (to_jsonb(old)->>'id')::uuid end)
+  ) then
+    return old;
+  end if;
   if tg_table_name = 'report' then
     if old.status = 'signed' then
       raise exception 'signed report % is immutable; create an amendment', old.id;
@@ -2593,6 +2607,441 @@ left join clinical_audit.event e
   and e.target_id = a.id::text
 left join app_identity.app_user u on u.id = a.author_id;
 
+-- The retention-1.0.0 policy body is human-approved. Its archive-before-delete
+-- workflow still requires an approved organization binding and exact destination;
+-- no future organization or URI is auto-approved by migration.
+create table retention.policy (
+  organization_id uuid primary key references app_identity.organization(id),
+  policy_version text not null default 'retention-1.0.0',
+  retention_years integer not null default 10 check (retention_years between 1 and 100),
+  archive_destination_uri text not null check (archive_destination_uri ~ '^s3://[^/]+/.+'),
+  archive_storage_control text not null default 'S3 Object Lock compliance mode',
+  deletion_authority text not null default 'active installation:administer application user via open_triage_retention_executor',
+  evidence_format text not null default 'canonical NDJSON + SHA-256 manifest; immutable object version and database hash chain',
+  review_status text not null default 'pending-installation-owner-approval'
+    check (review_status in ('pending-installation-owner-approval', 'approved-installation-owner')),
+  approved_by text,
+  approved_at timestamptz,
+  approval_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (
+    (review_status = 'pending-installation-owner-approval' and approved_by is null and approved_at is null)
+    or (review_status = 'approved-installation-owner' and approved_by is not null and approved_at is not null)
+  )
+);
+
+create table retention.legal_hold (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references app_identity.organization(id),
+  report_id uuid not null,
+  reason text not null check (length(btrim(reason)) > 0),
+  authority_reference text not null check (length(btrim(authority_reference)) > 0),
+  placed_by text not null,
+  placed_at timestamptz not null default now(),
+  released_by text,
+  released_at timestamptz,
+  release_reason text,
+  check (
+    (released_at is null and released_by is null and release_reason is null)
+    or (released_at is not null and released_by is not null and length(btrim(release_reason)) > 0)
+  )
+);
+create unique index legal_hold_one_active_per_report
+  on retention.legal_hold (organization_id, report_id) where released_at is null;
+
+create table retention.archive_batch (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references app_identity.organization(id),
+  policy_version text not null,
+  retention_years integer not null,
+  cutoff_date date not null,
+  destination_uri text not null,
+  status text not null default 'prepared'
+    check (status in ('prepared', 'archive_verified', 'archive_failed', 'deleted')),
+  manifest_sha256 text check (manifest_sha256 is null or manifest_sha256 ~ '^[a-f0-9]{64}$'),
+  report_count integer not null default 0 check (report_count >= 0),
+  prepared_by text not null,
+  prepared_at timestamptz not null default now(),
+  archive_object_uri text,
+  archive_object_version text,
+  archive_sha256 text check (archive_sha256 is null or archive_sha256 ~ '^[a-f0-9]{64}$'),
+  archive_verified_by text,
+  archive_verified_at timestamptz,
+  deleted_by text,
+  deleted_at timestamptz
+);
+
+create table retention.archive_batch_report (
+  batch_id uuid not null references retention.archive_batch(id),
+  report_id uuid not null,
+  reporting_date date not null,
+  payload_sha256 text not null check (payload_sha256 ~ '^[a-f0-9]{64}$'),
+  payload_bytes bigint not null check (payload_bytes > 0),
+  primary key (batch_id, report_id)
+);
+
+create table retention.evidence (
+  id bigint generated always as identity primary key,
+  organization_id uuid not null references app_identity.organization(id),
+  batch_id uuid not null references retention.archive_batch(id),
+  sequence integer not null check (sequence > 0),
+  event_type text not null check (event_type in ('prepared', 'archive_verified', 'archive_failed', 'deleted', 'partition_maintained')),
+  actor text not null,
+  occurred_at timestamptz not null default now(),
+  details jsonb not null check (jsonb_typeof(details) = 'object'),
+  previous_hash text check (previous_hash is null or previous_hash ~ '^[a-f0-9]{64}$'),
+  event_hash text not null check (event_hash ~ '^[a-f0-9]{64}$'),
+  unique (batch_id, sequence)
+);
+
+create function retention.report_id_for_deleted_row(schema_name text, table_name text, row_data jsonb)
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, retention, clinical
+as $$
+begin
+  if schema_name = 'clinical' and table_name = 'amendment_change' then
+    return (select report_id from clinical.amendment where id = (row_data->>'amendment_id')::uuid);
+  end if;
+  return coalesce((row_data->>'report_id')::uuid,
+    case when schema_name = 'clinical' and table_name = 'report' then (row_data->>'id')::uuid end);
+end;
+$$;
+
+create function retention.deletion_is_authorized(candidate_report_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, retention
+as $$
+  select candidate_report_id is not null and exists (
+    select 1
+    from retention.archive_batch b
+    join retention.archive_batch_report br on br.batch_id = b.id
+    where b.id::text = current_setting('open_triage.retention_delete_batch', true)
+      and b.status = 'archive_verified'
+      and br.report_id = candidate_report_id
+  );
+$$;
+
+create function retention.report_archive_payload(candidate_report_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = pg_catalog, retention, clinical, clinical_audit, integration, analytics_private
+as $$
+  select jsonb_build_object(
+    'archiveFormat', 'open-triage-report-archive-1.0.0',
+    'report', to_jsonb(r),
+    'incident', (select to_jsonb(i) from clinical.incident i where i.id = r.incident_id),
+    'patient', (select to_jsonb(p) from clinical.patient p where p.id = r.patient_id),
+    'contributors', coalesce((select jsonb_agg(to_jsonb(x) order by x.user_id, x.contribution_kind) from clinical.report_contributor x where x.report_id = r.id), '[]'::jsonb),
+    'groups', coalesce((select jsonb_agg(to_jsonb(x) order by x.id) from clinical.group_instance x where x.report_id = r.id), '[]'::jsonb),
+    'elements', coalesce((select jsonb_agg(to_jsonb(x) order by x.id) from clinical.element_occurrence x where x.report_id = r.id), '[]'::jsonb),
+    'changes', coalesce((select jsonb_agg(to_jsonb(x) order by x.revision) from clinical.report_change x where x.report_id = r.id), '[]'::jsonb),
+    'validationFindings', coalesce((select jsonb_agg(to_jsonb(x) order by x.id) from clinical.validation_finding x where x.report_id = r.id), '[]'::jsonb),
+    'signedSnapshot', (select to_jsonb(x) from clinical.signed_snapshot x where x.report_id = r.id),
+    'amendments', coalesce((select jsonb_agg(to_jsonb(x) || jsonb_build_object('changes', coalesce((select jsonb_agg(to_jsonb(ac) order by ac.id) from clinical.amendment_change ac where ac.amendment_id = x.id), '[]'::jsonb)) order by x.sequence) from clinical.amendment x where x.report_id = r.id), '[]'::jsonb),
+    'commandReceipts', coalesce((select jsonb_agg(to_jsonb(x) order by x.received_at, x.idempotency_key) from clinical.command_receipt x where x.report_id = r.id), '[]'::jsonb),
+    'auditEvents', coalesce((select jsonb_agg(to_jsonb(x) order by x.report_sequence) from clinical_audit.event x where x.report_id = r.id), '[]'::jsonb),
+    'outboxEvents', coalesce((select jsonb_agg(to_jsonb(x) order by x.occurred_at, x.id) from integration.outbox_event x where x.aggregate_type = 'report' and x.aggregate_id = r.id), '[]'::jsonb),
+    'analyticsWide', coalesce((select jsonb_agg(to_jsonb(x) order by x.reporting_date) from analytics_private.epcr x where x.report_id = r.id), '[]'::jsonb),
+    'analyticsRepeatable', coalesce((select jsonb_agg(to_jsonb(x) order by x.reporting_date, x.element_occurrence_id) from analytics_private.epcr_repeatable_element x where x.report_id = r.id), '[]'::jsonb)
+  )
+  from clinical.report r
+  where r.id = candidate_report_id;
+$$;
+
+create function retention.append_evidence(candidate_batch_id uuid, candidate_event_type text, candidate_actor text, candidate_details jsonb)
+returns retention.evidence
+language plpgsql
+security definer
+set search_path = pg_catalog, retention
+as $$
+declare
+  batch_row retention.archive_batch%rowtype;
+  prior retention.evidence%rowtype;
+  next_sequence integer;
+  next_hash text;
+  evidence_time timestamptz := clock_timestamp();
+  inserted retention.evidence%rowtype;
+begin
+  select * into batch_row from retention.archive_batch where id = candidate_batch_id for update;
+  if not found then raise exception 'archive batch % does not exist', candidate_batch_id; end if;
+  select * into prior from retention.evidence where batch_id = candidate_batch_id order by sequence desc limit 1;
+  next_sequence := coalesce(prior.sequence, 0) + 1;
+  next_hash := encode(public.digest(concat_ws('|', candidate_batch_id::text, next_sequence::text,
+    candidate_event_type, candidate_actor, evidence_time::text, candidate_details::text,
+    coalesce(prior.event_hash, '')), 'sha256'), 'hex');
+  insert into retention.evidence
+    (organization_id, batch_id, sequence, event_type, actor, occurred_at, details, previous_hash, event_hash)
+  values (batch_row.organization_id, candidate_batch_id, next_sequence, candidate_event_type,
+    candidate_actor, evidence_time, candidate_details, prior.event_hash, next_hash)
+  returning * into inserted;
+  return inserted;
+end;
+$$;
+
+create function retention.prepare_archive_batch(candidate_organization_id uuid, as_of_date date, actor text)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, retention, clinical
+as $$
+declare
+  selected_policy retention.policy%rowtype;
+  new_batch_id uuid;
+  selected_cutoff date;
+  selected_count integer;
+  selected_manifest text;
+  selected_archive text;
+begin
+  if as_of_date is null or length(btrim(actor)) = 0 then raise exception 'as-of date and actor are required'; end if;
+  select * into selected_policy from retention.policy where organization_id = candidate_organization_id for share;
+  if not found or selected_policy.review_status <> 'approved-installation-owner' then
+    raise exception 'installation-owner approval is required before retention work for organization %', candidate_organization_id;
+  end if;
+  selected_cutoff := (as_of_date - make_interval(years => selected_policy.retention_years))::date;
+  insert into retention.archive_batch
+    (organization_id, policy_version, retention_years, cutoff_date, destination_uri, prepared_by)
+  values (candidate_organization_id, selected_policy.policy_version, selected_policy.retention_years,
+    selected_cutoff, selected_policy.archive_destination_uri, actor)
+  returning id into new_batch_id;
+
+  insert into retention.archive_batch_report (batch_id, report_id, reporting_date, payload_sha256, payload_bytes)
+  select new_batch_id, r.id, r.reporting_date,
+    encode(public.digest(convert_to(retention.report_archive_payload(r.id)::text, 'UTF8'), 'sha256'), 'hex'),
+    octet_length(convert_to(retention.report_archive_payload(r.id)::text, 'UTF8'))
+  from clinical.report r
+  where r.organization_id = candidate_organization_id
+    and r.status = 'signed'
+    and r.reporting_date < selected_cutoff
+    and not exists (select 1 from retention.legal_hold h where h.organization_id = r.organization_id and h.report_id = r.id and h.released_at is null)
+    and not exists (
+      select 1 from retention.archive_batch_report prior_report
+      join retention.archive_batch prior_batch on prior_batch.id = prior_report.batch_id
+      where prior_report.report_id = r.id and prior_batch.status <> 'archive_failed'
+    )
+  order by r.reporting_date, r.id;
+
+  select count(*)::integer,
+    encode(public.digest(coalesce(string_agg(report_id::text || '|' || reporting_date::text || '|' || payload_sha256, E'\n' order by reporting_date, report_id), ''), 'sha256'), 'hex')
+  into selected_count, selected_manifest
+  from retention.archive_batch_report where batch_id = new_batch_id;
+  if selected_count = 0 then raise exception 'no eligible, unheld reports precede cutoff %', selected_cutoff; end if;
+  select encode(public.digest(convert_to(string_agg(retention.report_archive_payload(report_id)::text,
+    E'\n' order by reporting_date, report_id) || E'\n', 'UTF8'), 'sha256'), 'hex')
+  into selected_archive from retention.archive_batch_report where batch_id = new_batch_id;
+  update retention.archive_batch set report_count = selected_count, manifest_sha256 = selected_manifest,
+    archive_sha256 = selected_archive where id = new_batch_id;
+  perform retention.append_evidence(new_batch_id, 'prepared', actor,
+    jsonb_build_object('cutoffDate', selected_cutoff, 'retentionYears', selected_policy.retention_years,
+      'destinationUri', selected_policy.archive_destination_uri, 'reportCount', selected_count,
+      'manifestSha256', selected_manifest, 'archiveSha256', selected_archive));
+  return new_batch_id;
+end;
+$$;
+
+create function retention.verify_archive(candidate_batch_id uuid, object_uri text, object_version text, candidate_archive_sha256 text, actor text)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, retention
+as $$
+declare selected_batch retention.archive_batch%rowtype;
+begin
+  select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
+  if selected_batch.status <> 'prepared' then raise exception 'archive batch % is not awaiting verification', candidate_batch_id; end if;
+  if left(object_uri, length(selected_batch.destination_uri)) <> selected_batch.destination_uri then raise exception 'archive object must be under approved destination %', selected_batch.destination_uri; end if;
+  if candidate_archive_sha256 <> selected_batch.archive_sha256 then raise exception 'verified archive checksum does not match exported canonical NDJSON'; end if;
+  if length(btrim(object_version)) = 0 or length(btrim(actor)) = 0 then raise exception 'immutable object version and verifier are required'; end if;
+  if actor = selected_batch.prepared_by then raise exception 'archive verifier must be independent of the preparing operator'; end if;
+  update retention.archive_batch set status = 'archive_verified', archive_object_uri = object_uri,
+    archive_object_version = object_version, archive_sha256 = candidate_archive_sha256,
+    archive_verified_by = actor, archive_verified_at = now() where id = candidate_batch_id;
+  perform retention.append_evidence(candidate_batch_id, 'archive_verified', actor,
+    jsonb_build_object('objectUri', object_uri, 'objectVersion', object_version, 'sha256', candidate_archive_sha256));
+end;
+$$;
+
+create function retention.fail_archive(candidate_batch_id uuid, actor text, failure_code text, failure_detail text)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, retention
+as $$
+begin
+  if length(btrim(failure_code)) = 0 or length(btrim(failure_detail)) = 0 then raise exception 'failure code and detail are required'; end if;
+  update retention.archive_batch set status = 'archive_failed' where id = candidate_batch_id and status = 'prepared';
+  if not found then raise exception 'archive batch % is not awaiting verification', candidate_batch_id; end if;
+  perform retention.append_evidence(candidate_batch_id, 'archive_failed', actor,
+    jsonb_build_object('failureCode', failure_code, 'failureDetail', failure_detail));
+end;
+$$;
+
+create function retention.drop_empty_expired_partitions(candidate_batch_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, analytics_private
+as $$
+declare partition_record record; removed integer := 0; has_rows boolean;
+begin
+  for partition_record in
+    select distinct to_regclass('analytics_private.epcr_y' || to_char(reporting_date, 'YYYY')) as partition_name
+    from retention.archive_batch_report where batch_id = candidate_batch_id
+    union
+    select distinct to_regclass('analytics_private.epcr_repeatable_element_m' || to_char(reporting_date, 'YYYYMM'))
+    from retention.archive_batch_report where batch_id = candidate_batch_id
+  loop
+    if partition_record.partition_name is null then continue; end if;
+    execute format('select exists (select 1 from %s limit 1)', partition_record.partition_name) into has_rows;
+    if not has_rows then
+      begin
+        perform set_config('lock_timeout', '100ms', true);
+        execute format('drop table %s', partition_record.partition_name);
+        removed := removed + 1;
+      exception when lock_not_available then
+        null;
+      end;
+    end if;
+  end loop;
+  return removed;
+end;
+$$;
+
+create function retention.delete_verified_batch(candidate_batch_id uuid, candidate_admin_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, retention, clinical, clinical_audit, integration, analytics_private
+as $$
+declare selected_batch retention.archive_batch%rowtype; selected_report record; deleted_reports integer := 0;
+  wide_rows integer := 0; repeat_rows integer := 0; affected integer; deletion_counts jsonb;
+  actor text;
+begin
+  select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
+  if selected_batch.status <> 'archive_verified' then raise exception 'archive verification is required before deletion'; end if;
+  select u.id::text into actor
+  from app_identity.app_user u
+  join app_identity.user_capability capability on capability.user_id = u.id
+  where u.id = candidate_admin_user_id
+    and u.organization_id = selected_batch.organization_id
+    and u.active
+    and capability.capability_key = 'installation:administer';
+  if actor is null then
+    raise exception 'retention deletion requires an active installation administrator in the batch organization';
+  end if;
+  if actor = selected_batch.prepared_by or actor = selected_batch.archive_verified_by then
+    raise exception 'deletion operator must be independent of preparation and archive verification';
+  end if;
+  if exists (
+    select 1 from retention.archive_batch_report br join retention.legal_hold h on h.report_id = br.report_id
+    where br.batch_id = candidate_batch_id and h.organization_id = selected_batch.organization_id and h.released_at is null
+  ) then raise exception 'a legal hold now protects one or more reports in archive batch %', candidate_batch_id; end if;
+  perform set_config('open_triage.retention_delete_batch', candidate_batch_id::text, true);
+  for selected_report in select br.report_id, r.incident_id, r.patient_id from retention.archive_batch_report br
+    join clinical.report r on r.id = br.report_id where br.batch_id = candidate_batch_id order by br.reporting_date, br.report_id for update of r
+  loop
+    delete from analytics_private.epcr_repeatable_element where report_id = selected_report.report_id;
+    get diagnostics affected = row_count; repeat_rows := repeat_rows + affected;
+    delete from analytics_private.epcr where report_id = selected_report.report_id;
+    get diagnostics affected = row_count; wide_rows := wide_rows + affected;
+    delete from integration.projection_backfill_job where report_id = selected_report.report_id;
+    delete from integration.outbox_event where aggregate_type = 'report' and aggregate_id = selected_report.report_id;
+    delete from clinical_audit.event where report_id = selected_report.report_id;
+    delete from clinical.amendment_change where amendment_id in
+      (select id from clinical.amendment where report_id = selected_report.report_id);
+    delete from clinical.amendment where report_id = selected_report.report_id;
+    delete from clinical.signed_snapshot where report_id = selected_report.report_id;
+    delete from clinical.report where id = selected_report.report_id;
+    delete from clinical.incident where id = selected_report.incident_id and not exists (select 1 from clinical.report where incident_id = selected_report.incident_id);
+    delete from clinical.patient where id = selected_report.patient_id and not exists (select 1 from clinical.report where patient_id = selected_report.patient_id);
+    deleted_reports := deleted_reports + 1;
+  end loop;
+  if deleted_reports <> selected_batch.report_count then raise exception 'expected to delete % reports, deleted %', selected_batch.report_count, deleted_reports; end if;
+  deletion_counts := jsonb_build_object('reports', deleted_reports, 'analyticsWideRows', wide_rows,
+    'analyticsRepeatableRows', repeat_rows,
+    'archiveSha256', selected_batch.archive_sha256, 'archiveObjectVersion', selected_batch.archive_object_version);
+  update retention.archive_batch set status = 'deleted', deleted_by = actor, deleted_at = now() where id = candidate_batch_id;
+  perform retention.append_evidence(candidate_batch_id, 'deleted', actor, deletion_counts);
+  return deletion_counts;
+end;
+$$;
+
+create function retention.maintain_partitions(candidate_batch_id uuid, actor text)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, retention
+as $$
+declare selected_batch retention.archive_batch%rowtype; removed integer;
+begin
+  select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
+  if selected_batch.status <> 'deleted' then raise exception 'partition maintenance requires a deleted retention batch'; end if;
+  removed := retention.drop_empty_expired_partitions(candidate_batch_id);
+  perform retention.append_evidence(candidate_batch_id, 'partition_maintained', actor,
+    jsonb_build_object('emptyPartitionsRemoved', removed, 'cutoffDate', selected_batch.cutoff_date));
+  return removed;
+end;
+$$;
+
+create function retention.prevent_approved_policy_rewrite()
+returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' or old.review_status = 'approved-installation-owner' then
+    raise exception 'approved retention policy is immutable; create and review a new policy version';
+  end if;
+  if new.review_status <> 'approved-installation-owner' or new.approved_by is null or new.approved_at is null then
+    raise exception 'the only permitted policy update is installation-owner approval';
+  end if;
+  return new;
+end;
+$$;
+create function retention.require_pending_policy_insert()
+returns trigger language plpgsql as $$
+begin
+  if new.review_status <> 'pending-installation-owner-approval'
+    or new.approved_by is not null or new.approved_at is not null then
+    raise exception 'new retention policy must await installation-owner approval';
+  end if;
+  return new;
+end;
+$$;
+create trigger retention_policy_starts_pending before insert on retention.policy
+for each row execute function retention.require_pending_policy_insert();
+create trigger retention_policy_immutable_after_approval before update or delete on retention.policy
+for each row execute function retention.prevent_approved_policy_rewrite();
+create function retention.prevent_legal_hold_rewrite()
+returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' or old.released_at is not null
+    or new.organization_id is distinct from old.organization_id
+    or new.report_id is distinct from old.report_id
+    or new.reason is distinct from old.reason
+    or new.authority_reference is distinct from old.authority_reference
+    or new.placed_by is distinct from old.placed_by
+    or new.placed_at is distinct from old.placed_at
+    or new.released_at is null or new.released_by is null or new.release_reason is null then
+    raise exception 'legal holds are immutable except for one complete release transition';
+  end if;
+  return new;
+end;
+$$;
+create trigger retention_legal_hold_append_only before update or delete on retention.legal_hold
+for each row execute function retention.prevent_legal_hold_rewrite();
+create trigger retention_archive_batch_no_delete before delete on retention.archive_batch
+for each row execute function public.prevent_update_or_delete();
+create trigger retention_archive_batch_report_immutable before update or delete on retention.archive_batch_report
+for each row execute function public.prevent_update_or_delete();
+create trigger retention_evidence_append_only before update or delete on retention.evidence
+for each row execute function public.prevent_update_or_delete();
+
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'open_triage_analyst') then
@@ -2609,6 +3058,9 @@ begin
   end if;
   if not exists (select 1 from pg_roles where rolname = 'open_triage_auditor') then
     create role open_triage_auditor nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'open_triage_retention_executor') then
+    create role open_triage_retention_executor nologin;
   end if;
 end;
 $$;
@@ -2636,11 +3088,25 @@ revoke all on all tables in schema operations from public;
 revoke all on all tables in schema clinical_history from public;
 revoke all on schema clinical_audit from public;
 revoke all on all tables in schema clinical_audit from public;
+revoke all on schema retention from public;
+revoke all on all tables in schema retention from public;
+revoke all on all functions in schema retention from public;
 grant usage on schema operations to open_triage_operational;
 grant select on operations.unsigned_report_work_queue, operations.projection_health,
   operations.projection_failures to open_triage_operational;
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
+grant usage on schema retention to open_triage_retention_executor, open_triage_auditor;
+grant select on retention.policy, retention.legal_hold, retention.archive_batch,
+  retention.archive_batch_report, retention.evidence to open_triage_auditor;
+grant select on retention.policy, retention.legal_hold, retention.archive_batch,
+  retention.archive_batch_report, retention.evidence to open_triage_retention_executor;
+grant insert, update on retention.policy, retention.legal_hold to open_triage_retention_executor;
+grant execute on function retention.prepare_archive_batch(uuid, date, text),
+  retention.report_archive_payload(uuid), retention.verify_archive(uuid, text, text, text, text),
+  retention.fail_archive(uuid, text, text, text), retention.delete_verified_batch(uuid, uuid),
+  retention.maintain_partitions(uuid, text)
+  to open_triage_retention_executor;
 
 comment on schema analytics is 'Stable, read-only analyst interfaces. Base projections are private.';
 comment on schema operations is 'Access-controlled live operational interfaces; these rows are never clinical analytics.';

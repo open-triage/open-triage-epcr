@@ -12,6 +12,7 @@
     "project": "node scripts/project-analytics.mjs",
     "rotate:patient-keys": "node scripts/rotate-patient-keys.mjs",
     "project:health": "node scripts/projection-health.mjs",
+    "retention": "node scripts/retention.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:integration": "REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
   },
