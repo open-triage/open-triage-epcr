@@ -194,6 +194,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_analyst', 'analytics_private.epcr', 'select') as analyst_private,
         has_table_privilege('open_triage_identified_analyst', 'analytics.epcr_identified', 'select') as identified_view,
         has_table_privilege('open_triage_projector', 'analytics_private.epcr', 'insert') as projector_insert,
+        has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
+        has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
+        has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
         to_regclass('auth.users') is null as no_supabase_auth_dependency
     `);
     assert.deepEqual(grants.rows[0], {
@@ -201,6 +204,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       analyst_private: false,
       identified_view: true,
       projector_insert: true,
+      projector_run_insert: true,
+      operational_health: true,
+      operational_failures: true,
       no_supabase_auth_dependency: true
     });
   });
@@ -546,7 +552,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const projection = await execFileAsync(process.execPath, [projector], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
     });
-    assert.match(projection.stdout, /Processed 1 analytical projection event/);
+    assert.deepEqual(JSON.parse(projection.stdout), {
+      event: "analytics_projection_run", mode: "queue", status: "succeeded",
+      processedCount: 1, failedCount: 0, checkedCount: 1
+    });
 
     const wide = await client.query(`select
       tableoid::regclass::text as partition, reporting_date::text, reporting_date_source,
@@ -610,6 +619,19 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
     assert.equal(wide.rows[0].projector_version, "1.0.0");
     assert.ok(wide.rows[0].projected_at instanceof Date);
+    const freshness = await client.query(`select
+      extract(epoch from (projection.projected_at - event.occurred_at)) as seconds
+      from integration.outbox_event event
+      join analytics_private.epcr projection on projection.report_id = event.aggregate_id
+      where event.aggregate_id = $1 and event.event_type = 'signed_snapshot'`, [ids.report]);
+    assert.ok(Number(freshness.rows[0].seconds) >= 0);
+    assert.ok(Number(freshness.rows[0].seconds) <= 300,
+      `signed-to-analytical freshness was ${freshness.rows[0].seconds} seconds`);
+    const healthAfterProjection = (await client.query("select * from operations.projection_health")).rows[0];
+    assert.equal(healthAfterProjection.backlog_count, 0);
+    assert.equal(healthAfterProjection.last_run_status, "succeeded");
+    assert.equal(healthAfterProjection.last_run_processed_count, 1);
+    assert.ok(healthAfterProjection.last_successful_run_at instanceof Date);
 
     const repeatable = await client.query(`select *, tableoid::regclass::text as partition
       from analytics_private.epcr_repeatable_element where report_id = $1
@@ -695,7 +717,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const amendmentProjection = await execFileAsync(process.execPath, [projector], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
     });
-    assert.match(amendmentProjection.stdout, /Processed 1 analytical projection event/);
+    assert.equal(JSON.parse(amendmentProjection.stdout).processedCount, 1);
     const effectiveWide = (await client.query(`select erecord_01, signed_snapshot_id,
       signed_snapshot_sha256, amendment_count, effective_amendment_sequence, last_amended_at
       from analytics.epcr where report_id = $1`, [ids.report])).rows[0];
@@ -732,7 +754,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
 
     await assert.rejects(execFileAsync(process.execPath, [projector, "--replay", ids.report], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE: "1" }
-    }), /Injected analytical projection failure after delete/);
+    }), (error) => {
+      assert.equal(JSON.parse(error.stdout).status, "failed");
+      return true;
+    });
     assert.deepEqual((await client.query(`select
       (select erecord_01 from analytics_private.epcr where report_id = $1) as wide_value,
       (select count(*)::integer from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable`,
@@ -743,7 +768,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const reconciliation = await execFileAsync(process.execPath,
       [projector, "--reconcile", "--report", ids.report],
       { env: { ...process.env, DATABASE_URL: databaseUrl } });
-    assert.match(reconciliation.stdout, /Reconciled 1 signed report; rebuilt 1 projection/);
+    assert.deepEqual(JSON.parse(reconciliation.stdout), {
+      event: "analytics_projection_run", mode: "reconcile", status: "succeeded",
+      processedCount: 1, checkedCount: 1, repairedCount: 1
+    });
     assert.equal((await client.query(`select count(*)::integer as count
       from analytics_private.epcr_repeatable_element where report_id = $1`, [ids.report])).rows[0].count, 11);
 
@@ -752,11 +780,17 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const interruptedBackfill = await execFileAsync(process.execPath,
       [projector, "--backfill", "integration-report-2042", "--from", "2042-02-01", "--to", "2042-02-28"],
       { env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_INTERRUPT_AFTER: "1" } });
-    assert.match(interruptedBackfill.stdout, /1 total; resumable/);
+    assert.deepEqual(JSON.parse(interruptedBackfill.stdout), {
+      event: "analytics_projection_run", mode: "backfill", status: "succeeded",
+      processedCount: 1, checkedCount: 1, totalProcessedCount: 1, complete: false
+    });
     const resumedBackfill = await execFileAsync(process.execPath,
       [projector, "--backfill", "integration-report-2042", "--from", "2042-02-01", "--to", "2042-02-28"],
       { env: { ...process.env, DATABASE_URL: databaseUrl } });
-    assert.match(resumedBackfill.stdout, /1 total; complete/);
+    assert.deepEqual(JSON.parse(resumedBackfill.stdout), {
+      event: "analytics_projection_run", mode: "backfill", status: "succeeded",
+      processedCount: 0, checkedCount: 0, totalProcessedCount: 1, complete: true
+    });
     assert.deepEqual((await client.query(`select processed_count, completed_at is not null as complete,
       (select count(*)::integer from analytics_private.epcr where report_id = $2) as wide,
       (select count(*)::integer from analytics_private.epcr_repeatable_element where report_id = $2) as repeatable
@@ -801,5 +835,57 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.ok(processed.rows[0].processed_at instanceof Date);
     assert.equal(processed.rows[0].last_error, null);
     assert.equal(processed.rows[0].attempt_count, 1);
+
+    const retryEvent = (await client.query(`select id from integration.outbox_event
+      where aggregate_id = $1 order by occurred_at limit 1`, [ids.report])).rows[0];
+    await client.query(`update integration.outbox_event
+      set processed_at = null, failed_at = null, attempt_count = 0, available_at = now()
+      where id = $1`, [retryEvent.id]);
+    const transientFailure = await execFileAsync(process.execPath, [projector], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_MAX_ATTEMPTS: "2",
+        ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE: "1" }
+    });
+    assert.equal(JSON.parse(transientFailure.stdout).failedCount, 1);
+    assert.deepEqual((await client.query(`select failed_at, attempt_count, last_error
+      from integration.outbox_event where id = $1`, [retryEvent.id])).rows[0], {
+      failed_at: null, attempt_count: 1, last_error: "projector.Error"
+    });
+    await client.query("update integration.outbox_event set available_at = now() where id = $1", [retryEvent.id]);
+    const successfulRetry = await execFileAsync(process.execPath, [projector], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_MAX_ATTEMPTS: "2" }
+    });
+    assert.equal(JSON.parse(successfulRetry.stdout).processedCount, 1);
+
+    await client.query(`update integration.outbox_event
+      set processed_at = null, failed_at = null, attempt_count = 0, available_at = now()
+      where id = $1`, [retryEvent.id]);
+    await execFileAsync(process.execPath, [projector], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_MAX_ATTEMPTS: "1",
+        ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE: "1" }
+    });
+    const persistentHealth = (await client.query("select * from operations.projection_health")).rows[0];
+    assert.equal(persistentHealth.persistent_failure_count, 1);
+    assert.equal(persistentHealth.last_run_failed_count, 1);
+    assert.equal(persistentHealth.last_run_status, "partial");
+    const safeFailure = await client.query("select * from operations.projection_failures");
+    assert.deepEqual(safeFailure.rows.map((row) => ({
+      event_id: row.event_id, attempt_count: row.attempt_count, error_code: row.error_code
+    })), [{ event_id: retryEvent.id, attempt_count: 1, error_code: "projector.Error" }]);
+    const healthScript = path.join(packageRoot, "scripts/projection-health.mjs");
+    await assert.rejects(execFileAsync(process.execPath, [healthScript], {
+      env: { ...process.env, DATABASE_URL: databaseUrl }
+    }), (error) => {
+      assert.equal(JSON.parse(error.stdout).healthy, false);
+      return true;
+    });
+
+    await client.query(`update integration.outbox_event
+      set failed_at = null, attempt_count = 0, available_at = now()
+      where id = $1`, [retryEvent.id]);
+    await execFileAsync(process.execPath, [projector], { env: { ...process.env, DATABASE_URL: databaseUrl } });
+    const healthy = await execFileAsync(process.execPath, [healthScript], {
+      env: { ...process.env, DATABASE_URL: databaseUrl }
+    });
+    assert.equal(JSON.parse(healthy.stdout).healthy, true);
   });
 });

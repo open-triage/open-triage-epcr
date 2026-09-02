@@ -1027,12 +1027,30 @@ create table integration.outbox_event (
   available_at timestamptz not null default now(),
   claimed_at timestamptz,
   processed_at timestamptz,
+  failed_at timestamptz,
   attempt_count integer not null default 0,
   last_error text,
   unique (aggregate_type, aggregate_id, event_type, occurred_at)
 );
 
-create index outbox_pending_idx on integration.outbox_event (available_at, occurred_at) where processed_at is null;
+create index outbox_pending_idx on integration.outbox_event (available_at, occurred_at)
+where processed_at is null and failed_at is null;
+
+create table integration.projection_run (
+  id uuid primary key default gen_random_uuid(),
+  mode text not null check (mode in ('queue', 'replay', 'reconcile', 'backfill')),
+  status text not null default 'running' check (status in ('running', 'succeeded', 'partial', 'failed')),
+  started_at timestamptz not null default clock_timestamp(),
+  completed_at timestamptz,
+  processed_count integer not null default 0 check (processed_count >= 0),
+  failed_count integer not null default 0 check (failed_count >= 0),
+  checked_count integer not null default 0 check (checked_count >= 0),
+  repaired_count integer not null default 0 check (repaired_count >= 0),
+  error_code text,
+  check ((status = 'running') = (completed_at is null))
+);
+
+create index projection_run_recent_idx on integration.projection_run (started_at desc);
 
 create table integration.projection_backfill_job (
   id text primary key check (length(btrim(id)) between 1 and 200),
@@ -2378,6 +2396,77 @@ join clinical.incident i on i.id = r.incident_id
 join app_identity.app_user u on u.id = r.documenting_user_id
 where r.status = 'draft';
 
+create view operations.projection_health
+with (security_barrier = true)
+as
+with queue as (
+  select
+    count(*) filter (where processed_at is null)::integer as backlog_count,
+    count(*) filter (where processed_at is null and failed_at is null and attempt_count > 0)::integer as retrying_count,
+    count(*) filter (where processed_at is null and failed_at is not null)::integer as persistent_failure_count,
+    extract(epoch from (clock_timestamp() - min(occurred_at) filter (where processed_at is null)))::bigint
+      as oldest_backlog_age_seconds
+  from integration.outbox_event
+), last_run as (
+  select started_at, completed_at, status, processed_count, failed_count
+  from integration.projection_run
+  where mode = 'queue'
+  order by started_at desc
+  limit 1
+), last_success as (
+  select completed_at
+  from integration.projection_run
+  where mode = 'queue' and status = 'succeeded'
+  order by completed_at desc
+  limit 1
+), last_reconciliation as (
+  select completed_at, status, checked_count, repaired_count, failed_count
+  from integration.projection_run
+  where mode = 'reconcile'
+  order by started_at desc
+  limit 1
+), stale_runs as (
+  select count(*)::integer as count
+  from integration.projection_run
+  where status = 'running' and started_at < clock_timestamp() - interval '5 minutes'
+)
+select
+  clock_timestamp() as observed_at,
+  queue.backlog_count,
+  queue.oldest_backlog_age_seconds,
+  queue.retrying_count,
+  queue.persistent_failure_count,
+  stale_runs.count as stale_run_count,
+  last_success.completed_at as last_successful_run_at,
+  last_run.started_at as last_run_started_at,
+  last_run.completed_at as last_run_completed_at,
+  last_run.status as last_run_status,
+  last_run.processed_count as last_run_processed_count,
+  last_run.failed_count as last_run_failed_count,
+  last_reconciliation.completed_at as last_reconciliation_at,
+  last_reconciliation.status as last_reconciliation_status,
+  last_reconciliation.checked_count as last_reconciliation_checked_count,
+  last_reconciliation.repaired_count as last_reconciliation_repaired_count,
+  last_reconciliation.failed_count as last_reconciliation_failed_count
+from queue
+left join last_run on true
+left join last_success on true
+left join last_reconciliation on true
+left join stale_runs on true;
+
+create view operations.projection_failures
+with (security_barrier = true)
+as
+select
+  id as event_id,
+  event_type,
+  occurred_at,
+  failed_at,
+  attempt_count,
+  last_error as error_code
+from integration.outbox_event
+where processed_at is null and failed_at is not null;
+
 create view clinical_history.report_history
 with (security_barrier = true)
 as
@@ -2518,6 +2607,7 @@ grant select on analytics.epcr, analytics.epcr_repeatable_element, analytics.ele
 grant usage on schema analytics_private, integration to open_triage_projector;
 grant select, insert, update, delete on all tables in schema analytics_private to open_triage_projector;
 grant select, update on integration.outbox_event to open_triage_projector;
+grant select, insert, update on integration.projection_run to open_triage_projector;
 grant select, insert, update on integration.projection_backfill_job to open_triage_projector;
 grant usage on schema clinical, forms, catalog, app_identity to open_triage_projector;
 grant select on all tables in schema clinical, forms, catalog, app_identity to open_triage_projector;
@@ -2527,7 +2617,8 @@ revoke all on all tables in schema clinical_history from public;
 revoke all on schema clinical_audit from public;
 revoke all on all tables in schema clinical_audit from public;
 grant usage on schema operations to open_triage_operational;
-grant select on operations.unsigned_report_work_queue to open_triage_operational;
+grant select on operations.unsigned_report_work_queue, operations.projection_health,
+  operations.projection_failures to open_triage_operational;
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
 
@@ -2538,5 +2629,7 @@ comment on view analytics.epcr is 'One effective signed ePCR row; direct identif
 comment on view analytics.epcr_repeatable_element is 'One effective signed repeatable element occurrence row; identifying elements are excluded.';
 comment on view analytics.epcr_identified is 'Privileged one-row-per-ePCR view including identifying values and narrative.';
 comment on view operations.unsigned_report_work_queue is 'Active and cleared-but-unsigned, unexpired reports with live status and age.';
+comment on view operations.projection_health is 'Projection freshness, retry, run, and reconciliation metrics without clinical values or SQL bind parameters.';
+comment on view operations.projection_failures is 'Actionable terminal projection failures identified by operational event ID; clinical aggregate IDs and payloads are excluded.';
 comment on view clinical_history.report_history is 'Draft revisions and hash-chained signing and amendment events, including actors and timestamps.';
 comment on table integration.outbox_event is 'Transactional source for the at-most-five-minute analytical projection.';
