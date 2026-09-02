@@ -538,7 +538,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(repeatById.get("eVitals.06").value_integer, "118");
     assert.equal(repeatById.get("eVitals.06").value_lexical, "0118");
     assert.equal(repeatById.get("eVitals.16").value_numeric, "98.70");
-    assert.equal(repeatById.get("ePayment.60").value_date, "2042-12-31");
+    const paymentDate = repeatById.get("ePayment.60").value_date;
+    assert.equal(
+      paymentDate instanceof Date ? paymentDate.toISOString().slice(0, 10) : paymentDate,
+      "2042-12-31"
+    );
     assert.equal(repeatById.get("ePayment.60").value_precision, "day");
     assert.deepEqual(repeatById.get("eDevice.05").value_binary, Buffer.from([0, 1, 2, 255]));
     assert.equal(repeatById.get("eVitals.02").code, "9925004");
