@@ -11,7 +11,7 @@ tests do not constitute that approval.
 
 ## Proposed decisions
 
-1. **Identifying classification.** The 43 elements in
+1. **Identifying classification.** The 36 elements in
    `packages/database/config/identifying-elements.json` are identifying. The
    default analyst views omit their values, unrestricted narrative, and
    `additional_identifying_elements`. All other catalog elements retain exact
@@ -54,16 +54,14 @@ tests do not constitute that approval.
 
 The machine-enforced list is the JSON file named above; this table supplies the
 review rationale. “Identifying” includes direct identity, identifying free text,
-precise private location, signatures/attachments, source/account identifiers,
+precise private location, source/account identifiers,
 and contact details of patients or related people.
 
 | Category | Elements | Rationale |
 | --- | --- | --- |
-| Workforce/person identifiers | `eCrew.01`, `eOther.08` | Identifies a crew member or report author. |
 | Practitioner identity | `eHistory.02`–`eHistory.04` | Practitioner family, given, and middle names. |
 | Callback contact | `eInjury.13` | Direct telephone contact data. |
 | Unrestricted narrative | `eNarrative.01` | Free text can contain any direct identifier. |
-| Attachments and signatures | `eOther.11`, `eOther.16`, `eOther.20`–`eOther.22` | Images, filenames, and signer names can directly identify people. |
 | Patient identity/contact | `ePatient.01`–`ePatient.05`, `ePatient.17`–`ePatient.19`, `ePatient.21`, `ePatient.23` | Patient ID, names, address, birth date, phone, email, licence, and suffix. |
 | Certification signer | `ePayment.06`, `ePayment.07` | Named individual signing certification. |
 | Payer/account identifiers | `ePayment.09`, `ePayment.17`, `ePayment.18`, `ePayment.59` | Source-system, group, policy, and payer contact identifiers can link a record. |

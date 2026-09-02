@@ -2001,6 +2001,7 @@ select
   eother_01_display,
   eother_01_system,
   eother_01_terminology_version,
+  eother_08,
   eoutcome_01,
   eoutcome_01_display,
   eoutcome_01_system,

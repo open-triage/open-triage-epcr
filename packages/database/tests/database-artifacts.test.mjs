@@ -27,7 +27,7 @@ test("maps every PatientCareReport element to exactly one analytical location", 
     patientCareReportElements: 441,
     wideElements: 198,
     repeatableElements: 243,
-    identifyingElements: 43,
+    identifyingElements: 36,
     repeatingGroups: 34,
     repeatingGroupsWithOneLocalTimeCandidate: 11,
     repeatingGroupsFlaggedForZeroOrMultipleCandidates: 23
@@ -136,7 +136,7 @@ test("separates unsigned operations, immutable history, and signed analytics acc
 
 test("records the proposed privacy boundary without self-certifying human approval", () => {
   assert.equal(identifyingConfig.reviewStatus, "pending-human-privacy-security-approval");
-  assert.equal(identifyingConfig.elements.length, 43);
+  assert.equal(identifyingConfig.elements.length, 36);
   assert.match(privacyPolicy, /human privacy\/security approval required before merge/i);
   for (const decision of ["Identifying classification", "HMAC inputs", "Secret custody", "Rotation"]) {
     assert.ok(privacyPolicy.includes(decision), `privacy policy is missing ${decision}`);
