@@ -44,6 +44,31 @@ async function connectAsRole(role) {
 }
 
 integrationTest("the database foundation runs on a clean PostgreSQL 15+ server", async (t) => {
+  let checkpoint = "connecting primary test client";
+  const watchdog = setTimeout(async () => {
+    const handles = process._getActiveHandles().map((handle) => handle?.constructor?.name ?? typeof handle);
+    console.error(JSON.stringify({ event: "integration_watchdog", checkpoint, handles }));
+    const diagnostic = new pg.Client({ connectionString: databaseUrl, connectionTimeoutMillis: 3_000,
+      query_timeout: 3_000, statement_timeout: 3_000 });
+    try {
+      await diagnostic.connect();
+      const activity = await diagnostic.query(`select pid, application_name, state, wait_event_type,
+        wait_event, backend_type, xact_start is not null as in_transaction
+        from pg_stat_activity where datname = current_database() order by pid`);
+      const locks = await diagnostic.query(`select relation::regclass::text as relation, mode, granted,
+        count(*)::integer as count from pg_locks where database = (select oid from pg_database
+        where datname = current_database()) group by relation, mode, granted order by relation, mode`);
+      console.error(JSON.stringify({ event: "integration_database_diagnostic",
+        activity: activity.rows, locks: locks.rows }));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "integration_database_diagnostic_failed",
+        name: error?.name, code: error?.code, message: error?.message }));
+    } finally {
+      await diagnostic.end().catch(() => undefined);
+      process.exit(1);
+    }
+  }, 60_000);
+  t.after(() => clearTimeout(watchdog));
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -62,8 +87,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"),
     "utf8"
   );
+  checkpoint = "applying database migration";
   await client.query(migration);
 
+  checkpoint = "loading NEMSIS catalog";
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
@@ -74,6 +101,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   );
   const definitionsBeforeReplay = await client.query("select count(*)::integer as count from catalog.element_definition");
   const replay = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
+  checkpoint = "running database integration subtests";
   assert.match(replay.stdout, /already loaded with the expected checksum/);
   const identitiesAfterReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
@@ -402,6 +430,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   });
 
   await t.test("projects one signed report from the outbox into lossless analyst contracts", async () => {
+    checkpoint = "building primary projection fixture";
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
       incident: "36000000-0000-4000-8000-000000000002",
@@ -576,6 +605,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(queued.rows[0].processed_at, null);
 
     const projector = path.join(packageRoot, "scripts/project-analytics.mjs");
+    checkpoint = "projecting primary report";
     const projection = await execFileAsync(process.execPath, [projector], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
     });
@@ -989,6 +1019,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
     await t.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
+      checkpoint = "creating held retention fixture";
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
       await client.query(`insert into clinical.report
@@ -1013,11 +1044,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         await client.query("rollback");
         throw error;
       }
+      checkpoint = "projecting held retention fixture";
       await execFileAsync(process.execPath, [projector], {
         env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" },
         timeout: 10_000
       });
 
+      checkpoint = "executing retention policy and evidence flow";
       const destination = `s3://open-triage-retention-archive/integration/${organizationId}/`;
       await client.query(`insert into retention.policy
         (organization_id, retention_years, archive_destination_uri)
