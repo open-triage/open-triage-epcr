@@ -1,15 +1,14 @@
 # Analytical privacy boundary
 
-Status: **proposed — human privacy/security approval required before merge or production use**  
-Policy version: `privacy-boundary-1.0.0-proposed`  
+Status: **approved by human privacy/security review on 2026-09-02**
+Policy version: `privacy-boundary-1.0.0`
 Catalog: NEMSIS EMSDataSet 3.5.1
 
-This is the review artifact for ticket 039. Approval means approving all four
-decisions below as one boundary: the identifying-element classification, HMAC
-inputs, secret custody, and rotation procedure. Implementation and automated
-tests do not constitute that approval.
+This is the approved review artifact for ticket 039. The human reviewer approved
+all four decisions below as one boundary: the identifying-element classification,
+HMAC inputs, secret custody, and rotation procedure.
 
-## Proposed decisions
+## Approved decisions
 
 1. **Identifying classification.** The 36 elements in
    `packages/database/config/identifying-elements.json` are identifying. The
@@ -89,6 +88,9 @@ custom element is introduced or materially changed.
 
 ## Approval record
 
-Pending. The reviewer should record their name, role, date, approved policy
-version and any required changes in the ticket or PR. Until then, the first
-acceptance criterion is not met and the PR must not merge.
+Approved on 2026-09-02 by the requesting human reviewer in the ticket 039 Codex
+session. The approval followed the reviewer's removal of all `eCrew.*` and
+`eOther.*` elements and covers policy version `privacy-boundary-1.0.0`: the
+remaining 36-element classification, HMAC inputs, secret custody, and rotation
+procedure. The authenticated PR #95 activity records the repository identity and
+review context.

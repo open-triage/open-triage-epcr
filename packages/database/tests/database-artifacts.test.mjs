@@ -134,10 +134,11 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });
 
-test("records the proposed privacy boundary without self-certifying human approval", () => {
-  assert.equal(identifyingConfig.reviewStatus, "pending-human-privacy-security-approval");
+test("records the human-approved privacy boundary", () => {
+  assert.equal(identifyingConfig.policyVersion, "privacy-boundary-1.0.0");
+  assert.equal(identifyingConfig.reviewStatus, "approved-human-privacy-security-review");
   assert.equal(identifyingConfig.elements.length, 36);
-  assert.match(privacyPolicy, /human privacy\/security approval required before merge/i);
+  assert.match(privacyPolicy, /approved on 2026-09-02 by the requesting human reviewer/i);
   for (const decision of ["Identifying classification", "HMAC inputs", "Secret custody", "Rotation"]) {
     assert.ok(privacyPolicy.includes(decision), `privacy policy is missing ${decision}`);
   }
