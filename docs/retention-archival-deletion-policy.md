@@ -12,7 +12,7 @@ self-certify that approval.
 | Decision | Proposed policy |
 | --- | --- |
 | Archive destination | S3-compatible object storage at `s3://open-triage-retention-archive/<installation-id>/<organization-id>/`, in a separate security account, with versioning and S3 Object Lock in compliance mode for at least the applicable legal retention period. |
-| Deletion authority | Only the non-login database role `open_triage_retention_executor`, assumed by a separately authenticated two-person operator workflow. Application, clinical, analyst, projector, and ordinary operational roles receive neither table deletion privileges nor execution rights. |
+| Deletion authority | Only the non-login database role `open_triage_retention_executor`, assumed through separately authenticated preparation, verification, and deletion operator identities. Application, clinical, analyst, projector, and ordinary operational roles receive neither table deletion privileges nor execution rights. |
 | Evidence format | Canonical PostgreSQL `jsonb` NDJSON payload, one complete report per line, plus SHA-256 payload and manifest digests, immutable object URI/version, actor and timestamps, counts, failures, and append-only SHA-256-chained database evidence. Evidence contains identifiers and hashes, not copied clinical values. |
 | Online retention | Ten years by default. No local override is proposed. An approved organization-specific value from 1–100 years may replace the default only when the installation owner documents the governing obligation in the approval note. |
 

@@ -2753,6 +2753,7 @@ declare
   prior retention.evidence%rowtype;
   next_sequence integer;
   next_hash text;
+  evidence_time timestamptz := clock_timestamp();
   inserted retention.evidence%rowtype;
 begin
   select * into batch_row from retention.archive_batch where id = candidate_batch_id for update;
@@ -2760,11 +2761,12 @@ begin
   select * into prior from retention.evidence where batch_id = candidate_batch_id order by sequence desc limit 1;
   next_sequence := coalesce(prior.sequence, 0) + 1;
   next_hash := encode(public.digest(concat_ws('|', candidate_batch_id::text, next_sequence::text,
-    candidate_event_type, candidate_actor, candidate_details::text, coalesce(prior.event_hash, '')), 'sha256'), 'hex');
+    candidate_event_type, candidate_actor, evidence_time::text, candidate_details::text,
+    coalesce(prior.event_hash, '')), 'sha256'), 'hex');
   insert into retention.evidence
-    (organization_id, batch_id, sequence, event_type, actor, details, previous_hash, event_hash)
+    (organization_id, batch_id, sequence, event_type, actor, occurred_at, details, previous_hash, event_hash)
   values (batch_row.organization_id, candidate_batch_id, next_sequence, candidate_event_type,
-    candidate_actor, candidate_details, prior.event_hash, next_hash)
+    candidate_actor, evidence_time, candidate_details, prior.event_hash, next_hash)
   returning * into inserted;
   return inserted;
 end;
