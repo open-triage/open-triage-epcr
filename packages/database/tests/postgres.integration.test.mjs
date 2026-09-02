@@ -44,41 +44,9 @@ async function connectAsRole(role) {
 }
 
 integrationTest("the database foundation runs on a clean PostgreSQL 15+ server", async (t) => {
-  let checkpoint = "connecting primary test client";
-  const watchdog = setTimeout(async () => {
-    const handles = process._getActiveHandles().map((handle) => handle?.constructor?.name ?? typeof handle);
-    console.error(JSON.stringify({ event: "integration_watchdog", checkpoint, handles }));
-    const diagnostic = new pg.Client({ connectionString: databaseUrl, connectionTimeoutMillis: 3_000,
-      query_timeout: 3_000, statement_timeout: 3_000 });
-    try {
-      await diagnostic.connect();
-      const activity = await diagnostic.query(`select pid, application_name, state, wait_event_type,
-        wait_event, backend_type, xact_start is not null as in_transaction
-        from pg_stat_activity where datname = current_database() order by pid`);
-      const locks = await diagnostic.query(`select relation::regclass::text as relation, mode, granted,
-        count(*)::integer as count from pg_locks where database = (select oid from pg_database
-        where datname = current_database()) group by relation, mode, granted order by relation, mode`);
-      console.error(JSON.stringify({ event: "integration_database_diagnostic",
-        activity: activity.rows, locks: locks.rows }));
-    } catch (error) {
-      console.error(JSON.stringify({ event: "integration_database_diagnostic_failed",
-        name: error?.name, code: error?.code, message: error?.message }));
-    } finally {
-      await diagnostic.end().catch(() => undefined);
-      process.exit(1);
-    }
-  }, 30_000);
-  t.after(() => clearTimeout(watchdog));
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
-  const priorPgOptions = process.env.PGOPTIONS;
-  process.env.PGOPTIONS = [priorPgOptions, "-c statement_timeout=10000"].filter(Boolean).join(" ");
-  t.after(() => {
-    if (priorPgOptions === undefined) delete process.env.PGOPTIONS;
-    else process.env.PGOPTIONS = priorPgOptions;
-  });
-  await client.query("set statement_timeout = '10s'");
 
   const version = await client.query("show server_version_num");
   assert.ok(Number(version.rows[0].server_version_num) >= 150000);
@@ -87,10 +55,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"),
     "utf8"
   );
-  checkpoint = "applying database migration";
   await client.query(migration);
 
-  checkpoint = "loading NEMSIS catalog";
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
@@ -101,7 +67,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   );
   const definitionsBeforeReplay = await client.query("select count(*)::integer as count from catalog.element_definition");
   const replay = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
-  checkpoint = "running database integration subtests";
   assert.match(replay.stdout, /already loaded with the expected checksum/);
   const identitiesAfterReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
@@ -429,8 +394,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await t.test("projects one signed report from the outbox into lossless analyst contracts", async () => {
-    checkpoint = "building primary projection fixture";
+  await t.test("projects one signed report from the outbox into lossless analyst contracts", async (projectionTest) => {
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
       incident: "36000000-0000-4000-8000-000000000002",
@@ -605,11 +569,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(queued.rows[0].processed_at, null);
 
     const projector = path.join(packageRoot, "scripts/project-analytics.mjs");
-    checkpoint = "projecting primary report";
     const projection = await execFileAsync(process.execPath, [projector], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
     });
-    checkpoint = "asserting initial primary projection";
     assert.deepEqual(JSON.parse(projection.stdout), {
       event: "analytics_projection_run", mode: "queue", status: "succeeded",
       processedCount: 1, failedCount: 0, checkedCount: 1
@@ -691,7 +653,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(healthAfterProjection.last_run_processed_count, 1);
     assert.ok(healthAfterProjection.last_successful_run_at instanceof Date);
 
-    checkpoint = "checking analytical role isolation";
     const analystClient = await connectAsRole("open_triage_analyst");
     try {
       assert.equal((await analystClient.query("select current_user")).rows[0].current_user, "open_triage_analyst");
@@ -725,7 +686,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await identifiedClient.end();
     }
 
-    checkpoint = "rotating patient keys";
     const originalPatientKey = wide.rows[0].patient_key;
     const rotatedEnvironment = {
       ...process.env,
@@ -810,7 +770,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       repeatById.get("eVitals.13").absence_kind
     ], ["null", "pertinent-negative", "absent"]);
 
-    checkpoint = "projecting signed amendment";
     const amendmentId = "37000000-0000-4000-8000-000000000001";
     const addedOccurrenceId = "37000000-0000-4000-8000-000000000002";
     const sourceRows = await client.query(`select element_id, to_jsonb(o) as occurrence
@@ -909,7 +868,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal((await client.query(`select count(*)::integer as count
       from analytics_private.epcr_repeatable_element where report_id = $1`, [ids.report])).rows[0].count, 11);
 
-    checkpoint = "testing replay reconciliation and backfill";
     await client.query("delete from analytics_private.epcr_repeatable_element where report_id = $1", [ids.report]);
     await client.query("delete from analytics_private.epcr where report_id = $1", [ids.report]);
     const interruptedBackfill = await execFileAsync(process.execPath,
@@ -934,7 +892,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       processed_count: 1, complete: true, wide: 1, repeatable: 11
     });
 
-    checkpoint = "projecting reporting-date amendment";
     const reportingDateAmendmentId = "38000000-0000-4000-8000-000000000001";
     await client.query(`insert into clinical.amendment
       (id, report_id, sequence, author_id, reason, attestation, canonical_sha256, signed_at,
@@ -972,7 +929,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(processed.rows[0].last_error, null);
     assert.equal(processed.rows[0].attempt_count, 1);
 
-    checkpoint = "testing projection retries and health";
     const retryEvent = (await client.query(`select id from integration.outbox_event
       where aggregate_id = $1 order by occurred_at limit 1`, [ids.report])).rows[0];
     await client.query(`update integration.outbox_event
@@ -1025,9 +981,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
-    checkpoint = "starting retention integration subtest";
-    await t.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
-      checkpoint = "creating held retention fixture";
+    await projectionTest.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
       await client.query(`insert into clinical.report
@@ -1052,13 +1006,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         await client.query("rollback");
         throw error;
       }
-      checkpoint = "projecting held retention fixture";
       await execFileAsync(process.execPath, [projector], {
-        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" },
-        timeout: 10_000
+        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
       });
 
-      checkpoint = "executing retention policy and evidence flow";
       const destination = `s3://open-triage-retention-archive/integration/${organizationId}/`;
       await client.query(`insert into retention.policy
         (organization_id, retention_years, archive_destination_uri)
@@ -1131,6 +1082,5 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);
       assert.equal(hold.rowCount, 1);
     });
-    checkpoint = "completed all database integration subtests";
   });
 });
