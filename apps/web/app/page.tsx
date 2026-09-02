@@ -25,6 +25,7 @@ import {
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 import { patientSummary } from "./patient-document";
+import { documentTimeline, incidentSummary } from "./incident-document";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -49,6 +50,11 @@ export default function Home() {
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
   const patient = useMemo(() => patientSummary(encounter.document), [encounter.document]);
+  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
+  const incidentEvents = useMemo(() => documentTimeline(encounter.document), [encounter.document]);
+  const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
+    `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
+  ), [incidentEvents, encounter.events]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -201,7 +207,7 @@ export default function Home() {
 
       <header className="encounter-header">
         <div className="header-kicker">
-          <span>{encounter.currentTime}</span>
+          <span>{incidentEvents[0]?.time ?? "--:--"}</span>
           <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
         </div>
         <div className="patient-line">
@@ -211,12 +217,12 @@ export default function Home() {
               {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex} · {patient.identifier}
             </p>
           </div>
-          <span className="crew-badge" aria-label={`Crew ${encounter.crew}`}>{encounter.crew}</span>
+          <span className="crew-badge" aria-label={`Crew ${incident.crew}`}>{incident.crew}</span>
         </div>
         <div className="incident-line">
           <div>
-            <span>{bundledEncounterDefinition.labels.incident} {encounter.incident.number}</span>
-            <strong>{encounter.incident.complaint}</strong>
+            <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
+            <strong>{incident.complaint}</strong>
           </div>
         </div>
         <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype data</button>
@@ -238,7 +244,7 @@ export default function Home() {
             type="button"
           >
             {tab.label}
-            {tab.id === "timeline" && <span aria-hidden="true"> · {encounter.events.length}</span>}
+            {tab.id === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
             {tab.id === "checklist" && <span className="checklist-counts" aria-hidden="true">
               <span className="error-count">{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
               <span className="warning-count">{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
@@ -260,10 +266,10 @@ export default function Home() {
               <p className="eyebrow">Newest first</p>
               <h1 id="timeline-heading">Timeline</h1>
             </div>
-            <span>{encounter.events.length} events</span>
+            <span>{timelineEvents.length} events</span>
           </div>
           <ol className="timeline-list">
-            {encounter.events.map((event) => {
+            {timelineEvents.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
               const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
               const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
@@ -523,6 +529,8 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
 }) {
   const encounter = shell.encounter;
   const patient = patientSummary(encounter.document);
+  const incident = incidentSummary(encounter.document);
+  const incidentEvents = documentTimeline(encounter.document);
   return (
     <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
       <div className="summary-label" role="note">
@@ -537,10 +545,10 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
         <dl>
           <div><dt>Patient</dt><dd>{patient.name} · {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex}</dd></div>
           <div><dt>Synthetic ID</dt><dd>{patient.identifier}</dd></div>
-          <div><dt>Incident</dt><dd>{encounter.incident.number}</dd></div>
-          <div><dt>Complaint</dt><dd>{encounter.incident.complaint}</dd></div>
-          <div><dt>Location</dt><dd>{encounter.incident.address}</dd></div>
-          <div><dt>Crew</dt><dd>{encounter.crew}</dd></div>
+          <div><dt>Incident</dt><dd>{incident.number}</dd></div>
+          <div><dt>Complaint</dt><dd>{incident.complaint}</dd></div>
+          <div><dt>Location</dt><dd>{incident.address}</dd></div>
+          <div><dt>Crew</dt><dd>{incident.crew}</dd></div>
           <div><dt>Medical history</dt><dd>{patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
           <div><dt>Current medications</dt><dd>{patient.currentMedications.join(", ") || "Not documented"}</dd></div>
           <div><dt>Medication allergies</dt><dd>{patient.allergies.join(", ") || "Not documented"}</dd></div>
@@ -549,6 +557,7 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Timeline</h2>
         <ol className="summary-timeline">
+          {incidentEvents.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
           {completedSummaryEvents(encounter.events, bundledEncounterDefinition).map((event) => {
             const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
             return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, bundledEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;

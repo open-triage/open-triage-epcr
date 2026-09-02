@@ -51,7 +51,7 @@ test("quick capture saves errors and warnings for review without acknowledgement
   assert.equal(validation.errors.length, 5);
   assert.ok(validation.errors.every((error) => /eMedications\./.test(error)));
   let saved = transitionShell(state, { type: "medication-saved" });
-  assert.equal(saved.encounter.events.length, 5);
+  assert.equal(saved.encounter.events.length, 1);
   assert.equal(saved.medicationDraft, null);
   assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "error"));
 
@@ -64,7 +64,7 @@ test("quick capture saves errors and warnings for review without acknowledgement
   assert.equal(validation.errors.length, 0);
   assert.equal(validation.warnings.length, 1);
   saved = transitionShell(state, { type: "medication-saved" });
-  assert.equal(saved.encounter.events.length, 5);
+  assert.equal(saved.encounter.events.length, 1);
   assert.equal(saved.medicationDraft, null);
   assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "warning"));
 });

@@ -117,6 +117,57 @@
       ]
     },
     {
+      "id": "eResponseSection",
+      "instances": [{
+        "instanceId": "response-1",
+        "elements": [
+          { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "incident-number-1", "value": "SYN-2026-0418-113" }] },
+          { "id": "eResponse.04", "values": [{ "kind": "scalar", "occurrenceId": "response-number-1", "value": "3-9-7-4-0" }] }
+        ]
+      }]
+    },
+    {
+      "id": "eDispatchSection",
+      "instances": [{
+        "instanceId": "dispatch-1",
+        "elements": [
+          { "id": "eDispatch.01", "values": [{ "kind": "coded", "occurrenceId": "dispatch-reason-1", "code": "2301051", "display": "Medical assistance requested" }] },
+          { "id": "eDispatch.02", "values": [{ "kind": "coded", "occurrenceId": "emd-1", "code": "2302005", "display": "Yes, Without Pre-Arrival Instructions" }] },
+          { "id": "eDispatch.05", "values": [{ "kind": "coded", "occurrenceId": "dispatch-priority-1", "code": "2305005", "display": "Routine response" }] },
+          { "id": "eDispatch.06", "values": [{ "kind": "scalar", "occurrenceId": "cad-record-1", "value": "3-9-7-4-0" }] }
+        ]
+      }]
+    },
+    {
+      "id": "eCrew.CrewGroup",
+      "instances": [{
+        "instanceId": "crew-1",
+        "elements": [{ "id": "eCrew.01", "values": [{ "kind": "scalar", "occurrenceId": "crew-member-1", "value": "AN" }] }]
+      }]
+    },
+    {
+      "id": "eSceneSection",
+      "instances": [{
+        "instanceId": "scene-1",
+        "elements": [
+          { "id": "eScene.15", "values": [{ "kind": "scalar", "occurrenceId": "street-address-1", "value": "100 Example Avenue (fictional)" }] },
+          { "id": "eScene.16", "values": [{ "kind": "scalar", "occurrenceId": "scene-unit-1", "value": "Unit 3" }] }
+        ]
+      }]
+    },
+    {
+      "id": "eTimesSection",
+      "instances": [{
+        "instanceId": "times-1",
+        "elements": [
+          { "id": "eTimes.01", "values": [{ "kind": "scalar", "occurrenceId": "psap-call-time-1", "value": "2026-04-18T07:40:00-04:00", "attributes": { "timelineDetail": "Medical assistance requested" } }] },
+          { "id": "eTimes.03", "values": [{ "kind": "scalar", "occurrenceId": "unit-notified-time-1", "value": "2026-04-18T07:42:00-04:00", "attributes": { "timelineDetail": "3-9-7-4-0 · fictional dispatch notification" } }] },
+          { "id": "eTimes.05", "values": [{ "kind": "scalar", "occurrenceId": "unit-en-route-time-1", "value": "2026-04-18T07:44:00-04:00", "attributes": { "timelineDetail": "Routine response" } }] },
+          { "id": "eTimes.06", "values": [{ "kind": "scalar", "occurrenceId": "unit-arrived-scene-time-1", "value": "2026-04-18T07:51:00-04:00", "attributes": { "timelineDetail": "Fictional residence — standard access" } }] }
+        ]
+      }]
+    },
+    {
       "id": "eVitals.VitalGroup",
       "instances": [
         {

@@ -24,7 +24,7 @@ test("the small synthetic encounter is readable, catalog-compatible, and valid a
   assert.equal(document.groups[0]?.id, "ePatient.PatientNameGroup");
   const text = readFileSync(new URL("../app/data/synthetic-encounter-document.json", import.meta.url), "utf8");
   assert.ok(text.includes("\n  \"documentType\""));
-  assert.ok(text.split("\n").length < 200);
+  assert.ok(text.split("\n").length < 300);
   assert.doesNotMatch(text, /systolicField|patientNameInput|vitalDraft/);
 });
 

@@ -9,9 +9,7 @@ test("validates and serves the bundled versioned encounter definition", () => {
 
   assert.equal(definition.schemaVersion, 1);
   assert.equal(definition.version, 1);
-  assert.equal(definition.dispatch.incident.complaint, "Medical assistance requested");
   assert.equal(definition.patient.quickAction.label, "Edit patient information");
-  assert.equal(definition.dispatch.references.complaint, "eDispatch.01");
   assert.equal(definition.events.note.quickAction.visible, true);
   assert.equal(definition.events.note.quickAction.label, "Add clinical note");
   assert.equal(definition.events.note.required.summary, true);
@@ -89,9 +87,7 @@ test("rejects an invalid definition with actionable field diagnostics", () => {
     () => validateEncounterDefinition(invalid),
     (error: unknown) => error instanceof EncounterDefinitionError
       && error.message.includes("version must be a positive integer")
-      && error.message.includes("dispatch.crew is required")
-      && error.message.includes("dispatch.incident must be an object")
-      && error.message.includes("dispatch.events must contain at least one event"),
+      && error.message.includes("dispatch is not supported by schemaVersion 1"),
   );
 });
 

@@ -15,7 +15,7 @@ export type EncounterEvent = {
   readonly id: string;
   readonly date?: string;
   readonly time: string;
-  readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication";
+  readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication" | "document";
   readonly title: string;
   readonly detail: string;
   readonly reference: string;
@@ -34,10 +34,7 @@ export type Encounter = {
   readonly definitionId: string;
   readonly definitionVersion: number;
   readonly synthetic: true;
-  readonly currentTime: string;
-  readonly crew: string;
   readonly document: EncounterDocument;
-  readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
   readonly events: ReadonlyArray<EncounterEvent>;
   /** Namespaced NEMSIS custom results. Unknown compatible entries are deliberately retained by persistence. */
   readonly customData?: CustomDataSet;
@@ -57,11 +54,8 @@ export function createSyntheticEncounter(definition: EncounterDefinition): Encou
     definitionId: definition.id,
     definitionVersion: definition.version,
     synthetic: true,
-    currentTime: definition.dates.currentTime,
-    crew: definition.dispatch.crew,
     document,
-    incident: definition.dispatch.incident,
-    events: definition.dispatch.events.map((event, index) => ({ ...event, kind: "transport", id: `baseline-${index + 1}` })),
+    events: [],
   };
 }
 
