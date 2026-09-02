@@ -258,16 +258,22 @@ export class SignReportService {
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
       }
       if (occurrence.value_kind === "coded") {
-        const exhaustive = await manager.query<Array<{ value_set_id: string }>>(`
-          select vse.value_set_id from catalog.value_set_element vse
+        const exhaustive = await manager.query<Array<{ value_set_ids: string }>>(`
+          select string_agg(vse.value_set_id, ', ' order by vse.value_set_id) as value_set_ids
+          from catalog.value_set_element vse
           join catalog.value_set vs on vs.release_id = vse.release_id and vs.value_set_id = vse.value_set_id
           where vse.release_id = $1 and vse.element_id = $2 and vs.exhaustive
-            and not exists (select 1 from catalog.value_set_option option
-              where option.release_id = vse.release_id and option.value_set_id = vse.value_set_id
+            and not exists (select 1 from catalog.value_set_element valid_element
+              join catalog.value_set valid_set on valid_set.release_id = valid_element.release_id
+                and valid_set.value_set_id = valid_element.value_set_id and valid_set.exhaustive
+              join catalog.value_set_option option on option.release_id = valid_element.release_id
+                and option.value_set_id = valid_element.value_set_id
+              where valid_element.release_id = vse.release_id and valid_element.element_id = vse.element_id
                 and option.code = $3 and option.code_system = coalesce($4, ''))
+          having count(*) > 0
         `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
         if (exhaustive[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
-          `Code ${occurrence.code} is not in exhaustive value set ${exhaustive[0].value_set_id} for ${occurrence.element_id}`));
+          `Code ${occurrence.code} is not in exhaustive value set(s) ${exhaustive[0].value_set_ids} for ${occurrence.element_id}`));
       }
     }
     const byElementAndParent = new Map<string, OccurrenceRow[]>();
