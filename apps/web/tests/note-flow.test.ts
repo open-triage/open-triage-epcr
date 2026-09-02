@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearShellState, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { clearShellState, ENCOUNTER_EXTENSION_KEY, ENCOUNTER_EXTENSION_VERSION, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, PERSISTENCE_VERSION, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
@@ -70,6 +70,40 @@ test("the phone flow survives refresh with an in-progress draft and saved encoun
   assert.equal(resumed.encounter.events.find((event) => event.id === "visitor-note-1")?.detail, "Draft before refresh");
 });
 
+test("browser persistence stores one versioned canonical document and preserves compatible extensions", () => {
+  const storage = memoryStorage();
+  const state = {
+    ...beginNote(),
+    encounter: {
+      ...beginNote().encounter,
+      document: { ...beginNote().encounter.document, "x-agency:unknown": { retained: true } },
+    },
+  };
+  saveShellState(storage, state);
+  const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
+  assert.equal(envelope.persistenceVersion, PERSISTENCE_VERSION);
+  assert.equal(envelope.state, undefined);
+  assert.equal(envelope.document.modelVersion, "1.0.0");
+  assert.equal(envelope.document.dataModel.version, "3.5.1");
+  assert.deepEqual(envelope.document.formProfile, { id: "standard-encounter-v1", version: "1" });
+  assert.equal(envelope.document[ENCOUNTER_EXTENSION_KEY].version, ENCOUNTER_EXTENSION_VERSION);
+  assert.equal(envelope.document["x-agency:unknown"].retained, true);
+  assert.equal(loadShellState(storage)?.encounter.document["x-agency:unknown"] && (loadShellState(storage)!.encounter.document["x-agency:unknown"] as { retained: boolean }).retained, true);
+});
+
+test("an incompatible canonical extension is preserved with an explicit diagnostic", () => {
+  const storage = memoryStorage();
+  saveShellState(storage, INITIAL_SHELL_STATE);
+  const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
+  envelope.document[ENCOUNTER_EXTENSION_KEY].version = "99.0.0";
+  const original = JSON.stringify(envelope);
+  storage.setItem(STORAGE_KEY, original);
+  const result = loadShellStateResult(storage);
+  assert.equal(result.status, "invalid");
+  if (result.status === "invalid") assert.match(result.reason, /extension version 99\.0\.0 is not supported/);
+  assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
+});
+
 test("reset clears local progress and restores the version-controlled baseline", () => {
   const storage = memoryStorage();
   let state = beginNote();
@@ -124,6 +158,7 @@ test("configured note metadata drives capture, validation, review navigation, an
   assert.equal(finding.category, "Observation");
   assert.equal(finding.title, "09:10 · Field observation");
   assert.equal(finding.reference, "eNarrative.02");
+  assert.deepEqual(finding.target, { eventId: "configured-note", groupId: "eNarrativeSection", instanceId: "configured-note", elementId: "eNarrative.02" });
   assert.equal(finding.message, "Record the observation before finishing.");
 
   state = transitionShell(state, { type: "review-finding-selected", id: finding.id }, definition);

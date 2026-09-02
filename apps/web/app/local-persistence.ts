@@ -7,8 +7,10 @@ import { bundledEncounterDefinition, createInitialShellState, type ShellState } 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
 export const RECOVERY_STORAGE_KEY = `${STORAGE_KEY}:recovery`;
 export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
-const PERSISTENCE_VERSION = 3 as const;
-const PREVIOUS_PERSISTENCE_VERSION = 2 as const;
+export const PERSISTENCE_VERSION = 4 as const;
+const LEGACY_PERSISTENCE_VERSIONS = [2, 3] as const;
+export const ENCOUNTER_EXTENSION_KEY = "x-open-triage-standard-form" as const;
+export const ENCOUNTER_EXTENSION_VERSION = "1.0.0" as const;
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -19,7 +21,26 @@ export type ShellStateLoadResult =
   | { readonly status: "restored"; readonly state: ShellState; readonly migrated: boolean };
 
 export function saveShellState(storage: LocalStoragePort, state: ShellState): void {
-  storage.setItem(STORAGE_KEY, JSON.stringify({ persistenceVersion: PERSISTENCE_VERSION, state }));
+  const document = {
+    ...state.encounter.document,
+    [ENCOUNTER_EXTENSION_KEY]: {
+      version: ENCOUNTER_EXTENSION_VERSION,
+      events: state.encounter.events,
+      acknowledgedWarnings: state.acknowledgedWarnings,
+      ...(state.encounter.customData ? { customData: state.encounter.customData } : {}),
+    },
+  };
+  storage.setItem(STORAGE_KEY, JSON.stringify({
+    persistenceVersion: PERSISTENCE_VERSION,
+    document,
+    workflow: {
+      view: state.view,
+      noteDraft: state.noteDraft,
+      procedureDraft: state.procedureDraft,
+      vitalDraft: state.vitalDraft,
+      medicationDraft: state.medicationDraft,
+    },
+  }));
 }
 
 function preserveForRecovery(storage: LocalStoragePort, serialized: string, sourceKey = STORAGE_KEY): typeof RECOVERY_STORAGE_KEY {
@@ -101,69 +122,79 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
     const parsed: unknown = JSON.parse(serialized);
     if (!parsed || typeof parsed !== "object") return { status: "invalid", reason: "saved state must be an object", recoveryKey: preserveForRecovery(storage, serialized) };
     const record = parsed as Record<string, unknown>;
-    const isCurrentEnvelope = record.persistenceVersion === PERSISTENCE_VERSION && record.state && typeof record.state === "object";
-    const isPreviousEnvelope = record.persistenceVersion === PREVIOUS_PERSISTENCE_VERSION && record.state && typeof record.state === "object";
+    const isCurrentEnvelope = record.persistenceVersion === PERSISTENCE_VERSION && record.document && typeof record.document === "object" && record.workflow && typeof record.workflow === "object";
+    const isPreviousEnvelope = LEGACY_PERSISTENCE_VERSIONS.includes(record.persistenceVersion as 2 | 3) && record.state && typeof record.state === "object";
     if (record.persistenceVersion !== undefined && !isCurrentEnvelope && !isPreviousEnvelope) {
       return { status: "invalid", reason: `saved persistence version ${String(record.persistenceVersion)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized) };
     }
-    const isEnvelope = isCurrentEnvelope || isPreviousEnvelope;
-    const candidate = (isEnvelope ? record.state : record) as Partial<ShellState> & { encounter?: Record<string, unknown> };
+    const currentDocument = isCurrentEnvelope ? record.document as Record<string, unknown> : null;
+    const currentWorkflow = isCurrentEnvelope ? record.workflow as Partial<ShellState> : null;
+    const isEnvelope = isPreviousEnvelope;
+    const candidate = (isCurrentEnvelope ? currentWorkflow : isEnvelope ? record.state : record) as Partial<ShellState> & { encounter?: Record<string, unknown> };
+    const extension = currentDocument?.[ENCOUNTER_EXTENSION_KEY] as Record<string, unknown> | undefined;
+    if (isCurrentEnvelope && (!extension || extension.version !== ENCOUNTER_EXTENSION_VERSION)) {
+      return { status: "invalid", reason: `saved extension version ${String(extension?.version)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized) };
+    }
     const candidateEncounter = candidate.encounter;
     const savedDefinition = {
-      id: typeof candidateEncounter?.definitionId === "string" ? candidateEncounter.definitionId : null,
-      version: Number.isInteger(candidateEncounter?.definitionVersion) ? candidateEncounter!.definitionVersion as number : null,
+      id: isCurrentEnvelope ? (currentDocument?.formProfile as Record<string, unknown> | undefined)?.id as string ?? null : typeof candidateEncounter?.definitionId === "string" ? candidateEncounter.definitionId : null,
+      version: isCurrentEnvelope ? Number((currentDocument?.formProfile as Record<string, unknown> | undefined)?.version) || null : Number.isInteger(candidateEncounter?.definitionVersion) ? candidateEncounter!.definitionVersion as number : null,
     };
     const expectedDefinition = { id: definition.id, version: definition.version };
     if (savedDefinition.id !== expectedDefinition.id || savedDefinition.version !== expectedDefinition.version) {
       return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized) };
     }
     if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported", recoveryKey: preserveForRecovery(storage, serialized) };
-    if (!Array.isArray(candidateEncounter?.events)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized) };
+    const persistedEvents = isCurrentEnvelope ? extension?.events : candidateEncounter?.events;
+    if (!Array.isArray(persistedEvents)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized) };
     if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
     if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
 
     const initialDocument = createInitialShellState(definition).encounter.document;
-    const legacyPatient = candidateEncounter.patient;
-    const needsIncidentMigration = !isCurrentEnvelope;
-    const migrated = needsIncidentMigration || !candidateEncounter.document;
-    let document = candidateEncounter.document
+    const legacyEncounter = (candidateEncounter ?? {}) as Record<string, unknown>;
+    const legacyPatient = legacyEncounter.patient;
+    const needsIncidentMigration = !isCurrentEnvelope && record.persistenceVersion !== 3;
+    const migrated = !isCurrentEnvelope;
+    let document = currentDocument
+      ? loadEncounterDocument(currentDocument, { formProfiles: { [definition.id]: [String(definition.version)] } })
+      : candidateEncounter?.document
       ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
       : legacyPatient && typeof legacyPatient === "object"
         ? updatePatientDocument(initialDocument, migrateLegacyPatient(legacyPatient as Record<string, unknown>, patientDraftFromDocument(initialDocument)), initialDocument.encounter.updatedAt)
         : initialDocument;
     const hasCanonicalIncident = ["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"].every((id) => document.groups.some((group) => group.id === id));
-    const hasLegacyIncident = candidateEncounter.crew !== undefined || candidateEncounter.incident !== undefined;
+    const hasLegacyIncident = candidateEncounter?.crew !== undefined || candidateEncounter?.incident !== undefined;
     if (needsIncidentMigration && hasLegacyIncident) {
       document = migrateLegacyIncidentDocument(document, {
         crew: candidateEncounter.crew,
         incident: candidateEncounter.incident,
-        events: candidateEncounter.events as ReadonlyArray<Record<string, unknown>>,
+        events: persistedEvents as ReadonlyArray<Record<string, unknown>>,
       });
     } else if (!hasCanonicalIncident) {
       throw new Error("saved canonical incident data is incomplete");
     }
-    if (isCurrentEnvelope && ["currentTime", "crew", "incident"].some((key) => key in candidateEncounter)) {
+    if (!isCurrentEnvelope && record.persistenceVersion === 3 && ["currentTime", "crew", "incident"].some((key) => key in candidateEncounter!)) {
       throw new Error("saved state contains parallel legacy incident data");
     }
-    const { patient: _legacyPatient, currentTime: _legacyCurrentTime, crew: _legacyCrew, incident: _legacyIncident, ...encounterWithoutLegacy } = candidateEncounter;
+    const { patient: _legacyPatient, currentTime: _legacyCurrentTime, crew: _legacyCrew, incident: _legacyIncident, ...encounterWithoutLegacy } = legacyEncounter;
     void [_legacyPatient, _legacyCurrentTime, _legacyCrew, _legacyIncident];
     const baselineIds = new Set(["baseline-1", "baseline-2", "baseline-3", "baseline-4"]);
-    if (isCurrentEnvelope && candidateEncounter.events.some((event) => baselineIds.has(event.id))) {
+    if (isCurrentEnvelope && persistedEvents.some((event) => baselineIds.has(event.id))) {
       throw new Error("saved state contains parallel legacy incident timeline data");
     }
     const state = {
       ...candidate,
       encounter: {
-        ...encounterWithoutLegacy,
+        ...(isCurrentEnvelope ? { definitionId: definition.id, definitionVersion: definition.version, synthetic: true, ...(extension?.customData ? { customData: extension.customData } : {}) } : encounterWithoutLegacy),
         document,
-        events: candidateEncounter.events.filter((event) => !baselineIds.has(event.id)).map((event) => ({ ...event, date: event.date ?? "2026-04-18" })),
+        events: persistedEvents.filter((event) => !baselineIds.has(event.id)).map((event) => ({ ...event, date: event.date ?? "2026-04-18" })),
       },
       noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? "2026-04-18" } : null,
       procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? "2026-04-18" } : null,
       vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? "2026-04-18", values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} } } : null,
       medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? "2026-04-18" } : null,
-      acknowledgedWarnings: Array.isArray(candidate.acknowledgedWarnings) ? candidate.acknowledgedWarnings : [],
-    } as ShellState;
+      acknowledgedWarnings: Array.isArray(isCurrentEnvelope ? extension?.acknowledgedWarnings : candidate.acknowledgedWarnings) ? (isCurrentEnvelope ? extension!.acknowledgedWarnings : candidate.acknowledgedWarnings) : [],
+    } as unknown as ShellState;
     return { status: "restored", state, migrated };
   } catch (error) {
     const reason = error instanceof EncounterDocumentError || (error instanceof Error && !(error instanceof SyntaxError)) ? error.message : "saved state is not valid JSON";

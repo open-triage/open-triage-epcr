@@ -171,7 +171,14 @@ export type ReviewFinding = {
   readonly title: string;
   readonly reference: string;
   readonly message: string;
-  readonly target: { readonly eventId: string; readonly vitalField?: VitalField };
+  readonly target: {
+    readonly eventId: string;
+    /** Canonical location used by review navigation and audit output. */
+    readonly groupId: string;
+    readonly instanceId: string;
+    readonly elementId: string;
+    readonly vitalField?: VitalField;
+  };
   readonly acknowledged: boolean;
 };
 
@@ -223,12 +230,26 @@ function eventFinding(
   vitalField?: VitalField,
 ): ReviewFinding {
   const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
+  const canonicalTarget = eventType === "vitals"
+    ? { groupId: definitionGroup("vitals"), instanceId: event.id, elementId: reference }
+    : eventType === "medication"
+      ? { groupId: definitionGroup("medication"), instanceId: event.id, elementId: reference }
+      : eventType === "procedure"
+        ? { groupId: definitionGroup("procedure"), instanceId: event.id, elementId: reference }
+        : { groupId: definitionGroup("note"), instanceId: event.id, elementId: reference };
   return {
     id, severity, eventType, category, reference, message,
     title: `${event.time} · ${event.title}`,
-    target: { eventId: event.id, ...(vitalField ? { vitalField } : {}) },
+    target: { eventId: event.id, ...canonicalTarget, ...(vitalField ? { vitalField } : {}) },
     acknowledged: severity === "warning" && (recordAcknowledged || state.acknowledgedWarnings.includes(id)),
   };
+}
+
+function definitionGroup(eventType: ConfiguredEventType): string {
+  if (eventType === "vitals") return "eVitals.VitalGroup";
+  if (eventType === "medication") return "eMedications.MedicationGroup";
+  if (eventType === "procedure") return "eProcedures.ProcedureGroup";
+  return "eNarrativeSection";
 }
 
 /** Consolidates validation for timeline entries before signing. */
