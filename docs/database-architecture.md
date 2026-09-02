@@ -53,9 +53,11 @@ adds:
 - a generated 3.5.1 mapping/data dictionary covering all 441 PatientCareReport
   elements—198 wide and 243 repeatable;
 - build-time repeating-group time analysis with explicit element, inherited, or
-  non-temporal resolutions; and
+  non-temporal resolutions;
 - catalog loading, projection, generated-artifact checks, static database tests,
-  TypeORM mappings for the renamed core entities, and operator documentation.
+  TypeORM mappings for the renamed core entities, and operator documentation;
+- an explicit, replay-safe synthetic bootstrap that creates a complete installation
+  and a baseline draft report pinned to its immutable agency, form, and catalog versions.
 
 The generated audit found 34 repeating groups: 11 have exactly one local NEMSIS
 date-time element and 23 have no local candidate. Every exception is visible in
@@ -72,8 +74,6 @@ vertical slices still need to add:
   responses, form publication, signing, and amendments;
 - authoritative semantic validation against the pinned form, catalog, and value
   sets, including validation of amendment payloads;
-- the initial organization, agency version, demo users/capabilities, published
-  form, and synthetic clinical fixtures;
 - integration tests against a real supported PostgreSQL version, including
   triggers, partitions, grants, loader replay, projector replay, and query plans;
 - projector reconciliation/backfill operations and production scheduling;
