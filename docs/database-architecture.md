@@ -79,7 +79,6 @@ vertical slices still need to add:
   sets, including validation of amendment payloads;
 - integration tests against a real supported PostgreSQL version, including
   triggers, partitions, grants, loader replay, projector replay, and query plans;
-- production scheduling for the projector and its recovery operations;
 - reviewed identifying-element classification and role provisioning for the
   deployment environment;
 - HMAC pseudonymous-key derivation and secret rotation policy;
@@ -227,10 +226,14 @@ projector rebuilds both rows for a report, so retries and reconciliation are saf
 npm run project -w @open-triage/database
 ```
 
-Run it at least once every five minutes in production. `ANALYTICS_PROJECTOR_BATCH_SIZE`
-controls one invocation. The projector creates required partitions before insert.
+The production Kubernetes scheduler runs one bounded batch every two minutes and
+checks projection health every minute. `ANALYTICS_PROJECTOR_BATCH_SIZE` controls
+one invocation. The projector creates required partitions before insert.
 Each row carries its signed snapshot/hash, effective amendment sequence,
 form/catalog versions, projector version, and projection timestamp.
+
+See [Analytics projection operations](runbooks/analytics-projection.md) for the
+scheduler, safe health contract, alerts, replay, reconciliation, and backfill.
 
 Load the checksummed catalog after applying the migration:
 

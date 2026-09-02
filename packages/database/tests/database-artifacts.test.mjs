@@ -6,10 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [mapping, migration, catalog] = await Promise.all([
+const [mapping, migration, catalog, scheduler, runbook] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
-  readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse)
+  readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "deploy/kubernetes/analytics-projector-cronjobs.yaml"), "utf8"),
+  readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8")
 ]);
 
 test("maps every PatientCareReport element to exactly one analytical location", () => {
@@ -91,12 +93,15 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.amendment",
     "create table clinical_audit.event",
     "create table integration.outbox_event",
+    "create table integration.projection_run",
     "create table integration.projection_backfill_job",
     "create table analytics_private.epcr",
     "create table analytics_private.epcr_repeatable_element",
     "create view analytics.epcr",
     "create view analytics.epcr_repeatable_element",
     "create view operations.unsigned_report_work_queue",
+    "create view operations.projection_health",
+    "create view operations.projection_failures",
     "create view clinical_history.report_history"
   ]) {
     assert.ok(migration.includes(expected), `missing ${expected}`);
@@ -107,10 +112,21 @@ test("defines the transactional invariants and two private analytical base table
   assert.ok(!migration.includes("patient_care_reports"));
 });
 
+test("schedules bounded observable projection work inside the freshness target", () => {
+  assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
+  assert.match(scheduler, /concurrencyPolicy: Forbid/);
+  assert.match(scheduler, /ANALYTICS_PROJECTOR_BATCH_SIZE[\s\S]*value: "500"/);
+  assert.match(scheduler, /ANALYTICS_PROJECTOR_FRESHNESS_TARGET_SECONDS[\s\S]*value: "300"/);
+  assert.match(runbook, /five-minute\s+signed-to-analytical freshness target/);
+  for (const operation of ["Replay", "reconciliation", "Backfill", "projection_health", "projection_failures"]) {
+    assert.ok(runbook.includes(operation), `runbook is missing ${operation}`);
+  }
+});
+
 test("separates unsigned operations, immutable history, and signed analytics access", () => {
   assert.match(migration, /where r\.status = 'draft'/);
   assert.match(migration, /from clinical\.report_change rc[\s\S]*from clinical\.signed_snapshot ss[\s\S]*from clinical\.amendment a/);
-  assert.match(migration, /grant select on operations\.unsigned_report_work_queue to open_triage_operational/);
+  assert.match(migration, /grant select on operations\.unsigned_report_work_queue,[\s\S]*to open_triage_operational/);
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));

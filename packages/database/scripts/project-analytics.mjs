@@ -3,11 +3,15 @@ import pg from "pg";
 const databaseUrl = process.env.DATABASE_URL;
 const PROJECTOR_VERSION = "1.0.0";
 const BATCH_SIZE = Number.parseInt(process.env.ANALYTICS_PROJECTOR_BATCH_SIZE ?? "100", 10);
+const MAX_ATTEMPTS = Number.parseInt(process.env.ANALYTICS_PROJECTOR_MAX_ATTEMPTS ?? "12", 10);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to project analytics");
 if (!Number.isInteger(BATCH_SIZE) || BATCH_SIZE < 1 || BATCH_SIZE > 1000) {
   throw new Error("ANALYTICS_PROJECTOR_BATCH_SIZE must be an integer from 1 through 1000");
+}
+if (!Number.isInteger(MAX_ATTEMPTS) || MAX_ATTEMPTS < 1 || MAX_ATTEMPTS > 100) {
+  throw new Error("ANALYTICS_PROJECTOR_MAX_ATTEMPTS must be an integer from 1 through 100");
 }
 
 const client = new pg.Client({ connectionString: databaseUrl });
@@ -69,6 +73,36 @@ function parseArguments(args) {
 }
 
 const options = parseArguments(process.argv.slice(2));
+
+function safeErrorCode(error) {
+  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    return `database.${error.code.slice(0, 32)}`;
+  }
+  const name = error instanceof Error ? error.name : "UnknownError";
+  return `projector.${name.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "UnknownError"}`;
+}
+
+function logRun(metrics) {
+  console.log(JSON.stringify({ event: "analytics_projection_run", ...metrics }));
+}
+
+async function startRun(mode) {
+  return (await client.query(
+    "insert into integration.projection_run (mode) values ($1) returning id",
+    [mode]
+  )).rows[0].id;
+}
+
+async function finishRun(runId, status, metrics = {}, errorCode = null) {
+  await client.query(
+    `update integration.projection_run
+     set status = $2, completed_at = clock_timestamp(), processed_count = $3,
+         failed_count = $4, checked_count = $5, repaired_count = $6, error_code = $7
+     where id = $1`,
+    [runId, status, metrics.processedCount ?? 0, metrics.failedCount ?? 0,
+      metrics.checkedCount ?? 0, metrics.repairedCount ?? 0, errorCode]
+  );
+}
 
 function sparseObject(value) {
   return Object.keys(value).length === 0 ? null : value;
@@ -540,14 +574,16 @@ function selectionSql(selection, afterCursor = false) {
 }
 
 async function runQueue() {
-  let processed = 0;
-  while (processed < BATCH_SIZE) {
+  let attempted = 0;
+  let processedCount = 0;
+  let failedCount = 0;
+  while (attempted < BATCH_SIZE) {
     await client.query("begin");
     const claimed = await client.query(
       `with next_event as (
          select id
          from integration.outbox_event
-         where processed_at is null and available_at <= now()
+         where processed_at is null and failed_at is null and available_at <= now()
          order by occurred_at
          for update skip locked
          limit 1
@@ -570,27 +606,30 @@ async function runQueue() {
         [event.id]
       );
       await client.query("commit");
+      processedCount += 1;
     } catch (error) {
       await client.query("rollback");
+      const errorCode = safeErrorCode(error);
       await client.query(
         `update integration.outbox_event
          set claimed_at = null,
              attempt_count = attempt_count + 1,
              available_at = now() + least(interval '1 hour', interval '5 seconds' * power(2, least(attempt_count, 10))),
-             last_error = left($2, 4000)
+             failed_at = case when attempt_count + 1 >= $3 then now() else null end,
+             last_error = $2
          where id = $1`,
-        [event.id, error instanceof Error ? error.message : String(error)]
+        [event.id, errorCode, MAX_ATTEMPTS]
       );
-      console.error(`Failed to project report ${event.aggregate_id}:`, error);
+      failedCount += 1;
     }
-    processed += 1;
+    attempted += 1;
   }
-  console.log(`Processed ${processed} analytical projection event${processed === 1 ? "" : "s"}.`);
+  return { processedCount, failedCount, checkedCount: attempted };
 }
 
 async function runReplay(reportId) {
   await inTransaction(() => projectReport(reportId));
-  console.log(`Replayed analytical projection for report ${reportId}.`);
+  return { processedCount: 1 };
 }
 
 async function runReconciliation(selection) {
@@ -601,7 +640,7 @@ async function runReconciliation(selection) {
     const result = await inTransaction(() => projectReport(report.id, { onlyIfStale: true }));
     if (result.repaired) repaired += 1;
   }
-  console.log(`Reconciled ${reports.rowCount} signed report${reports.rowCount === 1 ? "" : "s"}; rebuilt ${repaired} projection${repaired === 1 ? "" : "s"}.`);
+  return { processedCount: repaired, checkedCount: reports.rowCount, repairedCount: repaired };
 }
 
 async function loadBackfillJob(selection) {
@@ -628,8 +667,7 @@ async function loadBackfillJob(selection) {
 async function runBackfill(selection) {
   let job = await loadBackfillJob(selection);
   if (job.completed_at) {
-    console.log(`Backfill ${selection.jobId} was already complete after ${job.processed_count} report(s).`);
-    return;
+    return { processedCount: 0, checkedCount: 0, totalProcessedCount: job.processed_count, complete: true };
   }
   let processedThisRun = 0;
   while (processedThisRun < BATCH_SIZE) {
@@ -669,14 +707,36 @@ async function runBackfill(selection) {
         processedThisRun >= Number.parseInt(process.env.ANALYTICS_PROJECTOR_INTERRUPT_AFTER, 10)) break;
   }
   job = await loadBackfillJob(selection);
-  console.log(`Backfill ${selection.jobId}: processed ${processedThisRun} report(s) this run, ${job.processed_count} total; ${job.completed_at ? "complete" : "resumable"}.`);
+  return {
+    processedCount: processedThisRun,
+    checkedCount: processedThisRun,
+    totalProcessedCount: job.processed_count,
+    complete: Boolean(job.completed_at)
+  };
 }
 
+let runId;
 try {
-  if (options.mode === "queue") await runQueue();
-  else if (options.mode === "replay") await runReplay(options.reportId);
-  else if (options.mode === "reconcile") await runReconciliation(options);
-  else await runBackfill(options);
+  runId = await startRun(options.mode);
+  let metrics;
+  if (options.mode === "queue") metrics = await runQueue();
+  else if (options.mode === "replay") metrics = await runReplay(options.reportId);
+  else if (options.mode === "reconcile") metrics = await runReconciliation(options);
+  else metrics = await runBackfill(options);
+  const status = metrics.failedCount > 0 ? "partial" : "succeeded";
+  await finishRun(runId, status, metrics);
+  logRun({ mode: options.mode, status, ...metrics });
+} catch (error) {
+  const errorCode = safeErrorCode(error);
+  if (runId) {
+    try {
+      await finishRun(runId, "failed", {}, errorCode);
+    } catch {
+      // The structured log still exposes the failed job if run recording is unavailable.
+    }
+  }
+  logRun({ mode: options.mode, status: "failed", errorCode });
+  process.exitCode = 1;
 } finally {
   await client.end();
 }
