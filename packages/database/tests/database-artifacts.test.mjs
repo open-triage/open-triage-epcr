@@ -94,7 +94,9 @@ test("defines the transactional invariants and two private analytical base table
     "create table analytics_private.epcr",
     "create table analytics_private.epcr_repeatable_element",
     "create view analytics.epcr",
-    "create view analytics.epcr_repeatable_element"
+    "create view analytics.epcr_repeatable_element",
+    "create view operations.unsigned_report_work_queue",
+    "create view clinical_history.report_history"
   ]) {
     assert.ok(migration.includes(expected), `missing ${expected}`);
   }
@@ -102,4 +104,13 @@ test("defines the transactional invariants and two private analytical base table
   assert.ok(migration.includes("substring(id::text from 15 for 1) = '4'"));
   assert.ok(!migration.includes("auth.users"));
   assert.ok(!migration.includes("patient_care_reports"));
+});
+
+test("separates unsigned operations, immutable history, and signed analytics access", () => {
+  assert.match(migration, /where r\.status = 'draft'/);
+  assert.match(migration, /from clinical\.report_change rc[\s\S]*from clinical\.signed_snapshot ss[\s\S]*from clinical\.amendment a/);
+  assert.match(migration, /grant select on operations\.unsigned_report_work_queue to open_triage_operational/);
+  assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
+  assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
+  assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });

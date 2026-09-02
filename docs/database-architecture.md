@@ -18,8 +18,8 @@ and identifies the work that remains before production use.
 - The primary projections show latest effective amended values. Original signed
   state and the amendment chain remain available transactionally for audit and
   point-in-time reconstruction.
-- Drafts do not enter the clinical analytical projections. A later operational
-  work-queue view will cover active and cleared-but-unsigned reports.
+- Drafts do not enter the clinical analytical projections. A separately authorized
+  operational work queue covers active and cleared-but-unsigned reports.
 - Production sizing assumes up to one million reports per year with ten years
   online. Retention is installation-configurable, subject to legal holds.
 - Analytical projection may lag by up to five minutes and can run on a reporting
@@ -59,7 +59,9 @@ adds:
 - an explicit, replay-safe synthetic bootstrap that creates a complete installation
   and a baseline draft report pinned to its immutable agency, form, and catalog versions;
 - public API transactions for form publication, one-patient draft creation, retrieval,
-  and incremental autosave with optimistic revisions and replay-safe command receipts.
+  and incremental autosave with optimistic revisions and replay-safe command receipts;
+- separately authorized unsigned-work and immutable report-history views, without
+  granting their readers access to transactional or analytical base tables.
 
 The generated audit found 34 repeating groups: 11 have exactly one local NEMSIS
 date-time element and 23 have no local candidate. Every exception is visible in
@@ -82,7 +84,6 @@ vertical slices still need to add:
   deployment environment;
 - HMAC pseudonymous-key derivation and secret rotation policy;
 - approved normalization and quality-flag rule sets;
-- operational work-queue and historical audit views;
 - retention archival, legal-hold, partition maintenance, and deletion jobs; and
 - database backup/restore, read-replica, query-audit, monitoring, and load testing.
 
