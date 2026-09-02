@@ -982,6 +982,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
     await t.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
+      await client.query("set statement_timeout = '10s'");
+      t.after(() => client.query("set statement_timeout = 0"));
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
       await client.query(`insert into clinical.report
