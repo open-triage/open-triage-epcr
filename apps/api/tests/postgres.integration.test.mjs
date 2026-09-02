@@ -15,6 +15,9 @@ const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const databaseUrl = process.env.DATABASE_URL;
+process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
+process.env.PATIENT_KEY_VERSION ??= "1";
+process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
   throw new Error("DATABASE_URL is required for the API PostgreSQL integration suite");
@@ -219,9 +222,9 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       ($1, 'integration', $3), ($2, 'integration', $4)`,
       [timeElementId, textElementId, `integration.time-${timeElementId}`, `integration.text-${textElementId}`]);
     await client.query(`insert into forms.custom_element_definition
-      (id, organization_id, namespace, slug, title, base_datatype, definition) values
-      ($1, $3, 'integration', $4, 'Clinical time', 'dateTime', '{}'),
-      ($2, $3, 'integration', $5, 'Clinical text', 'string', '{}')`,
+      (id, organization_id, namespace, slug, title, base_datatype, identifying, definition) values
+      ($1, $3, 'integration', $4, 'Clinical time', 'dateTime', false, '{}'),
+      ($2, $3, 'integration', $5, 'Clinical text', 'string', false, '{}')`,
       [timeElementId, textElementId, organizationId, `time-${timeElementId}`, `text-${textElementId}`]);
     await client.query(`insert into forms.custom_group_definition
       (id, organization_id, namespace, slug, temporal_kind, clinical_time_element_id, definition)
@@ -326,8 +329,7 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const reportId = randomUUID();
   const createCommand = {
     commandId: randomUUID(), reportId, incidentId: randomUUID(), patientId: randomUUID(),
-    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown",
-    patientPseudonymousKey: "c".repeat(64)
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
   };
   const created = await request("/reports", "POST", createCommand);
   assert.equal(created.response.status, 201, JSON.stringify(created.payload));

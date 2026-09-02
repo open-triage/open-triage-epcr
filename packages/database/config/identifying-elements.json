@@ -1,5 +1,7 @@
 {
   "schemaVersion": "1.0.0",
+  "policyVersion": "privacy-boundary-1.0.0-proposed",
+  "reviewStatus": "pending-human-privacy-security-approval",
   "description": "NEMSIS elements hidden from the default analyst views because they contain direct person identifiers, precise private locations, signatures, or unrestricted free text.",
   "elements": [
     "eCrew.01",

@@ -79,9 +79,9 @@ vertical slices still need to add:
   sets, including validation of amendment payloads;
 - integration tests against a real supported PostgreSQL version, including
   triggers, partitions, grants, loader replay, projector replay, and query plans;
-- reviewed identifying-element classification and role provisioning for the
-  deployment environment;
-- HMAC pseudonymous-key derivation and secret rotation policy;
+- human approval of the proposed identifying-element classification, role
+  boundary, and HMAC custody/rotation policy in
+  [Analytical privacy boundary](analytical-privacy-boundary.md);
 - approved normalization and quality-flag rule sets;
 - retention archival, legal-hold, partition maintenance, and deletion jobs; and
 - database backup/restore, read-replica, query-audit, monitoring, and load testing.
@@ -183,9 +183,10 @@ bypass the restriction. Exact age, clinical timestamps, and other pseudonymous
 clinical values are not coarsened.
 
 `patient_key` is a versioned HMAC-derived value using an installation secret; the
-secret and source identifier never enter analytics. It remains stable for the
-configured retention period within an installation and is unrelated across
-installations.
+secret and internal patient UUID used as its source never enter analytics. It is
+stable within an installation and key version and unrelated across installations.
+See [Analytical privacy boundary](analytical-privacy-boundary.md) for the exact
+proposed input framing, custody, rotation procedure, and pending approval.
 
 The three `dAgency` definitions in the EMS dataset are stored once per immutable
 agency-demographic version and exposed through `analytics.agency`. Each report

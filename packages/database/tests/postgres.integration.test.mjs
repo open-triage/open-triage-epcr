@@ -6,11 +6,17 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const databaseUrl = process.env.DATABASE_URL;
+const patientKeyEnvironment = {
+  PATIENT_KEY_INSTALLATION_ID: "90000000-0000-4000-8000-000000000001",
+  PATIENT_KEY_VERSION: "1",
+  PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x31).toString("base64")
+};
 
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
   throw new Error("DATABASE_URL is required for the PostgreSQL integration suite");
@@ -25,6 +31,16 @@ async function rejectsSql(client, sql, params, expectedCode) {
   } finally {
     await client.query("rollback to savepoint expected_failure");
   }
+}
+
+async function connectAsRole(role) {
+  if (!["open_triage_analyst", "open_triage_identified_analyst"].includes(role)) {
+    throw new Error(`Unsupported integration-test role ${role}`);
+  }
+  const roleClient = new pg.Client({ connectionString: databaseUrl });
+  await roleClient.connect();
+  await roleClient.query(`set role ${role}`);
+  return roleClient;
 }
 
 integrationTest("the database foundation runs on a clean PostgreSQL 15+ server", async (t) => {
@@ -213,7 +229,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
 
   await t.test("bootstraps and safely replays a complete synthetic installation", async () => {
     const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
-    const environment = { ...process.env, DATABASE_URL: databaseUrl };
+    const environment = { ...process.env, ...patientKeyEnvironment, DATABASE_URL: databaseUrl };
     const first = await execFileAsync(process.execPath, [bootstrap], { env: environment });
     const second = await execFileAsync(process.execPath, [bootstrap], { env: environment });
     assert.equal(JSON.parse(first.stdout).status, "ready");
@@ -632,6 +648,79 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(healthAfterProjection.last_run_status, "succeeded");
     assert.equal(healthAfterProjection.last_run_processed_count, 1);
     assert.ok(healthAfterProjection.last_successful_run_at instanceof Date);
+
+    const analystClient = await connectAsRole("open_triage_analyst");
+    try {
+      assert.equal((await analystClient.query("select current_user")).rows[0].current_user, "open_triage_analyst");
+      const pseudonymous = await analystClient.query("select patient_key from analytics.epcr where report_id = $1", [ids.report]);
+      assert.equal(pseudonymous.rowCount, 1);
+      await assert.rejects(analystClient.query("select epatient_17 from analytics.epcr limit 1"),
+        (error) => error.code === "42703");
+      await assert.rejects(analystClient.query("select * from analytics.epcr_identified limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(analystClient.query("select * from analytics_private.epcr limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(analystClient.query("select * from clinical.patient limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await analystClient.end();
+    }
+
+    const identifiedClient = await connectAsRole("open_triage_identified_analyst");
+    try {
+      assert.equal((await identifiedClient.query("select current_user")).rows[0].current_user,
+        "open_triage_identified_analyst");
+      const identified = await identifiedClient.query("select epatient_17::text from analytics.epcr_identified where report_id = $1", [ids.report]);
+      assert.equal(identified.rows[0].epatient_17, "1985-07-01");
+      await assert.rejects(identifiedClient.query("select * from analytics_private.epcr limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(identifiedClient.query("select * from clinical.patient limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(identifiedClient.query("select * from integration.outbox_event limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await identifiedClient.end();
+    }
+
+    const originalPatientKey = wide.rows[0].patient_key;
+    const rotatedEnvironment = {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      PATIENT_KEY_INSTALLATION_ID: patientKeyEnvironment.PATIENT_KEY_INSTALLATION_ID,
+      PATIENT_KEY_VERSION: "2",
+      PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x32).toString("base64")
+    };
+    const rotation = await execFileAsync(process.execPath,
+      [path.join(packageRoot, "scripts/rotate-patient-keys.mjs")], { env: rotatedEnvironment });
+    assert.deepEqual(JSON.parse(rotation.stdout), {
+      event: "patient_key_rotation", keyVersion: 2, rotatedPatients: 2
+    });
+    const expectedRotatedKey = derivePatientKey(
+      patientKeyConfigFromEnvironment(rotatedEnvironment), organizationId, ids.patient
+    );
+    const rotated = (await client.query(`select
+      patient.pseudonymous_key, patient.pseudonymous_key_version,
+      wide.patient_key as wide_key, wide.patient_key_version as wide_version,
+      bool_and(repeatable.patient_key = patient.pseudonymous_key) as repeatable_key_matches,
+      bool_and(repeatable.patient_key_version = patient.pseudonymous_key_version) as repeatable_version_matches
+      from clinical.patient patient
+      join clinical.report report on report.patient_id = patient.id
+      join analytics_private.epcr wide on wide.report_id = report.id
+      join analytics_private.epcr_repeatable_element repeatable on repeatable.report_id = report.id
+      where patient.id = $1
+      group by patient.id, wide.reporting_date, wide.report_id`, [ids.patient])).rows[0];
+    assert.notEqual(rotated.pseudonymous_key, originalPatientKey);
+    assert.deepEqual(rotated, {
+      pseudonymous_key: expectedRotatedKey,
+      pseudonymous_key_version: 2,
+      wide_key: expectedRotatedKey,
+      wide_version: 2,
+      repeatable_key_matches: true,
+      repeatable_version_matches: true
+    });
+    const rotationReplay = await execFileAsync(process.execPath,
+      [path.join(packageRoot, "scripts/rotate-patient-keys.mjs")], { env: rotatedEnvironment });
+    assert.equal(JSON.parse(rotationReplay.stdout).rotatedPatients, 0);
 
     const repeatable = await client.query(`select *, tableoid::regclass::text as partition
       from analytics_private.epcr_repeatable_element where report_id = $1

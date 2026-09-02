@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import {
   commandSha256,
   DraftReportValidationError,
@@ -12,11 +13,31 @@ test("draft creation requires offline-safe UUIDv4 identities", () => {
   const command = {
     commandId: randomUUID(), reportId: randomUUID(), incidentId: randomUUID(), patientId: randomUUID(),
     organizationId: randomUUID(), documentingUserId: randomUUID(), formId: randomUUID(),
-    patientIdentityState: "unknown", patientPseudonymousKey: "a".repeat(64)
+    patientIdentityState: "unknown"
   };
   assert.deepEqual(validateCreateDraftReportCommand(command), command);
   assert.throws(() => validateCreateDraftReportCommand({ ...command, reportId: "32000000-0000-3000-8000-000000000001" }),
     (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /reportId.*UUIDv4/.test(finding)));
+  assert.throws(() => validateCreateDraftReportCommand({ ...command, patientPseudonymousKey: "a".repeat(64) }),
+    (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /server-derived/.test(finding)));
+});
+
+test("patient HMAC keys are versioned, stable, and installation scoped", () => {
+  const base = {
+    PATIENT_KEY_INSTALLATION_ID: "10000000-0000-4000-8000-000000000001",
+    PATIENT_KEY_VERSION: "7",
+    PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x5a).toString("base64")
+  };
+  const organizationId = "20000000-0000-4000-8000-000000000001";
+  const patientId = "30000000-0000-4000-8000-000000000001";
+  const first = derivePatientKey(patientKeyConfigFromEnvironment(base), organizationId, patientId);
+  assert.equal(first, derivePatientKey(patientKeyConfigFromEnvironment(base), organizationId, patientId));
+  assert.notEqual(first, derivePatientKey(patientKeyConfigFromEnvironment({
+    ...base, PATIENT_KEY_INSTALLATION_ID: "10000000-0000-4000-8000-000000000002"
+  }), organizationId, patientId));
+  assert.notEqual(first, derivePatientKey(patientKeyConfigFromEnvironment({
+    ...base, PATIENT_KEY_VERSION: "8", PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x6b).toString("base64")
+  }), organizationId, patientId));
 });
 
 test("draft changes accept each sparse typed value and explicit incomplete state", () => {

@@ -30,6 +30,9 @@ fictional installation with one command:
 
 ```sh
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+PATIENT_KEY_INSTALLATION_ID=00000000-0000-4000-8000-000000000001 \
+PATIENT_KEY_VERSION=1 \
+PATIENT_KEY_SECRET_BASE64='<base64-encoded-random-32-byte-secret>' \
   npm run bootstrap:synthetic -w @open-triage/database
 ```
 
@@ -42,7 +45,8 @@ dispatch metadata—no real patient data. It is only loaded by this explicit com
 production API and migration entry points do not import it.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
-incident, patient, and command identities. Incremental autosaves go to
+incident, patient, and command identities. The API derives the analytical patient
+key; clients must not submit one. Incremental autosaves go to
 `POST /api/reports/:id/draft-changes` with an expected revision, stable group and
 occurrence identities, and sparse typed values. `GET /api/reports/:id` returns the
 pinned versions, current revision, groups, and occurrences. Retrying an identical
