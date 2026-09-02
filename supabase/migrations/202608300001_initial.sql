@@ -2833,7 +2833,7 @@ begin
 end;
 $$;
 
-create function retention.verify_archive(candidate_batch_id uuid, object_uri text, object_version text, archive_sha256 text, actor text)
+create function retention.verify_archive(candidate_batch_id uuid, object_uri text, object_version text, candidate_archive_sha256 text, actor text)
 returns void
 language plpgsql
 security definer
@@ -2844,14 +2844,14 @@ begin
   select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
   if selected_batch.status <> 'prepared' then raise exception 'archive batch % is not awaiting verification', candidate_batch_id; end if;
   if left(object_uri, length(selected_batch.destination_uri)) <> selected_batch.destination_uri then raise exception 'archive object must be under approved destination %', selected_batch.destination_uri; end if;
-  if archive_sha256 <> selected_batch.archive_sha256 then raise exception 'verified archive checksum does not match exported canonical NDJSON'; end if;
+  if candidate_archive_sha256 <> selected_batch.archive_sha256 then raise exception 'verified archive checksum does not match exported canonical NDJSON'; end if;
   if length(btrim(object_version)) = 0 or length(btrim(actor)) = 0 then raise exception 'immutable object version and verifier are required'; end if;
   if actor = selected_batch.prepared_by then raise exception 'archive verifier must be independent of the preparing operator'; end if;
   update retention.archive_batch set status = 'archive_verified', archive_object_uri = object_uri,
-    archive_object_version = object_version, archive_sha256 = archive_sha256,
+    archive_object_version = object_version, archive_sha256 = candidate_archive_sha256,
     archive_verified_by = actor, archive_verified_at = now() where id = candidate_batch_id;
   perform retention.append_evidence(candidate_batch_id, 'archive_verified', actor,
-    jsonb_build_object('objectUri', object_uri, 'objectVersion', object_version, 'sha256', archive_sha256));
+    jsonb_build_object('objectUri', object_uri, 'objectVersion', object_version, 'sha256', candidate_archive_sha256));
 end;
 $$;
 
