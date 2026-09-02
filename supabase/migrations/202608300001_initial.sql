@@ -933,7 +933,8 @@ declare
   parent_status text;
 begin
   if tg_op = 'DELETE' and retention.deletion_is_authorized(
-    case when tg_table_name = 'report' then old.id else old.report_id end
+    coalesce((to_jsonb(old)->>'report_id')::uuid,
+      case when tg_table_name = 'report' then (to_jsonb(old)->>'id')::uuid end)
   ) then
     return old;
   end if;
