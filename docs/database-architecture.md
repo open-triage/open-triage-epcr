@@ -30,6 +30,8 @@ and identifies the work that remains before production use.
   identifier is unchanged.
 - Data quality logic flags values but never deletes, clips, winsorizes, or silently
   replaces them. Approved unit normalization is additive and versioned.
+  The initial reviewable rules and analyst/signing contracts are specified in
+  [Quality and normalization policy](quality-normalization-policy.md).
 
 ## Changes implemented on this branch
 
