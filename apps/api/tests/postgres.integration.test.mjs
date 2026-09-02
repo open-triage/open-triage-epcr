@@ -753,4 +753,48 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.equal((await client.query("select count(*)::integer as count from clinical.amendment where report_id = $1", [reportId])).rows[0].count, 1);
   await assert.rejects(client.query("update clinical.amendment set reason = 'mutated' where id = $1", [amended.payload.amendmentId]),
     (error) => error.code === "P0001");
+
+  const history = await client.query(`select event_type, report_revision, amendment_sequence,
+      actor_id, actor_name, actor_persona, session_id, device_id, client_time, history_timestamp,
+      target_type, previous_hash, event_hash
+    from clinical_history.report_history where report_id = $1
+    order by history_timestamp, history_id`, [reportId]);
+  assert.equal(history.rows.filter((row) => row.event_type === "draft-change").length, 8);
+  const signHistory = history.rows.find((row) => row.event_type === "sign");
+  const amendmentHistory = history.rows.find((row) => row.event_type === "amend");
+  assert.deepEqual({
+    report_revision: signHistory.report_revision,
+    actor_id: signHistory.actor_id,
+    actor_name: signHistory.actor_name,
+    actor_persona: signHistory.actor_persona,
+    session_id: signHistory.session_id,
+    device_id: signHistory.device_id,
+    target_type: signHistory.target_type,
+    previous_hash: signHistory.previous_hash
+  }, {
+    report_revision: "8",
+    actor_id: userId,
+    actor_name: "Clinician",
+    actor_persona: "clinician",
+    session_id: "integration-signing",
+    device_id: "unit-7",
+    target_type: "signed_snapshot",
+    previous_hash: null
+  });
+  assert.deepEqual({
+    report_revision: amendmentHistory.report_revision,
+    amendment_sequence: amendmentHistory.amendment_sequence,
+    actor_id: amendmentHistory.actor_id,
+    target_type: amendmentHistory.target_type,
+    previous_hash: amendmentHistory.previous_hash
+  }, {
+    report_revision: "8",
+    amendment_sequence: 1,
+    actor_id: userId,
+    target_type: "amendment",
+    previous_hash: signHistory.event_hash
+  });
+  assert.ok(signHistory.client_time instanceof Date);
+  assert.ok(signHistory.history_timestamp instanceof Date);
+  assert.ok(amendmentHistory.history_timestamp instanceof Date);
 });

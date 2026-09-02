@@ -8,8 +8,12 @@ create schema if not exists clinical_audit;
 create schema if not exists integration;
 create schema if not exists analytics_private;
 create schema if not exists analytics;
+create schema if not exists operations;
+create schema if not exists clinical_history;
 
 revoke all on schema analytics_private from public;
+revoke all on schema operations from public;
+revoke all on schema clinical_history from public;
 
 create function public.prevent_update_or_delete()
 returns trigger
@@ -2327,6 +2331,144 @@ select
   effective_from
 from app_identity.agency_demographic_version;
 
+create view operations.unsigned_report_work_queue
+with (security_barrier = true)
+as
+select
+  r.id as report_id,
+  r.organization_id,
+  r.incident_id,
+  r.patient_id,
+  r.documenting_user_id,
+  u.display_name as documenting_user_name,
+  r.status as report_status,
+  i.operational_state as incident_operational_state,
+  case
+    when lower(i.operational_state) in ('cleared', 'complete', 'completed', 'closed')
+      then 'cleared-unsigned'
+    else 'active'
+  end as work_status,
+  r.revision,
+  r.created_at,
+  r.updated_at as last_activity_at,
+  clock_timestamp() - r.updated_at as age
+from clinical.report r
+join clinical.incident i on i.id = r.incident_id
+join app_identity.app_user u on u.id = r.documenting_user_id
+where r.status = 'draft';
+
+create view clinical_history.report_history
+with (security_barrier = true)
+as
+select
+  'draft-change:' || rc.id::text as history_id,
+  r.organization_id,
+  rc.report_id,
+  null::bigint as report_sequence,
+  'draft-change'::text as event_type,
+  rc.revision as report_revision,
+  null::integer as amendment_sequence,
+  rc.author_id as actor_id,
+  u.display_name as actor_name,
+  null::text as actor_persona,
+  null::text as session_id,
+  rc.device_id,
+  rc.client_time,
+  rc.server_received_time as history_timestamp,
+  'report'::text as target_type,
+  rc.report_id::text as target_id,
+  null::jsonb as prior_value,
+  rc.changes as new_value,
+  null::text as previous_hash,
+  null::text as event_hash
+from clinical.report_change rc
+join clinical.report r on r.id = rc.report_id
+left join app_identity.app_user u on u.id = rc.author_id
+union all
+select
+  'signed-snapshot:' || ss.id::text as history_id,
+  r.organization_id,
+  ss.report_id,
+  e.report_sequence,
+  'sign'::text as event_type,
+  ss.signed_revision as report_revision,
+  null::integer as amendment_sequence,
+  ss.signer_id as actor_id,
+  u.display_name as actor_name,
+  e.actor_persona,
+  e.session_id,
+  e.device_id,
+  e.client_time,
+  ss.signed_at as history_timestamp,
+  'signed_snapshot'::text as target_type,
+  ss.id::text as target_id,
+  e.prior_value,
+  coalesce(e.new_value, jsonb_build_object(
+    'snapshotId', ss.id,
+    'signedRevision', ss.signed_revision,
+    'canonicalSha256', ss.canonical_sha256,
+    'attestation', ss.attestation,
+    'warningAcknowledgements', ss.warning_acknowledgements
+  )) as new_value,
+  e.previous_hash,
+  e.event_hash
+from clinical.signed_snapshot ss
+join clinical.report r on r.id = ss.report_id
+left join clinical_audit.event e
+  on e.report_id = ss.report_id
+  and e.action = 'sign'
+  and e.target_type = 'signed_snapshot'
+  and e.target_id = ss.id::text
+left join app_identity.app_user u on u.id = ss.signer_id
+union all
+select
+  'amendment:' || a.id::text as history_id,
+  r.organization_id,
+  a.report_id,
+  e.report_sequence,
+  'amend'::text as event_type,
+  ss.signed_revision as report_revision,
+  a.sequence as amendment_sequence,
+  a.author_id as actor_id,
+  u.display_name as actor_name,
+  e.actor_persona,
+  e.session_id,
+  e.device_id,
+  e.client_time,
+  a.signed_at as history_timestamp,
+  'amendment'::text as target_type,
+  a.id::text as target_id,
+  e.prior_value,
+  coalesce(e.new_value, jsonb_build_object(
+    'amendmentId', a.id,
+    'amendmentSequence', a.sequence,
+    'canonicalSha256', a.canonical_sha256,
+    'reason', a.reason,
+    'attestation', a.attestation,
+    'changes', (
+      select jsonb_agg(jsonb_build_object(
+        'action', ac.action,
+        'targetElementOccurrenceId', ac.target_element_occurrence_id,
+        'targetPath', ac.target_path,
+        'originalValue', ac.original_value,
+        'correctedValue', ac.corrected_value
+      ) order by ac.id)
+      from clinical.amendment_change ac
+      where ac.amendment_id = a.id
+    )
+  )) as new_value,
+  e.previous_hash,
+  e.event_hash
+from clinical.amendment a
+join clinical.report r on r.id = a.report_id
+join clinical.signed_snapshot ss on ss.report_id = a.report_id
+left join clinical_audit.event e
+  on e.report_id = a.report_id
+  and e.action = 'amend'
+  and e.target_type = 'amendment'
+  and e.target_id = a.id::text
+left join app_identity.app_user u on u.id = a.author_id;
+
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'open_triage_analyst') then
@@ -2337,6 +2479,12 @@ begin
   end if;
   if not exists (select 1 from pg_roles where rolname = 'open_triage_projector') then
     create role open_triage_projector nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'open_triage_operational') then
+    create role open_triage_operational nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'open_triage_auditor') then
+    create role open_triage_auditor nologin;
   end if;
 end;
 $$;
@@ -2352,9 +2500,21 @@ grant select, update on integration.outbox_event to open_triage_projector;
 grant usage on schema clinical, forms, catalog, app_identity to open_triage_projector;
 grant select on all tables in schema clinical, forms, catalog, app_identity to open_triage_projector;
 grant execute on function analytics_private.ensure_partitions(date, date) to open_triage_projector;
+revoke all on all tables in schema operations from public;
+revoke all on all tables in schema clinical_history from public;
+revoke all on schema clinical_audit from public;
+revoke all on all tables in schema clinical_audit from public;
+grant usage on schema operations to open_triage_operational;
+grant select on operations.unsigned_report_work_queue to open_triage_operational;
+grant usage on schema clinical_history to open_triage_auditor;
+grant select on clinical_history.report_history to open_triage_auditor;
 
 comment on schema analytics is 'Stable, read-only analyst interfaces. Base projections are private.';
+comment on schema operations is 'Access-controlled live operational interfaces; these rows are never clinical analytics.';
+comment on schema clinical_history is 'Access-controlled immutable report history assembled from append-only clinical records.';
 comment on view analytics.epcr is 'One effective signed ePCR row; direct identifiers and narrative are excluded.';
 comment on view analytics.epcr_repeatable_element is 'One effective signed repeatable element occurrence row; identifying elements are excluded.';
 comment on view analytics.epcr_identified is 'Privileged one-row-per-ePCR view including identifying values and narrative.';
+comment on view operations.unsigned_report_work_queue is 'Active and cleared-but-unsigned, unexpired reports with live status and age.';
+comment on view clinical_history.report_history is 'Draft revisions and hash-chained signing and amendment events, including actors and timestamps.';
 comment on table integration.outbox_event is 'Transactional source for the at-most-five-minute analytical projection.';

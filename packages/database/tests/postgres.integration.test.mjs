@@ -282,6 +282,92 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
+  await t.test("isolates live unsigned work and immutable report history by role", async () => {
+    const reportId = "32000000-0000-4000-8000-00000000000e";
+    const incidentId = "32000000-0000-4000-8000-00000000000c";
+    const clinicianId = "32000000-0000-4000-8000-000000000003";
+    await client.query("update clinical.incident set operational_state = 'cleared' where id = $1", [incidentId]);
+    await client.query(`insert into clinical.report_change
+      (report_id, revision, idempotency_key, author_id, device_id, client_time,
+       server_received_time, changes)
+      values ($1, 1, '41000000-0000-4000-8000-000000000001', $2, 'unit-41',
+        '2041-01-02T12:00:00Z', '2041-01-02T12:00:01Z',
+        '[{"operation":"replace","path":"eRecord.01"}]')`, [reportId, clinicianId]);
+
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_operational");
+      const queue = await client.query(`select report_id, report_status,
+        incident_operational_state, work_status, revision, age
+        from operations.unsigned_report_work_queue where report_id = $1`, [reportId]);
+      assert.equal(queue.rowCount, 1);
+      assert.deepEqual({
+        report_id: queue.rows[0].report_id,
+        report_status: queue.rows[0].report_status,
+        incident_operational_state: queue.rows[0].incident_operational_state,
+        work_status: queue.rows[0].work_status,
+        revision: queue.rows[0].revision
+      }, {
+        report_id: reportId,
+        report_status: "draft",
+        incident_operational_state: "cleared",
+        work_status: "cleared-unsigned",
+        revision: "0"
+      });
+      assert.ok(queue.rows[0].age);
+      await assert.rejects(client.query("select * from clinical_history.report_history limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await client.query("rollback");
+    }
+
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_auditor");
+      const history = await client.query(`select event_type, report_revision, actor_id,
+        device_id, client_time, history_timestamp, new_value
+        from clinical_history.report_history where report_id = $1`, [reportId]);
+      assert.equal(history.rowCount, 1);
+      assert.deepEqual({
+        event_type: history.rows[0].event_type,
+        report_revision: history.rows[0].report_revision,
+        actor_id: history.rows[0].actor_id,
+        device_id: history.rows[0].device_id
+      }, {
+        event_type: "draft-change",
+        report_revision: "1",
+        actor_id: clinicianId,
+        device_id: "unit-41"
+      });
+      assert.ok(history.rows[0].client_time instanceof Date);
+      assert.ok(history.rows[0].history_timestamp instanceof Date);
+      assert.deepEqual(history.rows[0].new_value,
+        [{ operation: "replace", path: "eRecord.01" }]);
+      await assert.rejects(client.query("select * from operations.unsigned_report_work_queue limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await client.query("rollback");
+    }
+
+    const analyticalLeak = await client.query(`select
+      (select count(*)::integer from analytics.epcr where report_id = $1) as wide,
+      (select count(*)::integer from analytics.epcr_repeatable_element where report_id = $1) as repeatable`,
+    [reportId]);
+    assert.deepEqual(analyticalLeak.rows[0], { wide: 0, repeatable: 0 });
+
+    await client.query("begin");
+    try {
+      await rejectsSql(client,
+        "update clinical.report_change set changes = '[]' where report_id = $1 and revision = 1",
+        [reportId], "P0001");
+      await rejectsSql(client,
+        "delete from clinical.report_change where report_id = $1 and revision = 1",
+        [reportId], "P0001");
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("projects one signed report from the outbox into lossless analyst contracts", async () => {
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
