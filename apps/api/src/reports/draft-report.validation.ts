@@ -135,9 +135,7 @@ export function validateCreateDraftReportCommand(value: unknown): CreateDraftRep
   if (!["known", "unknown", "temporary", "unavailable"].includes(String(value.patientIdentityState))) {
     findings.push("patientIdentityState is invalid");
   }
-  if (typeof value.patientPseudonymousKey !== "string" || !/^[a-f0-9]{64}$/.test(value.patientPseudonymousKey)) {
-    findings.push("patientPseudonymousKey must be a lowercase SHA-256 digest");
-  }
+  if ("patientPseudonymousKey" in value) findings.push("patientPseudonymousKey is server-derived and must be omitted");
   if (findings.length) throw new DraftReportValidationError(findings);
   return value as unknown as CreateDraftReportCommand;
 }

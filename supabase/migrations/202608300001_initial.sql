@@ -312,7 +312,7 @@ create table forms.custom_element_definition (
   slug text not null,
   title text not null,
   base_datatype text not null check (base_datatype in ('string', 'integer', 'decimal', 'boolean', 'date', 'dateTime', 'time', 'duration', 'binary', 'anyURI')),
-  identifying boolean not null default false,
+  identifying boolean not null,
   definition jsonb not null,
   created_at timestamptz not null default now(),
   retired_at timestamptz,
@@ -2001,6 +2001,7 @@ select
   eother_01_display,
   eother_01_system,
   eother_01_terminology_version,
+  eother_08,
   eoutcome_01,
   eoutcome_01_display,
   eoutcome_01_system,
@@ -2601,6 +2602,12 @@ $$;
 
 revoke all on all tables in schema analytics_private from public;
 revoke all on all tables in schema analytics from public;
+revoke all on schema app_identity, catalog, forms, clinical, clinical_audit, integration,
+  analytics_private, analytics, operations, clinical_history
+  from open_triage_analyst, open_triage_identified_analyst;
+revoke all on all tables in schema app_identity, catalog, forms, clinical, clinical_audit,
+  integration, analytics_private, analytics, operations, clinical_history
+  from open_triage_analyst, open_triage_identified_analyst;
 grant usage on schema analytics to open_triage_analyst, open_triage_identified_analyst;
 grant select on analytics.epcr, analytics.epcr_repeatable_element, analytics.element_dictionary, analytics.agency to open_triage_analyst;
 grant select on analytics.epcr, analytics.epcr_repeatable_element, analytics.element_dictionary, analytics.agency, analytics.epcr_identified, analytics.epcr_repeatable_element_identified to open_triage_identified_analyst;

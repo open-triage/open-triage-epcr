@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [mapping, migration, catalog, scheduler, runbook] = await Promise.all([
+const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "deploy/kubernetes/analytics-projector-cronjobs.yaml"), "utf8"),
-  readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8")
+  readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
+  readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
+  readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse)
 ]);
 
 test("maps every PatientCareReport element to exactly one analytical location", () => {
@@ -25,7 +27,7 @@ test("maps every PatientCareReport element to exactly one analytical location", 
     patientCareReportElements: 441,
     wideElements: 198,
     repeatableElements: 243,
-    identifyingElements: 43,
+    identifyingElements: 36,
     repeatingGroups: 34,
     repeatingGroupsWithOneLocalTimeCandidate: 11,
     repeatingGroupsFlaggedForZeroOrMultipleCandidates: 23
@@ -130,4 +132,18 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
+});
+
+test("records the human-approved privacy boundary", () => {
+  assert.equal(identifyingConfig.policyVersion, "privacy-boundary-1.0.0");
+  assert.equal(identifyingConfig.reviewStatus, "approved-human-privacy-security-review");
+  assert.equal(identifyingConfig.elements.length, 36);
+  assert.match(privacyPolicy, /approved on 2026-09-02 by the requesting human reviewer/i);
+  for (const decision of ["Identifying classification", "HMAC inputs", "Secret custody", "Rotation"]) {
+    assert.ok(privacyPolicy.includes(decision), `privacy policy is missing ${decision}`);
+  }
+  assert.match(migration, /revoke all on schema app_identity, catalog, forms, clinical, clinical_audit, integration,[\s\S]*from open_triage_analyst, open_triage_identified_analyst/);
+  assert.match(migration, /grant select on analytics\.epcr, analytics\.epcr_repeatable_element, analytics\.element_dictionary, analytics\.agency to open_triage_analyst/);
+  assert.ok(!migration.includes("grant select on analytics.epcr_identified to open_triage_analyst"));
+  assert.match(migration, /identifying boolean not null,\n  definition jsonb not null/);
 });
