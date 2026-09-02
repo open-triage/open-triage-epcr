@@ -34,7 +34,7 @@ NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo npm run build -w @open-triage/web
 npm run test:deployment -w @open-triage/web
 ```
 
-Pushes and pull requests targeting `first-mvp` run the `Verify static prototype`
+Pushes and pull requests targeting `main` run the `Verify static prototype`
 workflow. It type-checks, lints, tests, exports, and exercises the browser-only
 journey before uploading `apps/web/out` as the `static-prototype` workflow
 artifact. A successful workflow run does **not** update GitHub Pages by itself.

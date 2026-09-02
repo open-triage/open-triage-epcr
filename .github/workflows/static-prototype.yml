@@ -2,9 +2,9 @@ name: Verify static prototype
 
 on:
   push:
-    branches: [first-mvp]
+    branches: [main]
   pull_request:
-    branches: [first-mvp]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
