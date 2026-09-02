@@ -1,7 +1,9 @@
 {
   "schemaVersion": "1.0.0",
-  "policyVersion": "database-operations-1.0.0-proposed",
-  "reviewStatus": "pending-installation-owner-approval",
+  "policyVersion": "database-operations-1.0.0",
+  "reviewStatus": "approved-installation-owner",
+  "approvedBy": "requesting human reviewer acting as the delegating installation owner in the ticket 044 Codex session",
+  "approvedOn": "2026-09-02",
   "backup": {
     "destinationTemplate": "s3://open-triage-database-backups/<installation-id>/",
     "accountBoundary": "separate-security-account",

@@ -1,7 +1,6 @@
 # Database recovery and reporting operations
 
-Do not deploy these defaults until the installation owner approves
-`database-operations-1.0.0-proposed` in the
+The installation owner approved `database-operations-1.0.0` on 2026-09-02 in the
 [database operations policy](../database-operations-policy.md). Bind the approved
 bucket, KMS key, PostgreSQL endpoints, identity provider, and monitoring targets
 through deployment secrets; never commit credentials or restored data.

@@ -276,9 +276,12 @@ test("requires approved archive-before-delete retention with durable evidence", 
   assert.match(retentionScript, /export checksum mismatch/);
 });
 
-test("proposes explicit backup, recovery, replica, credential, and query-audit operations", () => {
-  assert.equal(operationsPolicyConfig.policyVersion, "database-operations-1.0.0-proposed");
-  assert.equal(operationsPolicyConfig.reviewStatus, "pending-installation-owner-approval");
+test("records approved backup, recovery, replica, credential, and query-audit operations", () => {
+  assert.equal(operationsPolicyConfig.policyVersion, "database-operations-1.0.0");
+  assert.equal(operationsPolicyConfig.reviewStatus, "approved-installation-owner");
+  assert.equal(operationsPolicyConfig.approvedBy,
+    "requesting human reviewer acting as the delegating installation owner in the ticket 044 Codex session");
+  assert.equal(operationsPolicyConfig.approvedOn, "2026-09-02");
   assert.deepEqual(operationsPolicyConfig.recoveryObjectives, {
     rpoMinutes: 5,
     rtoHours: 4,
@@ -296,6 +299,9 @@ test("proposes explicit backup, recovery, replica, credential, and query-audit o
     "Credential lifecycle", "Monitoring and query audit"]) {
     assert.ok(operationsPolicy.includes(decision), `operations policy is missing ${decision}`);
   }
+  assert.match(operationsPolicy, /approved by the installation owner on 2026-09-02/i);
+  assert.match(operationsPolicy,
+    /requesting human reviewer acting as the delegating[\s\S]*installation owner in the ticket 044 Codex session/i);
   for (const object of ["operations.query_audit_event", "operations.query_audit_health",
     "operations.recovery_readiness", "operations.reporting_replica_health"]) {
     assert.ok(migration.includes(object), `migration is missing ${object}`);

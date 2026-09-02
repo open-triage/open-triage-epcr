@@ -1,15 +1,17 @@
 # Database backup, recovery, replica, and query-audit policy
 
-Status: **pending installation-owner approval**  
-Policy version: `database-operations-1.0.0-proposed`
+Status: **approved by the installation owner on 2026-09-02**
+Policy version: `database-operations-1.0.0`
 
-This is the review artifact for ticket 044. The machine-readable values are in
-`packages/database/config/database-operations-policy.json`; changing an approved
+This is the approved review artifact for ticket 044. The requesting human reviewer,
+acting as the delegating installation owner, approved every decision below on
+2026-09-02 without changing its proposed value. The machine-readable values are
+in `packages/database/config/database-operations-policy.json`; changing an approved
 deployment choice requires a new policy version and another owner review.
 
-## Proposed decisions
+## Approved decisions
 
-| Decision | Proposed policy |
+| Decision | Approved policy |
 | --- | --- |
 | Backup storage | Continuous PostgreSQL WAL archiving plus a physical base backup every 24 hours to `s3://open-triage-database-backups/<installation-id>/`. The bucket is in a separate security account, encrypted with a deployment KMS key, versioned, and protected by Object Lock compliance mode. Retain backup material for 35 days. |
 | Recovery objectives | Recovery point objective: 5 minutes. Recovery time objective: 4 hours. Complete a production-equivalent restore exercise every 90 days and retain its non-clinical evidence. |
@@ -54,3 +56,11 @@ tables remain inaccessible.
 
 See [Database recovery and reporting operations](runbooks/database-operations.md)
 for the executable exercise and deployment checks.
+
+## Approval record
+
+Approved on 2026-09-02 by the requesting human reviewer acting as the delegating
+installation owner in the ticket 044 Codex session. The approval promotes the
+unchanged proposal to `database-operations-1.0.0` and covers backup storage,
+recovery objectives, reporting-replica topology, credential lifecycle, and the
+monitoring/query-audit mechanism and privacy boundary.
