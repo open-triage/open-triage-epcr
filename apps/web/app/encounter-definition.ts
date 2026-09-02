@@ -2,7 +2,6 @@ export type NemsisReference = `e${string}`;
 export type ConfiguredEventType = "vitals" | "medication" | "procedure" | "note";
 export type QuickActionId = ConfiguredEventType | "patient";
 export type ReviewSeverity = "error" | "warning";
-export type PatientChoiceGroup = "medicalHistory" | "currentMedications" | "allergies";
 export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
 export type VitalNullValue = string;
@@ -132,14 +131,10 @@ export type EncounterDefinition = {
   readonly dates: { readonly clinicalDate: string; readonly currentTime: string };
   readonly labels: {
     readonly prototypeStatus: string; readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
-    readonly patientName: string; readonly age: string; readonly sex: string; readonly medicalHistory: string;
-    readonly currentMedications: string; readonly allergies: string; readonly savePatient: string;
+    readonly savePatient: string;
   };
   readonly patient: {
     readonly quickAction: { readonly visible: boolean; readonly label: string; readonly title: string };
-    readonly initial: { readonly name: string; readonly age: number; readonly sex: string; readonly identifier: string; readonly medicalHistory: ReadonlyArray<string>; readonly currentMedications: ReadonlyArray<string>; readonly allergies: ReadonlyArray<string> };
-    readonly references: { readonly name: NemsisReference; readonly age: NemsisReference; readonly sex: NemsisReference; readonly identifier: NemsisReference };
-    readonly choices: Record<PatientChoiceGroup, ReadonlyArray<{ readonly label: string; readonly reference: NemsisReference }>>;
   };
   readonly dispatch: {
     readonly crew: string;
@@ -203,20 +198,12 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   };
   rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "dates", "labels", "patient", "dispatch", "composition", "events"]);
   requiredStrings(root.dates, "dates", ["clinicalDate", "currentTime"]);
-  requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "patientName", "age", "sex", "medicalHistory", "currentMedications", "allergies", "savePatient"]);
+  requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
   const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
   if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");
   requiredStrings(patientQuickAction, "patient.quickAction", ["label", "title"]);
-  requiredStrings(patient.initial, "patient.initial", ["name", "sex", "identifier"]);
-  if (!isRecord(patient.initial) || typeof patient.initial.age !== "number" || patient.initial.age < 0) diagnostics.push("patient.initial.age must be a non-negative number");
-  for (const group of ["medicalHistory", "currentMedications", "allergies"] as const) if (!isRecord(patient.initial) || !Array.isArray(patient.initial[group])) diagnostics.push(`patient.initial.${group} must be an array`);
-  requiredStrings(patient.references, "patient.references", ["name", "age", "sex", "identifier"]);
-  const choices = isRecord(patient.choices) ? patient.choices : {};
-  for (const group of ["medicalHistory", "currentMedications", "allergies"] as const) {
-    if (!Array.isArray(choices[group])) diagnostics.push(`patient.choices.${group} must be an array`);
-    else choices[group].forEach((choice, index) => requiredStrings(choice, `patient.choices.${group}[${index}]`, ["label", "reference"]));
-  }
+  rejectUnsupportedKeys(patient, "patient", ["quickAction"]);
   const dispatch = isRecord(root.dispatch) ? root.dispatch : {};
   requiredStrings(dispatch, "dispatch", ["crew"]);
   requiredStrings(dispatch.incident, "dispatch.incident", ["number", "complaint", "address"]);

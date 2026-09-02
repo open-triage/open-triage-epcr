@@ -12,16 +12,9 @@ const medicationMetadata = medicationElementMetadata(medicationReferences);
 export const standardEncounterDefinition = {
   schemaVersion: 1, id: "standard-encounter-v1", version: 1, synthetic: true,
   dates: { clinicalDate: "2026-04-18", currentTime: "07:51" },
-  labels: { prototypeStatus: "Prototype", incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", patientName: "Patient name", age: "Age", sex: "Sex", medicalHistory: "Medical history", currentMedications: "Current medications", allergies: "Medication allergies", savePatient: "Save patient" },
+  labels: { prototypeStatus: "Prototype", incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", savePatient: "Save patient" },
   patient: {
     quickAction: { visible: true, label: "Edit patient information", title: "Patient information" },
-    initial: { name: "Rivera, Jordan", age: 54, sex: "X", identifier: "SYNTHETIC-0001", medicalHistory: [], currentMedications: [], allergies: [] },
-    references: { name: "ePatient.02", age: "ePatient.15", sex: "ePatient.13", identifier: "ePatient.01" },
-    choices: {
-      medicalHistory: ["Hypertension", "Diabetes", "COPD / chronic lung disease", "Stroke / TIA", "Seizure disorder", "No known medical history"].map((label) => ({ label, reference: "eHistory.08" as const })),
-      currentMedications: ["Antihypertensive", "Anticoagulant", "Insulin", "Inhaler", "No current medications"].map((label) => ({ label, reference: "eHistory.12" as const })),
-      allergies: [...["Penicillin", "Sulfonamides", "NSAIDs", "Opioids"].map((label) => ({ label, reference: "eHistory.06" as const })), { label: "No known drug allergies", reference: "eHistory.06 PN" }],
-    },
   },
   dispatch: {
     crew: "AN", incident: { number: "SYN-2026-0418-113 · 3-9-7-4-0", complaint: "Medical assistance requested", address: "100 Example Avenue, Unit 3 (fictional)" },

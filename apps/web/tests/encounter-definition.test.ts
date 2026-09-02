@@ -9,9 +9,8 @@ test("validates and serves the bundled versioned encounter definition", () => {
 
   assert.equal(definition.schemaVersion, 1);
   assert.equal(definition.version, 1);
-  assert.equal(definition.patient.initial.name, "Rivera, Jordan");
   assert.equal(definition.dispatch.incident.complaint, "Medical assistance requested");
-  assert.equal(definition.patient.references.name, "ePatient.02");
+  assert.equal(definition.patient.quickAction.label, "Edit patient information");
   assert.equal(definition.dispatch.references.complaint, "eDispatch.01");
   assert.equal(definition.events.note.quickAction.visible, true);
   assert.equal(definition.events.note.quickAction.label, "Add clinical note");

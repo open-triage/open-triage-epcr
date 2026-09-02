@@ -1,25 +1,60 @@
 "use client";
 
-import { useState, type RefObject } from "react";
-import type { Encounter } from "../app/standard-encounter";
-import type { EncounterDefinition, PatientChoiceGroup } from "../app/encounter-definition";
+import { useMemo, useState, type RefObject } from "react";
+import type { EncounterDocument } from "@open-triage/contracts";
+import type { EncounterDefinition } from "../app/encounter-definition";
+import {
+  patientDraftFromDocument,
+  patientEditorField,
+  updatePatientDocument,
+  type PatientChoice,
+  type PatientDraft,
+  type PatientFieldId,
+  type PatientScalarFieldId,
+} from "../app/patient-document";
 
-type Patient = Encounter["patient"];
-export function PatientDialog({ patient, definition, dialogRef, onClose, onSave }: {
-  readonly patient: Patient;
+export function PatientDialog({ document, definition, dialogRef, onClose, onSave }: {
+  readonly document: EncounterDocument;
   readonly definition: EncounterDefinition;
   readonly dialogRef: RefObject<HTMLElement | null>;
   readonly onClose: () => void;
-  readonly onSave: (patient: Patient) => void;
+  readonly onSave: (document: EncounterDocument) => void;
 }) {
-  const [draft, setDraft] = useState(patient);
+  const [draft, setDraft] = useState(() => patientDraftFromDocument(document));
+  const fields = useMemo(() => Object.fromEntries(
+    (["identifier", "lastName", "firstName", "age", "sex", "medicalHistory", "currentMedications", "allergies"] as const).map((id) => [id, patientEditorField(id)]),
+  ) as Record<PatientFieldId, ReturnType<typeof patientEditorField>>, []);
 
-  function toggle(group: PatientChoiceGroup, label: string) {
-    setDraft((current) => ({
-      ...current,
-      [group]: current[group].includes(label) ? current[group].filter((item) => item !== label) : [...current[group], label],
-    }));
+  function toggle(group: "medicalHistory" | "currentMedications" | "allergies", choice: PatientChoice) {
+    setDraft((current) => {
+      const selected = current[group].some((item) => item.kind === choice.kind && item.code === choice.code);
+      const next = selected
+        ? current[group].filter((item) => item.kind !== choice.kind || item.code !== choice.code)
+        : choice.kind === "coded"
+          ? [...current[group].filter((item) => item.kind === "coded"), choice]
+          : [choice];
+      return { ...current, [group]: next };
+    });
   }
+
+  const scalar = (id: "identifier" | "lastName" | "firstName", value: string) => setDraft((current) => ({ ...current, [id]: value, absence: { ...current.absence, [id]: undefined } }));
+  const setAbsence = (id: PatientScalarFieldId, value: string) => setDraft((current) => ({
+    ...current,
+    absence: { ...current.absence, [id]: fields[id].choices.find((choice) => `${choice.kind}:${choice.code}` === value) },
+  }));
+  const ageConstraints = fields.age.datatype.constraints;
+  const sexValue = draft.sex ? `${draft.sex.kind}:${draft.sex.code}` : "";
+  const scalarValid = (id: PatientScalarFieldId, value: string | number) => {
+    if (draft.absence[id]) return true;
+    const constraints = fields[id].datatype.constraints;
+    if (typeof value === "number") return Number.isInteger(value)
+      && (typeof constraints.minInclusive !== "number" || value >= constraints.minInclusive)
+      && (typeof constraints.maxInclusive !== "number" || value <= constraints.maxInclusive);
+    return (!value || typeof constraints.minLength !== "number" || value.length >= constraints.minLength)
+      && (typeof constraints.maxLength !== "number" || value.length <= constraints.maxLength);
+  };
+  const canSave = scalarValid("identifier", draft.identifier) && scalarValid("lastName", draft.lastName)
+    && scalarValid("firstName", draft.firstName) && scalarValid("age", draft.age);
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -28,40 +63,55 @@ export function PatientDialog({ patient, definition, dialogRef, onClose, onSave 
           <div><p className="eyebrow">{definition.labels.patientDialogEyebrow}</p><h2 id="patient-dialog-title">{definition.labels.patientDialogTitle}</h2></div>
           <button aria-label="Close patient information" type="button" onClick={onClose}>×</button>
         </div>
-        <label>
-          {definition.labels.patientName}
-          <input data-dialog-initial-focus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </label>
+        <label>{fields.identifier.label}<input data-dialog-initial-focus minLength={Number(fields.identifier.datatype.constraints.minLength)} maxLength={Number(fields.identifier.datatype.constraints.maxLength)} value={draft.identifier} onChange={(event) => scalar("identifier", event.target.value)} /></label>
         <div className="patient-demographic-row">
-          <label>{definition.labels.age}<input inputMode="numeric" type="number" min="0" max="130" value={draft.age} onChange={(event) => setDraft({ ...draft, age: Number(event.target.value) })} /></label>
-          <label>{definition.labels.sex}<select value={draft.sex} onChange={(event) => setDraft({ ...draft, sex: event.target.value })}><option value="">Select…</option><option value="F">Female</option><option value="M">Male</option><option value="X">Other / unknown</option></select></label>
+          <label>{fields.lastName.label}<input disabled={!!draft.absence.lastName} value={draft.lastName} onChange={(event) => scalar("lastName", event.target.value)} /><AvailabilitySelect field={fields.lastName} value={draft.absence.lastName} onChange={(value) => setAbsence("lastName", value)} /></label>
+          <label>{fields.firstName.label}<input disabled={!!draft.absence.firstName} value={draft.firstName} onChange={(event) => scalar("firstName", event.target.value)} /><AvailabilitySelect field={fields.firstName} value={draft.absence.firstName} onChange={(value) => setAbsence("firstName", value)} /></label>
         </div>
-        <PatientChoices title={definition.labels.medicalHistory} group="medicalHistory" choices={definition.patient.choices.medicalHistory} selected={draft.medicalHistory} onToggle={toggle} />
-        <PatientChoices title={definition.labels.currentMedications} group="currentMedications" choices={definition.patient.choices.currentMedications} selected={draft.currentMedications} onToggle={toggle} />
-        <PatientChoices title={definition.labels.allergies} group="allergies" choices={definition.patient.choices.allergies} selected={draft.allergies} onToggle={toggle} />
+        <div className="patient-demographic-row">
+          <label>{fields.age.label}<input disabled={!!draft.absence.age} inputMode="numeric" type="number" min={Number(ageConstraints.minInclusive)} max={Number(ageConstraints.maxInclusive)} value={draft.age} onChange={(event) => setDraft({ ...draft, age: Number(event.target.value), absence: { ...draft.absence, age: undefined } })} /><AvailabilitySelect field={fields.age} value={draft.absence.age} onChange={(value) => setAbsence("age", value)} /></label>
+          <label>{fields.sex.label}<select value={sexValue} onChange={(event) => setDraft({ ...draft, sex: fields.sex.choices.find((choice) => `${choice.kind}:${choice.code}` === event.target.value) ?? null })}>
+            <option value="">Select…</option>
+            {fields.sex.choices.map((choice) => <option key={`${choice.kind}:${choice.code}`} value={`${choice.kind}:${choice.code}`}>{choice.label}</option>)}
+          </select></label>
+        </div>
+        <PatientChoices field={fields.medicalHistory} selected={draft.medicalHistory} onToggle={(choice) => toggle("medicalHistory", choice)} />
+        <PatientChoices field={fields.currentMedications} selected={draft.currentMedications} onToggle={(choice) => toggle("currentMedications", choice)} />
+        <PatientChoices field={fields.allergies} selected={draft.allergies} onToggle={(choice) => toggle("allergies", choice)} />
         <div className="note-dialog-actions">
           <button type="button" onClick={onClose}>Cancel</button>
-          <button type="button" onClick={() => onSave(draft)}>{definition.labels.savePatient}</button>
+          <button type="button" disabled={!canSave} onClick={() => onSave(updatePatientDocument(document, draft))}>{definition.labels.savePatient}</button>
         </div>
       </section>
     </div>
   );
 }
 
-function PatientChoices({ title, group, choices, selected, onToggle }: {
-  readonly title: string;
-  readonly group: PatientChoiceGroup;
-  readonly choices: EncounterDefinition["patient"]["choices"][PatientChoiceGroup];
-  readonly selected: ReadonlyArray<string>;
-  readonly onToggle: (group: PatientChoiceGroup, label: string) => void;
+function AvailabilitySelect({ field, value, onChange }: {
+  readonly field: ReturnType<typeof patientEditorField>;
+  readonly value?: PatientChoice;
+  readonly onChange: (value: string) => void;
+}) {
+  const choices = field.choices.filter(({ kind }) => kind !== "coded");
+  if (!choices.length) return null;
+  return <select aria-label={`${field.label} availability`} value={value ? `${value.kind}:${value.code}` : ""} onChange={(event) => onChange(event.target.value)}>
+    <option value="">Documented</option>
+    {choices.map((choice) => <option key={`${choice.kind}:${choice.code}`} value={`${choice.kind}:${choice.code}`}>{choice.label}</option>)}
+  </select>;
+}
+
+function PatientChoices({ field, selected, onToggle }: {
+  readonly field: ReturnType<typeof patientEditorField>;
+  readonly selected: PatientDraft["medicalHistory"];
+  readonly onToggle: (choice: PatientChoice) => void;
 }) {
   return (
     <fieldset className="patient-choice-group">
-      <legend>{title}</legend>
+      <legend>{field.label}</legend>
       <div>
-        {choices.map((choice) => (
-          <label key={choice.label}>
-            <input type="checkbox" checked={selected.includes(choice.label)} onChange={() => onToggle(group, choice.label)} />
+        {field.choices.map((choice) => (
+          <label key={`${choice.kind}:${choice.code}`}>
+            <input type="checkbox" checked={selected.some((item) => item.kind === choice.kind && item.code === choice.code)} onChange={() => onToggle(choice)} />
             <span>{choice.label}</span>
           </label>
         ))}

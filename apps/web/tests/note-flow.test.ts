@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clearShellState, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { clearShellState, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
@@ -86,13 +86,20 @@ test("reset clears local progress and restores the version-controlled baseline",
   assert.equal(reset.encounter.events.some((event) => event.visitorEntered), false);
 });
 
-test("category-named browser state is removed instead of reinterpreted as the standard encounter", () => {
+test("category-named browser state is preserved for recovery instead of reinterpreted as the standard encounter", () => {
   const storage = memoryStorage();
   const legacyKey = LEGACY_STORAGE_KEYS[0];
-  storage.setItem(legacyKey, JSON.stringify({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, definitionId: "adult-chest-pain-v2" } }));
+  const original = JSON.stringify({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, definitionId: "adult-chest-pain-v2" } });
+  storage.setItem(legacyKey, original);
 
-  assert.deepEqual(loadShellStateResult(storage), { status: "legacy-reset", removedKeys: [legacyKey] });
+  assert.deepEqual(loadShellStateResult(storage), {
+    status: "incompatible",
+    savedDefinition: { id: "adult-chest-pain-v2", version: 1 },
+    expectedDefinition: { id: "standard-encounter-v1", version: 1 },
+    recoveryKey: RECOVERY_STORAGE_KEY,
+  });
   assert.equal(storage.values.has(legacyKey), false);
+  assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
   assert.equal(loadShellState(storage), null);
   assert.equal(storage.values.has(STORAGE_KEY), false);
 });

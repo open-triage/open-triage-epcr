@@ -1,68 +1,147 @@
 import type { EncounterDefinition } from "./encounter-definition";
-import { bundledEncounterDefinition, type ShellState } from "./standard-encounter";
+import { EncounterDocumentError, loadEncounterDocument } from "./encounter-document";
+import { patientDraftFromDocument, updatePatientDocument, type PatientChoice, type PatientDraft } from "./patient-document";
+import { bundledEncounterDefinition, createInitialShellState, type ShellState } from "./standard-encounter";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
+export const RECOVERY_STORAGE_KEY = `${STORAGE_KEY}:recovery`;
 export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
+const PERSISTENCE_VERSION = 2 as const;
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type ShellStateLoadResult =
   | { readonly status: "empty" }
-  | { readonly status: "legacy-reset"; readonly removedKeys: ReadonlyArray<string> }
-  | { readonly status: "invalid"; readonly reason: string }
-  | { readonly status: "incompatible"; readonly savedDefinition: { readonly id: string | null; readonly version: number | null }; readonly expectedDefinition: { readonly id: string; readonly version: number } }
-  | { readonly status: "restored"; readonly state: ShellState };
+  | { readonly status: "invalid"; readonly reason: string; readonly recoveryKey: typeof RECOVERY_STORAGE_KEY }
+  | { readonly status: "incompatible"; readonly savedDefinition: { readonly id: string | null; readonly version: number | null }; readonly expectedDefinition: { readonly id: string; readonly version: number }; readonly recoveryKey: typeof RECOVERY_STORAGE_KEY }
+  | { readonly status: "restored"; readonly state: ShellState; readonly migrated: boolean };
 
 export function saveShellState(storage: LocalStoragePort, state: ShellState): void {
-  storage.setItem(STORAGE_KEY, JSON.stringify(state));
+  storage.setItem(STORAGE_KEY, JSON.stringify({ persistenceVersion: PERSISTENCE_VERSION, state }));
+}
+
+function preserveForRecovery(storage: LocalStoragePort, serialized: string, sourceKey = STORAGE_KEY): typeof RECOVERY_STORAGE_KEY {
+  storage.setItem(RECOVERY_STORAGE_KEY, serialized);
+  storage.removeItem(sourceKey);
+  return RECOVERY_STORAGE_KEY;
+}
+
+function legacyChoice(kind: PatientChoice["kind"], code: string, label: string, system?: string): PatientChoice {
+  return { kind, code, label, ...(system ? { system } : {}) };
+}
+
+function migrateLegacyPatient(patient: Record<string, unknown>, baseline: PatientDraft): PatientDraft {
+  const history = new Map<string, PatientChoice>([
+    ["Hypertension", legacyChoice("coded", "I10", "Hypertension", "ICD-10-CM")],
+    ["Diabetes", legacyChoice("coded", "E11.8", "Diabetes Type II", "ICD-10-CM")],
+    ["COPD / chronic lung disease", legacyChoice("coded", "J44.9", "COPD", "ICD-10-CM")],
+    ["Stroke / TIA", legacyChoice("coded", "I63.9", "Stroke / TIA", "ICD-10-CM")],
+    ["Seizure disorder", legacyChoice("coded", "G40.319", "Epilepsy (Seizures)", "ICD-10-CM")],
+    ["No known medical history", legacyChoice("pertinent-negative", "8801015", "None Reported")],
+  ]);
+  const medications = new Map<string, PatientChoice>([
+    ["Antihypertensive", legacyChoice("coded", "LEGACY01", "Antihypertensive", "urn:open-triage:legacy-choice")],
+    ["Anticoagulant", legacyChoice("coded", "LEGACY02", "Anticoagulant", "urn:open-triage:legacy-choice")],
+    ["Insulin", legacyChoice("coded", "LEGACY03", "Insulin", "urn:open-triage:legacy-choice")],
+    ["Inhaler", legacyChoice("coded", "LEGACY04", "Inhaler", "urn:open-triage:legacy-choice")],
+    ["No current medications", legacyChoice("pertinent-negative", "8801015", "None Reported")],
+  ]);
+  const allergies = new Map<string, PatientChoice>([
+    ["Penicillin", legacyChoice("coded", "Z88.0", "Penicillin", "ICD-10-CM")],
+    ["Sulfonamides", legacyChoice("coded", "Z88.2", "Sulfa Drugs", "ICD-10-CM")],
+    ["NSAIDs", legacyChoice("coded", "Z88.6", "Analgesic", "ICD-10-CM")],
+    ["Opioids", legacyChoice("coded", "Z88.5", "Narcotic", "ICD-10-CM")],
+    ["No known drug allergies", legacyChoice("pertinent-negative", "8801013", "No Known Drug Allergy")],
+  ]);
+  const selections = (key: string, choices: Map<string, PatientChoice>) => Array.isArray(patient[key])
+    ? patient[key].flatMap((label) => typeof label === "string" && choices.has(label) ? [choices.get(label)!] : [])
+    : [];
+  const legacyName = typeof patient.name === "string" ? patient.name.split(",").map((part) => part.trim()) : [];
+  const sex = patient.sex === "F" ? legacyChoice("coded", "9906001", "Female")
+    : patient.sex === "M" ? legacyChoice("coded", "9906003", "Male")
+      : legacyChoice("coded", "9906005", "Unknown (Unable to Determine)");
+  return {
+    ...baseline,
+    identifier: typeof patient.identifier === "string" ? patient.identifier : baseline.identifier,
+    lastName: legacyName[0] || baseline.lastName,
+    firstName: legacyName[1] || baseline.firstName,
+    age: typeof patient.age === "number" ? patient.age : baseline.age,
+    absence: {},
+    sex,
+    medicalHistory: selections("medicalHistory", history),
+    currentMedications: selections("currentMedications", medications),
+    allergies: selections("allergies", allergies),
+  };
 }
 
 export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition): ShellStateLoadResult {
-  const removedKeys = LEGACY_STORAGE_KEYS.filter((key) => storage.getItem(key) !== null);
-  removedKeys.forEach((key) => storage.removeItem(key));
   const serialized = storage.getItem(STORAGE_KEY);
-  if (serialized === null) return removedKeys.length > 0 ? { status: "legacy-reset", removedKeys } : { status: "empty" };
+  if (serialized === null) {
+    const legacyKey = LEGACY_STORAGE_KEYS.find((key) => storage.getItem(key) !== null);
+    if (!legacyKey) return { status: "empty" };
+    const legacySerialized = storage.getItem(legacyKey)!;
+    let savedDefinition: { id: string | null; version: number | null } = { id: null, version: null };
+    try {
+      const legacy = JSON.parse(legacySerialized) as { encounter?: { definitionId?: unknown; definitionVersion?: unknown } };
+      savedDefinition = {
+        id: typeof legacy.encounter?.definitionId === "string" ? legacy.encounter.definitionId : null,
+        version: Number.isInteger(legacy.encounter?.definitionVersion) ? legacy.encounter!.definitionVersion as number : null,
+      };
+    } catch { /* The original bytes are still recoverable below. */ }
+    return {
+      status: "incompatible",
+      savedDefinition,
+      expectedDefinition: { id: definition.id, version: definition.version },
+      recoveryKey: preserveForRecovery(storage, legacySerialized, legacyKey),
+    };
+  }
   try {
-    const value: unknown = JSON.parse(serialized);
-    if (!value || typeof value !== "object") return { status: "invalid", reason: "saved state must be an object" };
-    const candidate = value as Partial<ShellState>;
+    const parsed: unknown = JSON.parse(serialized);
+    if (!parsed || typeof parsed !== "object") return { status: "invalid", reason: "saved state must be an object", recoveryKey: preserveForRecovery(storage, serialized) };
+    const record = parsed as Record<string, unknown>;
+    const isEnvelope = record.persistenceVersion === PERSISTENCE_VERSION && record.state && typeof record.state === "object";
+    const candidate = (isEnvelope ? record.state : record) as Partial<ShellState> & { encounter?: Record<string, unknown> };
+    const candidateEncounter = candidate.encounter;
     const savedDefinition = {
-      id: typeof candidate.encounter?.definitionId === "string" ? candidate.encounter.definitionId : null,
-      version: Number.isInteger(candidate.encounter?.definitionVersion) ? candidate.encounter!.definitionVersion! : null,
+      id: typeof candidateEncounter?.definitionId === "string" ? candidateEncounter.definitionId : null,
+      version: Number.isInteger(candidateEncounter?.definitionVersion) ? candidateEncounter!.definitionVersion as number : null,
     };
     const expectedDefinition = { id: definition.id, version: definition.version };
     if (savedDefinition.id !== expectedDefinition.id || savedDefinition.version !== expectedDefinition.version) {
-      return { status: "incompatible", savedDefinition, expectedDefinition };
+      return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized) };
     }
-    if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported" };
-    if (!Array.isArray(candidate.encounter?.events)) return { status: "invalid", reason: "saved encounter events must be an array" };
-    if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid" };
-    if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid" };
+    if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (!Array.isArray(candidateEncounter?.events)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
+
+    const initialDocument = createInitialShellState(definition).encounter.document;
+    const legacyPatient = candidateEncounter.patient;
+    const migrated = !isEnvelope || !candidateEncounter.document;
+    const document = candidateEncounter.document
+      ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
+      : legacyPatient && typeof legacyPatient === "object"
+        ? updatePatientDocument(initialDocument, migrateLegacyPatient(legacyPatient as Record<string, unknown>, patientDraftFromDocument(initialDocument)), initialDocument.encounter.updatedAt)
+        : initialDocument;
+    const { patient: _legacyPatient, ...encounterWithoutPatient } = candidateEncounter;
+    void _legacyPatient;
     const state = {
       ...candidate,
       encounter: {
-        ...candidate.encounter,
-        patient: {
-          ...candidate.encounter.patient,
-          medicalHistory: candidate.encounter.patient.medicalHistory ?? [],
-          currentMedications: candidate.encounter.patient.currentMedications ?? [],
-          allergies: candidate.encounter.patient.allergies ?? [],
-        },
-        events: candidate.encounter.events.map((event) => ({ ...event, date: event.date ?? "2026-04-18" })),
+        ...encounterWithoutPatient,
+        document,
+        events: candidateEncounter.events.map((event) => ({ ...event, date: event.date ?? "2026-04-18" })),
       },
       noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? "2026-04-18" } : null,
       procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? "2026-04-18" } : null,
-      vitalDraft: candidate.vitalDraft ? {
-        ...candidate.vitalDraft,
-        date: candidate.vitalDraft.date ?? "2026-04-18",
-        values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} },
-      } : null,
+      vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? "2026-04-18", values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} } } : null,
       medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? "2026-04-18" } : null,
       acknowledgedWarnings: Array.isArray(candidate.acknowledgedWarnings) ? candidate.acknowledgedWarnings : [],
     } as ShellState;
-    return { status: "restored", state };
-  } catch {
-    return { status: "invalid", reason: "saved state is not valid JSON" };
+    return { status: "restored", state, migrated };
+  } catch (error) {
+    const reason = error instanceof EncounterDocumentError ? error.message : "saved state is not valid JSON";
+    return { status: "invalid", reason, recoveryKey: preserveForRecovery(storage, serialized) };
   }
 }
 
@@ -73,5 +152,6 @@ export function loadShellState(storage: LocalStoragePort, definition: EncounterD
 
 export function clearShellState(storage: LocalStoragePort): void {
   storage.removeItem(STORAGE_KEY);
+  storage.removeItem(RECOVERY_STORAGE_KEY);
   LEGACY_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
 }
