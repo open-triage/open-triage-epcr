@@ -1,6 +1,6 @@
 ---
 name: ticket-dispatcher
-description: Find the next unblocked issues in .issues, account for merged and open sub-PRs against the feature branch, and dispatch each ready ticket to a parallel coding agent. Use when asked to run or continue the ticket-dispatcher workflow.
+description: Find the next unblocked subissue of the linkedparent github issue, account for merged and open sub-PRs against the feature branch, and dispatch each ready ticket to a parallel coding agent. Use when asked to run or continue the ticket-dispatcher workflow.
 ---
 
 # Ticket Dispatcher
@@ -19,7 +19,7 @@ The current non-`main` branch is the feature branch; all sub-PRs target it. If t
 
 ## 2. Read all subissues
 
-Read every `.issues/*.md` file whose filename begins with digits. For each subissue extract:
+Read every subissue of the linked parent github issue. For each subissue extract:
 
 - **Ticket number:** the leading digits, such as `001`.
 - **Title:** the first `# H1` heading.
@@ -77,6 +77,7 @@ Use this exact instruction block in each prompt:
 - PR is open against `<feature-branch>`.
 - Run the repository's relevant build, type-check, lint, and other required validation commands; fix failures before committing.
 - Run the relevant tests and fix any failures before committing.
+- Once the issue PR is merged, mark the corresponding issue as closed
 
 ---
 

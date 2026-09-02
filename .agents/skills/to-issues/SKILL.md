@@ -5,7 +5,7 @@ description: Create a main GitHub issue containing a PRD, then break a plan, spe
 
 # To Issues
 
-Break a plan into independently grabbable, end-to-end vertical slices. Save approved issue bodies locally and, after explicit approval, publish a parent GitHub issue plus real GitHub sub-issues.
+Using a PRD or the context you have, break a plan into independently grabbable, end-to-end vertical slices. After explicit approval, publish a parent GitHub issue with the main context/PRD plus real GitHub sub-issues.
 
 ## Process
 
@@ -55,12 +55,13 @@ Ask whether:
 
 Also identify the exact target repository and ask the user to approve publishing the parent issue and sub-issues there. Iterate until the breakdown is approved. Do not create GitHub issues before that approval.
 
-### 5. Create local Markdown issue files
+### 5. Publish the GitHub issue hierarchy
 
-Create `.issues/` at the repository root when needed. For every approved slice, create a Markdown file in dependency order, blockers first. Use sequential names such as `001-short-title.md`, `002-short-title.md`, and so on. Use stable, lowercase, hyphenated filename slugs.
+Use an available authenticated GitHub integration or CLI. First create one parent issue whose body contains the PRD. If the source is not already formatted as a PRD, faithfully synthesize its product intent, requirements, user stories, implementation decisions, testing decisions, out-of-scope items, and notes without expanding scope.
+
+Then create one GitHub issue per slice, preserving dependency order and HITL/AFK classification in the title, labels, or body according to repository conventions. Replace local filename-only blocker references in the published bodies with links to the corresponding GitHub issues when possible.
 
 Use this body template:
-
 ```markdown
 ## What to build
 
@@ -76,22 +77,13 @@ A concise description of the end-to-end behavior delivered by this vertical slic
 
 - Blocked by `002-filename.md`
 ```
-
 When there are no blockers, write `None - can start immediately` under **Blocked by**. Reference only earlier-numbered files; if that is impossible, fix the ordering or identify a dependency cycle before continuing.
-
-### 6. Publish the GitHub issue hierarchy
-
-Use an available authenticated GitHub integration or CLI. First create one parent issue whose body contains the PRD. If the source is not already formatted as a PRD, faithfully synthesize its product intent, requirements, user stories, implementation decisions, testing decisions, out-of-scope items, and notes without expanding scope.
-
-Then create one GitHub issue from each approved local Markdown file, preserving dependency order and HITL/AFK classification in the title, labels, or body according to repository conventions. Replace local filename-only blocker references in the published bodies with links to the corresponding GitHub issues when possible.
 
 Attach every child to the parent using GitHub's actual sub-issue relationship. Do not represent sub-issues only as a Markdown checklist and claim they are attached. If the available GitHub tooling cannot create the relationship, stop after creating the local drafts unless the user explicitly approves a documented fallback. Avoid duplicate issue creation when retrying: inspect existing results and resume from the first missing item.
 
 ### 7. Report results
 
 Summarize:
-
-- the local `.issues/` directory and each file created;
 - the parent GitHub issue link;
 - every child issue link and its HITL/AFK type;
 - the dependency order; and
