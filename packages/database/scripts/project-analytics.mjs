@@ -513,7 +513,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       source_attributes: element.source_attributes,
       quality_flags: elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
       quality_rule_version: elementFindings.length ? QUALITY_RULE_VERSION : null,
-      quality_findings: elementFindings.length ? elementFindings : null,
+      quality_findings: elementFindings.length ? JSON.stringify(elementFindings) : null,
       is_identifying: mapping?.identifying ?? element.identifying
     });
   }
@@ -525,8 +525,12 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
     ? [...new Set(quality.qualityFindings.map((finding) => finding.code))]
     : null;
   wide.quality_rule_version = QUALITY_RULE_VERSION;
-  wide.quality_findings = quality.qualityFindings.length ? quality.qualityFindings : null;
-  wide.derived_values = quality.derivedValues.length ? quality.derivedValues : null;
+  wide.quality_findings = quality.qualityFindings.length
+    ? JSON.stringify(quality.qualityFindings)
+    : null;
+  wide.derived_values = quality.derivedValues.length
+    ? JSON.stringify(quality.derivedValues)
+    : null;
   wide.normalization_rule_version = NORMALIZATION_RULE_VERSION;
 
   if (onlyIfStale) {
