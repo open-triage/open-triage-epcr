@@ -108,7 +108,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       changeNote: "Initial publication",
       definitionSha256: draft.digest
     });
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 201, JSON.stringify(payload));
     assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1, locales: 1 });
 
     const stored = await client.query(`
@@ -220,9 +220,9 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       [timeElementId, textElementId, `integration.time-${timeElementId}`, `integration.text-${textElementId}`]);
     await client.query(`insert into forms.custom_element_definition
       (id, organization_id, namespace, slug, title, base_datatype, definition) values
-      ($1, $3, 'integration', $5, 'Clinical time', 'dateTime', '{}'),
-      ($2, $3, 'integration', $6, 'Clinical text', 'string', '{}')`,
-      [timeElementId, textElementId, organizationId, groupId, `time-${timeElementId}`, `text-${textElementId}`]);
+      ($1, $3, 'integration', $4, 'Clinical time', 'dateTime', '{}'),
+      ($2, $3, 'integration', $5, 'Clinical text', 'string', '{}')`,
+      [timeElementId, textElementId, organizationId, `time-${timeElementId}`, `text-${textElementId}`]);
     await client.query(`insert into forms.custom_group_definition
       (id, organization_id, namespace, slug, temporal_kind, clinical_time_element_id, definition)
       values ($1, $2, 'integration', $3, 'clinical', $4, '{}')`,
