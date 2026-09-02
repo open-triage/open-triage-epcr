@@ -1,0 +1,822 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.nlm.nih.gov/healthit/snomedct/index.html",
+            "Value": "SNOMED-CT"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "snomed"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eHistory.07"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "403141006"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Ant sting",
+          "SuggestedLabel": "Ant sting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "424213003"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to bee venom",
+          "SuggestedLabel": "Bee venom"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "232346004"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to cat dander",
+          "SuggestedLabel": "Cat dander"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "15911003"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Cow's milk protein sensitivity",
+          "SuggestedLabel": "Cow's milk protein sensitivity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "232347008"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to animal dander",
+          "SuggestedLabel": "Dander Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419271008"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to dog dander",
+          "SuggestedLabel": "Dog dander"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "232348003"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to feather",
+          "SuggestedLabel": "Feather"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "307427009"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Hornet sting",
+          "SuggestedLabel": "Hornet sting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419063004"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to horse dander",
+          "SuggestedLabel": "Horse dander"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "422921000"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to scorpion venom",
+          "SuggestedLabel": "Scorpion venom"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "427487000"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to spider venom",
+          "SuggestedLabel": "Spider venom"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "423058007"
+          },
+          "Category": "Animals",
+          "SourceLabel": "Allergy to wasp venom",
+          "SuggestedLabel": "Wasp venom"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "106190000"
+          },
+          "Category": "General",
+          "SourceLabel": "Allergic state",
+          "SuggestedLabel": "Allergy, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "160244002"
+          },
+          "Category": "General",
+          "SourceLabel": "No known allergies",
+          "SuggestedLabel": "No known allergies"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "444316004"
+          },
+          "Category": "General",
+          "SourceLabel": "Seasonal allergy",
+          "SuggestedLabel": "Seasonal, Hay fever"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "390952000"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to dust",
+          "SuggestedLabel": "Dust"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "426232007"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Environmental allergy",
+          "SuggestedLabel": "Environmental, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418689008"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to grass pollen",
+          "SuggestedLabel": "Grass pollen"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419474003"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to mold",
+          "SuggestedLabel": "Mold"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294619002"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Pesticide allergy",
+          "SuggestedLabel": "Pesticide"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "402594000"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to plant",
+          "SuggestedLabel": "Plants"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300910009"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to pollen",
+          "SuggestedLabel": "Pollen"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419101002"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to seed",
+          "SuggestedLabel": "Seeds"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "258155009"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Photosensitization caused by sun",
+          "SuggestedLabel": "Sunlight (skin sensitivity to sun)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "402595004"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to wood",
+          "SuggestedLabel": "Wood"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425605001"
+          },
+          "Category": "Environment",
+          "SourceLabel": "Allergy to wool",
+          "SuggestedLabel": "Wool"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "409136006"
+          },
+          "Category": "Grain",
+          "SourceLabel": "Allergy to pulse vegetable",
+          "SuggestedLabel": "Legumes"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419342009"
+          },
+          "Category": "Grain",
+          "SourceLabel": "Allergy to oat",
+          "SuggestedLabel": "Oats"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "420174000"
+          },
+          "Category": "Grain",
+          "SourceLabel": "Allergy to wheat",
+          "SuggestedLabel": "Wheat"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "420080006"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to carrot",
+          "SuggestedLabel": "Carrot"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419573007"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to corn",
+          "SuggestedLabel": "Corn"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91932007"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to fruit",
+          "SuggestedLabel": "Fruit"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294316000"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to olive oil",
+          "SuggestedLabel": "Olive oil"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91938006"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to strawberry",
+          "SuggestedLabel": "Strawberries"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418779002"
+          },
+          "Category": "Fruits/Vegetables",
+          "SourceLabel": "Allergy to tomato",
+          "SuggestedLabel": "Tomato"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "712839001"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to almond",
+          "SuggestedLabel": "Almond"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "712838009"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to cashew nut",
+          "SuggestedLabel": "Cashew"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419814004"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to coconut oil",
+          "SuggestedLabel": "Coconut oil"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "712840004"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to hazelnut",
+          "SuggestedLabel": "Hazelnut"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91934008"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to nut",
+          "SuggestedLabel": "Nuts, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91935009"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to peanut",
+          "SuggestedLabel": "Peanut"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91940001"
+          },
+          "Category": "Nuts",
+          "SourceLabel": "Allergy to walnut",
+          "SuggestedLabel": "Walnut"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "417532002"
+          },
+          "Category": "Seafood",
+          "SourceLabel": "Allergy to fish",
+          "SuggestedLabel": "Fish"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300913006"
+          },
+          "Category": "Seafood",
+          "SourceLabel": "Allergy to shellfish",
+          "SuggestedLabel": "Shellfish"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419972009"
+          },
+          "Category": "Seafood",
+          "SourceLabel": "Allergy to shrimp",
+          "SuggestedLabel": "Shrimp"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300914000"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to cheese",
+          "SuggestedLabel": "Cheese"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300912001"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to chocolate",
+          "SuggestedLabel": "Chocolate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418397007"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to cinnamon",
+          "SuggestedLabel": "Cinnamon"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425525006"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to dairy food",
+          "SuggestedLabel": "Dairy product"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "91930004"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to edible egg",
+          "SuggestedLabel": "Eggs"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "414285001"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to food",
+          "SuggestedLabel": "Food, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294847001"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to gelatin",
+          "SuggestedLabel": "Gelatin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "441831003"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Gluten sensitivity",
+          "SuggestedLabel": "Gluten sensitivity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "447961002"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to dietary mushroom",
+          "SuggestedLabel": "Mushroom"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419619007"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to potato",
+          "SuggestedLabel": "Potato"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "25868003"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Soy protein sensitivity",
+          "SuggestedLabel": "Soy protein sensitivity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419421008"
+          },
+          "Category": "Food, Other",
+          "SourceLabel": "Allergy to sulfite based food preservative",
+          "SuggestedLabel": "Sulfite based food preservative"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "417918006"
+          },
+          "Category": "Meat",
+          "SourceLabel": "Allergy to pork",
+          "SuggestedLabel": "Pork"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418815008"
+          },
+          "Category": "Meat",
+          "SourceLabel": "Allergy to red meat",
+          "SuggestedLabel": "Red meat"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294420000"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Alcohol products allergy",
+          "SuggestedLabel": "Alcohol products"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419180003"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to aspartame",
+          "SuggestedLabel": "Aspartame"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294434000"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to boric acid",
+          "SuggestedLabel": "Boric acid"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418344001"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to caffeine",
+          "SuggestedLabel": "Caffeine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294318004"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to castor oil",
+          "SuggestedLabel": "Castor oil"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418545001"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to dye",
+          "SuggestedLabel": "Dye"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294298002"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to glycine",
+          "SuggestedLabel": "Glycine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "293817009"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Lithium allergy",
+          "SuggestedLabel": "Lithium"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294321002"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Lubricant allergy",
+          "SuggestedLabel": "Lubricant, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300908007"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to perfume",
+          "SuggestedLabel": "Perfume"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "293842000"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to tryptophan",
+          "SuggestedLabel": "Tryptophan"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294923007"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to retinol",
+          "SuggestedLabel": "Vitamin A"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294924001"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to vitamin D and vitamin D derivative",
+          "SuggestedLabel": "Vitamin D"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294925000"
+          },
+          "Category": "Chemical",
+          "SourceLabel": "Allergy to vitamin K and vitamin K derivative",
+          "SuggestedLabel": "Vitamin K"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294169006"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to coal tar",
+          "SuggestedLabel": "Coal tar"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "417982003"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to cosmetic material",
+          "SuggestedLabel": "Cosmetic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "418968001"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to gauze",
+          "SuggestedLabel": "Gauze"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300916003"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to latex",
+          "SuggestedLabel": "Latex"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294324005"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to paraffin",
+          "SuggestedLabel": "Paraffin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419412007"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to rubber",
+          "SuggestedLabel": "Rubber"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294328008"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to silicone",
+          "SuggestedLabel": "Silicone"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419199007"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Allergy to substance",
+          "SuggestedLabel": "Substance, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294179008"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Sulfur allergy",
+          "SuggestedLabel": "Sulfur"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "405649006"
+          },
+          "Category": "Substance",
+          "SourceLabel": "Tape allergy",
+          "SuggestedLabel": "Tape"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "402306009"
+          },
+          "Category": "Metal",
+          "SourceLabel": "Allergy to aluminium",
+          "SuggestedLabel": "Aluminum"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294238000"
+          },
+          "Category": "Metal",
+          "SourceLabel": "Allergy to gold",
+          "SuggestedLabel": "Gold"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "300915004"
+          },
+          "Category": "Metal",
+          "SourceLabel": "Allergy to metal",
+          "SuggestedLabel": "Metal, Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "419788000"
+          },
+          "Category": "Metal",
+          "SourceLabel": "Allergy to nickel",
+          "SuggestedLabel": "Nickel"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "294950002"
+          },
+          "Category": "Metal",
+          "SourceLabel": "Allergy to zinc",
+          "SuggestedLabel": "Zinc"
+        }
+      ]
+    }
+  }
+}

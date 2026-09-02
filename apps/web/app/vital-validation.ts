@@ -1,39 +1,39 @@
-import type { NullValue, VitalField, VitalValues } from "./synthetic-encounter";
+import { standardEncounterDefinition } from "./standard-encounter-definition";
+import type { EncounterDefinition, VitalField, VitalFieldDefinition, VitalNullValue } from "./encounter-definition";
+import type { VitalValues } from "./standard-encounter";
 
-export type VitalRule = { label: string; reference: string; min: number; max: number; warningLow: number; warningHigh: number; required?: boolean; allowedNV: ReadonlyArray<NullValue>; allowedPN: ReadonlyArray<NullValue> };
-const STANDARD_NV: ReadonlyArray<NullValue> = ["7701001", "7701003"];
-const STANDARD_PN: ReadonlyArray<NullValue> = ["8801005", "8801019", "8801023"];
-const LIMITED_PN: ReadonlyArray<NullValue> = ["8801019", "8801023"];
-export const VITAL_RULES: Record<VitalField, VitalRule> = {
-  systolic: { label: "Systolic BP", reference: "eVitals.06", min: 0, max: 500, warningLow: 70, warningHigh: 220, required: true, allowedNV: STANDARD_NV, allowedPN: STANDARD_PN },
-  diastolic: { label: "Diastolic BP", reference: "eVitals.07", min: 0, max: 500, warningLow: 40, warningHigh: 130, required: true, allowedNV: [...STANDARD_NV, "7701005"], allowedPN: STANDARD_PN },
-  heartRate: { label: "Heart rate", reference: "eVitals.10", min: 0, max: 500, warningLow: 40, warningHigh: 180, required: true, allowedNV: STANDARD_NV, allowedPN: STANDARD_PN },
-  spo2: { label: "SpO₂", reference: "eVitals.12", min: 0, max: 100, warningLow: 90, warningHigh: 100, allowedNV: STANDARD_NV, allowedPN: STANDARD_PN },
-  respiratoryRate: { label: "Respiratory rate", reference: "eVitals.14", min: 0, max: 300, warningLow: 8, warningHigh: 35, allowedNV: STANDARD_NV, allowedPN: STANDARD_PN },
-  gcs: { label: "GCS total", reference: "eVitals.21", min: 3, max: 15, warningLow: 12, warningHigh: 15, allowedNV: STANDARD_NV, allowedPN: LIMITED_PN },
-  pain: { label: "Pain score", reference: "eVitals.27", min: 0, max: 10, warningLow: 0, warningHigh: 7, allowedNV: STANDARD_NV, allowedPN: LIMITED_PN },
-};
-const NULL_LABELS: Record<NullValue, string> = { "": "Enter value", "7701001": "Not applicable (NV)", "7701003": "Not recorded (NV)", "7701005": "Not reporting (NV)", "8801005": "Finding not present (PN)", "8801019": "Refused (PN)", "8801023": "Unable to complete (PN)" };
-export function nullOptionsFor(rule: VitalRule): ReadonlyArray<{ value: NullValue; label: string }> {
-  return ["", ...rule.allowedNV, ...rule.allowedPN].map((value) => ({ value: value as NullValue, label: NULL_LABELS[value as NullValue] }));
+export type NullValue = "" | VitalNullValue;
+
+export function nullOptionsFor(field: VitalFieldDefinition): ReadonlyArray<{ value: NullValue; label: string }> {
+  return [{ value: "", label: "Enter value" }, ...field.absenceStates.map(({ code, label }) => ({ value: code, label }))];
 }
-export type VitalValidation = { errors: Partial<Record<VitalField | "time" | "group", string>>; warnings: Partial<Record<VitalField, string>>; valid: boolean };
-export function validateVitals(time: string, values: VitalValues): VitalValidation {
+
+export type VitalValidation = {
+  readonly errors: Partial<Record<VitalField | "time" | "group", string>>;
+  readonly warnings: Partial<Record<VitalField, string>>;
+  readonly valid: boolean;
+};
+
+/** Validates stored vital values exclusively against the selected encounter definition. */
+export function validateVitals(time: string, values: VitalValues, definition: EncounterDefinition = standardEncounterDefinition): VitalValidation {
+  const config = definition.events.vitals;
   const errors: VitalValidation["errors"] = {};
   const warnings: VitalValidation["warnings"] = {};
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.time = "eVitals.01 requires a valid clinical time (HH:mm).";
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.time = config.validationMessages.invalidTime;
   let supplied = 0;
-  for (const [field, rule] of Object.entries(VITAL_RULES) as [VitalField, VitalRule][]) {
-    const raw = values[field]; const nv = values.nullValues[field];
-    if (raw || nv) supplied += 1;
-    if (!raw && !nv && rule.required) errors[field] = `${rule.reference} requires a value or permitted NV.`;
-    if (nv && !rule.allowedNV.includes(nv) && !rule.allowedPN.includes(nv)) errors[field] = `${rule.reference} does not permit NV/PN ${nv}.`;
+  for (const field of config.fields) {
+    const raw = values[field.id] ?? "";
+    const absence = values.nullValues?.[field.id];
+    if (raw || absence) supplied += 1;
+    if (!raw && !absence && field.required) errors[field.id] = `${field.reference} requires a value or permitted NV.`;
+    if (absence && !field.absenceStates.some(({ code }) => code === absence)) errors[field.id] = `${field.reference} does not permit NV/PN ${absence}.`;
     if (raw) {
       const number = Number(raw);
-      if (!/^\d+$/.test(raw) || !Number.isInteger(number) || number < rule.min || number > rule.max) errors[field] = `${rule.reference} must be an integer from ${rule.min} to ${rule.max}.`;
-      else if (number < rule.warningLow || number > rule.warningHigh) warnings[field] = `Clinically unusual ${rule.label.toLowerCase()}; confirm before saving.`;
+      const { min, max, warningLow, warningHigh } = field.boundaries;
+      if (!/^\d+$/.test(raw) || !Number.isInteger(number) || number < min || number > max) errors[field.id] = `${field.reference} must be an integer from ${min} to ${max}.`;
+      else if (number < warningLow || number > warningHigh) warnings[field.id] = `Clinically unusual ${field.label.toLowerCase()}; confirm before saving.`;
     }
   }
-  if (!supplied) errors.group = "eVitals.VitalGroup requires at least one documented vital element.";
+  if (!supplied) errors.group = config.validationMessages.emptyGroup;
   return { errors, warnings, valid: Object.keys(errors).length === 0 };
 }

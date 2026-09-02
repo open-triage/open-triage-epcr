@@ -27,8 +27,21 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
 });
 
+test("canonical incident header and timing entries render in the phone flow", async ({ page }) => {
+  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-2026-0418-113 · 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Medical assistance requested");
+  await expect(page.getByLabel("Crew AN")).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("eTimes.06", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("eTimes.05", { exact: true })).toBeVisible();
+});
+
 test("quick capture phone journey remains operable and persists", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
+    "Add vital signs", "Add medication", "Add procedure", "Add clinical note", "Edit patient information",
+  ]);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 

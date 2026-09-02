@@ -1,0 +1,124 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/",
+            "Value": "ICD-10"
+          },
+          {
+            "url": "https://www.nlm.nih.gov/research/umls/rxnorm/index.html",
+            "Value": "RxNorm"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "MedicationAllergies"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eHistory.06"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.6"
+          },
+          "SourceLabel": "Allergy status to analgesic agent status",
+          "SuggestedLabel": "Analgesic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.4"
+          },
+          "SourceLabel": "Allergy status to anesthetic agent status",
+          "SuggestedLabel": "Anesthetic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.1"
+          },
+          "SourceLabel": "Allergy status to other antibiotic agents status",
+          "SuggestedLabel": "Antibiotic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.3"
+          },
+          "SourceLabel": "Allergy status to other anti-infective agents status",
+          "SuggestedLabel": "Anti-Infective"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.9"
+          },
+          "SourceLabel": "Allergy status to unspecified drugs, medicaments and biological substances status",
+          "SuggestedLabel": "Medication, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.5"
+          },
+          "SourceLabel": "Allergy status to narcotic agent status",
+          "SuggestedLabel": "Narcotic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.8"
+          },
+          "SourceLabel": "Allergy status to other drugs, medicaments and biological substances status",
+          "SuggestedLabel": "Other medication or biological substance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.0"
+          },
+          "SourceLabel": "Allergy status to penicillin",
+          "SuggestedLabel": "Penicillin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.7"
+          },
+          "SourceLabel": "Allergy status to serum and vaccine status",
+          "SuggestedLabel": "Serum or Vaccine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "CodeType": "9924001",
+            "Value": "Z88.2"
+          },
+          "SourceLabel": "Allergy status to sulfonamides status",
+          "SuggestedLabel": "Sulfa Drugs"
+        }
+      ]
+    }
+  }
+}

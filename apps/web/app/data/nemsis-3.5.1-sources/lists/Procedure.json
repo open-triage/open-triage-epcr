@@ -1,0 +1,1094 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.nlm.nih.gov/healthit/snomedct/index.html",
+            "Value": "SNOMED-CT"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "snomed"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eProcedures.03",
+          "dConfiguration.07",
+          "sConfiguration.03"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "18629005"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Administration of drug or medicament",
+          "SuggestedLabel": "Drug administration"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "386358000"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Administration of drug or medicament via intravenous route",
+          "SuggestedLabel": "Drug administration via IV"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "431393006"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Administration of intravenous fluid bolus",
+          "SuggestedLabel": "IV fluid bolus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "103744005"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Administration of intravenous fluids",
+          "SuggestedLabel": "IV fluids",
+          "Note": "includes 297751002 Infusion of saline"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "56251003"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Nebulizer therapy",
+          "SuggestedLabel": "Nebulizer therapy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "57485005"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Oxygen therapy",
+          "SuggestedLabel": "Oxygen therapy, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "371907003"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Oxygen administration by nasal cannula",
+          "SuggestedLabel": "Oxygen via cannula"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "371908008"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Oxygen administration by mask",
+          "SuggestedLabel": "Oxygen via mask"
+        },
+        {
+          "date": "2025-01-14",
+          "Value": {
+            "Value": "116859006"
+          },
+          "Category": "Administration (Drug, fluid, gas)",
+          "SourceLabel": "Transfusion of blood product",
+          "SuggestedLabel": "Transfusion of blood"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "230040009"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Airway suction technique",
+          "SuggestedLabel": "Airway suction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425447009"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Bag valve mask ventilation",
+          "SuggestedLabel": "Assist ventilations via BVM"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "243140006"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Lung inflation by intermittent compression of reservoir bag",
+          "SuggestedLabel": "Assist ventilations, intubated"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "284029005"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Respired carbon dioxide monitoring",
+          "SuggestedLabel": "ETCO2 monitoring"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "23690002"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Abdominal thrust",
+          "SuggestedLabel": "Heimlich maneuver"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182692007"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Nasopharyngeal airway insertion",
+          "SuggestedLabel": "Nasal airway insertion (NPA)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "7443007"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Insertion of oropharyngeal airway",
+          "SuggestedLabel": "Oral airway insertion (OPA)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "232664002"
+          },
+          "Category": "Airway, Basic",
+          "SourceLabel": "Manual establishment of airway",
+          "SuggestedLabel": "Open airway manually"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "243142003"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Dual pressure spontaneous ventilation support",
+          "SuggestedLabel": "BiPAP"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "47545007"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Continuous positive airway pressure ventilation treatment",
+          "SuggestedLabel": "CPAP",
+          "Note": "Includes 423574009 CPAP weaning"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225718003"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Checking position of endotracheal tube",
+          "SuggestedLabel": "ET tube, check placement"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425543005"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Digital respired carbon dioxide monitoring",
+          "SuggestedLabel": "ETCO2 digital capnography"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "429705000"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Insertion of esophageal tracheal combitube",
+          "SuggestedLabel": "Intubation, combitube"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "427753009"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Insertion of esophageal tracheal double lumen supraglottic airway",
+          "SuggestedLabel": "Intubation, double lumen supraglottic",
+          "Note": "11/11/20 \"Double lumen\" added to EMS Description."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "424979004"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Laryngeal mask airway insertion",
+          "SuggestedLabel": "Intubation, laryngeal mask airway (LMA)",
+          "Note": "Includes 418613003 Tracheal intubation through LMA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "232674004"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Orotracheal intubation",
+          "SuggestedLabel": "Intubation, NOS",
+          "Note": "Includes 16883004 Endotracheal intubation, 52765003 Intubation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "450601000124103"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Orotracheal intubation using bougie device",
+          "SuggestedLabel": "Intubation, orotracheal",
+          "Note": "11/11/20 Added to list."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "241689008"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Rapid sequence induction",
+          "SuggestedLabel": "Intubation, rapid sequence intubation (RSI)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "450611000124100"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Insertion of Single Lumen Supraglottic Airway Device",
+          "SuggestedLabel": "Intubation, single lumen supraglottic",
+          "Note": "11/11/20 Added to list."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "45851008"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Positive end expiratory pressure ventilation therapy, initiation and management",
+          "SuggestedLabel": "PEEP"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "385857005"
+          },
+          "Category": "Airway, Advanced",
+          "SourceLabel": "Ventilator care and adjustment",
+          "SuggestedLabel": "Ventilator care/adjustment"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "408994004"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Adult care assessment",
+          "SuggestedLabel": "Assessment, adult",
+          "Note": "Includes 422440002 Adult continuous assessment, 423895006 Adult admission assessment"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "422618004"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Continuous physical assessment",
+          "SuggestedLabel": "Assessment, continuous"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "315639002"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Initial patient assessment",
+          "SuggestedLabel": "Assessment, initial"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225398001"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Neurological assessment",
+          "SuggestedLabel": "Assessment, neurological",
+          "Note": "Includes 444714004 Assessment of consciousness level"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "423850004"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Pediatric continuous physical assessment",
+          "SuggestedLabel": "Assessment, pediatric"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "386053000"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Evaluation procedure",
+          "SuggestedLabel": "Evaluation/observation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "270352002"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Medical examinations/reports",
+          "SuggestedLabel": "Exam, medical",
+          "Note": "Includes 225886003 Medical assessment"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "171397002"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Medical examination for suspected condition",
+          "SuggestedLabel": "Exam, medical, suspected condition"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182777000"
+          },
+          "Category": "Assessment",
+          "SourceLabel": "Monitoring of patient",
+          "SuggestedLabel": "Patient monitoring"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "23852006"
+          },
+          "Category": "Assessment, Cardiac",
+          "SourceLabel": "Cardiac monitoring",
+          "SuggestedLabel": "Cardiac monitoring",
+          "Note": "Includes 88140007 Cardiac monitor surveillance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "268400002"
+          },
+          "Category": "Assessment, Cardiac",
+          "SourceLabel": "12 lead electrocardiogram",
+          "SuggestedLabel": "ECG, 12 lead"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "428803005"
+          },
+          "Category": "Assessment, Cardiac",
+          "SourceLabel": "3 lead electrocardiographic monitoring",
+          "SuggestedLabel": "ECG, 3 lead"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "29303009"
+          },
+          "Category": "Assessment, Cardiac",
+          "SourceLabel": "Electrocardiographic procedure",
+          "SuggestedLabel": "ECG, NOS",
+          "Note": "Includes 164847006 Standard electrocardiogram, 429163003 15 lead ECG"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "46825001"
+          },
+          "Category": "Assessment, Cardiac",
+          "SourceLabel": "Electrocardiographic monitoring",
+          "SuggestedLabel": "ECG, monitoring"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "250980009"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Cardioversion",
+          "SuggestedLabel": "Cardioversion"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "429283006"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Mechanically assisted chest compression",
+          "SuggestedLabel": "Chest compressions, mechanical"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "89666000"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Cardiopulmonary resuscitation",
+          "SuggestedLabel": "CPR, manual"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "450661000124102"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Defibrillation using automated external cardiac defibrillator",
+          "SuggestedLabel": "Defibrillation, AED",
+          "Note": "11/11/20 Replaces 233169004 Automatic defibrillator procedure."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "426220008"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "External ventricular defibrillation",
+          "SuggestedLabel": "Defibrillation, manual"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "386237008"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Circulatory care: mechanical assist device",
+          "SuggestedLabel": "LVAD monitoring"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "18590009"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Cardiac pacing",
+          "SuggestedLabel": "Pacing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "128968000"
+          },
+          "Category": "Cardiac",
+          "SourceLabel": "Vagal stimulation physiologic challenge",
+          "SuggestedLabel": "Vagal maneuver"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "228621007"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Provision of environmental control system",
+          "SuggestedLabel": "Environmental control"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "431774007"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Active external cooling of subject",
+          "SuggestedLabel": "Patient cooling",
+          "Note": "Includes 229585002 Cold pack treatment, 229583009 Chemically activated ice pack"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "431949004"
+          },
+          "Category": "Environmental",
+          "SourceLabel": "Active external warming of subject",
+          "SuggestedLabel": "Patient warming"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "87750000"
+          },
+          "Category": "Gastrointestinal",
+          "SourceLabel": "Insertion of nasogastric tube",
+          "SuggestedLabel": "Nasogastric tube insertion (NG)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "235425002"
+          },
+          "Category": "Gastrointestinal",
+          "SourceLabel": "Insertion of orogastric tube",
+          "SuggestedLabel": "Orogastric tube insertion (OG)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "33747003"
+          },
+          "Category": "Glycemic Management",
+          "SourceLabel": "Glucose measurement, blood",
+          "SuggestedLabel": "Blood glucose measurement",
+          "Note": "Includes 302789003 Capillary blood glucose, 166888009 Blood glucose method, 166900001 Glucometer"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "386328006"
+          },
+          "Category": "Glycemic Management",
+          "SourceLabel": "Hypoglycemia management",
+          "SuggestedLabel": "Hypoglycemia management"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "49689007"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Application of cervical collar",
+          "SuggestedLabel": "Cervical collar"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "707794004"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Immobilization using extrication splint",
+          "SuggestedLabel": "Extrication splint",
+          "Note": "11/11/20 Added to list."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "450591000124106"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Immobilization using long board",
+          "SuggestedLabel": "Long board",
+          "Note": "11/11/20 Added to list."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182556001"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Pelvic sling",
+          "SuggestedLabel": "Pelvic sling"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "79321009"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Application of splint",
+          "SuggestedLabel": "Splinting, general"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "302488007"
+          },
+          "Category": "Immobilization",
+          "SourceLabel": "Application of traction using a traction device",
+          "SuggestedLabel": "Splinting, traction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "78086002"
+          },
+          "Category": "Other",
+          "SourceLabel": "Holding patient",
+          "SuggestedLabel": "Holding patient"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "409582008"
+          },
+          "Category": "Other",
+          "SourceLabel": "Isolation precautions",
+          "SuggestedLabel": "Isolation precautions"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182705007"
+          },
+          "Category": "Other",
+          "SourceLabel": "Tension pneumothorax relief",
+          "SuggestedLabel": "Needle decompression",
+          "Note": "Not sure where to put this"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "22633006"
+          },
+          "Category": "Other",
+          "SourceLabel": "Vaginal delivery, medical personnel present",
+          "SuggestedLabel": "Vaginal delivery"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "423184003"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Adult pain assessment",
+          "SuggestedLabel": "Pain assessment, adult"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "423401003"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pediatric pain assessment",
+          "SuggestedLabel": "Pain assessment, pediatric"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225399009"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pain assessment",
+          "SuggestedLabel": "Pain assessment, NOS",
+          "Note": "Includes 445719003 Assessment using visual analog scale"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "278414003"
+          },
+          "Category": "Pain",
+          "SourceLabel": "Pain management",
+          "SuggestedLabel": "Pain management"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "58715004"
+          },
+          "Category": "Patient Positioning",
+          "SourceLabel": "Moving a patient to a stretcher",
+          "SuggestedLabel": "Moving patient to stretcher"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "56469005"
+          },
+          "Category": "Patient Positioning",
+          "SourceLabel": "Moving a patient",
+          "SuggestedLabel": "Moving patient, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225287004"
+          },
+          "Category": "Patient Positioning",
+          "SourceLabel": "Procedures relating to positioning and support",
+          "SuggestedLabel": "Patient positioning, support",
+          "Note": "Includes 423212001 Trendelenburg position, 225994009 Placing patient in position of comfort"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "386423001"
+          },
+          "Category": "Patient Positioning",
+          "SourceLabel": "Physical restraint",
+          "SuggestedLabel": "Physical restraint"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "398041008"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Cervical spine immobilization",
+          "SuggestedLabel": "Spinal stabilization, c-spine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "449199004"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Manual inline stabilization of cervical spine",
+          "SuggestedLabel": "Spinal stabilization, manual"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "426498007"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Stabilization of spine",
+          "SuggestedLabel": "Spinal stabilization, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "445828009"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Assessment using functional capacity evaluation",
+          "SuggestedLabel": "Spinal, advanced assessment (spinal clearance)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "284405008"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Examination of cervical spine",
+          "SuggestedLabel": "Spinal, c-spine exam"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "284394000"
+          },
+          "Category": "Spinal Procedures",
+          "SourceLabel": "Examination of spine",
+          "SuggestedLabel": "Spinal, exam"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "304562007"
+          },
+          "Category": "Transfer of Care",
+          "SourceLabel": "Informing doctor",
+          "SuggestedLabel": "Contact Medical Control"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "429202003"
+          },
+          "Category": "Transfer of Care",
+          "SourceLabel": "Transfer of care to hospital",
+          "SuggestedLabel": "Transfer of care to hospital"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "308292007"
+          },
+          "Category": "Transfer of Care",
+          "SourceLabel": "Transfer of care",
+          "SuggestedLabel": "Transfer of care, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "392247006"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Insertion of catheter into artery",
+          "SuggestedLabel": "Arterial cannulation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "226005007"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Care of central line",
+          "SuggestedLabel": "Central line care"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425074000"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Conversion of intravenous infusion to saline lock",
+          "SuggestedLabel": "Convert IV to saline lock"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "430824005"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Intraosseous cannulation",
+          "SuggestedLabel": "IO cannulation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "392230005"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Catheterization of vein",
+          "SuggestedLabel": "IV, insertion",
+          "Note": "Includes 392231009 Intravenous cannulation, 386339009 IV insertion"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "353008"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Intravenous/irrigation monitoring",
+          "SuggestedLabel": "IV, monitoring",
+          "Note": "Includes 385756009 IV care management, 386493006 IV device maintenance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "424287005"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Removal of peripheral intravenous catheter",
+          "SuggestedLabel": "IV, removal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "396540005"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Phlebotomy",
+          "SuggestedLabel": "Vein, blood draw",
+          "Note": "Includes 28520004 Venipuncture for blood test"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "405427009"
+          },
+          "Category": "Vascular Access",
+          "SourceLabel": "Catheterization of external jugular vein",
+          "SuggestedLabel": "Vein, external jugular access"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "46973005"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Blood pressure taking",
+          "SuggestedLabel": "Blood pressure",
+          "Note": "Includes 135840009 Blood pressure monitoring"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "248753002"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Capillary refill",
+          "SuggestedLabel": "Capillary refill",
+          "Note": "New (I think the capillary blood glucose has been misused as this)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "68664003"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Glasgow coma testing and evaluation",
+          "SuggestedLabel": "Glascow Coma Scale (GCS)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "65653002"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Pulse taking",
+          "SuggestedLabel": "Pulse"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "252465000"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Pulse oximetry",
+          "SuggestedLabel": "Pulse oximetry",
+          "Note": "Includes 284034009 Pulse oximetry monitoring, 104847001 Oxygen saturation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "408867002"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Taking respiratory rate",
+          "SuggestedLabel": "Respiratory rate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "56342008"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Temperature taking",
+          "SuggestedLabel": "Temperature",
+          "Note": "Includes 89003005 Oral temperature"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "61746007"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Taking patient vital signs",
+          "SuggestedLabel": "Vital signs, NOS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "425058005"
+          },
+          "Category": "Vital Signs",
+          "SourceLabel": "Taking orthostatic vital signs",
+          "SuggestedLabel": "Vital signs, orthostatic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "447686008"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of pressure to wound",
+          "SuggestedLabel": "Apply pressure to wound"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182555002"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of bandage",
+          "SuggestedLabel": "Bandage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "373675000"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of pressure bandage",
+          "SuggestedLabel": "Bandage, pressure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "133901003"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Burn care",
+          "SuggestedLabel": "Burn care"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "182531007"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Dressing of wound",
+          "SuggestedLabel": "Dressing"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "22206003"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of dressing, occlusive plastic",
+          "SuggestedLabel": "Dressing, occlusive"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "26906007"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of dressing, pressure",
+          "SuggestedLabel": "Dressing, pressure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "372045002"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of chemical hemostatic agents",
+          "SuggestedLabel": "Hemostatic agent (i.e. QuikClot)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225116006"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Irrigation of wound",
+          "SuggestedLabel": "Irrigation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "20655006"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Application of tourniquet",
+          "SuggestedLabel": "Tourniquet"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "225358003"
+          },
+          "Category": "Wound Care",
+          "SourceLabel": "Wound care",
+          "SuggestedLabel": "Wound care, NOS"
+        }
+      ]
+    }
+  }
+}

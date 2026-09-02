@@ -1,0 +1,3342 @@
+{
+  "$schema": "https://nemsis.org/media/nemsis_v3/release-3.5.1/DefinedLists/DefinedLists.schema.json",
+  "DefinedList": {
+    "date": "2025-01-14",
+    "Header": {
+      "SourceVocabularies": {
+        "SourceVocabulary": [
+          {
+            "url": "https://www.cdc.gov/nchs/icd/icd-10-cm/",
+            "Value": "ICD-10"
+          }
+        ]
+      },
+      "NemsisTypes": {
+        "NemsisType": [
+          "icd10MedSurge"
+        ]
+      },
+      "NemsisElements": {
+        "NemsisElement": [
+          "eHistory.08"
+        ]
+      }
+    },
+    "Codes": {
+      "Code": [
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F90.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Attention-deficit hyperactivity disorder, unspecified type",
+          "SuggestedLabel": "ADHD"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F50.00"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Anorexia nervosa, unspecified",
+          "SuggestedLabel": "Anorexia Nervosa"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.2"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Antisocial personality disorder",
+          "SuggestedLabel": "Antisocial Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F84.5"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Asperger's syndrome",
+          "SuggestedLabel": "Asperger's"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F84.0"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Autistic disorder",
+          "SuggestedLabel": "Autistic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.6"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Avoidant personality disorder",
+          "SuggestedLabel": "Avoidant Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F31.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Bipolar disorder, unspecified",
+          "SuggestedLabel": "Bipolar Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.3"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Borderline personality disorder",
+          "SuggestedLabel": "Borderline Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F50.2"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Bulimia nervosa",
+          "SuggestedLabel": "Bulimia Nervosa"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F03.90"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Unspecified dementia without behavioral disturbance",
+          "SuggestedLabel": "Dementia (w/o behavioral disturbance)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F03.91"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Unspecified dementia with behavioral disturbance",
+          "SuggestedLabel": "Dementia (with behavioral disturbance)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.7"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Dependent personality disorder",
+          "SuggestedLabel": "Dependent Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z65.5"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Exposure to disaster, war and other hostilities",
+          "SuggestedLabel": "Exposure to War"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.4"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Histrionic personality disorder",
+          "SuggestedLabel": "Histrionic Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z59.0"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Homelessness",
+          "SuggestedLabel": "Homelessness"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F51.01"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Primary insomnia",
+          "SuggestedLabel": "Insomnia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F33.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Major depressive disorder, recurrent, unspecified",
+          "SuggestedLabel": "Major Depression"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F30.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Manic episode, unspecified",
+          "SuggestedLabel": "Manic Episodes"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.81"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Narcissistic personality disorder",
+          "SuggestedLabel": "Narcissistic Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.5"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Obsessive-compulsive personality disorder",
+          "SuggestedLabel": "Obsessive-Compulsive"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Personality disorder, unspecified",
+          "SuggestedLabel": "Other Personality Dis."
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.0"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Paranoid personality disorder",
+          "SuggestedLabel": "Paranoid Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F43.10"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Post-traumatic stress disorder, unspecified",
+          "SuggestedLabel": "PTSD"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F25.9"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Schizoaffective disorder, unspecified",
+          "SuggestedLabel": "Schizoaffective Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F60.1"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Schizoid personality disorder",
+          "SuggestedLabel": "Schizoid Personality"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z73.3"
+          },
+          "Category": "Behavioral",
+          "SourceLabel": "Stress, not elsewhere classified",
+          "SuggestedLabel": "Stress"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E85.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Amyloidosis, unspecified",
+          "SuggestedLabel": "Amyloidosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D64.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Anemia, unspecified",
+          "SuggestedLabel": "Anemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D67"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hereditary factor IX deficiency",
+          "SuggestedLabel": "Blood -Factor IX Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D66"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hereditary factor VIII deficiency",
+          "SuggestedLabel": "Blood -Factor VIII Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E87.70"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Fluid overload, unspecified",
+          "SuggestedLabel": "Fluid Overload"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E87.5"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hyperkalemia",
+          "SuggestedLabel": "Hyperkalemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E78.5"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hyperlipidemia, unspecified",
+          "SuggestedLabel": "Hyperlipidemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E87.6"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hypokalemia",
+          "SuggestedLabel": "Hypokalemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D70.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Neutropenia, unspecified",
+          "SuggestedLabel": "Neutropenia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D86.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Sarcoidosis, unspecified",
+          "SuggestedLabel": "Sarcoidosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D57.00"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Hb-SS disease with crisis, unspecified",
+          "SuggestedLabel": "Sickle Cell Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D57.3"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Sickle-cell trait",
+          "SuggestedLabel": "Sickle Cell Trait"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D73.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Disease of spleen, unspecified",
+          "SuggestedLabel": "Splenic Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D69.6"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Thrombocytopenia, unspecified",
+          "SuggestedLabel": "Thrombocytopenia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E53.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Vitamin B deficiency, unspecified",
+          "SuggestedLabel": "Vitamin B Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "D51.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Vitamin B12 deficiency anemia, unspecified",
+          "SuggestedLabel": "Vitamin B12 Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E55.9"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Vitamin D deficiency, unspecified",
+          "SuggestedLabel": "Vitamin D Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E56.1"
+          },
+          "Category": "Blood",
+          "SourceLabel": "Deficiency of vitamin K",
+          "SuggestedLabel": "Vitamin K Deficiency"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C67.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of bladder, unspecified",
+          "SuggestedLabel": "Bladder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C41.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of bone and articular cartilage, unspecified",
+          "SuggestedLabel": "Bone"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C71.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of brain, unspecified",
+          "SuggestedLabel": "Brain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C50.919"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified site of unspecified female breast",
+          "SuggestedLabel": "Breast (Female)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C50.929"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified site of unspecified male breast",
+          "SuggestedLabel": "Breast (Male)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C53.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of cervix uteri, unspecified",
+          "SuggestedLabel": "Cervix"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C18.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of colon, unspecified",
+          "SuggestedLabel": "Colon"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C15.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of esophagus, unspecified",
+          "SuggestedLabel": "Esophagus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C23"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of gallbladder",
+          "SuggestedLabel": "Gallbladder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C81.70"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Other Hodgkin lymphoma, unspecified site",
+          "SuggestedLabel": "Hodgkin Lymphoma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C26.0"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of intestinal tract, part unspecified",
+          "SuggestedLabel": "Intestinal Tract"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C46.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Kaposi's sarcoma, unspecified",
+          "SuggestedLabel": "Kaposi's Sarcoma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C64.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified kidney, except renal pelvis",
+          "SuggestedLabel": "Kidney"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C32.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of larynx, unspecified",
+          "SuggestedLabel": "Larynx"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C95.90"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Leukemia, unspecified not having achieved remission",
+          "SuggestedLabel": "Leukemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C95.91"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Leukemia, unspecified, in remission",
+          "SuggestedLabel": "Leukemia (In Remission)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C22.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of liver, not specified as primary or secondary",
+          "SuggestedLabel": "Liver"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C34.90"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified part of unspecified bronchus or lung",
+          "SuggestedLabel": "Lung or Bronchus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C45.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Mesothelioma, unspecified",
+          "SuggestedLabel": "Mesothelioma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C90.02"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Multiple myeloma in relapse",
+          "SuggestedLabel": "Multiple Myeloma (Relapse)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C90.01"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Multiple myeloma in remission",
+          "SuggestedLabel": "Multiple Myeloma (Remission)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C85.90"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Non-Hodgkin lymphoma, unspecified, unspecified site",
+          "SuggestedLabel": "Non-Hodgkin Lymphoma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C10.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of oropharynx, unspecified",
+          "SuggestedLabel": "Oropharynx"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C56.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified ovary",
+          "SuggestedLabel": "Ovary"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C25.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of pancreas, unspecified",
+          "SuggestedLabel": "Pancreas"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C61"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of prostate",
+          "SuggestedLabel": "Prostate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C20"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of rectum",
+          "SuggestedLabel": "Rectum"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C43.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant melanoma of skin, unspecified",
+          "SuggestedLabel": "Skin"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C17.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of small intestine, unspecified",
+          "SuggestedLabel": "Small Intestine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C72.0"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of spinal cord",
+          "SuggestedLabel": "Spinal Cord"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C26.1"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of spleen",
+          "SuggestedLabel": "Spleen"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C16.9"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of stomach, unspecified",
+          "SuggestedLabel": "Stomach"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C62.90"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of unspecified testis, unspecified whether descended or undescended",
+          "SuggestedLabel": "Testis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C73"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of thyroid gland",
+          "SuggestedLabel": "Thyroid"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C55"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of uterus, part unspecified",
+          "SuggestedLabel": "Uterus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "C52"
+          },
+          "Category": "Cancer",
+          "SourceLabel": "Malignant neoplasm of vagina",
+          "SuggestedLabel": "Vagina"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I20.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Angina pectoris, unspecified",
+          "SuggestedLabel": "Angina"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I23.7"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Postinfarction angina",
+          "SuggestedLabel": "Angina Post MI"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I20.0"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Unstable angina",
+          "SuggestedLabel": "Angina Unstable"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I25.119"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Atherosclerotic heart disease of native coronary artery with unspecified angina pectoris",
+          "SuggestedLabel": "Atherosclerosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I48.92"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Unspecified atrial flutter",
+          "SuggestedLabel": "Atrial Flutter"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I46.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiac arrest, cause unspecified",
+          "SuggestedLabel": "Cardiac Arrest"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I31.4"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiac tamponade",
+          "SuggestedLabel": "Cardiac Tamponade"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I51.7"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiomegaly",
+          "SuggestedLabel": "Cardiomegaly"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I42.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Cardiomyopathy, unspecified",
+          "SuggestedLabel": "Cardiomyopathy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I42.1"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Obstructive hypertrophic cardiomyopathy",
+          "SuggestedLabel": "Cardiomyopathy Hypertrophic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I25.5"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Ischemic cardiomyopathy",
+          "SuggestedLabel": "Cardiomyopathy Ischemic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I33.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Acute and subacute endocarditis, unspecified",
+          "SuggestedLabel": "Endocarditis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I38"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Endocarditis, valve unspecified",
+          "SuggestedLabel": "Endocarditis w/Valve Involved"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I51.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Heart disease, unspecified",
+          "SuggestedLabel": "Heart Disease Unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I50.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Heart failure, unspecified",
+          "SuggestedLabel": "Heart Failure"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I10"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Essential (primary) hypertension",
+          "SuggestedLabel": "Hypertension"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I95.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Hypotension, unspecified",
+          "SuggestedLabel": "Hypotension"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I34.1"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Nonrheumatic mitral (valve) prolapse",
+          "SuggestedLabel": "Mitral Valve Prolapse"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I34.2"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Nonrheumatic mitral (valve) stenosis",
+          "SuggestedLabel": "Mitral Valve Stenosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I40.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Acute myocarditis, unspecified",
+          "SuggestedLabel": "Myocarditis Acute"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I27.0"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Primary pulmonary hypertension",
+          "SuggestedLabel": "Pulmonary Hypertension"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I37.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Nonrheumatic pulmonary valve disorder, unspecified",
+          "SuggestedLabel": "Pulmonary Valve Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I22.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Subsequent ST elevation (STEMI) myocardial infarction of unspecified site",
+          "SuggestedLabel": "STEMI"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I47.1"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Supraventricular tachycardia",
+          "SuggestedLabel": "Supraventricular Tachycardia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I36.9"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Nonrheumatic tricuspid valve disorder, unspecified",
+          "SuggestedLabel": "Tricuspid Valve Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I47.2"
+          },
+          "Category": "Cardiovascular",
+          "SourceLabel": "Ventricular tachycardia",
+          "SuggestedLabel": "Ventricular Tachycardia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q27.39"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Arteriovenous malformation, other site",
+          "SuggestedLabel": "Arteriovenous Malformation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q21.1"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Atrial septal defect",
+          "SuggestedLabel": "Atrial Septal Defect"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q21.2"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Atrioventricular septal defect",
+          "SuggestedLabel": "Atrioventricular Septal Defect"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E84.9"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Cystic fibrosis, unspecified",
+          "SuggestedLabel": "Cystic Fibrosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q90"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Down syndrome",
+          "SuggestedLabel": "Down's Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q86.0"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Fetal alcohol syndrome (dysmorphic)",
+          "SuggestedLabel": "Fetal Alcohol Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q24"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Other congenital malformations of heart",
+          "SuggestedLabel": "Other Heart Congenital Malformations"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q25.0"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Patent ductus arteriosus",
+          "SuggestedLabel": "Patent Ductus Arteriosus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q05.9"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Spina bifida, unspecified",
+          "SuggestedLabel": "Spina bifida"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q21.3"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Tetralogy of Fallot",
+          "SuggestedLabel": "Tetralogy of Fallot"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Q21.0"
+          },
+          "Category": "Congenital",
+          "SourceLabel": "Ventricular septal defect",
+          "SuggestedLabel": "Ventricular Septal Defect"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K02.9"
+          },
+          "Category": "Dental",
+          "SourceLabel": "Dental caries, unspecified",
+          "SuggestedLabel": "Caries"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K03.81"
+          },
+          "Category": "Dental",
+          "SourceLabel": "Cracked tooth",
+          "SuggestedLabel": "Cracked Tooth"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K08.139"
+          },
+          "Category": "Dental",
+          "SourceLabel": "Complete loss of teeth due to caries, unspecified class",
+          "SuggestedLabel": "Loss of Tooth from Caries"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K08.119"
+          },
+          "Category": "Dental",
+          "SourceLabel": "Complete loss of teeth due to trauma, unspecified class",
+          "SuggestedLabel": "Loss of Tooth from Trauma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H54.0"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Blindness, both eyes",
+          "SuggestedLabel": "Blind"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H54.8"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Legal blindness, as defined in USA",
+          "SuggestedLabel": "Blind Legally"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H25.9"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Unspecified age-related cataract",
+          "SuggestedLabel": "Cataract"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H91.3"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Deaf nonspeaking, not elsewhere classified",
+          "SuggestedLabel": "Deaf"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H60.60"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Unspecified chronic otitis externa, unspecified ear",
+          "SuggestedLabel": "Ear Infections"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H40.9"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Unspecified glaucoma",
+          "SuggestedLabel": "Glaucoma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H91.90"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Unspecified hearing loss, unspecified ear",
+          "SuggestedLabel": "Hearing Loss"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H93.19"
+          },
+          "Category": "EENT",
+          "SourceLabel": "Tinnitus, unspecified ear",
+          "SuggestedLabel": "Tinnitus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E10.8"
+          },
+          "Category": "Endocrine",
+          "SourceLabel": "Type 1 diabetes mellitus with unspecified complications",
+          "SuggestedLabel": "Diabetes Type I"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E11.8"
+          },
+          "Category": "Endocrine",
+          "SourceLabel": "Type 2 diabetes mellitus with unspecified complications",
+          "SuggestedLabel": "Diabetes Type II"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E03.9"
+          },
+          "Category": "Endocrine",
+          "SourceLabel": "Hypothyroidism, unspecified",
+          "SuggestedLabel": "Hypothyroidism"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E13.40"
+          },
+          "Category": "Endocrine",
+          "SourceLabel": "Other specified diabetes mellitus with diabetic neuropathy, unspecified",
+          "SuggestedLabel": "Neuropathy w/Diabetes"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K29.2"
+          },
+          "Category": "GI",
+          "SourceLabel": "Alcoholic gastritis",
+          "SuggestedLabel": "Alcoholic Gastritis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K37"
+          },
+          "Category": "GI",
+          "SourceLabel": "Unspecified appendicitis",
+          "SuggestedLabel": "Appendicitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K81.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Cholecystitis, unspecified",
+          "SuggestedLabel": "Cholecystitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K59.00"
+          },
+          "Category": "GI",
+          "SourceLabel": "Constipation, unspecified",
+          "SuggestedLabel": "Constipation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K50.019"
+          },
+          "Category": "GI",
+          "SourceLabel": "Crohn's disease of small intestine with unspecified complications",
+          "SuggestedLabel": "Crohn's Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K57"
+          },
+          "Category": "GI",
+          "SourceLabel": "Diverticular disease of intestine",
+          "SuggestedLabel": "Diverticulosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K30"
+          },
+          "Category": "GI",
+          "SourceLabel": "Functional dyspepsia",
+          "SuggestedLabel": "Dyspepsia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K22.2"
+          },
+          "Category": "GI",
+          "SourceLabel": "Esophageal obstruction",
+          "SuggestedLabel": "Esophageal Obstruction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I85.01"
+          },
+          "Category": "GI",
+          "SourceLabel": "Esophageal varices with bleeding",
+          "SuggestedLabel": "Esophageal Varices w/Bleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I85.00"
+          },
+          "Category": "GI",
+          "SourceLabel": "Esophageal varices without bleeding",
+          "SuggestedLabel": "Esophageal Varices w/o Bleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K20.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Esophagitis, unspecified",
+          "SuggestedLabel": "Esophagitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K56.41"
+          },
+          "Category": "GI",
+          "SourceLabel": "Fecal impaction",
+          "SuggestedLabel": "Fecal Impaction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A05.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Bacterial foodborne intoxication, unspecified",
+          "SuggestedLabel": "Foodborne Illness"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K27.4"
+          },
+          "Category": "GI",
+          "SourceLabel": "Chronic or unspecified peptic ulcer, site unspecified, with hemorrhage",
+          "SuggestedLabel": "Gastric Ulcer w/Bleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K25.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Gastric ulcer, unspecified as acute or chronic, without hemorrhage or perforation",
+          "SuggestedLabel": "Gastric Ulcer w/o Bleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K29.50"
+          },
+          "Category": "GI",
+          "SourceLabel": "Unspecified chronic gastritis without bleeding",
+          "SuggestedLabel": "Gastritis Chronic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K21.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Gastro-esophageal reflux disease without esophagitis",
+          "SuggestedLabel": "GERD/Reflux"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K92.2"
+          },
+          "Category": "GI",
+          "SourceLabel": "Gastrointestinal hemorrhage, unspecified",
+          "SuggestedLabel": "GI Bleed"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K92.0"
+          },
+          "Category": "GI",
+          "SourceLabel": "Hematemesis",
+          "SuggestedLabel": "Hematemesis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K64.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Unspecified hemorrhoids",
+          "SuggestedLabel": "Hemorrhoids"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K40"
+          },
+          "Category": "GI",
+          "SourceLabel": "Inguinal hernia",
+          "SuggestedLabel": "Hernia Inguinal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K42"
+          },
+          "Category": "GI",
+          "SourceLabel": "Umbilical hernia",
+          "SuggestedLabel": "Hernia Umbilical"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K56.60"
+          },
+          "Category": "GI",
+          "SourceLabel": "Unspecified intestinal obstruction",
+          "SuggestedLabel": "Intestinal Obstruction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K56.1"
+          },
+          "Category": "GI",
+          "SourceLabel": "Intussusception",
+          "SuggestedLabel": "Intussusception"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K58"
+          },
+          "Category": "GI",
+          "SourceLabel": "Irritable bowel syndrome",
+          "SuggestedLabel": "Irritable Bowel Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E73.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Lactose intolerance, unspecified",
+          "SuggestedLabel": "Lactose Intolerance"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K76.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Liver disease, unspecified",
+          "SuggestedLabel": "Liver Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K92.1"
+          },
+          "Category": "GI",
+          "SourceLabel": "Melena",
+          "SuggestedLabel": "Melena"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "E66.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Obesity, unspecified",
+          "SuggestedLabel": "Obesity"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K85.8"
+          },
+          "Category": "GI",
+          "SourceLabel": "Other acute pancreatitis",
+          "SuggestedLabel": "Pancreatitis (Acute)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K86.1"
+          },
+          "Category": "GI",
+          "SourceLabel": "Other chronic pancreatitis",
+          "SuggestedLabel": "Pancreatitis (Chronic)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K65.9"
+          },
+          "Category": "GI",
+          "SourceLabel": "Peritonitis, unspecified",
+          "SuggestedLabel": "Peritonitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "K51.919"
+          },
+          "Category": "GI",
+          "SourceLabel": "Ulcerative colitis, unspecified with unspecified complications",
+          "SuggestedLabel": "Ulcerative Colitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N32.9"
+          },
+          "Category": "GU",
+          "SourceLabel": "Bladder disorder, unspecified",
+          "SuggestedLabel": "Bladder Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N32.81"
+          },
+          "Category": "GU",
+          "SourceLabel": "Overactive bladder",
+          "SuggestedLabel": "Overactive Bladder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N91.2"
+          },
+          "Category": "GYN",
+          "SourceLabel": "Amenorrhea, unspecified",
+          "SuggestedLabel": "Amenorrhea"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N94.6"
+          },
+          "Category": "GYN",
+          "SourceLabel": "Dysmenorrhea, unspecified",
+          "SuggestedLabel": "Dysmenorrhea"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N80.9"
+          },
+          "Category": "GYN",
+          "SourceLabel": "Endometriosis, unspecified",
+          "SuggestedLabel": "Endometriosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N92"
+          },
+          "Category": "GYN",
+          "SourceLabel": "Excessive, frequent and irregular menstruation",
+          "SuggestedLabel": "Menstruation Excessive/Irregular/Frequent"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J40"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Bronchitis, not specified as acute or chronic",
+          "SuggestedLabel": "Bronchitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B37.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Candidiasis, unspecified",
+          "SuggestedLabel": "Candidia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B33.24"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral cardiomyopathy",
+          "SuggestedLabel": "Cardiomyopathy (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "L03.119"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Cellulitis of unspecified part of limb",
+          "SuggestedLabel": "Cellulitis (Extremity)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "L03.818"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Cellulitis of other sites",
+          "SuggestedLabel": "Cellulitis (Other site)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B01.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Varicella without complication",
+          "SuggestedLabel": "Chicken Pox"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A74.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Chlamydial infection, unspecified",
+          "SuggestedLabel": "Chlamydia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B30.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral conjunctivitis, unspecified",
+          "SuggestedLabel": "Conjunctivitis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "H10.30"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified acute conjunctivitis, unspecified eye",
+          "SuggestedLabel": "Conjunctivitis, unspecified"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A98.4"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Ebola virus disease",
+          "SuggestedLabel": "Ebola"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A83.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Mosquito-borne viral encephalitis, unspecified",
+          "SuggestedLabel": "Encephalitis (Mosquito)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A86"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified viral encephalitis",
+          "SuggestedLabel": "Encephalitis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B33.21"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral endocarditis",
+          "SuggestedLabel": "Endocarditis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A54.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Gonococcal infection, unspecified",
+          "SuggestedLabel": "Gonococcal Infection"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B15.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Hepatitis A without hepatic coma",
+          "SuggestedLabel": "Hepatitis A"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B16.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Acute hepatitis B without delta-agent and without hepatic coma",
+          "SuggestedLabel": "Hepatitis B"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B19.10"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified viral hepatitis B without hepatic coma",
+          "SuggestedLabel": "Hepatitis B (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B17.10"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Acute hepatitis C without hepatic coma",
+          "SuggestedLabel": "Hepatitis C"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B19.20"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified viral hepatitis C without hepatic coma",
+          "SuggestedLabel": "Hepatitis C (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B17.2"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Acute hepatitis E",
+          "SuggestedLabel": "Hepatitis E"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A60.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Anogenital herpesviral infection, unspecified",
+          "SuggestedLabel": "Herpes (anogenital)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B39.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Histoplasmosis, unspecified",
+          "SuggestedLabel": "Histoplasmosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B20"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Human immunodeficiency virus [HIV] disease",
+          "SuggestedLabel": "HIV"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "Z21"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Asymptomatic human immunodeficiency virus [HIV] infection status",
+          "SuggestedLabel": "HIV (Asymptomatic)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J10"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Influenza due to other identified influenza virus",
+          "SuggestedLabel": "Influenza"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A69.20"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Lyme disease, unspecified",
+          "SuggestedLabel": "Lyme Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B54"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified malaria",
+          "SuggestedLabel": "Malaria"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B05.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Measles without complication",
+          "SuggestedLabel": "Measles"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G03.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Meningitis, unspecified",
+          "SuggestedLabel": "Meningitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A87.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral meningitis, unspecified",
+          "SuggestedLabel": "Meningitis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G00.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Bacterial meningitis, unspecified",
+          "SuggestedLabel": "Meningitis Bacterial"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A39.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Meningococcal infection, unspecified",
+          "SuggestedLabel": "Meningococcal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B27.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Infectious mononucleosis, unspecified",
+          "SuggestedLabel": "Mononucleosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B26.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Mumps without complication",
+          "SuggestedLabel": "Mumps"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B33.22"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral myocarditis",
+          "SuggestedLabel": "Myocarditis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B33.23"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Viral pericarditis",
+          "SuggestedLabel": "Pericarditis (Viral)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J15.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Unspecified bacterial pneumonia",
+          "SuggestedLabel": "Pneumonia Bacterial"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J12.89"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Other viral pneumonia",
+          "SuggestedLabel": "Pneumonia Viral"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A80.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Acute poliomyelitis, unspecified",
+          "SuggestedLabel": "Polio"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B96.5"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Pseudomonas (aeruginosa) (mallei) (pseudomallei) as the cause of diseases classified elsewhere",
+          "SuggestedLabel": "Pseudomonas"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A82.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Rabies, unspecified",
+          "SuggestedLabel": "Rabies"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J30.1"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Allergic rhinitis due to pollen",
+          "SuggestedLabel": "Rhinitis Due to Pollen"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B06.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Rubella without complication",
+          "SuggestedLabel": "Rubella"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B86"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Scabies",
+          "SuggestedLabel": "Scabies"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A38.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Scarlet fever, uncomplicated",
+          "SuggestedLabel": "Scarlet Fever"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A41.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Sepsis, unspecified organism",
+          "SuggestedLabel": "Sepsis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J32.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Chronic sinusitis, unspecified",
+          "SuggestedLabel": "Sinusitis Chronic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B03"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Smallpox",
+          "SuggestedLabel": "Small Pox"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A53.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Syphilis, unspecified",
+          "SuggestedLabel": "Syphilis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A35"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Other tetanus",
+          "SuggestedLabel": "Tetanus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A48.3"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Toxic shock syndrome",
+          "SuggestedLabel": "Toxic Shock Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B58.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Toxoplasmosis, unspecified",
+          "SuggestedLabel": "Toxoplasmosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A71.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Trachoma, unspecified",
+          "SuggestedLabel": "Trachoma"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A59.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Trichomoniasis, unspecified",
+          "SuggestedLabel": "Trichomoniasis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A15.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Respiratory tuberculosis unspecified",
+          "SuggestedLabel": "Tuberculosis Lung"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A75.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Typhus fever, unspecified",
+          "SuggestedLabel": "Typhus Fever"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A92.39"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "West Nile virus infection with other complications",
+          "SuggestedLabel": "West Nile Virus"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A37.91"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Whooping cough, unspecified species with pneumonia",
+          "SuggestedLabel": "Whooping Cough w/o Pneumonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "A37.90"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Whooping cough, unspecified species without pneumonia",
+          "SuggestedLabel": "Whooping Cough w/Pneumonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B02.9"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Zoster without complications",
+          "SuggestedLabel": "Zoster"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M54.9"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Dorsalgia, unspecified",
+          "SuggestedLabel": "Back Pain"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M62.48"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Contracture of muscle, other site",
+          "SuggestedLabel": "Contractures"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M1A..0"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "#N/A",
+          "SuggestedLabel": "Gout"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M62.58"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Muscle wasting and atrophy, not elsewhere classified, other site",
+          "SuggestedLabel": "Muscle Wasting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M19.90"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Unspecified osteoarthritis, unspecified site",
+          "SuggestedLabel": "Osteoarthritis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M86.9"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Osteomyelitis, unspecified",
+          "SuggestedLabel": "Osteomyelitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M62.82"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Rhabdomyolysis",
+          "SuggestedLabel": "Rhabdomyolysis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M75.10"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Unspecified rotator cuff tear or rupture, not specified as traumatic",
+          "SuggestedLabel": "Rotator Cuff Tear"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M54.30"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Sciatica, unspecified side",
+          "SuggestedLabel": "Sciatica"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M43.20"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Fusion of spine, site unspecified",
+          "SuggestedLabel": "Spinal Fusion"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M43.22"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Fusion of spine, cervical region",
+          "SuggestedLabel": "Spinal Fusion (Cervical)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M43.26"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Fusion of spine, lumbar region",
+          "SuggestedLabel": "Spinal Fusion (Lumbar)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M43.24"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Fusion of spine, thoracic region",
+          "SuggestedLabel": "Spinal Fusion (Thoracic)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M54.10"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Radiculopathy, site unspecified",
+          "SuggestedLabel": "Spinal Radiculopathy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M48.00"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Spinal stenosis, site unspecified",
+          "SuggestedLabel": "Spinal Stenosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M48.50"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Collapsed vertebra, not elsewhere classified, site unspecified",
+          "SuggestedLabel": "Spinal Vertebral Collapse"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "M84.38"
+          },
+          "Category": "Musculoskeletal",
+          "SourceLabel": "Stress fracture, other site",
+          "SuggestedLabel": "Stress Fracture"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G30.9"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Alzheimer's disease, unspecified",
+          "SuggestedLabel": "Alzheimer's Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I69.120"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Aphasia following nontraumatic intracerebral hemorrhage",
+          "SuggestedLabel": "Aphasia Post CVA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G56.00"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Carpal tunnel syndrome, unspecified upper limb",
+          "SuggestedLabel": "Carpal Tunnel Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I63.9"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Cerebral infarction, unspecified",
+          "SuggestedLabel": "Cerebral Infarction"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I67.82"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Cerebral ischemia",
+          "SuggestedLabel": "Cerebral Ischemia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G80.9"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Cerebral palsy, unspecified",
+          "SuggestedLabel": "Cerebral Palsy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I69.11"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Cognitive deficits following nontraumatic intracerebral hemorrhage",
+          "SuggestedLabel": "Deficits Post CVA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I69.121"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Dysphasia following nontraumatic intracerebral hemorrhage",
+          "SuggestedLabel": "Difficulty Speaking Post CVA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G24.9"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Dystonia, unspecified",
+          "SuggestedLabel": "Dystonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.1"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Localization-related (focal) (partial) symptomatic epilepsy and epileptic syndromes with simple partial seizures",
+          "SuggestedLabel": "Epilepsy (Focal)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.319"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Generalized idiopathic epilepsy and epileptic syndromes, intractable, without status epilepticus",
+          "SuggestedLabel": "Epilepsy (Seizures)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G40.803"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Other epilepsy, intractable, with status epilepticus",
+          "SuggestedLabel": "Epilepsy (w/Status Epilepticus)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I62.1"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Nontraumatic extradural hemorrhage",
+          "SuggestedLabel": "Extradural Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G61.0"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Guillain-Barre syndrome",
+          "SuggestedLabel": "Guillain-Barre Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G44.89"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Other headache syndrome",
+          "SuggestedLabel": "Headache"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G81"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Hemiplegia and hemiparesis",
+          "SuggestedLabel": "Hemiplegia & Hemiparesis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I69.159"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Hemiplegia and hemiparesis following nontraumatic intracerebral hemorrhage affecting unspecified side",
+          "SuggestedLabel": "Hemiplegia Post CVA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G10"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Huntington's disease",
+          "SuggestedLabel": "Huntington's Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I61.9"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Nontraumatic intracerebral hemorrhage, unspecified",
+          "SuggestedLabel": "Intracerebral Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G43.919"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Migraine, unspecified, intractable, without status migrainosus",
+          "SuggestedLabel": "Migraines"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G35"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Multiple sclerosis",
+          "SuggestedLabel": "Multiple Sclerosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G82.20"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Paraplegia, unspecified",
+          "SuggestedLabel": "Paraplegia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G20"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Parkinson's disease",
+          "SuggestedLabel": "Parkinson's Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G82.50"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Quadriplegia, unspecified",
+          "SuggestedLabel": "Quadriplegia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "G47.30"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Sleep apnea, unspecified",
+          "SuggestedLabel": "Sleep Apnea"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I69.12"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Speech and language deficits following nontraumatic intracerebral hemorrhage",
+          "SuggestedLabel": "Speech Deficit Post CVA"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I60.7"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Nontraumatic subarachnoid hemorrhage from unspecified intracranial artery",
+          "SuggestedLabel": "Subarachnoid Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I62.00"
+          },
+          "Category": "Neuro",
+          "SourceLabel": "Nontraumatic subdural hemorrhage, unspecified",
+          "SuggestedLabel": "Subdural Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P03.0"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by breech delivery and extraction",
+          "SuggestedLabel": "Breech Delivery"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P29.81"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Cardiac arrest of newborn",
+          "SuggestedLabel": "Cardiac Arrest"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P02.5"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by other compression of umbilical cord",
+          "SuggestedLabel": "Compressed Cord"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P91.61"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Mild hypoxic ischemic encephalopathy [HIE]",
+          "SuggestedLabel": "Hypoxic Encephalopathy - Mild"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P91.62"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Moderate hypoxic ischemic encephalopathy [HIE]",
+          "SuggestedLabel": "Hypoxic Encephalopathy - Moderate"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P91.63"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Severe hypoxic ischemic encephalopathy [HIE]",
+          "SuggestedLabel": "Hypoxic Encephalopathy - Severe"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P07.10"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Other low birth weight newborn, unspecified weight",
+          "SuggestedLabel": "Low Birth Weight"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P04.3"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by maternal use of alcohol",
+          "SuggestedLabel": "Maternal Alcohol Use"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P01.9"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by maternal complication of pregnancy, unspecified",
+          "SuggestedLabel": "Maternal Complications"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P04.2"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by maternal use of tobacco",
+          "SuggestedLabel": "Maternal Smoking"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P04.4"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by maternal use of drugs of addiction",
+          "SuggestedLabel": "Maternal Substance Use"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P03.82"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Meconium passage during delivery",
+          "SuggestedLabel": "Meconium Aspiration"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P24.01"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Meconium aspiration with respiratory symptoms",
+          "SuggestedLabel": "Meconium Aspiration w/Resp Distress"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P59.9"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Neonatal jaundice, unspecified",
+          "SuggestedLabel": "Neonatal Jaundice"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P02.3"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by placental transfusion syndromes",
+          "SuggestedLabel": "Placental Transfusion Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P08.21"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Post-term newborn",
+          "SuggestedLabel": "Post-term"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P03.5"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by precipitate delivery",
+          "SuggestedLabel": "Precipitate Delivery"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P01.1"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by premature rupture of membranes",
+          "SuggestedLabel": "Premature ROM"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P07.30"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Preterm newborn, unspecified weeks of gestation",
+          "SuggestedLabel": "Pre-term"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P02.4"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Newborn affected by prolapsed cord",
+          "SuggestedLabel": "Prolapsed Cord"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P22.0"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Respiratory distress syndrome of newborn",
+          "SuggestedLabel": "Resp Distress Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "P36.9"
+          },
+          "Category": "Newborn",
+          "SourceLabel": "Bacterial sepsis of newborn, unspecified",
+          "SuggestedLabel": "Sepsis Bacterial"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O99.810"
+          },
+          "Category": "OB",
+          "SourceLabel": "Abnormal glucose complicating pregnancy",
+          "SuggestedLabel": "Abnormal Glucose During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O99.310"
+          },
+          "Category": "OB",
+          "SourceLabel": "Alcohol use complicating pregnancy, unspecified trimester",
+          "SuggestedLabel": "Alcohol Abuse During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O64.1"
+          },
+          "Category": "OB",
+          "SourceLabel": "Obstructed labor due to breech presentation",
+          "SuggestedLabel": "Breech Presentation"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O90.3"
+          },
+          "Category": "OB",
+          "SourceLabel": "Peripartum cardiomyopathy",
+          "SuggestedLabel": "Cardiomyopathy Peripartum"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O24.419"
+          },
+          "Category": "OB",
+          "SourceLabel": "Gestational diabetes mellitus in pregnancy, unspecified control",
+          "SuggestedLabel": "Diabetes Gestational"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O99.324"
+          },
+          "Category": "OB",
+          "SourceLabel": "Drug use complicating childbirth",
+          "SuggestedLabel": "Drug Abuse During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O15.00"
+          },
+          "Category": "OB",
+          "SourceLabel": "Eclampsia complicating pregnancy, unspecified trimester",
+          "SuggestedLabel": "Eclampsia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O00.9"
+          },
+          "Category": "OB",
+          "SourceLabel": "Ectopic pregnancy, unspecified",
+          "SuggestedLabel": "Ectopic Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O77.1"
+          },
+          "Category": "OB",
+          "SourceLabel": "Fetal stress in labor or delivery due to drug administration",
+          "SuggestedLabel": "Fetal Distress Due to Medications"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O16.9"
+          },
+          "Category": "OB",
+          "SourceLabel": "Unspecified maternal hypertension, unspecified trimester",
+          "SuggestedLabel": "Hypertension Maternal"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O63.9"
+          },
+          "Category": "OB",
+          "SourceLabel": "Long labor, unspecified",
+          "SuggestedLabel": "Labor Prolonged"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O25.10"
+          },
+          "Category": "OB",
+          "SourceLabel": "Malnutrition in pregnancy, unspecified trimester",
+          "SuggestedLabel": "Malnutrition Due to Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O03"
+          },
+          "Category": "OB",
+          "SourceLabel": "Spontaneous abortion",
+          "SuggestedLabel": "Miscarriage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O9A.32"
+          },
+          "Category": "OB",
+          "SourceLabel": "Physical abuse complicating childbirth",
+          "SuggestedLabel": "Physical Abuse During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O44.10"
+          },
+          "Category": "OB",
+          "SourceLabel": "Complete placenta previa with hemorrhage, unspecified trimester",
+          "SuggestedLabel": "Placenta Previa w/Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O44.0"
+          },
+          "Category": "OB",
+          "SourceLabel": "Complete placenta previa NOS or without hemorrhage",
+          "SuggestedLabel": "Placenta Previa w/o Hemorrhage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O48.0"
+          },
+          "Category": "OB",
+          "SourceLabel": "Post-term pregnancy",
+          "SuggestedLabel": "Post-term Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O14.00"
+          },
+          "Category": "OB",
+          "SourceLabel": "Mild to moderate pre-eclampsia, unspecified trimester",
+          "SuggestedLabel": "Pre-eclampsia mild-mod"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O14.10"
+          },
+          "Category": "OB",
+          "SourceLabel": "Severe pre-eclampsia, unspecified trimester",
+          "SuggestedLabel": "Pre-eclampsia Severe"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O60"
+          },
+          "Category": "OB",
+          "SourceLabel": "Preterm labor",
+          "SuggestedLabel": "Pre-term Labor"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O42.919"
+          },
+          "Category": "OB",
+          "SourceLabel": "Preterm premature rupture of membranes, unspecified as to length of time between rupture and onset of labor, unspecified trimester",
+          "SuggestedLabel": "Pre-term Rupture of Membranes (ROM)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O69.0"
+          },
+          "Category": "OB",
+          "SourceLabel": "Labor and delivery complicated by prolapse of cord",
+          "SuggestedLabel": "Prolapsed Cord"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O12.10"
+          },
+          "Category": "OB",
+          "SourceLabel": "Gestational proteinuria, unspecified trimester",
+          "SuggestedLabel": "Proteinuria Gestational"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O9A.42"
+          },
+          "Category": "OB",
+          "SourceLabel": "Sexual abuse complicating childbirth",
+          "SuggestedLabel": "Sexual Abuse During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O99.334"
+          },
+          "Category": "OB",
+          "SourceLabel": "Smoking (tobacco) complicating childbirth",
+          "SuggestedLabel": "Smoking During Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O26.859"
+          },
+          "Category": "OB",
+          "SourceLabel": "Spotting complicating pregnancy, unspecified trimester",
+          "SuggestedLabel": "Spotting"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O20.0"
+          },
+          "Category": "OB",
+          "SourceLabel": "Threatened abortion",
+          "SuggestedLabel": "Threatened Miscarriage"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "O21.9"
+          },
+          "Category": "OB",
+          "SourceLabel": "Vomiting of pregnancy, unspecified",
+          "SuggestedLabel": "Vomiting Due to Pregnancy"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.6"
+          },
+          "Category": "Renal",
+          "SourceLabel": "End stage renal disease",
+          "SuggestedLabel": "End Stage Renal Disease"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N13.30"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Unspecified hydronephrosis",
+          "SuggestedLabel": "Hydronephrosis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.1"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Chronic kidney disease, stage 1",
+          "SuggestedLabel": "Kidney Disease (Stage 1)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.2"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Chronic kidney disease, stage 2 (mild)",
+          "SuggestedLabel": "Kidney Disease (Stage 2 - mild)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.3"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Chronic kidney disease, stage 3 (moderate)",
+          "SuggestedLabel": "Kidney Disease (Stage 3 - Moderate)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.4"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Chronic kidney disease, stage 4 (severe)",
+          "SuggestedLabel": "Kidney Disease (Stage 4 - Severe)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N18.5"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Chronic kidney disease, stage 5",
+          "SuggestedLabel": "Kidney Disease (Stage 5)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "N17.9"
+          },
+          "Category": "Renal",
+          "SourceLabel": "Acute kidney failure, unspecified",
+          "SuggestedLabel": "Kidney Failure (Acute)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J80"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute respiratory distress syndrome",
+          "SuggestedLabel": "Acute Resp Distress Syndrome"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J45.30"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Mild persistent asthma, uncomplicated",
+          "SuggestedLabel": "Asthma (Mild)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J45.41"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Moderate persistent asthma with (acute) exacerbation",
+          "SuggestedLabel": "Asthma (Moderate)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J45.50"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Severe persistent asthma, uncomplicated",
+          "SuggestedLabel": "Asthma (Severe)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J45.52"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Severe persistent asthma with status asthmaticus",
+          "SuggestedLabel": "Asthma (Status Asthmaticus)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J44.9"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Chronic obstructive pulmonary disease, unspecified",
+          "SuggestedLabel": "COPD"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J94.2"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Hemothorax",
+          "SuggestedLabel": "Hemothorax"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J98.9"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Respiratory disorder, unspecified",
+          "SuggestedLabel": "Other Disorder"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J81.0"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Acute pulmonary edema",
+          "SuggestedLabel": "Pulmonary Edema (Acute)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J81.1"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Chronic pulmonary edema",
+          "SuggestedLabel": "Pulmonary Edema (Chronic)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B97.4"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Respiratory syncytial virus as the cause of diseases classified elsewhere",
+          "SuggestedLabel": "RSV"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J12.1"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Respiratory syncytial virus pneumonia",
+          "SuggestedLabel": "RSV Pneumonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "B97.21"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "SARS-associated coronavirus as the cause of diseases classified elsewhere",
+          "SuggestedLabel": "SARS"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J93.0"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Spontaneous tension pneumothorax",
+          "SuggestedLabel": "Spontaneous Pneumothorax"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "J95.851"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Ventilator associated pneumonia",
+          "SuggestedLabel": "Ventilator Related Pneumonia"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "L89.90"
+          },
+          "Category": "Skin",
+          "SourceLabel": "Pressure ulcer of unspecified site, unspecified stage",
+          "SuggestedLabel": "Skin - Pressure Ulcer"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.21"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Alcohol dependence, in remission",
+          "SuggestedLabel": "Alcohol (In remission)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.20"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Alcohol dependence, uncomplicated",
+          "SuggestedLabel": "Alcohol Dependence"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F10.229"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Alcohol dependence with intoxication, unspecified",
+          "SuggestedLabel": "Alcohol Intoxication"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F14.99"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Cocaine use, unspecified with unspecified cocaine-induced disorder",
+          "SuggestedLabel": "Cocaine"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F18.99"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Inhalant use, unspecified with unspecified inhalant-induced disorder",
+          "SuggestedLabel": "Inhalant"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F17.299"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Nicotine dependence, other tobacco product, with unspecified nicotine-induced disorders",
+          "SuggestedLabel": "Nicotine Dependence"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F11.19"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Opioid abuse with unspecified opioid-induced disorder",
+          "SuggestedLabel": "Opioid Abuse"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F11.21"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Opioid dependence, in remission",
+          "SuggestedLabel": "Opioid Dependence (In Remission)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F11.220"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Opioid dependence with intoxication, uncomplicated",
+          "SuggestedLabel": "Opioid Dependence w/Intoxication"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "F13.99"
+          },
+          "Category": "Substance Abuse",
+          "SourceLabel": "Sedative, hypnotic or anxiolytic use, unspecified with unspecified sedative, hypnotic or anxiolytic-induced disorder",
+          "SuggestedLabel": "Sedative, Hypnotic, Anxiolytic"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I82.91"
+          },
+          "Category": "Vascular",
+          "SourceLabel": "Chronic embolism and thrombosis of unspecified vein",
+          "SuggestedLabel": "Embolism/Thrombosis Vein"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I80.9"
+          },
+          "Category": "Vascular",
+          "SourceLabel": "Phlebitis and thrombophlebitis of unspecified site",
+          "SuggestedLabel": "Phlebitis/Thrombophlebitis"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I83.819"
+          },
+          "Category": "Vascular",
+          "SourceLabel": "Varicose veins of unspecified lower extremity with pain",
+          "SuggestedLabel": "Varicose Vein(s)"
+        },
+        {
+          "date": "2021-05-06",
+          "Value": {
+            "Value": "I87.9"
+          },
+          "Category": "Vascular",
+          "SourceLabel": "Disorder of vein, unspecified",
+          "SuggestedLabel": "Vein Disorder Other"
+        },
+        {
+          "date": "2023-02-14",
+          "Value": {
+            "Value": "B97.29"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Other coronavirus as the cause of disease classified elsewhere",
+          "SuggestedLabel": "Coronavirus"
+        },
+        {
+          "date": "2023-02-14",
+          "Value": {
+            "Value": "A49.2"
+          },
+          "Category": "Infectious",
+          "SourceLabel": "Hemophilus influenzae infection, unspecified site",
+          "SuggestedLabel": "Influenza"
+        },
+        {
+          "date": "2023-02-14",
+          "Value": {
+            "Value": "J12.82"
+          },
+          "Category": "Respiratory",
+          "SourceLabel": "Pneumonia due to coronavirus disease 2019",
+          "SuggestedLabel": "Pneumonia due to Coronavirus"
+        }
+      ]
+    }
+  }
+}

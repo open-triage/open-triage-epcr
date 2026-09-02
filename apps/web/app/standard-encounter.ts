@@ -1,6 +1,13 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
-import { MEDICATION_DOSE_UNITS, MEDICATION_ROUTES, MEDICATIONS } from "./medication-catalog";
-import { validateVitals, VITAL_RULES } from "./vital-validation";
+import { MEDICATIONS } from "./medication-catalog";
+import { validateVitals } from "./vital-validation";
+import { standardEncounterDefinition } from "./encounter-form-profile";
+import { createBundledDefinitionProvider } from "./encounter-definition";
+import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
+import type { CustomDataSet } from "./custom-data-elements";
+import type { EncounterDocument } from "@open-triage/contracts";
+import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
+import { loadEncounterDocument } from "./encounter-document";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -8,7 +15,7 @@ export type EncounterEvent = {
   readonly id: string;
   readonly date?: string;
   readonly time: string;
-  readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication";
+  readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication" | "document";
   readonly title: string;
   readonly detail: string;
   readonly reference: string;
@@ -18,51 +25,41 @@ export type EncounterEvent = {
   readonly vitals?: VitalValues;
 };
 
-export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
-export type NullValue = "" | "7701001" | "7701003" | "7701005" | "8801005" | "8801019" | "8801023";
+export type VitalField = ConfiguredVitalField;
+export type NullValue = "" | VitalNullValue;
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
 export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
 
 export type Encounter = {
-  readonly scenarioId: string;
+  readonly definitionId: string;
+  readonly definitionVersion: number;
   readonly synthetic: true;
-  readonly currentTime: string;
-  readonly crew: string;
-  readonly patient: {
-    readonly name: string;
-    readonly age: number;
-    readonly sex: string;
-    readonly identifier: string;
-    readonly medicalHistory: ReadonlyArray<string>;
-    readonly currentMedications: ReadonlyArray<string>;
-    readonly allergies: ReadonlyArray<string>;
-  };
-  readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
+  readonly document: EncounterDocument;
   readonly events: ReadonlyArray<EncounterEvent>;
+  /** Namespaced NEMSIS custom results. Unknown compatible entries are deliberately retained by persistence. */
+  readonly customData?: CustomDataSet;
 };
 
-const baselineEvents: ReadonlyArray<Omit<EncounterEvent, "id">> = [
-  { time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Residence — stairwell access, no lift", reference: "eTimes.07" },
-  { time: "07:44", kind: "transport", title: "Unit en route", detail: "Priority 1 response, lights and siren", reference: "eTimes.06" },
-  { time: "07:42", kind: "transport", title: "Unit notified", detail: "3-9-7-4-0 · EMD with pre-arrival instructions · lights and siren", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
-  { time: "07:40", kind: "transport", title: "Call received", detail: "Chest pain · priority 1", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
-];
+export const encounterDefinitionProvider = createBundledDefinitionProvider([standardEncounterDefinition]);
+export const bundledEncounterDefinition = encounterDefinitionProvider.get("standard-encounter-v1");
 
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
-export const syntheticEncounter: Encounter = {
-  scenarioId: "adult-chest-pain-v2",
-  synthetic: true,
-  currentTime: "07:51",
-  crew: "AN",
-  patient: { name: "Lindqvist, Margareta", age: 73, sex: "F", identifier: "19530418-XXXX", medicalHistory: [], currentMedications: [], allergies: [] },
-  incident: {
-    number: "2026-0418-113 · 3-9-7-4-0",
-    complaint: "Central chest pain radiating to left arm",
-    address: "Sveavägen 112, 3 tr, Stockholm (fictional)",
-  },
-  events: baselineEvents.map((event, index) => ({ ...event, id: `baseline-${index + 1}` })),
-};
+export function createSyntheticEncounter(definition: EncounterDefinition): Encounter {
+  const document = loadEncounterDocument({
+    ...structuredClone(syntheticEncounterDocument),
+    formProfile: { id: definition.id, version: String(definition.version) },
+  }, { formProfiles: { [definition.id]: [String(definition.version)] } });
+  return {
+    definitionId: definition.id,
+    definitionVersion: definition.version,
+    synthetic: true,
+    document,
+    events: [],
+  };
+}
+
+export const syntheticEncounter: Encounter = createSyntheticEncounter(bundledEncounterDefinition);
 
 export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
 export type MedicationAdministration = {
@@ -88,7 +85,7 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
-  | { readonly type: "patient-updated"; readonly patient: Encounter["patient"] }
+  | { readonly type: "patient-updated"; readonly document: EncounterDocument }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -126,45 +123,104 @@ export type ShellAction =
   | { readonly type: "prototype-reset" };
 
 export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
-export const INITIAL_SHELL_STATE: ShellState = {
-  view: "timeline",
-  encounter: syntheticEncounter,
-  noteDraft: null,
-  procedureDraft: null,
-  vitalDraft: null,
-  medicationDraft: null,
-  acknowledgedWarnings: [],
+export function createInitialShellState(definition: EncounterDefinition): ShellState {
+  return {
+    view: "timeline",
+    encounter: createSyntheticEncounter(definition),
+    noteDraft: null,
+    procedureDraft: null,
+    vitalDraft: null,
+    medicationDraft: null,
+    acknowledgedWarnings: [],
+  };
+}
+
+export const INITIAL_SHELL_STATE: ShellState = { ...createInitialShellState(bundledEncounterDefinition), encounter: syntheticEncounter };
+
+export type MedicationValidationFinding = { readonly field: MedicationFieldId; readonly reference: string; readonly message: string };
+export type MedicationValidation = {
+  readonly errors: ReadonlyArray<string>;
+  readonly warnings: ReadonlyArray<string>;
+  readonly errorFindings: ReadonlyArray<MedicationValidationFinding>;
+  readonly warningFindings: ReadonlyArray<MedicationValidationFinding>;
 };
 
-export type MedicationValidation = { readonly errors: ReadonlyArray<string>; readonly warnings: ReadonlyArray<string> };
-
-export function validateMedication(draft: MedicationDraft): MedicationValidation {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) errors.push("Enter a valid 24-hour time (eMedications.01).");
+export function validateMedication(draft: MedicationDraft, definition: EncounterDefinition = bundledEncounterDefinition): MedicationValidation {
+  const medication = definition.events.medication;
+  const field = (id: MedicationFieldId) => medication.fields.find((candidate) => candidate.id === id)!;
+  const errorFindings: MedicationValidationFinding[] = [];
+  const warningFindings: MedicationValidationFinding[] = [];
+  const withReference = (message: string, reference: string) => `${message.replace(/[.\s]+$/, "")} (${reference}).`;
+  const error = (id: MedicationFieldId, message: string) => errorFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
+  const warning = (id: MedicationFieldId, message: string) => warningFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
+  if ((field("time").required || draft.time) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) error("time", medication.validationMessages.invalidTime);
   const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType && item.displayLabel === draft.label);
-  if (!catalogMedication) errors.push("Select a medication from the NEMSIS recommended list (eMedications.03).");
-  if (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0) errors.push("Dose must be a number greater than zero (eMedications.05).");
-  if (!(MEDICATION_DOSE_UNITS as readonly string[]).includes(draft.unit)) errors.push("Select a valid configured dose unit (eMedications.06).");
-  if (!(MEDICATION_ROUTES as readonly string[]).includes(draft.route)) errors.push("Select a valid configured administration route (eMedications.04).");
-  if (!draft.response.trim()) warnings.push("Medication response is not documented (eMedications.07). You can acknowledge this warning and add it later.");
-  return { errors, warnings };
+  if ((field("medication").required || draft.medicationCode) && !catalogMedication) error("medication", medication.validationMessages.invalidMedication);
+  if ((field("dose").required || draft.dose) && (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0)) error("dose", medication.validationMessages.invalidDose);
+  if ((field("unit").required || draft.unit) && !medication.doseUnits.includes(draft.unit)) error("unit", medication.validationMessages.invalidUnit);
+  if ((field("route").required || draft.route) && !medication.routes.includes(draft.route)) error("route", medication.validationMessages.invalidRoute);
+  if (!draft.response.trim() && field("response").warnWhenMissing) warning("response", medication.validationMessages.responseMissing);
+  return { errors: errorFindings.map(({ message }) => message), warnings: warningFindings.map(({ message }) => message), errorFindings, warningFindings };
 }
 
 export type ReviewFinding = {
   readonly id: string;
   readonly severity: "error" | "warning";
-  readonly category: "Vital" | "Medication" | "Procedure" | "Note";
+  readonly eventType: ConfiguredEventType;
+  readonly category: string;
   readonly title: string;
   readonly reference: string;
   readonly message: string;
-  readonly target: { readonly eventId: string; readonly vitalField?: VitalField };
+  readonly target: {
+    readonly eventId: string;
+    /** Canonical location used by review navigation and audit output. */
+    readonly groupId: string;
+    readonly instanceId: string;
+    readonly elementId: string;
+    readonly vitalField?: VitalField;
+  };
   readonly acknowledged: boolean;
 };
+
+export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
+  if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
+  if (event.kind === "procedure" && event.procedure) return {
+    title: event.procedure.label,
+    reference: `${definition.events.procedure.references.procedure} · ${definition.events.procedure.terminology.codeSystem} ${event.procedure.code}`,
+  };
+  if (event.medication) {
+    const medication = definition.events.medication;
+    return {
+      title: `${event.medication.label || medication.labels.medicationMissing}${event.medication.dose ? ` ${event.medication.dose}` : ""}${event.medication.unit ? ` ${event.medication.unit}` : ""}`,
+      reference: `${medication.fields.find((field) => field.id === "medication")!.reference} · ${event.medication.codeType} ${event.medication.medicationCode}`,
+    };
+  }
+  if (event.vitals) return { title: definition.events.vitals.labels.timelineTitle, reference: definition.events.vitals.references.group };
+  return { title: event.title, reference: event.reference };
+}
+
+export function encounterEventDetail(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): string {
+  if (event.procedure) return describeProcedure(event.procedure, definition.events.procedure);
+  if (event.medication) {
+    const medication = definition.events.medication;
+    return `${event.medication.route || medication.labels.routeMissing}${event.medication.response ? ` · ${event.medication.response}` : ` · ${medication.labels.responseMissing}`}`;
+  }
+  return event.vitals ? vitalSummary(event.vitals, definition) : event.detail;
+}
+
+export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
+  if (event.kind !== "note") return [];
+  const note = definition.events.note;
+  const findings: Array<{ reference: string; message: string }> = [];
+  if (note.required.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push({ reference: note.references.time, message: note.validationMessages.invalidTime });
+  if (note.required.summary && !event.detail.trim()) findings.push({ reference: note.references.summary, message: note.validationMessages.summaryRequired });
+  return findings;
+}
 
 function eventFinding(
   state: ShellState,
   event: EncounterEvent,
+  eventType: ConfiguredEventType,
   severity: ReviewFinding["severity"],
   category: ReviewFinding["category"],
   reference: string,
@@ -174,69 +230,109 @@ function eventFinding(
   vitalField?: VitalField,
 ): ReviewFinding {
   const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
+  const canonicalTarget = eventType === "vitals"
+    ? { groupId: definitionGroup("vitals"), instanceId: event.id, elementId: reference }
+    : eventType === "medication"
+      ? { groupId: definitionGroup("medication"), instanceId: event.id, elementId: reference }
+      : eventType === "procedure"
+        ? { groupId: definitionGroup("procedure"), instanceId: event.id, elementId: reference }
+        : { groupId: definitionGroup("note"), instanceId: event.id, elementId: reference };
   return {
-    id, severity, category, reference, message,
+    id, severity, eventType, category, reference, message,
     title: `${event.time} · ${event.title}`,
-    target: { eventId: event.id, ...(vitalField ? { vitalField } : {}) },
+    target: { eventId: event.id, ...canonicalTarget, ...(vitalField ? { vitalField } : {}) },
     acknowledged: severity === "warning" && (recordAcknowledged || state.acknowledgedWarnings.includes(id)),
   };
 }
 
+function definitionGroup(eventType: ConfiguredEventType): string {
+  if (eventType === "vitals") return "eVitals.VitalGroup";
+  if (eventType === "medication") return "eMedications.MedicationGroup";
+  if (eventType === "procedure") return "eProcedures.ProcedureGroup";
+  return "eNarrativeSection";
+}
+
 /** Consolidates validation for timeline entries before signing. */
-export function reviewEncounter(state: ShellState): ReadonlyArray<ReviewFinding> {
+export function reviewEncounter(state: ShellState, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<ReviewFinding> {
   const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
-      const validation = validateVitals(event.time, event.vitals);
+      const vitalDefinition = definition.events.vitals;
+      const validation = validateVitals(event.time, event.vitals, definition);
+      const presentedEvent = { ...event, ...encounterEventPresentation(event, definition), detail: encounterEventDetail(event, definition) };
       const errors = Object.entries(validation.errors).map(([field, message], index) => {
         const vitalField = field === "time" || field === "group" ? undefined : field as VitalField;
-        return eventFinding(state, event, "error", "Vital", vitalField ? VITAL_RULES[vitalField].reference : "eVitals.VitalGroup", message!, index, false, vitalField);
+        const reference = vitalField ? vitalDefinition.fields.find(({ id }) => id === vitalField)?.reference : field === "time" ? vitalDefinition.references.time : vitalDefinition.references.group;
+        return eventFinding(state, presentedEvent, "vitals", "error", vitalDefinition.labels.category, reference ?? vitalDefinition.references.group, message!, index, false, vitalField);
       });
       const warnings = Object.entries(validation.warnings).map(([field, message], index) =>
-        eventFinding(state, event, "warning", "Vital", VITAL_RULES[field as VitalField].reference, message!, index, false, field as VitalField));
+        eventFinding(state, presentedEvent, "vitals", "warning", vitalDefinition.labels.category, vitalDefinition.fields.find(({ id }) => id === field)?.reference ?? vitalDefinition.references.group, message!, index, false, field as VitalField));
       return [...errors, ...warnings];
     }
     if (event.medication) {
-      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false });
+      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false }, definition);
+      const presentation = encounterEventPresentation(event, definition);
       return [
-        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Medication", "eMedications", message, index)),
-        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Medication", "eMedications.07", message, index, event.medication!.warningAcknowledged)),
+        ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
+        ...validation.warningFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "warning", definition.events.medication.labels.category, finding.reference, finding.message, index, event.medication!.warningAcknowledged)),
       ];
     }
     if (event.procedure) {
+      const procedureDefinition = definition.events.procedure;
       const validation = validateProcedure({
         id: event.id, date: event.date ?? "2026-04-18", time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
         attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
         complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
-      });
+      }, procedureDefinition);
+      const presentation = encounterEventPresentation(event, definition);
+      const referenceFor = (message: string) => Object.values(procedureDefinition.references).find((reference) => message.startsWith(reference)) ?? procedureDefinition.references.complications;
       return [
-        ...validation.errors.map((message, index) => eventFinding(state, event, "error", "Procedure", "eProcedures", message, index)),
-        ...validation.warnings.map((message, index) => eventFinding(state, event, "warning", "Procedure", "eProcedures", message, index, event.procedure!.warningAcknowledged)),
+        ...validation.errors.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "error", procedureDefinition.labels.category, referenceFor(message), message, index)),
+        ...validation.warnings.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "warning", procedureDefinition.labels.category, procedureDefinition.references.complications, message, index, event.procedure!.warningAcknowledged)),
       ];
     }
-    if (event.kind === "note" && !event.detail.trim()) {
-      return [eventFinding(state, event, "error", "Note", "eNarrative.01", "Add a clinical note before signing.", 0)];
-    }
     if (event.kind === "note") {
-      const findings: ReviewFinding[] = [];
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Enter a valid clinical time (HH:mm).", 0));
-      if (!event.detail.trim()) findings.push(eventFinding(state, event, "error", "Note", "eNarrative.01", "Clinical note summary is required.", 1));
-      return findings;
+      const presentation = encounterEventPresentation(event, definition);
+      return validateNoteEvent(event, definition).map((finding, index) => eventFinding(
+        state, { ...event, ...presentation }, "note", "error", definition.events.note.labels.category, finding.reference, finding.message, index,
+      ));
     }
     return [];
   });
 
-  return events;
+  const typeOrder = new Map(definition.composition.review.eventTypeOrder.map((type, index) => [type, index]));
+  return events.map((finding, index) => ({ finding, index })).sort((a, b) =>
+    (typeOrder.get(a.finding.eventType) ?? Number.MAX_SAFE_INTEGER) - (typeOrder.get(b.finding.eventType) ?? Number.MAX_SAFE_INTEGER) || a.index - b.index,
+  ).map(({ finding }) => finding);
 }
 
-export function vitalSummary(values: VitalValues): string {
-  const shown = (field: VitalField, label: string, suffix = "") => {
-    const value = values[field];
-    if (value) return `${label} ${value}${suffix}`;
-    return values.nullValues[field] ? `${label} not recorded` : null;
-  };
-  return [values.systolic || values.diastolic ? `BP ${values.systolic || "—"}/${values.diastolic || "—"}` : null,
-    shown("heartRate", "HR"), shown("spo2", "SpO₂", "%"), shown("respiratoryRate", "RR"), shown("gcs", "GCS"), shown("pain", "pain")]
-    .filter(Boolean).join(" · ");
+export function configuredEventType(event: EncounterEvent): ConfiguredEventType | null {
+  if (event.vitals) return "vitals";
+  if (event.medication) return "medication";
+  if (event.procedure) return "procedure";
+  if (event.kind === "note") return "note";
+  return null;
+}
+
+/** Orders configurable clinical event types for the completed summary, preserving order within each type. */
+export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<EncounterEvent> {
+  const typeOrder = new Map(definition.composition.summary.eventTypeOrder.map((type, index) => [type, index]));
+  return events.map((event, index) => ({ event, index })).sort((a, b) => {
+    const aType = configuredEventType(a.event);
+    const bType = configuredEventType(b.event);
+    const aOrder = aType ? typeOrder.get(aType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+    const bOrder = bType ? typeOrder.get(bType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder || a.index - b.index;
+  }).map(({ event }) => event);
+}
+
+export function vitalSummary(values: VitalValues, definition: EncounterDefinition = bundledEncounterDefinition): string {
+  const config = definition.events.vitals;
+  return config.summary.map((item) => {
+    const hasDocumentedField = item.fields.some((field) => values[field] || values.nullValues?.[field]);
+    if (!hasDocumentedField) return null;
+    const rendered = item.fields.map((field) => values[field] || (values.nullValues?.[field] ? config.labels.absentSummary : "—"));
+    return `${item.label} ${rendered.join(item.separator)}${item.unit}`;
+  }).filter(Boolean).join(" · ");
 }
 
 function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
@@ -245,27 +341,27 @@ function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<Encou
   ).map(({ event }) => event);
 }
 
-export function transitionShell(state: ShellState, action: ShellAction): ShellState {
+export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
   switch (action.type) {
     case "view-selected":
       return { ...state, view: action.view };
     case "patient-updated":
-      return { ...state, encounter: { ...state.encounter, patient: action.patient } };
+      return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "review-opened":
       return { ...state, view: "review", noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null };
     case "review-finding-selected": {
-      const finding = reviewEncounter(state).find((candidate) => candidate.id === action.id);
+      const finding = reviewEncounter(state, definition).find((candidate) => candidate.id === action.id);
       if (!finding) return state;
       const eventId = finding.target.eventId;
       const event = state.encounter.events.find((candidate) => candidate.id === eventId);
       if (!event) return state;
       const opened = event.vitals
-        ? transitionShell(state, { type: "vitals-opened", id: event.id })
+        ? transitionShell(state, { type: "vitals-opened", id: event.id }, definition)
         : event.kind === "medication"
-          ? transitionShell(state, { type: "medication-opened", id: event.id })
+          ? transitionShell(state, { type: "medication-opened", id: event.id }, definition)
           : event.kind === "procedure"
-            ? transitionShell(state, { type: "procedure-opened", id: event.id })
-            : transitionShell(state, { type: "note-opened", id: event.id });
+            ? transitionShell(state, { type: "procedure-opened", id: event.id }, definition)
+            : transitionShell(state, { type: "note-opened", id: event.id }, definition);
       return { ...opened, view: "timeline" };
     }
     case "review-warning-acknowledged":
@@ -276,7 +372,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
           : state.acknowledgedWarnings.filter((id) => id !== action.id),
       };
     case "review-finished": {
-      const findings = reviewEncounter(state);
+      const findings = reviewEncounter(state, definition);
       return findings.some((finding) => finding.severity === "error" || !finding.acknowledged)
         ? state
         : { ...state, view: "summary" };
@@ -301,9 +397,9 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         date: draft.date,
         time: draft.time.slice(0, 5),
         kind: "note",
-        title: "Clinical note",
+        title: definition.events.note.labels.timelineTitle,
         detail: draft.summary.trim(),
-        reference: "eNarrative.01",
+        reference: definition.events.note.references.summary,
         visitorEntered: true,
       };
       const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
@@ -323,7 +419,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
           time: action.time,
           procedureCode: "",
           procedureLabel: "",
-          attempts: "1",
+          attempts: String(definition.events.procedure.attempts.defaultValue),
           success: "",
           outcome: "",
           complications: [],
@@ -352,7 +448,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       };
     }
     case "procedure-selected": {
-      const selected = PROCEDURES.find((procedure) => procedure.code === action.code);
+      const selected = definition.events.procedure.terminology.catalog === "eProcedures.03" ? PROCEDURES.find((procedure) => procedure.code === action.code) : undefined;
       return state.procedureDraft && (selected || action.code === "") ? {
         ...state,
         procedureDraft: {
@@ -393,7 +489,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       if (!draft) return state;
       const procedure: ProcedureRecord = {
         code: draft.procedureCode,
-        label: draft.procedureLabel || "Procedure not selected",
+        label: draft.procedureLabel || definition.events.procedure.labels.procedure,
         attempts: Number(draft.attempts) || 0,
         success: draft.success as ProcedureRecord["success"],
         outcome: draft.outcome as ProcedureRecord["outcome"],
@@ -406,8 +502,8 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         time: draft.time,
         kind: "procedure",
         title: procedure.label,
-        detail: describeProcedure(procedure),
-        reference: `eProcedures.03 · SNOMED CT ${procedure.code}`,
+        detail: describeProcedure(procedure, definition.events.procedure),
+        reference: `${definition.events.procedure.references.procedure} · ${definition.events.procedure.terminology.codeSystem} ${procedure.code}`,
         visitorEntered: true,
         procedure,
       };
@@ -442,7 +538,7 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
       const administration: MedicationAdministration = {
         medicationCode: draft.medicationCode,
         codeType: draft.codeType,
-        label: draft.label || "Medication not selected",
+        label: draft.label || definition.events.medication.labels.medicationMissing,
         dose: draft.dose.trim(),
         unit: draft.unit,
         route: draft.route,
@@ -454,20 +550,21 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
         date: draft.date,
         time: draft.time,
         kind: "medication",
-        title: `${administration.label}${administration.dose ? ` ${administration.dose}` : ""}${administration.unit ? ` ${administration.unit}` : ""}`,
-        detail: `${administration.route || "Route not documented"}${administration.response ? ` · ${administration.response}` : " · Response not documented"}`,
-        reference: `eMedications.03 · ${administration.codeType} ${administration.medicationCode}`,
+        title: "",
+        detail: "",
+        reference: "",
         visitorEntered: true,
         medication: administration,
       };
+      const presentedMedicationEvent = { ...medicationEvent, ...encounterEventPresentation(medicationEvent, definition), detail: encounterEventDetail(medicationEvent, definition) };
       const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
-      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, medicationEvent]) } };
+      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, presentedMedicationEvent]) } };
     }
     case "vitals-started":
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
       const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.vitals);
-      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: event.vitals, isNew: false } } : state;
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
     }
     case "vitals-time-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
@@ -482,14 +579,21 @@ export function transitionShell(state: ShellState, action: ShellAction): ShellSt
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft) return state;
-      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: "Vital signs", detail: vitalSummary(draft.values), reference: "eVitals.VitalGroup", visitorEntered: true, vitals: draft.values };
+      const vitalDefinition = definition.events.vitals;
+      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
       return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
     }
     case "state-restored":
-      return { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] };
+      return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version
+        ? { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
+        : state;
     case "prototype-reset":
-      return INITIAL_SHELL_STATE;
+      return createInitialShellState(definition);
     default:
       return state;
   }
+}
+
+export function standardEncounterReducer(state: ShellState, action: ShellAction): ShellState {
+  return transitionShell(state, action, bundledEncounterDefinition);
 }

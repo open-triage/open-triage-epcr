@@ -3,21 +3,29 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { PatientDialog } from "../components/patient-dialog";
+import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
-import { COMPLICATIONS, OUTCOMES, searchProcedures, validateProcedure } from "./procedure";
+import { clearShellState, loadShellStateResult, saveShellState } from "./local-persistence";
+import { validateProcedure } from "./procedure";
+import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
+  completedSummaryEvents,
   INITIAL_SHELL_STATE,
+  encounterEventDetail,
+  encounterEventPresentation,
   reviewEncounter,
-  transitionShell,
+  standardEncounterReducer,
   type ReviewFinding,
   type ShellState,
   type ShellView,
   type VitalField,
-} from "./synthetic-encounter";
-import { nullOptionsFor, validateVitals, VITAL_RULES } from "./vital-validation";
+  bundledEncounterDefinition,
+} from "./standard-encounter";
+import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
+import { patientSummary } from "./patient-document";
+import { documentTimeline, incidentSummary } from "./incident-document";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -30,16 +38,27 @@ function localClinicalTime(): string {
 }
 
 export default function Home() {
-  const [shell, dispatch] = useReducer(transitionShell, INITIAL_SHELL_STATE);
+  const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [patientOpen, setPatientOpen] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
+  const patient = useMemo(() => patientSummary(encounter.document), [encounter.document]);
+  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
+  const incidentEvents = useMemo(() => documentTimeline(encounter.document), [encounter.document]);
+  const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
+    `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
+  ), [incidentEvents, encounter.events]);
+  const noteDefinition = bundledEncounterDefinition.events.note;
+  const procedureDefinition = bundledEncounterDefinition.events.procedure;
+  const medicationDefinition = bundledEncounterDefinition.events.medication;
+  const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
@@ -51,12 +70,11 @@ export default function Home() {
     return statuses;
   }, [reviewFindings]);
   const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
-  const procedureResults = useMemo(() => searchProcedures(procedureSearch), [procedureSearch]);
-  const procedureDraftValidation = shell.procedureDraft ? validateProcedure(shell.procedureDraft) : null;
-  const procedureFindingActive = !!(editingFinding?.category === "Procedure" && procedureDraftValidation && [...procedureDraftValidation.errors, ...procedureDraftValidation.warnings].includes(editingFinding.message));
-  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values) : null;
-  const vitalFindingActive = !!(editingFinding?.category === "Vital" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const noteFindingActive = !!(editingFinding?.category === "Note" && shell.noteDraft && (/time/i.test(editingFinding.message) ? !/^([01]\d|2[0-3]):[0-5]\d$/.test(shell.noteDraft.time) : !shell.noteDraft.summary.trim()));
+  const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
+  const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
+  const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
+  const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
+  const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = patientOpen ? "patient" : shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
   const closeActiveDialog = useCallback(() => {
@@ -71,11 +89,12 @@ export default function Home() {
   }, [activeDialog]);
 
   useEffect(() => {
-    const saved = loadShellState(window.localStorage);
-    if (saved) dispatch({ type: "state-restored", state: saved });
+    const result = loadShellStateResult(window.localStorage);
+    if (result.status === "restored") dispatch({ type: "state-restored", state: result.state });
+    else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
+    else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRestored(true);
+    queueMicrotask(() => setRestored(true));
   }, []);
 
   useEffect(() => {
@@ -174,42 +193,43 @@ export default function Home() {
     dispatch({ type: "prototype-reset" });
   }
 
+  const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
+    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
+  };
+
   return (
     <main className="app-shell">
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
         <strong>Synthetic data only</strong>
         <span>Usability prototype — not for clinical use</span>
       </aside>
+      {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
 
       <header className="encounter-header">
         <div className="header-kicker">
-          <span>{encounter.currentTime}</span>
-          <span className="prototype-status">Prototype</span>
+          <span>{incidentEvents[0]?.time ?? "--:--"}</span>
+          <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
         </div>
         <div className="patient-line">
           <div>
-            <p className="patient-name">{encounter.patient.name}</p>
+            <p className="patient-name">{patient.name}</p>
             <p className="patient-demographics">
-              {encounter.patient.age} y · {encounter.patient.sex} · {encounter.patient.identifier}
+              {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex} · {patient.identifier}
             </p>
           </div>
-          <span className="crew-badge" aria-label={`Crew ${encounter.crew}`}>{encounter.crew}</span>
+          <span className="crew-badge" aria-label={`Crew ${incident.crew}`}>{incident.crew}</span>
         </div>
         <div className="incident-line">
           <div>
-            <span>Incident {encounter.incident.number}</span>
-            <strong>{encounter.incident.complaint}</strong>
+            <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
+            <strong>{incident.complaint}</strong>
           </div>
         </div>
         <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype data</button>
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        <button className={activeDialog === "vitals" ? "active" : undefined} aria-pressed={activeDialog === "vitals"} title="Vital signs" aria-label="Add vital signs" type="button" onClick={startVitals}><QuickActionIcon kind="vitals" /></button>
-        <button className={activeDialog === "medication" ? "active" : undefined} aria-pressed={activeDialog === "medication"} title="Medication" aria-label="Add medication" type="button" onClick={startMedication}><QuickActionIcon kind="medication" /></button>
-        <button className={activeDialog === "procedure" ? "active" : undefined} aria-pressed={activeDialog === "procedure"} title="Procedure" aria-label="Add procedure" type="button" onClick={startProcedure}><QuickActionIcon kind="procedure" /></button>
-        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} title="Clinical note" aria-label="Add clinical note" type="button" onClick={startNote}><QuickActionIcon kind="note" /></button>
-        <button className={activeDialog === "patient" ? "active" : undefined} aria-pressed={activeDialog === "patient"} title="Patient information" aria-label="Edit patient information" type="button" onClick={startPatient}><QuickActionIcon kind="patient" /></button>
+        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
       </nav>
 
       {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
@@ -224,7 +244,7 @@ export default function Home() {
             type="button"
           >
             {tab.label}
-            {tab.id === "timeline" && <span aria-hidden="true"> · {encounter.events.length}</span>}
+            {tab.id === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
             {tab.id === "checklist" && <span className="checklist-counts" aria-hidden="true">
               <span className="error-count">{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
               <span className="warning-count">{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
@@ -246,17 +266,19 @@ export default function Home() {
               <p className="eyebrow">Newest first</p>
               <h1 id="timeline-heading">Timeline</h1>
             </div>
-            <span>{encounter.events.length} events</span>
+            <span>{timelineEvents.length} events</span>
           </div>
           <ol className="timeline-list">
-            {encounter.events.map((event) => {
+            {timelineEvents.map((event) => {
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
+              const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
+              const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
                 <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
-                    aria-label={`Edit ${event.title} at ${event.time}. ${event.detail}`}
+                    aria-label={`Edit ${presentation.title} at ${event.time}. ${eventDetail}`}
                     className="timeline-event-button"
                     type="button"
                     onClick={(clickEvent) => {
@@ -265,9 +287,9 @@ export default function Home() {
                       dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
                     }}
                   >
-                    <span className="event-title">{event.title}</span>
-                    <span className="event-detail">{event.detail}</span>
-                    <small>{event.reference} · Tap to edit</small>
+                    <span className="event-title">{presentation.title}</span>
+                    <span className="event-detail">{eventDetail}</span>
+                    <small>{presentation.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
                       date: event.date ?? "2026-04-18",
@@ -280,8 +302,8 @@ export default function Home() {
                       complications: event.procedure.complications,
                       warningAcknowledged: event.procedure.warningAcknowledged,
                       isNew: false,
-                    }).warnings.length > 0 && !event.procedure.warningAcknowledged && (
-                      <span className="warning-pill">⚠ Warning: review needed</span>
+                    }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && (
+                      <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>
                     )}
                   </button>
                 ) : (
@@ -324,8 +346,10 @@ export default function Home() {
 
       {shell.view === "review" && (
         <ReviewPanel
+          findings={reviewFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
+          groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
           onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
@@ -338,162 +362,70 @@ export default function Home() {
         <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
-      {patientOpen && <PatientDialog patient={encounter.patient} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
+      {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
           <section ref={dialog} className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
             <div className="note-dialog-heading">
               <div>
-                <p className="eyebrow">{shell.noteDraft.isNew ? "New timeline event" : "Revise timeline event"}</p>
-                <h2 id="note-dialog-title">Clinical note</h2>
+                <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
+                <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button aria-label="Close note editor" type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
+              <button aria-label={noteDefinition.labels.closeEditor} type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
             </div>
-            <TimePicker className={noteFindingActive && /time/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined} label="Clinical time" date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
-            <small id="clinical-time-help">Correct the time if documentation was entered later.</small>
-            <label className={noteFindingActive && /note|summary/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-              Note summary
+            <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
+            <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
+            <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
+              {noteDefinition.labels.summary}
               <textarea
                 ref={noteSummary}
                 data-dialog-initial-focus
                 rows={5}
-                placeholder="Document the clinical observation or decision…"
+                placeholder={noteDefinition.labels.summaryPlaceholder}
+                required={noteDefinition.required.summary}
                 value={shell.noteDraft.summary}
                 onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
               />
             </label>
             <div className="note-dialog-actions">
-              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>Cancel</button>
+              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
               <button type="button" onClick={() => dispatch({ type: "note-saved" })}>
-                {shell.noteDraft.isNew ? "Add to timeline" : "Save changes"}
+                {shell.noteDraft.isNew ? noteDefinition.labels.add : noteDefinition.labels.save}
               </button>
             </div>
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === "Medication" ? editingFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
-      {shell.procedureDraft && (
-        <div className="dialog-backdrop" role="presentation">
-          <section ref={dialog} className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
-            <div className="note-dialog-heading">
-              <div>
-                <p className="eyebrow">{shell.procedureDraft.isNew ? "New treatment event" : "Edit canonical event"}</p>
-                <h2 id="procedure-dialog-title">Procedure</h2>
-              </div>
-              <button aria-label="Close procedure editor" type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>×</button>
-            </div>
-
-            {!shell.procedureDraft.procedureCode ? (
-              <div className={`catalog-picker ${procedureFindingActive && /Select a procedure|display label/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                <label htmlFor="procedure-search">Search procedures</label>
-                <input
-                  autoFocus
-                  data-dialog-initial-focus
-                  id="procedure-search"
-                  type="search"
-                  placeholder="Try ECG, IV, oxygen…"
-                  value={procedureSearch}
-                  onChange={(event) => setProcedureSearch(event.target.value)}
-                />
-                <p className="catalog-caption">{procedureResults.length} shown · available offline</p>
-                <ul className="catalog-results">
-                  {procedureResults.map((procedure) => (
-                    <li key={procedure.code}>
-                      <button type="button" onClick={() => dispatch({ type: "procedure-selected", code: procedure.code })}>
-                        <strong>{procedure.label}</strong>
-                        <span>{procedure.category}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {!procedureResults.length && <p className="empty-results">No procedure matches all search terms.</p>}
-              </div>
-            ) : (
-              <>
-                <div className={`selected-catalog-item ${procedureFindingActive && /Select a procedure|display label/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                  <strong>{shell.procedureDraft.procedureLabel}</strong>
-                  <button type="button" onClick={() => { setProcedureSearch(""); dispatch({ type: "procedure-selected", code: "" }); }}>Change</button>
-                </div>
-                <div className="procedure-grid">
-                  <TimePicker className={procedureFindingActive && /time/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined} label="Procedure time" date={shell.procedureDraft.date} onDateChange={(value) => dispatch({ type: "procedure-draft-changed", field: "date", value })} value={shell.procedureDraft.time} onChange={(value) => dispatch({ type: "procedure-draft-changed", field: "time", value })} />
-                  <label className={procedureFindingActive && /Attempts/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                    Attempts
-                    <input
-                      inputMode="numeric"
-                      min={1}
-                      max={10}
-                      type="number"
-                      value={shell.procedureDraft.attempts}
-                      onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "attempts", value: event.target.value })}
-                    />
-                  </label>
-                </div>
-                <label className={procedureFindingActive && /successful/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                  Successful
-                  <select value={shell.procedureDraft.success} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "success", value: event.target.value })}>
-                    <option value="">Select…</option>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
-                  </select>
-                </label>
-                <label className={procedureFindingActive && /response/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : undefined}>
-                  Patient response
-                  <select value={shell.procedureDraft.outcome} onChange={(event) => dispatch({ type: "procedure-draft-changed", field: "outcome", value: event.target.value })}>
-                    <option value="">Select…</option>
-                    {OUTCOMES.map((outcome) => <option key={outcome.value} value={outcome.value}>{outcome.label}</option>)}
-                  </select>
-                </label>
-                <fieldset className={`complication-options ${procedureFindingActive && /complication/i.test(editingFinding?.message ?? "") ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()}>
-                  <legend>Complications</legend>
-                  {COMPLICATIONS.map((complication) => (
-                    <label key={complication.code}>
-                      <input
-                        type="checkbox"
-                        checked={shell.procedureDraft!.complications.includes(complication.code)}
-                        onChange={() => dispatch({ type: "procedure-complication-toggled", code: complication.code })}
-                      />
-                      <span>{complication.label}</span>
-                    </label>
-                  ))}
-                </fieldset>
-
-                <div className="note-dialog-actions">
-                  <button type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>Cancel</button>
-                  <button type="button" onClick={() => dispatch({ type: "procedure-saved" })}>
-                    {shell.procedureDraft.isNew ? "Add procedure" : "Save changes"}
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
-      )}
+      {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding ?? undefined} />}
 
       {shell.vitalDraft && (
         <div className="dialog-backdrop" role="presentation">
           <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
-              <div><p className="eyebrow">{shell.vitalDraft.isNew ? "New timeline event" : "Revise timeline event"}</p><h2 id="vital-dialog-title">Vital signs</h2></div>
-              <button aria-label="Close vital signs editor" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
+              <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
+              <button aria-label={vitalDefinition.labels.closeEditor} type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
             </div>
-            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label="Clinical time" date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <div className="vital-grid">
-              {(Object.entries(VITAL_RULES) as [VitalField, (typeof VITAL_RULES)[VitalField]][]).map(([field, rule]) => (
+              {vitalDefinition.fields.map((configuredField) => {
+                const field = configuredField.id;
+                return (
                 <div className={`vital-field ${vitalFindingActive && editingFinding?.target.vitalField === field ? `finding-frame ${editingFinding.severity}` : ""}`.trim()} key={field}>
-                  <label htmlFor={`vital-${field}`}>{rule.label}</label>
+                  <label htmlFor={`vital-${field}`}>{configuredField.label} <small>{configuredField.unit}</small></label>
                   <div className="vital-inputs">
-                    <input id={`vital-${field}`} inputMode="numeric" placeholder={`${rule.min}–${rule.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
+                    <input id={`vital-${field}`} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
                     <button
                       type="button"
                       className={`null-value-trigger ${shell.vitalDraft!.values.nullValues[field] ? "active" : ""}`}
-                      aria-label={`Set unavailable or pertinent-negative value for ${rule.label}`}
+                      aria-label={`Set unavailable or pertinent-negative value for ${configuredField.label}`}
                       aria-expanded={openNullField === field}
                       onClick={() => setOpenNullField((current) => current === field ? null : field)}
                     >×</button>
                     {openNullField === field && (
-                      <div className="null-value-menu" role="menu" aria-label={`${rule.label} unavailable or pertinent-negative value`}>
+                      <div className="null-value-menu" role="menu" aria-label={`${configuredField.label} unavailable or pertinent-negative value`}>
                         {shell.vitalDraft!.values.nullValues[field] && (
                           <button
                             autoFocus
@@ -502,7 +434,7 @@ export default function Home() {
                             onClick={() => { dispatch({ type: "vitals-null-changed", field, value: "" }); setOpenNullField(null); }}
                           >Clear exceptional value</button>
                         )}
-                        {nullOptionsFor(rule).filter((option) => option.value).map((option, index) => (
+                        {nullOptionsFor(configuredField).filter((option) => option.value).map((option, index) => (
                           <button
                             autoFocus={!shell.vitalDraft!.values.nullValues[field] && index === 0}
                             key={option.value}
@@ -515,10 +447,10 @@ export default function Home() {
                     )}
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
-            <p className="null-help">Unavailable and pertinent-negative choices vary by field.</p>
-            <div className="note-dialog-actions"><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>Cancel</button><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? "Add vital set" : "Save changes"}</button></div>
+            <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
+            <div className="note-dialog-actions"><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>{vitalDefinition.labels.cancel}</button><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
           </section>
         </div>
       )}
@@ -526,9 +458,11 @@ export default function Home() {
   );
 }
 
-function ReviewPanel({ errors, warnings, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+  readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
+  readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly onFinding: (id: string) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
@@ -543,8 +477,7 @@ function ReviewPanel({ errors, warnings, canFinish, onFinding, onWarning, onCont
       </div>
       <p className="review-intro">Resolve every blocking error and acknowledge each warning before producing the prototype summary.</p>
 
-      <FindingGroup title="Blocking errors" empty="No blocking errors." findings={errors} onFinding={onFinding} onWarning={onWarning} />
-      <FindingGroup title="Warnings to acknowledge" empty="No warnings." findings={warnings} onFinding={onFinding} onWarning={onWarning} />
+      {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
 
       <div className="review-actions">
         <button type="button" onClick={onContinue}>Continue editing</button>
@@ -595,6 +528,9 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
   readonly onContinue: () => void;
 }) {
   const encounter = shell.encounter;
+  const patient = patientSummary(encounter.document);
+  const incident = incidentSummary(encounter.document);
+  const incidentEvents = documentTimeline(encounter.document);
   return (
     <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
       <div className="summary-label" role="note">
@@ -607,21 +543,25 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Patient and incident</h2>
         <dl>
-          <div><dt>Patient</dt><dd>{encounter.patient.name} · {encounter.patient.age} y · {encounter.patient.sex}</dd></div>
-          <div><dt>Synthetic ID</dt><dd>{encounter.patient.identifier}</dd></div>
-          <div><dt>Incident</dt><dd>{encounter.incident.number}</dd></div>
-          <div><dt>Complaint</dt><dd>{encounter.incident.complaint}</dd></div>
-          <div><dt>Location</dt><dd>{encounter.incident.address}</dd></div>
-          <div><dt>Crew</dt><dd>{encounter.crew}</dd></div>
-          <div><dt>Medical history</dt><dd>{encounter.patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Current medications</dt><dd>{encounter.patient.currentMedications.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Medication allergies</dt><dd>{encounter.patient.allergies.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Patient</dt><dd>{patient.name} · {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex}</dd></div>
+          <div><dt>Synthetic ID</dt><dd>{patient.identifier}</dd></div>
+          <div><dt>Incident</dt><dd>{incident.number}</dd></div>
+          <div><dt>Complaint</dt><dd>{incident.complaint}</dd></div>
+          <div><dt>Location</dt><dd>{incident.address}</dd></div>
+          <div><dt>Crew</dt><dd>{incident.crew}</dd></div>
+          <div><dt>Medical history</dt><dd>{patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Current medications</dt><dd>{patient.currentMedications.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Medication allergies</dt><dd>{patient.allergies.join(", ") || "Not documented"}</dd></div>
         </dl>
       </section>
       <section className="summary-section">
         <h2>Timeline</h2>
         <ol className="summary-timeline">
-          {encounter.events.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
+          {incidentEvents.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
+          {completedSummaryEvents(encounter.events, bundledEncounterDefinition).map((event) => {
+            const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
+            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, bundledEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
+          })}
         </ol>
       </section>
       <section className="summary-section">

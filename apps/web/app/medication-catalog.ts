@@ -1,5 +1,4 @@
-import source from "./medications.nemsis-3.5.1.json";
-import manifest from "./medications.nemsis-3.5.1.manifest.json";
+import { NEMSIS_DATA_MODEL, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
 
 export type MedicationOption = {
   readonly code: string;
@@ -8,23 +7,23 @@ export type MedicationOption = {
   readonly displayLabel: string;
 };
 
-type SourceCode = {
-  readonly Value: { readonly CodeType: "9924003" | "9924005"; readonly Value: string };
-  readonly SourceLabel: string;
-  readonly SuggestedLabel: string;
+export const MEDICATION_CATALOG_ID = "eMedications.03" as const;
+const medicationList = NEMSIS_DATA_MODEL.bundledLists.find((list) => list.id === "medications-given")!;
+const medicationSource = NEMSIS_DATA_MODEL.provenance.sources.find((source) => source.path.endsWith("/Medication.json"))!;
+export const MEDICATION_CATALOG_PROVENANCE = {
+  sha256: medicationSource.sha256, release: NEMSIS_DATA_MODEL.release, listDate: medicationList.publishedAt,
+  sourceUrl: medicationSource.url, displayLabelProvenance: "NEMSIS catalog bundled-list SuggestedLabel",
 };
 
-export const MEDICATION_CATALOG_PROVENANCE = manifest;
-
-export const MEDICATIONS: ReadonlyArray<MedicationOption> = (source.DefinedList.Codes.Code as ReadonlyArray<SourceCode>).map((item) => ({
-  code: item.Value.Value,
-  codeType: item.Value.CodeType === "9924003" ? "RxNorm" : "SNOMED-CT",
-  sourceLabel: item.SourceLabel,
-  displayLabel: item.SuggestedLabel,
+export const MEDICATIONS: ReadonlyArray<MedicationOption> = resolveNemsisElementValues(requireNemsisDataElement(MEDICATION_CATALOG_ID)).permissibleValues.map((item) => ({
+  code: item.code,
+  codeType: "codeSystem" in item && item.codeSystem === "SNOMED-CT" ? "SNOMED-CT" : "RxNorm",
+  sourceLabel: "sourceLabel" in item ? item.sourceLabel : item.label,
+  displayLabel: item.label,
 }));
 
-export const MEDICATION_DOSE_UNITS = ["mg", "mcg", "g", "mL", "units", "L/min"] as const;
-export const MEDICATION_ROUTES = ["PO — Oral", "IV — Intravenous", "IM — Intramuscular", "IN — Intranasal", "SL — Sublingual", "IO — Intraosseous", "Nebulized", "Topical"] as const;
+export const MEDICATION_DOSE_UNITS = resolveNemsisElementValues(requireNemsisDataElement("eMedications.06")).permissibleValues.map(({ label }) => label);
+export const MEDICATION_ROUTES = resolveNemsisElementValues(requireNemsisDataElement("eMedications.04")).permissibleValues.map(({ label }) => label);
 
 function normalize(value: string): string {
   return value.toLocaleLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, " ").trim();
@@ -36,4 +35,9 @@ export function searchMedications(query: string, limit = 30): ReadonlyArray<Medi
   return MEDICATIONS
     .filter((item) => normalize(`${item.displayLabel} ${item.sourceLabel} ${item.code}`).includes(needle))
     .slice(0, limit);
+}
+
+export function searchMedicationCatalog(catalog: string, query: string, limit = 30): ReadonlyArray<MedicationOption> {
+  if (catalog !== MEDICATION_CATALOG_ID) return [];
+  return searchMedications(query, limit);
 }
