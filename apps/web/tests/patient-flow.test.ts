@@ -103,6 +103,15 @@ test("the supported legacy patient shape upgrades deterministically without reta
   const storage = memoryStorage();
   const legacy = structuredClone(INITIAL_SHELL_STATE) as unknown as { encounter: Record<string, unknown> };
   delete legacy.encounter.document;
+  legacy.encounter.currentTime = "07:51";
+  legacy.encounter.crew = "AN";
+  legacy.encounter.incident = { number: "SYN-2026-0418-113 · 3-9-7-4-0", complaint: "Medical assistance requested", address: "100 Example Avenue, Unit 3 (fictional)" };
+  legacy.encounter.events = [
+    { id: "baseline-1", time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Fictional residence — standard access", reference: "eTimes.07" },
+    { id: "baseline-2", time: "07:44", kind: "transport", title: "Unit en route", detail: "Routine response", reference: "eTimes.06" },
+    { id: "baseline-3", time: "07:42", kind: "transport", title: "Unit notified", detail: "3-9-7-4-0 · fictional dispatch notification", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
+    { id: "baseline-4", time: "07:40", kind: "transport", title: "Call received", detail: "Medical assistance requested", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
+  ];
   legacy.encounter.patient = {
     name: "Legacy, Person",
     age: 42,

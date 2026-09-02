@@ -128,19 +128,12 @@ export type EncounterDefinition = {
   readonly id: string;
   readonly version: number;
   readonly synthetic: true;
-  readonly dates: { readonly clinicalDate: string; readonly currentTime: string };
   readonly labels: {
     readonly prototypeStatus: string; readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
     readonly savePatient: string;
   };
   readonly patient: {
     readonly quickAction: { readonly visible: boolean; readonly label: string; readonly title: string };
-  };
-  readonly dispatch: {
-    readonly crew: string;
-    readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
-    readonly references: { readonly incidentNumber: NemsisReference; readonly complaint: NemsisReference; readonly address: NemsisReference };
-    readonly events: ReadonlyArray<{ readonly time: string; readonly title: string; readonly detail: string; readonly reference: string }>;
   };
   readonly composition: {
     readonly quickActionOrder: ReadonlyArray<QuickActionId>;
@@ -196,20 +189,13 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
       if (!supported.includes(key)) diagnostics.push(`${path ? `${path}.` : ""}${key} is not supported by schemaVersion 1`);
     }
   };
-  rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "dates", "labels", "patient", "dispatch", "composition", "events"]);
-  requiredStrings(root.dates, "dates", ["clinicalDate", "currentTime"]);
+  rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "patient", "composition", "events"]);
   requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
   const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
   if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");
   requiredStrings(patientQuickAction, "patient.quickAction", ["label", "title"]);
   rejectUnsupportedKeys(patient, "patient", ["quickAction"]);
-  const dispatch = isRecord(root.dispatch) ? root.dispatch : {};
-  requiredStrings(dispatch, "dispatch", ["crew"]);
-  requiredStrings(dispatch.incident, "dispatch.incident", ["number", "complaint", "address"]);
-  requiredStrings(dispatch.references, "dispatch.references", ["incidentNumber", "complaint", "address"]);
-  if (!Array.isArray(dispatch.events) || dispatch.events.length === 0) diagnostics.push("dispatch.events must contain at least one event");
-  else dispatch.events.forEach((event, index) => requiredStrings(event, `dispatch.events[${index}]`, ["time", "title", "detail", "reference"]));
   const composition = isRecord(root.composition) ? root.composition : {};
   rejectUnsupportedKeys(composition, "composition", ["quickActionOrder", "review", "summary"]);
   const quickActionIds = ["vitals", "medication", "procedure", "note", "patient"] as const;

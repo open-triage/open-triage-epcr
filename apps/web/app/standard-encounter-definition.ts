@@ -11,20 +11,9 @@ const medicationMetadata = medicationElementMetadata(medicationReferences);
 
 export const standardEncounterDefinition = {
   schemaVersion: 1, id: "standard-encounter-v1", version: 1, synthetic: true,
-  dates: { clinicalDate: "2026-04-18", currentTime: "07:51" },
   labels: { prototypeStatus: "Prototype", incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", savePatient: "Save patient" },
   patient: {
     quickAction: { visible: true, label: "Edit patient information", title: "Patient information" },
-  },
-  dispatch: {
-    crew: "AN", incident: { number: "SYN-2026-0418-113 · 3-9-7-4-0", complaint: "Medical assistance requested", address: "100 Example Avenue, Unit 3 (fictional)" },
-    references: { incidentNumber: "eResponse.03", complaint: "eDispatch.01", address: "eScene.15" },
-    events: [
-      { time: "07:51", title: "Arrived on scene", detail: "Fictional residence — standard access", reference: "eTimes.07" },
-      { time: "07:44", title: "Unit en route", detail: "Routine response", reference: "eTimes.06" },
-      { time: "07:42", title: "Unit notified", detail: "3-9-7-4-0 · fictional dispatch notification", reference: "eTimes.03 · eDispatch.02 · eDispatch.06" },
-      { time: "07:40", title: "Call received", detail: "Medical assistance requested", reference: "eTimes.01 · eDispatch.01 · eDispatch.05" },
-    ],
   },
   composition: {
     quickActionOrder: ["vitals", "medication", "procedure", "note", "patient"],

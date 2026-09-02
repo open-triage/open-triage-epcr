@@ -25,7 +25,7 @@ test("a quick-action note is timestamped and inserted newest first", () => {
   state = transitionShell(state, { type: "note-saved" });
 
   assert.equal(state.noteDraft, null);
-  assert.equal(state.encounter.events.length, 5);
+  assert.equal(state.encounter.events.length, 1);
   assert.deepEqual(state.encounter.events[0], {
     id: "visitor-note-1",
     date: "2026-04-18",
@@ -62,7 +62,7 @@ test("the phone flow survives refresh with an in-progress draft and saved encoun
   const restored = loadShellState(storage);
   assert.equal(restored?.noteDraft?.summary, "Draft before refresh");
   assert.equal(restored?.noteDraft?.time, "08:36");
-  assert.equal(restored?.encounter.events.length, 4);
+  assert.equal(restored?.encounter.events.length, 0);
 
   let resumed = transitionShell(restored!, { type: "note-saved" });
   saveShellState(storage, resumed);
@@ -82,7 +82,7 @@ test("reset clears local progress and restores the version-controlled baseline",
 
   assert.equal(storage.values.has(STORAGE_KEY), false);
   assert.deepEqual(reset, INITIAL_SHELL_STATE);
-  assert.equal(reset.encounter.events.length, 4);
+  assert.equal(reset.encounter.events.length, 0);
   assert.equal(reset.encounter.events.some((event) => event.visitorEntered), false);
 });
 
