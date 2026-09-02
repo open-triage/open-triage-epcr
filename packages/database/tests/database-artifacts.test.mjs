@@ -13,7 +13,8 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const repoRoot = path.resolve(packageRoot, "../..");
 const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
-  qualityPolicy, qualityPolicyConfig, qualityEvaluator] = await Promise.all([
+  qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
+  operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -27,7 +28,12 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(packageRoot, "scripts/retention.mjs"), "utf8"),
   readFile(path.join(repoRoot, "docs/quality-normalization-policy.md"), "utf8"),
   readFile(path.join(repoRoot, "packages/contracts/quality-normalization-policy.json"), "utf8").then(JSON.parse),
-  readFile(path.join(repoRoot, "packages/contracts/quality-rules.mjs"), "utf8")
+  readFile(path.join(repoRoot, "packages/contracts/quality-rules.mjs"), "utf8"),
+  readFile(path.join(repoRoot, "docs/database-operations-policy.md"), "utf8"),
+  readFile(path.join(packageRoot, "config/database-operations-policy.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "docs/runbooks/database-operations.md"), "utf8"),
+  readFile(path.join(packageRoot, "scripts/verify-recovery.mjs"), "utf8"),
+  readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8")
 ]);
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
@@ -268,4 +274,46 @@ test("requires approved archive-before-delete retention with durable evidence", 
   assert.match(retentionRunbook, /active, belong to the batch organization/);
   assert.match(retentionRunbook, /--admin-user ADMINISTRATOR_USER_UUID/);
   assert.match(retentionScript, /export checksum mismatch/);
+});
+
+test("records approved backup, recovery, replica, credential, and query-audit operations", () => {
+  assert.equal(operationsPolicyConfig.policyVersion, "database-operations-1.0.0");
+  assert.equal(operationsPolicyConfig.reviewStatus, "approved-installation-owner");
+  assert.equal(operationsPolicyConfig.approvedBy,
+    "requesting human reviewer acting as the delegating installation owner in the ticket 044 Codex session");
+  assert.equal(operationsPolicyConfig.approvedOn, "2026-09-02");
+  assert.deepEqual(operationsPolicyConfig.recoveryObjectives, {
+    rpoMinutes: 5,
+    rtoHours: 4,
+    exerciseFrequencyDays: 90
+  });
+  assert.equal(operationsPolicyConfig.backup.baseBackupFrequencyHours, 24);
+  assert.equal(operationsPolicyConfig.backup.retentionDays, 35);
+  assert.equal(operationsPolicyConfig.reportingReplica.maximumReplayLagSeconds, 300);
+  assert.equal(operationsPolicyConfig.credentials.analystMaximumLifetimeMinutes, 15);
+  assert.equal(operationsPolicyConfig.credentials.serviceCredentialMaximumLifetimeDays, 30);
+  assert.equal(operationsPolicyConfig.monitoring.statementTextCaptured, false);
+  assert.equal(operationsPolicyConfig.monitoring.bindValuesCaptured, false);
+  assert.equal(operationsPolicyConfig.monitoring.returnedClinicalValuesCaptured, false);
+  for (const decision of ["Backup storage", "Recovery objectives", "Replica topology",
+    "Credential lifecycle", "Monitoring and query audit"]) {
+    assert.ok(operationsPolicy.includes(decision), `operations policy is missing ${decision}`);
+  }
+  assert.match(operationsPolicy, /approved by the installation owner on 2026-09-02/i);
+  assert.match(operationsPolicy,
+    /requesting human reviewer acting as the delegating[\s\S]*installation owner in the ticket 044 Codex session/i);
+  for (const object of ["operations.query_audit_event", "operations.query_audit_health",
+    "operations.recovery_readiness", "operations.reporting_replica_health"]) {
+    assert.ok(migration.includes(object), `migration is missing ${object}`);
+  }
+  assert.match(migration, /create role open_triage_query_auditor nologin/);
+  assert.match(migration, /SQL text, bind values, and returned clinical values are structurally absent/);
+  assert.ok(!/query_text\s+text/.test(migration));
+  assert.ok(!/bind_(?:value|parameter)s?\s+/.test(migration));
+  assert.match(operationsRunbook, /pg_restore --exit-on-error/);
+  assert.match(operationsRunbook, /ALLOW_PRIMARY_REPLICA_TEST=1` exists only for CI/);
+  assert.match(recoveryVerifier, /missing_or_stale_projection_count/);
+  assert.match(recoveryVerifier, /--reconcile/);
+  assert.match(replicaVerifier, /begin read only/);
+  assert.match(replicaVerifier, /analytics_private\.epcr/);
 });

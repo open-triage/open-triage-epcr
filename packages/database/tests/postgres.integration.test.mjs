@@ -1001,6 +1001,92 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
+    await projectionTest.test("verifies recovery, replica roles, and metadata-only query auditing", async () => {
+      const recoveryBefore = (await client.query("select * from operations.recovery_readiness")).rows[0];
+      assert.deepEqual({
+        missing_snapshot_count: Number(recoveryBefore.missing_snapshot_count),
+        mismatched_snapshot_count: Number(recoveryBefore.mismatched_snapshot_count),
+        orphan_snapshot_count: Number(recoveryBefore.orphan_snapshot_count),
+        broken_audit_chain_count: Number(recoveryBefore.broken_audit_chain_count),
+        missing_or_stale_projection_count: Number(recoveryBefore.missing_or_stale_projection_count)
+      }, {
+        missing_snapshot_count: 0,
+        mismatched_snapshot_count: 0,
+        orphan_snapshot_count: 0,
+        broken_audit_chain_count: 0,
+        missing_or_stale_projection_count: 0
+      });
+
+      const recoveryVerifier = path.join(packageRoot, "scripts/verify-recovery.mjs");
+      const recovery = await execFileAsync(process.execPath, [recoveryVerifier], {
+        env: { ...process.env, RESTORED_DATABASE_URL: databaseUrl,
+          RECOVERY_EXERCISE_ACKNOWLEDGE_RESTORED_DATABASE: "1" }
+      });
+      const recoveryEvidence = JSON.parse(recovery.stdout);
+      assert.equal(recoveryEvidence.status, "succeeded");
+      assert.equal(recoveryEvidence.authoritativeIntegrityFailures, 0);
+      assert.equal(recoveryEvidence.staleProjectionsAfter, 0);
+      assert.ok(recoveryEvidence.projectionsChecked >= 1);
+
+      const replicaVerifier = path.join(packageRoot, "scripts/verify-reporting-replica.mjs");
+      for (const role of ["open_triage_analyst", "open_triage_identified_analyst"]) {
+        const verification = await execFileAsync(process.execPath, [replicaVerifier], {
+          env: { ...process.env, REPORTING_REPLICA_DATABASE_URL: databaseUrl,
+            REPORTING_REPLICA_ROLE: role, ALLOW_PRIMARY_REPLICA_TEST: "1" }
+        });
+        assert.deepEqual({
+          status: JSON.parse(verification.stdout).status,
+          role: JSON.parse(verification.stdout).role,
+          readOnly: JSON.parse(verification.stdout).readOnly,
+          privateAccess: JSON.parse(verification.stdout).privateAccess
+        }, { status: "succeeded", role, readOnly: true, privateAccess: false });
+      }
+
+      const auditColumns = await client.query(`select column_name from information_schema.columns
+        where table_schema = 'operations' and table_name = 'query_audit_event'
+        order by ordinal_position`);
+      const names = auditColumns.rows.map((row) => row.column_name);
+      assert.ok(!names.some((name) => /query_text|sql_text|bind|result_value|clinical_value/.test(name)));
+      assert.ok(names.includes("statement_fingerprint_sha256"));
+      assert.ok(names.includes("returned_row_count"));
+
+      await client.query("begin");
+      try {
+        await client.query("set local role open_triage_query_auditor");
+        const recorded = await client.query(`select operations.record_query_audit(
+          '44000000-0000-4000-8000-000000000001', 'open_triage_analyst', 'analytics.epcr',
+          'monthly.primary-impression-count', $1, 12.345, 4, true, null, 'analyst-gateway') as id`,
+        ["4".repeat(64)]);
+        assert.ok(Number(recorded.rows[0].id) > 0);
+        await rejectsSql(client, "select * from operations.query_audit_event", [], "42501");
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+
+      const audit = (await client.query(`select database_role, analyst_contract, statement_name,
+        statement_fingerprint_sha256, duration_ms::text, returned_row_count, succeeded, sqlstate,
+        application_name from operations.query_audit_event
+        where session_id = '44000000-0000-4000-8000-000000000001'`)).rows[0];
+      assert.deepEqual(audit, {
+        database_role: "open_triage_analyst",
+        analyst_contract: "analytics.epcr",
+        statement_name: "monthly.primary-impression-count",
+        statement_fingerprint_sha256: "4".repeat(64),
+        duration_ms: "12.345",
+        returned_row_count: "4",
+        succeeded: true,
+        sqlstate: null,
+        application_name: "analyst-gateway"
+      });
+      await assert.rejects(client.query("update operations.query_audit_event set duration_ms = 0"),
+        /append-only/);
+      const health = (await client.query("select * from operations.query_audit_health")).rows[0];
+      assert.equal(Number(health.events_last_hour), 1);
+      assert.equal(Number(health.failures_last_hour), 0);
+    });
+
     await projectionTest.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";

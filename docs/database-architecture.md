@@ -257,7 +257,10 @@ build until reviewed.
 
 Production installations may point analysts at a PostgreSQL read replica or
 reporting instance. Use named or short-lived database credentials and log query
-metadata. Do not log returned clinical values or SQL bind values. The configured
+metadata. Do not log returned clinical values or SQL bind values. The approved
+deployment choices and executable recovery, replica-role, and metadata-audit
+checks are documented in the [database operations policy](database-operations-policy.md)
+and [database operations runbook](runbooks/database-operations.md). The configured
 retention defaults to ten years; legal holds and verifiable archival/deletion are
 available only through the dedicated workflow documented in
 [Retention operations](runbooks/retention.md), never as ordinary clinical deletes.

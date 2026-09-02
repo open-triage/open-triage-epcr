@@ -3042,6 +3042,135 @@ for each row execute function public.prevent_update_or_delete();
 create trigger retention_evidence_append_only before update or delete on retention.evidence
 for each row execute function public.prevent_update_or_delete();
 
+create table operations.query_audit_event (
+  id bigint generated always as identity primary key,
+  occurred_at timestamptz not null default clock_timestamp(),
+  session_id uuid not null check (substring(session_id::text from 15 for 1) = '4'),
+  database_role text not null check (database_role in ('open_triage_analyst', 'open_triage_identified_analyst')),
+  analyst_contract text not null check (analyst_contract in (
+    'analytics.epcr', 'analytics.epcr_repeatable_element', 'analytics.element_dictionary',
+    'analytics.agency', 'analytics.epcr_identified', 'analytics.epcr_repeatable_element_identified'
+  )),
+  statement_name text not null check (statement_name ~ '^[a-z][a-z0-9_.-]{0,127}$'),
+  statement_fingerprint_sha256 text not null check (statement_fingerprint_sha256 ~ '^[a-f0-9]{64}$'),
+  duration_ms numeric(14,3) not null check (duration_ms >= 0),
+  returned_row_count bigint not null check (returned_row_count >= 0),
+  succeeded boolean not null,
+  sqlstate text check (sqlstate is null or sqlstate ~ '^[A-Z0-9]{5}$'),
+  database_name text not null default current_database(),
+  application_name text not null check (length(application_name) between 1 and 128),
+  backend_pid integer not null default pg_backend_pid(),
+  check ((succeeded and sqlstate is null) or (not succeeded and sqlstate is not null))
+);
+
+create trigger query_audit_event_append_only before update or delete on operations.query_audit_event
+for each row execute function public.prevent_update_or_delete();
+
+create function operations.record_query_audit(
+  p_session_id uuid,
+  p_database_role text,
+  p_analyst_contract text,
+  p_statement_name text,
+  p_statement_fingerprint_sha256 text,
+  p_duration_ms numeric,
+  p_returned_row_count bigint,
+  p_succeeded boolean,
+  p_sqlstate text,
+  p_application_name text
+)
+returns bigint
+language plpgsql
+security definer
+set search_path = pg_catalog, operations
+as $$
+declare
+  inserted_id bigint;
+begin
+  if not pg_has_role(session_user, 'open_triage_query_auditor', 'member') then
+    raise exception 'query audit writes require the dedicated collector role';
+  end if;
+  insert into operations.query_audit_event (
+    session_id, database_role, analyst_contract, statement_name,
+    statement_fingerprint_sha256, duration_ms, returned_row_count,
+    succeeded, sqlstate, application_name
+  ) values (
+    p_session_id, p_database_role, p_analyst_contract, p_statement_name,
+    p_statement_fingerprint_sha256, p_duration_ms, p_returned_row_count,
+    p_succeeded, p_sqlstate, p_application_name
+  ) returning id into inserted_id;
+  return inserted_id;
+end;
+$$;
+
+revoke all on function operations.record_query_audit(
+  uuid, text, text, text, text, numeric, bigint, boolean, text, text
+) from public;
+
+create view operations.query_audit_health as
+select
+  max(occurred_at) as last_event_at,
+  count(*) filter (where occurred_at >= now() - interval '1 hour')::bigint as events_last_hour,
+  count(*) filter (where occurred_at >= now() - interval '1 hour' and not succeeded)::bigint as failures_last_hour,
+  count(distinct session_id) filter (where occurred_at >= now() - interval '1 hour')::bigint as sessions_last_hour
+from operations.query_audit_event;
+
+create view operations.recovery_readiness as
+with signed_state as (
+  select
+    r.id,
+    r.revision,
+    r.form_version_id,
+    r.catalog_release_id,
+    coalesce((
+      select amendment.reporting_date
+      from clinical.amendment amendment
+      where amendment.report_id = r.id and amendment.reporting_date is not null
+      order by amendment.sequence desc limit 1
+    ), r.reporting_date) as reporting_date,
+    coalesce((select max(amendment.sequence) from clinical.amendment amendment where amendment.report_id = r.id), 0) as amendment_sequence,
+    snapshot.id as snapshot_id,
+    snapshot.signed_revision,
+    snapshot.form_version_id as snapshot_form_version_id,
+    snapshot.catalog_release_id as snapshot_catalog_release_id
+  from clinical.report r
+  left join clinical.signed_snapshot snapshot on snapshot.report_id = r.id
+  where r.status = 'signed'
+), audit_chain as (
+  select report_id, report_sequence, previous_hash,
+    lag(event_hash) over (partition by report_id order by report_sequence) as expected_previous_hash
+  from clinical_audit.event
+)
+select
+  count(*)::bigint as signed_report_count,
+  count(*) filter (where snapshot_id is null)::bigint as missing_snapshot_count,
+  count(*) filter (where snapshot_id is not null and (
+    revision <> signed_revision or form_version_id <> snapshot_form_version_id
+    or catalog_release_id <> snapshot_catalog_release_id
+  ))::bigint as mismatched_snapshot_count,
+  (select count(*)::bigint from clinical.signed_snapshot snapshot
+    left join clinical.report report on report.id = snapshot.report_id
+    where report.id is null or report.status <> 'signed') as orphan_snapshot_count,
+  (select count(*)::bigint from audit_chain
+    where (report_sequence = 1 and previous_hash is not null)
+       or (report_sequence > 1 and previous_hash is distinct from expected_previous_hash)) as broken_audit_chain_count,
+  count(*) filter (where snapshot_id is not null and not exists (
+    select 1 from analytics_private.epcr projection
+    where projection.report_id = signed_state.id
+      and projection.reporting_date = signed_state.reporting_date
+      and projection.signed_snapshot_id = signed_state.snapshot_id
+      and projection.effective_amendment_sequence = signed_state.amendment_sequence
+  ))::bigint as missing_or_stale_projection_count
+from signed_state;
+
+create view operations.reporting_replica_health as
+select
+  pg_is_in_recovery() as is_read_only_replica,
+  pg_last_wal_receive_lsn() as last_received_lsn,
+  pg_last_wal_replay_lsn() as last_replayed_lsn,
+  case when pg_is_in_recovery() then
+    extract(epoch from (clock_timestamp() - pg_last_xact_replay_timestamp()))
+  end as replay_lag_seconds;
+
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'open_triage_analyst') then
@@ -3061,6 +3190,9 @@ begin
   end if;
   if not exists (select 1 from pg_roles where rolname = 'open_triage_retention_executor') then
     create role open_triage_retention_executor nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'open_triage_query_auditor') then
+    create role open_triage_query_auditor nologin;
   end if;
 end;
 $$;
@@ -3093,7 +3225,12 @@ revoke all on all tables in schema retention from public;
 revoke all on all functions in schema retention from public;
 grant usage on schema operations to open_triage_operational;
 grant select on operations.unsigned_report_work_queue, operations.projection_health,
-  operations.projection_failures to open_triage_operational;
+  operations.projection_failures, operations.query_audit_health,
+  operations.recovery_readiness, operations.reporting_replica_health to open_triage_operational;
+grant usage on schema operations to open_triage_query_auditor;
+grant execute on function operations.record_query_audit(
+  uuid, text, text, text, text, numeric, bigint, boolean, text, text
+) to open_triage_query_auditor;
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
 grant usage on schema retention to open_triage_retention_executor, open_triage_auditor;
@@ -3117,5 +3254,9 @@ comment on view analytics.epcr_identified is 'Privileged one-row-per-ePCR view i
 comment on view operations.unsigned_report_work_queue is 'Active and cleared-but-unsigned, unexpired reports with live status and age.';
 comment on view operations.projection_health is 'Projection freshness, retry, run, and reconciliation metrics without clinical values or SQL bind parameters.';
 comment on view operations.projection_failures is 'Actionable terminal projection failures identified by operational event ID; clinical aggregate IDs and payloads are excluded.';
+comment on table operations.query_audit_event is 'Append-only approved query metadata; SQL text, bind values, and returned clinical values are structurally absent.';
+comment on view operations.query_audit_health is 'Aggregate query-audit delivery health without SQL, bind parameters, report identifiers, or clinical values.';
+comment on view operations.recovery_readiness is 'Aggregate signed-state, audit-chain, and rebuildable-projection checks for a restored database.';
+comment on view operations.reporting_replica_health is 'Physical-replica state and replay lag without clinical values.';
 comment on view clinical_history.report_history is 'Draft revisions and hash-chained signing and amendment events, including actors and timestamps.';
 comment on table integration.outbox_event is 'Transactional source for the at-most-five-minute analytical projection.';
