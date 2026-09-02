@@ -288,7 +288,11 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
         where e.release_id = $1 and e.base_datatype = 'dateTime' order by e.element_id limit 1) as datetime_id,
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
-        (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'inline') order by e.element_id limit 1) as coded_id,
+        (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'inline')
+        and exists (select 1 from catalog.value_set_element vse join catalog.value_set vs
+          on vs.release_id = vse.release_id and vs.value_set_id = vse.value_set_id
+          where vse.release_id = e.release_id and vse.element_id = e.element_id and vs.exhaustive)
+        order by e.element_id limit 1) as coded_id,
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
         (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'not-value') order by e.element_id limit 1) as null_id,
@@ -502,4 +506,171 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     (select count(*)::integer from clinical.command_receipt where idempotency_key = $3) as receipts`,
   [reportId, rollbackOccurrenceId, rollbackCommand.commandId])).rows[0],
   { revision: "5", changes: 5, occurrences: 1, receipts: 1 });
+
+  const signingFormVersionId = randomUUID();
+  const signingSectionId = randomUUID();
+  const presentFieldId = randomUUID();
+  const requiredFieldId = randomUUID();
+  const requiredElement = (await client.query(`select e.element_id, e.element_identity_id,
+      (m.analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.element_definition e join catalog.analytics_element_mapping m
+      on m.release_id = e.release_id and m.element_id = e.element_id
+    where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
+      and e.element_id <> $2 order by e.element_id limit 1`, [releaseId, ids.text_id])).rows[0];
+  assert.ok(requiredElement, "catalog fixture requires a second singleton text element");
+  const presentIdentity = (await client.query(`select element_identity_id,
+      (analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.analytics_element_mapping where release_id = $1 and element_id = $2`,
+  [releaseId, ids.text_id])).rows[0];
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
+    values ($1, $2, $3, 2, '{"schemaVersion":1,"sections":[]}', $4, $5)`,
+  [signingFormVersionId, formId, releaseId, "d".repeat(64), userId]);
+  await client.query(`insert into forms.form_section (id, form_version_id, stable_key, position)
+    values ($1, $2, 'signing', 0)`, [signingSectionId, signingFormVersionId]);
+  await client.query(`insert into forms.form_field
+    (id, form_version_id, section_id, stable_key, position, source_kind,
+     catalog_element_identity_id, required, analytical_repeatable)
+    values ($1, $3, $4, 'present', 0, 'nemsis', $5, false, $6),
+           ($2, $3, $4, 'required-when-present', 1, 'nemsis', $7, true, $8)`,
+  [presentFieldId, requiredFieldId, signingFormVersionId, signingSectionId,
+    presentIdentity.element_identity_id, presentIdentity.analytical_repeatable,
+    requiredElement.element_identity_id, requiredElement.analytical_repeatable]);
+  await client.query(`insert into forms.form_rule
+    (form_version_id, target_field_id, rule_kind, expression)
+    values ($1, $2, 'requiredness', '{"operator":"exists","field":"present"}')`,
+  [signingFormVersionId, requiredFieldId]);
+  await client.query(`update forms.form_version set status = 'published', change_note = 'Signing fixture',
+    published_by = $2, published_at = now() where id = $1`, [signingFormVersionId, userId]);
+  await client.query("update clinical.report set form_version_id = $2 where id = $1", [reportId, signingFormVersionId]);
+
+  const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
+  const missingRequired = await sign({
+    commandId: randomUUID(), expectedRevision: 5, signerId: userId,
+    attestation: { meaning: "author approval" }
+  });
+  assert.equal(missingRequired.response.status, 422, JSON.stringify(missingRequired.payload));
+  assert.ok(missingRequired.payload.findings.some((finding) => finding.code === "form.required"));
+  assert.ok(missingRequired.payload.findings.some((finding) => finding.code === "form.conditional-required"));
+  const rejectedState = (await client.query(`select status, revision,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = $1) as snapshots,
+      (select count(*)::integer from clinical.validation_finding where report_id = $1) as findings
+    from clinical.report where id = $1`, [reportId])).rows[0];
+  assert.deepEqual({ status: rejectedState.status, revision: rejectedState.revision, snapshots: rejectedState.snapshots },
+    { status: "draft", revision: "5", snapshots: 0 });
+  assert.ok(rejectedState.findings >= 2);
+
+  const requiredOccurrenceId = randomUUID();
+  const secondRequiredOccurrenceId = randomUUID();
+  const requiredSaved = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 5, authorId: userId,
+    occurrences: [{ id: requiredOccurrenceId, elementId: requiredElement.element_id,
+      formFieldId: requiredFieldId, ordinal: 0, value: { kind: "text", value: "required" } }]
+  });
+  assert.equal(requiredSaved.response.status, 201, JSON.stringify(requiredSaved.payload));
+  const duplicateSaved = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 6, authorId: userId,
+    occurrences: [{ id: secondRequiredOccurrenceId, elementId: requiredElement.element_id,
+      formFieldId: requiredFieldId, ordinal: 1, value: { kind: "text", value: "duplicate" } }]
+  });
+  assert.equal(duplicateSaved.response.status, 201, JSON.stringify(duplicateSaved.payload));
+  const invalidCardinality = await sign({
+    commandId: randomUUID(), expectedRevision: 7, signerId: userId,
+    attestation: { meaning: "author approval" }
+  });
+  assert.equal(invalidCardinality.response.status, 422, JSON.stringify(invalidCardinality.payload));
+  assert.ok(invalidCardinality.payload.findings.some((finding) => finding.code === "catalog.cardinality"));
+  const removedDuplicate = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId,
+    occurrences: [{ id: secondRequiredOccurrenceId, elementId: requiredElement.element_id, tombstone: true }]
+  });
+  assert.equal(removedDuplicate.response.status, 201, JSON.stringify(removedDuplicate.payload));
+
+  await client.query(`update clinical.element_occurrence set
+    value_kind = 'coded', value_text = null, code = 'INVALID-DATATYPE', code_system = ''
+    where id = $1`, [requiredOccurrenceId]);
+  const invalidCatalog = await sign({
+    commandId: randomUUID(), expectedRevision: 8, signerId: userId,
+    attestation: { meaning: "author approval" }
+  });
+  assert.equal(invalidCatalog.response.status, 422, JSON.stringify(invalidCatalog.payload));
+  assert.ok(invalidCatalog.payload.findings.some((finding) => finding.code === "catalog.datatype"));
+  assert.deepEqual((await client.query("select status, revision from clinical.report where id = $1", [reportId])).rows[0],
+    { status: "draft", revision: "8" });
+  await client.query(`update clinical.element_occurrence set
+    value_kind = 'text', value_text = 'required', code = null, code_system = null
+    where id = $1`, [requiredOccurrenceId]);
+
+  const codedOccurrence = (await client.query(`select id, code from clinical.element_occurrence
+    where report_id = $1 and element_id = $2 and tombstoned_at is null`, [reportId, ids.coded_id])).rows[0];
+  await client.query("update clinical.element_occurrence set code = 'INVALID-VALUE-SET-CODE' where id = $1", [codedOccurrence.id]);
+  const invalidValueSet = await sign({
+    commandId: randomUUID(), expectedRevision: 8, signerId: userId,
+    attestation: { meaning: "author approval" }
+  });
+  assert.equal(invalidValueSet.response.status, 422, JSON.stringify(invalidValueSet.payload));
+  assert.ok(invalidValueSet.payload.findings.some((finding) => finding.code === "catalog.value-set"));
+  assert.deepEqual((await client.query("select status, revision from clinical.report where id = $1", [reportId])).rows[0],
+    { status: "draft", revision: "8" });
+  await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
+
+  await client.query(`create function clinical.integration_reject_signature_audit()
+    returns trigger language plpgsql as $$ begin
+      if new.device_id = 'force-sign-rollback' then raise exception 'forced signing rollback'; end if;
+      return new;
+    end; $$;
+    create trigger integration_reject_signature_audit before insert on clinical_audit.event
+    for each row execute function clinical.integration_reject_signature_audit()`);
+  const signCommand = {
+    commandId: randomUUID(), expectedRevision: 8, signerId: userId,
+    attestation: { meaning: "author approval", version: 1 },
+    actorPersona: "clinician", sessionId: "integration-signing", deviceId: "force-sign-rollback",
+    clientTime: "2026-08-30T14:30:00-04:00"
+  };
+  try {
+    const rolledBackSign = await sign(signCommand);
+    assert.equal(rolledBackSign.response.status, 500);
+  } finally {
+    await client.query("drop trigger integration_reject_signature_audit on clinical_audit.event");
+    await client.query("drop function clinical.integration_reject_signature_audit()");
+  }
+  assert.deepEqual((await client.query(`select status,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = $1) as snapshots,
+      (select count(*)::integer from clinical_audit.event where report_id = $1 and action = 'sign') as audits,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = $1 and event_type = 'signed_snapshot') as events,
+      (select count(*)::integer from clinical.command_receipt where idempotency_key = $2) as receipts
+    from clinical.report where id = $1`, [reportId, signCommand.commandId])).rows[0],
+  { status: "draft", snapshots: 0, audits: 0, events: 0, receipts: 0 });
+
+  signCommand.deviceId = "unit-7";
+  const signed = await sign(signCommand);
+  assert.equal(signed.response.status, 201, JSON.stringify(signed.payload));
+  assert.equal(signed.payload.status, "signed");
+  assert.equal(signed.payload.signedRevision, 8);
+  assert.match(signed.payload.canonicalSha256, /^[a-f0-9]{64}$/);
+  const signedState = (await client.query(`select r.status, r.revision, s.signed_revision,
+      s.canonical_sha256, s.signer_id, s.attestation,
+      (select count(*)::integer from clinical.validation_finding where report_id = r.id) as findings,
+      (select count(*)::integer from clinical_audit.event where report_id = r.id and action = 'sign') as audits,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = r.id and event_type = 'signed_snapshot') as events
+    from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id where r.id = $1`, [reportId])).rows[0];
+  assert.deepEqual({ ...signedState, canonical_sha256: undefined }, {
+    status: "signed", revision: "8", signed_revision: "8", canonical_sha256: undefined,
+    signer_id: userId, attestation: signCommand.attestation, findings: 0, audits: 1, events: 1
+  });
+  assert.equal(signedState.canonical_sha256, signed.payload.canonicalSha256);
+  const signRetry = await sign(signCommand);
+  assert.equal(signRetry.response.status, 201);
+  assert.deepEqual(signRetry.payload, signed.payload);
+
+  const postSignSave = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 8, authorId: userId,
+    occurrences: [{ id: requiredOccurrenceId, elementId: requiredElement.element_id,
+      value: { kind: "text", value: "forbidden" } }]
+  });
+  assert.equal(postSignSave.response.status, 409);
+  await assert.rejects(client.query("update clinical.element_occurrence set value_text = 'forbidden' where id = $1", [requiredOccurrenceId]),
+    (error) => error.code === "P0001");
+  await assert.rejects(client.query("delete from clinical.report where id = $1", [reportId]),
+    (error) => error.code === "P0001");
 });
