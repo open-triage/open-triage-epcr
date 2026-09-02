@@ -67,7 +67,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await diagnostic.end().catch(() => undefined);
       process.exit(1);
     }
-  }, 60_000);
+  }, 30_000);
   t.after(() => clearTimeout(watchdog));
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
@@ -609,6 +609,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const projection = await execFileAsync(process.execPath, [projector], {
       env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
     });
+    checkpoint = "asserting initial primary projection";
     assert.deepEqual(JSON.parse(projection.stdout), {
       event: "analytics_projection_run", mode: "queue", status: "succeeded",
       processedCount: 1, failedCount: 0, checkedCount: 1
@@ -690,6 +691,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(healthAfterProjection.last_run_processed_count, 1);
     assert.ok(healthAfterProjection.last_successful_run_at instanceof Date);
 
+    checkpoint = "checking analytical role isolation";
     const analystClient = await connectAsRole("open_triage_analyst");
     try {
       assert.equal((await analystClient.query("select current_user")).rows[0].current_user, "open_triage_analyst");
@@ -723,6 +725,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await identifiedClient.end();
     }
 
+    checkpoint = "rotating patient keys";
     const originalPatientKey = wide.rows[0].patient_key;
     const rotatedEnvironment = {
       ...process.env,
@@ -807,6 +810,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       repeatById.get("eVitals.13").absence_kind
     ], ["null", "pertinent-negative", "absent"]);
 
+    checkpoint = "projecting signed amendment";
     const amendmentId = "37000000-0000-4000-8000-000000000001";
     const addedOccurrenceId = "37000000-0000-4000-8000-000000000002";
     const sourceRows = await client.query(`select element_id, to_jsonb(o) as occurrence
@@ -905,6 +909,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal((await client.query(`select count(*)::integer as count
       from analytics_private.epcr_repeatable_element where report_id = $1`, [ids.report])).rows[0].count, 11);
 
+    checkpoint = "testing replay reconciliation and backfill";
     await client.query("delete from analytics_private.epcr_repeatable_element where report_id = $1", [ids.report]);
     await client.query("delete from analytics_private.epcr where report_id = $1", [ids.report]);
     const interruptedBackfill = await execFileAsync(process.execPath,
@@ -929,6 +934,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       processed_count: 1, complete: true, wide: 1, repeatable: 11
     });
 
+    checkpoint = "projecting reporting-date amendment";
     const reportingDateAmendmentId = "38000000-0000-4000-8000-000000000001";
     await client.query(`insert into clinical.amendment
       (id, report_id, sequence, author_id, reason, attestation, canonical_sha256, signed_at,
@@ -966,6 +972,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(processed.rows[0].last_error, null);
     assert.equal(processed.rows[0].attempt_count, 1);
 
+    checkpoint = "testing projection retries and health";
     const retryEvent = (await client.query(`select id from integration.outbox_event
       where aggregate_id = $1 order by occurred_at limit 1`, [ids.report])).rows[0];
     await client.query(`update integration.outbox_event
@@ -1018,6 +1025,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
+    checkpoint = "starting retention integration subtest";
     await t.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
       checkpoint = "creating held retention fixture";
       const heldReportId = "39000000-0000-4000-8000-000000000001";
@@ -1123,5 +1131,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);
       assert.equal(hold.rowCount, 1);
     });
+    checkpoint = "completed all database integration subtests";
   });
 });
