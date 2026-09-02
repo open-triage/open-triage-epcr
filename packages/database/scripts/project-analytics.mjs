@@ -363,6 +363,8 @@ async function projectReport(reportId) {
       value_duration: element.value_duration,
       value_binary: element.value_binary,
       value_lexical: element.value_lexical,
+      value_utc_offset_minutes: element.value_utc_offset_minutes,
+      value_precision: element.value_precision,
       code: element.code,
       code_system: element.code_system,
       code_display: element.code_display,

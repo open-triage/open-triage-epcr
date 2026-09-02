@@ -1649,6 +1649,8 @@ create table analytics_private.epcr_repeatable_element (
   value_duration interval,
   value_binary bytea,
   value_lexical text,
+  value_utc_offset_minutes smallint,
+  value_precision text,
   code text,
   code_system text,
   code_display text,
