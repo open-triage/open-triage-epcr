@@ -63,11 +63,17 @@ test("flags unusual values at exclusive exteriors while retaining source and add
   assert.ok(Math.abs(evaluated.derivedValues[0].derivedNumeric / 7.50062 - 14) < 0.0001);
 });
 
-test("documents the pending quality and normalization policy without self-approval", () => {
-  assert.match(qualityPolicy, /clinical and product approval required before merge/i);
+test("records the human-approved quality and normalization policy", () => {
+  assert.match(qualityPolicy, /approved by human clinical\/product review on 2026-09-02/i);
+  assert.match(qualityPolicy, /approved on 2026-09-02 by the requesting human reviewer/i);
   assert.match(qualityPolicy, new RegExp(QUALITY_RULE_VERSION));
   assert.match(qualityPolicy, new RegExp(NORMALIZATION_RULE_VERSION));
-  assert.equal(qualityPolicyConfig.policyStatus, "proposed-clinical-product-review-required");
+  assert.equal(qualityPolicyConfig.policyStatus, "approved-human-clinical-product-review");
+  assert.deepEqual(qualityPolicyConfig.approval, {
+    approvedOn: "2026-09-02",
+    approvedBy: "requesting-human-reviewer",
+    context: "ticket-040-codex-session"
+  });
   assert.equal(qualityPolicyConfig.qualityRuleVersion, QUALITY_RULE_VERSION);
   assert.equal(qualityPolicyConfig.normalizationRuleVersion, NORMALIZATION_RULE_VERSION);
   assert.deepEqual(qualityPolicyConfig.semantics, {

@@ -36,8 +36,8 @@ export interface QualityEvaluation {
   derivedValues: DerivedValue[];
 }
 
-export const QUALITY_RULE_VERSION: "clinical-quality-1.0.0-proposed";
-export const NORMALIZATION_RULE_VERSION: "clinical-normalization-1.0.0-proposed";
+export const QUALITY_RULE_VERSION: "clinical-quality-1.0.0";
+export const NORMALIZATION_RULE_VERSION: "clinical-normalization-1.0.0";
 export function evaluateQualityAndNormalization(
   occurrences: readonly QualityRuleOccurrence[]
 ): QualityEvaluation;

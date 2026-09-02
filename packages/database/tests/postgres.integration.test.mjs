@@ -637,11 +637,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
     assert.equal(wide.rows[0].projector_version, "1.0.0");
     assert.deepEqual(wide.rows[0].quality_flags, ["vital.etco2.unusual"]);
-    assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0-proposed");
+    assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0");
     assert.equal(wide.rows[0].quality_findings[0].observedNumeric, 14);
     assert.equal(wide.rows[0].derived_values[0].derivedNumeric, 105.009);
     assert.equal(wide.rows[0].normalization_rule_version,
-      "clinical-normalization-1.0.0-proposed");
+      "clinical-normalization-1.0.0");
     assert.ok(wide.rows[0].projected_at instanceof Date);
     const freshness = await client.query(`select
       extract(epoch from (projection.projected_at - event.occurred_at)) as seconds
@@ -750,9 +750,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(etco2.normalized_numeric, "105.009");
     assert.equal(etco2.normalized_unit_code, "mm[Hg]");
     assert.equal(etco2.normalization_rule_id, "etco2.kpa-to-mmhg");
-    assert.equal(etco2.normalization_rule_version, "clinical-normalization-1.0.0-proposed");
+    assert.equal(etco2.normalization_rule_version, "clinical-normalization-1.0.0");
     assert.deepEqual(etco2.quality_flags, ["vital.etco2.unusual"]);
-    assert.equal(etco2.quality_rule_version, "clinical-quality-1.0.0-proposed");
+    assert.equal(etco2.quality_rule_version, "clinical-quality-1.0.0");
     assert.equal(etco2.quality_findings[0].sourceOccurrenceId, etco2.element_occurrence_id);
     const paymentDate = repeatById.get("ePayment.60").value_date;
     assert.equal(

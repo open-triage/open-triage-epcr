@@ -807,8 +807,8 @@ create table clinical.signed_snapshot (
   canonical_sha256 text not null check (canonical_sha256 ~ '^[a-f0-9]{64}$'),
   attestation jsonb not null,
   warning_acknowledgements jsonb,
-  quality_rule_version text not null default 'clinical-quality-1.0.0-proposed',
-  normalization_rule_version text not null default 'clinical-normalization-1.0.0-proposed',
+  quality_rule_version text not null default 'clinical-quality-1.0.0',
+  normalization_rule_version text not null default 'clinical-normalization-1.0.0',
   quality_findings jsonb not null default '[]'::jsonb check (jsonb_typeof(quality_findings) = 'array'),
   derived_values jsonb not null default '[]'::jsonb check (jsonb_typeof(derived_values) = 'array'),
   unique (report_id, signed_revision)

@@ -1,6 +1,6 @@
 # Quality and normalization policy
 
-Review status: **proposed; clinical and product approval required before merge**.
+Review status: **approved by human clinical/product review on 2026-09-02**.
 
 This initial policy is deliberately small. It emits non-blocking, traceable
 findings for unusual numeric vital signs and one additive unit conversion. It
@@ -10,14 +10,13 @@ requirements.
 
 ## Version identifiers
 
-| Contract | Proposed version |
+| Contract | Approved version |
 | --- | --- |
-| Quality findings | `clinical-quality-1.0.0-proposed` |
-| Additive normalization | `clinical-normalization-1.0.0-proposed` |
+| Quality findings | `clinical-quality-1.0.0` |
+| Additive normalization | `clinical-normalization-1.0.0` |
 
-Approval will remove the `-proposed` suffix in a separate commit without
-changing the reviewed rules. Any later change to a rule, bound, unit,
-conversion, or rounding behavior requires a new version.
+Any later change to a rule, bound, unit, conversion, or rounding behavior
+requires a new version.
 
 ## Quality rules
 
@@ -67,7 +66,7 @@ unchanged.
   occurrences, including signed amendments, under the projector's current
   explicitly reported rule versions.
 
-The single source of truth for every proposed version, behavior, range, unit,
+The single source of truth for every approved version, behavior, range, unit,
 ETCO2 type mapping, conversion factor, and rounding increment is
 [`packages/contracts/quality-normalization-policy.json`](../packages/contracts/quality-normalization-policy.json).
 Both signing and projection consume it through the shared evaluator in
@@ -75,6 +74,11 @@ Both signing and projection consume it through the shared evaluator in
 
 ## Approval record
 
-Pending explicit clinical and product approval of every rule, unit, inclusive
-bound, conversion factor, three-decimal rounding rule, and both version
-identifiers above.
+Approved on 2026-09-02 by the requesting human reviewer in the ticket 040 Codex
+session. The approval covers quality version `clinical-quality-1.0.0` and
+normalization version `clinical-normalization-1.0.0`: every rule, unit,
+inclusive bound, ETCO2 type mapping, the 7.50062 conversion factor, nearest
+0.001 `mm[Hg]` rounding, non-blocking findings, additive normalization, source
+immutability, and the documented missing or unrecognized `ETCO2Type` behavior.
+The authenticated PR #96 activity records the repository identity and review
+context.

@@ -661,8 +661,8 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.equal(signed.payload.status, "signed");
   assert.equal(signed.payload.signedRevision, 8);
   assert.match(signed.payload.canonicalSha256, /^[a-f0-9]{64}$/);
-  assert.equal(signed.payload.qualityRuleVersion, "clinical-quality-1.0.0-proposed");
-  assert.equal(signed.payload.normalizationRuleVersion, "clinical-normalization-1.0.0-proposed");
+  assert.equal(signed.payload.qualityRuleVersion, "clinical-quality-1.0.0");
+  assert.equal(signed.payload.normalizationRuleVersion, "clinical-normalization-1.0.0");
   assert.deepEqual(signed.payload.derivedValues, []);
   assert.equal(signed.payload.qualityFindings.length, 1);
   assert.deepEqual({

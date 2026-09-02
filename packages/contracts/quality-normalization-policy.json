@@ -1,7 +1,12 @@
 {
-  "policyStatus": "proposed-clinical-product-review-required",
-  "qualityRuleVersion": "clinical-quality-1.0.0-proposed",
-  "normalizationRuleVersion": "clinical-normalization-1.0.0-proposed",
+  "policyStatus": "approved-human-clinical-product-review",
+  "qualityRuleVersion": "clinical-quality-1.0.0",
+  "normalizationRuleVersion": "clinical-normalization-1.0.0",
+  "approval": {
+    "approvedOn": "2026-09-02",
+    "approvedBy": "requesting-human-reviewer",
+    "context": "ticket-040-codex-session"
+  },
   "semantics": {
     "bounds": "inclusive",
     "findingsBlockSigning": false,
