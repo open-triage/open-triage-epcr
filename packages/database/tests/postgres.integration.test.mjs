@@ -544,6 +544,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       "2042-12-31"
     );
     assert.equal(repeatById.get("ePayment.60").value_precision, "day");
+    assert.equal(repeatById.get("eVitals.01").value_precision, "minute");
+    assert.equal(repeatById.get("eVitals.01").value_utc_offset_minutes, -300);
     assert.deepEqual(repeatById.get("eDevice.05").value_binary, Buffer.from([0, 1, 2, 255]));
     assert.equal(repeatById.get("eVitals.02").code, "9925004");
     assert.equal(repeatById.get("eVitals.02").correlation_id, "element-correlation");
