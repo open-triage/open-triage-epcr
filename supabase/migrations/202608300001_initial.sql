@@ -123,6 +123,30 @@ create table catalog.element_definition (
   unique (release_id, element_identity_id)
 );
 
+create function catalog.prevent_incompatible_element_datatype()
+returns trigger
+language plpgsql
+as $$
+declare
+  existing_datatype text;
+begin
+  select base_datatype into existing_datatype
+  from catalog.element_definition
+  where element_identity_id = new.element_identity_id
+  limit 1;
+
+  if existing_datatype is not null and existing_datatype <> new.base_datatype then
+    raise exception 'element identity % cannot change base datatype from % to %',
+      new.element_identity_id, existing_datatype, new.base_datatype;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger catalog_element_datatype_compatible
+before insert or update of element_identity_id, base_datatype on catalog.element_definition
+for each row execute function catalog.prevent_incompatible_element_datatype();
+
 create index element_definition_search_idx
   on catalog.element_definition using gin
   (to_tsvector('simple', element_id || ' ' || name || ' ' || description));
@@ -219,6 +243,10 @@ create table catalog.analytics_element_mapping (
     or (analytical_location = 'repeatable' and sql_column is null)
   )
 );
+
+create unique index analytics_element_mapping_sql_column_key
+  on catalog.analytics_element_mapping (release_id, sql_column)
+  where sql_column is not null;
 
 create trigger catalog_release_immutable before update or delete on catalog.release
 for each row execute function public.prevent_update_or_delete();
