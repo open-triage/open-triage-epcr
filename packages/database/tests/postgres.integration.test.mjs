@@ -1068,14 +1068,16 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 0);
       assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [heldReportId])).rows[0].count, 1);
       assert.equal((await client.query("select count(*)::integer as count from analytics_private.epcr where report_id = $1", [heldReportId])).rows[0].count, 1);
+      await client.query("select retention.maintain_partitions($1, 'maintenance-operator')", [batch]);
       assert.equal((await client.query("select to_regclass('analytics_private.epcr_y2043') is not null as retained")).rows[0].retained, true);
 
       const evidence = await client.query(`select sequence, event_type, previous_hash, event_hash
         from retention.evidence where batch_id = $1 order by sequence`, [batch]);
-      assert.deepEqual(evidence.rows.map((row) => row.event_type), ["prepared", "archive_verified", "deleted"]);
+      assert.deepEqual(evidence.rows.map((row) => row.event_type), ["prepared", "archive_verified", "deleted", "partition_maintained"]);
       assert.equal(evidence.rows[0].previous_hash, null);
       assert.equal(evidence.rows[1].previous_hash, evidence.rows[0].event_hash);
       assert.equal(evidence.rows[2].previous_hash, evidence.rows[1].event_hash);
+      assert.equal(evidence.rows[3].previous_hash, evidence.rows[2].event_hash);
       await assert.rejects(client.query("delete from retention.evidence where batch_id = $1", [batch]), /append-only/);
       assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);
       assert.equal(hold.rowCount, 1);

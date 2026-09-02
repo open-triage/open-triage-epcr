@@ -2672,7 +2672,7 @@ create table retention.evidence (
   organization_id uuid not null references app_identity.organization(id),
   batch_id uuid not null references retention.archive_batch(id),
   sequence integer not null check (sequence > 0),
-  event_type text not null check (event_type in ('prepared', 'archive_verified', 'archive_failed', 'deleted')),
+  event_type text not null check (event_type in ('prepared', 'archive_verified', 'archive_failed', 'deleted', 'partition_maintained')),
   actor text not null,
   occurred_at timestamptz not null default now(),
   details jsonb not null check (jsonb_typeof(details) = 'object'),
@@ -2891,7 +2891,15 @@ begin
       )
   loop
     execute format('select exists (select 1 from %s limit 1)', partition_record.partition_name) into has_rows;
-    if not has_rows then execute format('drop table %s', partition_record.partition_name); removed := removed + 1; end if;
+    if not has_rows then
+      begin
+        perform set_config('lock_timeout', '100ms', true);
+        execute format('drop table %s', partition_record.partition_name);
+        removed := removed + 1;
+      exception when lock_not_available then
+        null;
+      end;
+    end if;
   end loop;
   return removed;
 end;
@@ -2904,7 +2912,7 @@ security definer
 set search_path = pg_catalog, retention, clinical, clinical_audit, integration, analytics_private
 as $$
 declare selected_batch retention.archive_batch%rowtype; selected_report record; deleted_reports integer := 0;
-  wide_rows integer := 0; repeat_rows integer := 0; affected integer; removed_partitions integer; deletion_counts jsonb;
+  wide_rows integer := 0; repeat_rows integer := 0; affected integer; deletion_counts jsonb;
 begin
   select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
   if selected_batch.status <> 'archive_verified' then raise exception 'archive verification is required before deletion'; end if;
@@ -2936,13 +2944,29 @@ begin
     deleted_reports := deleted_reports + 1;
   end loop;
   if deleted_reports <> selected_batch.report_count then raise exception 'expected to delete % reports, deleted %', selected_batch.report_count, deleted_reports; end if;
-  removed_partitions := retention.drop_empty_expired_partitions(selected_batch.cutoff_date);
   deletion_counts := jsonb_build_object('reports', deleted_reports, 'analyticsWideRows', wide_rows,
-    'analyticsRepeatableRows', repeat_rows, 'emptyPartitionsRemoved', removed_partitions,
+    'analyticsRepeatableRows', repeat_rows,
     'archiveSha256', selected_batch.archive_sha256, 'archiveObjectVersion', selected_batch.archive_object_version);
   update retention.archive_batch set status = 'deleted', deleted_by = actor, deleted_at = now() where id = candidate_batch_id;
   perform retention.append_evidence(candidate_batch_id, 'deleted', actor, deletion_counts);
   return deletion_counts;
+end;
+$$;
+
+create function retention.maintain_partitions(candidate_batch_id uuid, actor text)
+returns integer
+language plpgsql
+security definer
+set search_path = pg_catalog, retention
+as $$
+declare selected_batch retention.archive_batch%rowtype; removed integer;
+begin
+  select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
+  if selected_batch.status <> 'deleted' then raise exception 'partition maintenance requires a deleted retention batch'; end if;
+  removed := retention.drop_empty_expired_partitions(selected_batch.cutoff_date);
+  perform retention.append_evidence(candidate_batch_id, 'partition_maintained', actor,
+    jsonb_build_object('emptyPartitionsRemoved', removed, 'cutoffDate', selected_batch.cutoff_date));
+  return removed;
 end;
 $$;
 
@@ -3059,7 +3083,8 @@ grant select on retention.policy, retention.legal_hold, retention.archive_batch,
 grant insert, update on retention.policy, retention.legal_hold to open_triage_retention_executor;
 grant execute on function retention.prepare_archive_batch(uuid, date, text),
   retention.report_archive_payload(uuid), retention.verify_archive(uuid, text, text, text, text),
-  retention.fail_archive(uuid, text, text, text), retention.delete_verified_batch(uuid, text)
+  retention.fail_archive(uuid, text, text, text), retention.delete_verified_batch(uuid, text),
+  retention.maintain_partitions(uuid, text)
   to open_triage_retention_executor;
 
 comment on schema analytics is 'Stable, read-only analyst interfaces. Base projections are private.';

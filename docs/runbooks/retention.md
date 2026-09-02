@@ -63,7 +63,14 @@ then invoke the atomic path:
 ```bash
 npm run retention -w @open-triage/database -- delete \
   --batch BATCH_UUID --actor DELETION_OPERATOR_ID
+
+npm run retention -w @open-triage/database -- maintain \
+  --batch BATCH_UUID --actor MAINTENANCE_OPERATOR_ID
 ```
+
+Partition maintenance runs after the deletion transaction so it never waits on
+the deletion's row locks. It drops only empty partitions wholly before the batch
+cutoff, skips any partition it cannot lock within 100 ms, and records its result.
 
 Reconcile `retention.archive_batch.report_count` to the deletion result and
 inspect every `retention.evidence` sequence. Verify each `previous_hash` equals

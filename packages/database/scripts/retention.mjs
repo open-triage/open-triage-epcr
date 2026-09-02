@@ -13,8 +13,8 @@ function option(name, required = true) {
 const command = process.argv[2];
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
-if (!["prepare", "export", "verify", "fail", "delete"].includes(command)) {
-  throw new Error("usage: retention.mjs <prepare|export|verify|fail|delete> [options]");
+if (!["prepare", "export", "verify", "fail", "delete", "maintain"].includes(command)) {
+  throw new Error("usage: retention.mjs <prepare|export|verify|fail|delete|maintain> [options]");
 }
 
 const client = new pg.Client({ connectionString: databaseUrl });
@@ -79,6 +79,13 @@ try {
       option("batch"), option("actor")
     ]);
     console.log(JSON.stringify({ batchId: option("batch"), status: "deleted", ...result.rows[0].evidence }));
+  }
+
+  if (command === "maintain") {
+    const result = await client.query("select retention.maintain_partitions($1::uuid, $2) as removed", [
+      option("batch"), option("actor")
+    ]);
+    console.log(JSON.stringify({ batchId: option("batch"), emptyPartitionsRemoved: result.rows[0].removed }));
   }
 } finally {
   await client.end();
