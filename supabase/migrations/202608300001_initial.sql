@@ -484,10 +484,22 @@ declare
   version_id uuid;
   version_status text;
 begin
-  version_id := case when tg_op = 'DELETE' then old.form_version_id else new.form_version_id end;
+  if tg_op = 'INSERT' then
+    version_id := new.form_version_id;
+  else
+    version_id := old.form_version_id;
+  end if;
   select status into version_status from forms.form_version where id = version_id;
   if version_status = 'published' then
     raise exception 'children of published form version % are immutable', version_id;
+  end if;
+  if tg_op = 'UPDATE' then
+    if new.form_version_id <> old.form_version_id then
+      select status into version_status from forms.form_version where id = new.form_version_id;
+      if version_status = 'published' then
+        raise exception 'children of published form version % are immutable', new.form_version_id;
+      end if;
+    end if;
   end if;
   if tg_op = 'DELETE' then return old; else return new; end if;
 end;
