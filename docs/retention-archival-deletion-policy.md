@@ -1,15 +1,17 @@
 # Retention, archival, legal-hold, and deletion policy
 
-Status: **proposed — installation-owner approval required**  
-Policy version: `retention-1.0.0-proposed`
+Status: **approved by the installation owner on 2026-09-02**
+Policy version: `retention-1.0.0`
 
-No retention batch may be prepared until the installation owner records approval
-of the four decisions below in `retention.policy`. The migration does not infer or
-self-certify that approval.
+This is the approved review artifact for ticket 042. The requesting human reviewer
+approved all four decisions below, including the revised administrator-authorized
+deletion clause. A deployment must still bind the approved values to an exact
+organization and archive URI in `retention.policy`; no batch can run while that
+organization row remains pending.
 
-## Decisions submitted for approval
+## Approved decisions
 
-| Decision | Proposed policy |
+| Decision | Approved policy |
 | --- | --- |
 | Archive destination | S3-compatible object storage at `s3://open-triage-retention-archive/<installation-id>/<organization-id>/`, in a separate security account, with versioning and S3 Object Lock in compliance mode for at least the applicable legal retention period. |
 | Deletion authority | An active application user in the batch organization with the existing `installation:administer` capability may authorize deletion. The retention service invokes the function through the non-login `open_triage_retention_executor` database role; the function validates the administrator UUID and records it as the actor. Application, clinical, analyst, projector, and ordinary operational database roles receive neither table deletion privileges nor direct execution rights. The deleting administrator must be distinct from the preparation and verification identities. |
@@ -38,3 +40,14 @@ self-certify that approval.
   deletion rolls back both source removal and deletion evidence.
 
 See [Retention operations](runbooks/retention.md) for the executable workflow.
+
+## Approval record
+
+Approved on 2026-09-02 by the requesting human reviewer in the ticket 042 Codex
+session. The approval covers policy version `retention-1.0.0`: the archive
+destination template and Object Lock controls, administrator-authorized deletion,
+canonical NDJSON and hash-chained evidence, and ten years of online retention with
+no local override. The deleting administrator must be active, belong to the batch
+organization, hold `installation:administer`, be distinct from preparation and
+verification identities, and be recorded by validated UUID evidence through the
+restricted executor role.

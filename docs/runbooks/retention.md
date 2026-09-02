@@ -1,8 +1,10 @@
 # Retention operations
 
-This runbook is disabled until an installation owner approves the proposed
-[retention policy](../retention-archival-deletion-policy.md). An authenticated
-application administrator authorizes deletion; the retention service uses
+The installation owner approved the
+[retention policy](../retention-archival-deletion-policy.md) on 2026-09-02. Before
+the first run, bind its values and exact archive URI to the organization and record
+the approved state in `retention.policy`. An authenticated application
+administrator authorizes deletion; the retention service uses
 dedicated credentials that can assume `open_triage_retention_executor`. Never
 grant that database role to an API, clinical, projector, or analyst connection.
 

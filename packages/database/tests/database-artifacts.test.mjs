@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
-  retentionPolicy, retentionRunbook, retentionScript] = await Promise.all([
+  retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -16,6 +16,7 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
   readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "docs/retention-archival-deletion-policy.md"), "utf8"),
+  readFile(path.join(packageRoot, "config/retention-policy.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "docs/runbooks/retention.md"), "utf8"),
   readFile(path.join(packageRoot, "scripts/retention.mjs"), "utf8")
 ]);
@@ -170,7 +171,12 @@ test("requires approved archive-before-delete retention with durable evidence", 
   for (const decision of ["Archive destination", "Deletion authority", "Evidence format", "Online retention"]) {
     assert.ok(retentionPolicy.includes(decision), `retention policy is missing ${decision}`);
   }
-  assert.match(retentionPolicy, /proposed — installation-owner approval required/);
+  assert.equal(retentionPolicyConfig.policyVersion, "retention-1.0.0");
+  assert.equal(retentionPolicyConfig.reviewStatus, "approved-installation-owner");
+  assert.equal(retentionPolicyConfig.retentionYearsDefault, 10);
+  assert.equal(retentionPolicyConfig.localRetentionOverride, null);
+  assert.match(retentionPolicy, /approved by the installation owner on 2026-09-02/);
+  assert.match(retentionPolicy, /requesting human reviewer[\s\S]*ticket 042 Codex\s+session/);
   assert.match(retentionRunbook, /Object Lock/);
   assert.match(retentionRunbook, /active, belong to the batch organization/);
   assert.match(retentionRunbook, /--admin-user ADMINISTRATOR_USER_UUID/);

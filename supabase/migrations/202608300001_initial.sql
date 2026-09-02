@@ -2594,11 +2594,12 @@ left join clinical_audit.event e
   and e.target_id = a.id::text
 left join app_identity.app_user u on u.id = a.author_id;
 
--- Retention is an operator-only, archive-before-delete workflow. Policy approval is
--- deliberately deployment-specific; no organization is auto-approved by migration.
+-- The retention-1.0.0 policy body is human-approved. Its archive-before-delete
+-- workflow still requires an approved organization binding and exact destination;
+-- no future organization or URI is auto-approved by migration.
 create table retention.policy (
   organization_id uuid primary key references app_identity.organization(id),
-  policy_version text not null default 'retention-1.0.0-proposed',
+  policy_version text not null default 'retention-1.0.0',
   retention_years integer not null default 10 check (retention_years between 1 and 100),
   archive_destination_uri text not null check (archive_destination_uri ~ '^s3://[^/]+/.+'),
   archive_storage_control text not null default 'S3 Object Lock compliance mode',
