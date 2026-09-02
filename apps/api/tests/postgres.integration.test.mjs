@@ -615,6 +615,18 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     { status: "draft", revision: "8" });
   await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
 
+  const temperatureOccurrenceId = randomUUID();
+  const temperatureDefinition = (await client.query(`select m.element_identity_id,
+      (m.analytical_location = 'repeatable') as analytical_repeatable, m.identifying
+    from catalog.analytics_element_mapping m
+    where m.release_id = $1 and m.element_id = 'eVitals.24'`, [releaseId])).rows[0];
+  await client.query(`insert into clinical.element_occurrence
+    (id, report_id, catalog_release_id, element_identity_id, element_id, ordinal,
+     analytical_repeatable, identifying, value_kind, value_numeric, value_lexical, author_id)
+    values ($1, $2, $3, $4, 'eVitals.24', 0, $5, $6, 'numeric', 46, '46.0', $7)`,
+  [temperatureOccurrenceId, reportId, releaseId, temperatureDefinition.element_identity_id,
+    temperatureDefinition.analytical_repeatable, temperatureDefinition.identifying, userId]);
+
   await client.query(`create function clinical.integration_reject_signature_audit()
     returns trigger language plpgsql as $$ begin
       if new.device_id = 'force-sign-rollback' then raise exception 'forced signing rollback'; end if;
@@ -649,17 +661,42 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.equal(signed.payload.status, "signed");
   assert.equal(signed.payload.signedRevision, 8);
   assert.match(signed.payload.canonicalSha256, /^[a-f0-9]{64}$/);
+  assert.equal(signed.payload.qualityRuleVersion, "clinical-quality-1.0.0-proposed");
+  assert.equal(signed.payload.normalizationRuleVersion, "clinical-normalization-1.0.0-proposed");
+  assert.deepEqual(signed.payload.derivedValues, []);
+  assert.equal(signed.payload.qualityFindings.length, 1);
+  assert.deepEqual({
+    sourceOccurrenceId: signed.payload.qualityFindings[0].sourceOccurrenceId,
+    code: signed.payload.qualityFindings[0].code,
+    observedNumeric: signed.payload.qualityFindings[0].observedNumeric,
+    sourceUnitCode: signed.payload.qualityFindings[0].sourceUnitCode
+  }, {
+    sourceOccurrenceId: temperatureOccurrenceId,
+    code: "vital.temperature.unusual",
+    observedNumeric: 46,
+    sourceUnitCode: "Cel"
+  });
   const signedState = (await client.query(`select r.status, r.revision, s.signed_revision,
-      s.canonical_sha256, s.signer_id, s.attestation,
+      s.canonical_sha256, s.signer_id, s.attestation, s.quality_rule_version,
+      s.normalization_rule_version, s.quality_findings, s.derived_values,
       (select count(*)::integer from clinical.validation_finding where report_id = r.id) as findings,
       (select count(*)::integer from clinical_audit.event where report_id = r.id and action = 'sign') as audits,
       (select count(*)::integer from integration.outbox_event where aggregate_id = r.id and event_type = 'signed_snapshot') as events
     from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id where r.id = $1`, [reportId])).rows[0];
-  assert.deepEqual({ ...signedState, canonical_sha256: undefined }, {
-    status: "signed", revision: "8", signed_revision: "8", canonical_sha256: undefined,
+  assert.deepEqual({
+    status: signedState.status, revision: signedState.revision,
+    signed_revision: signedState.signed_revision, signer_id: signedState.signer_id,
+    attestation: signedState.attestation, findings: signedState.findings,
+    audits: signedState.audits, events: signedState.events
+  }, {
+    status: "signed", revision: "8", signed_revision: "8",
     signer_id: userId, attestation: signCommand.attestation, findings: 0, audits: 1, events: 1
   });
   assert.equal(signedState.canonical_sha256, signed.payload.canonicalSha256);
+  assert.equal(signedState.quality_rule_version, signed.payload.qualityRuleVersion);
+  assert.equal(signedState.normalization_rule_version, signed.payload.normalizationRuleVersion);
+  assert.deepEqual(signedState.quality_findings, signed.payload.qualityFindings);
+  assert.deepEqual(signedState.derived_values, signed.payload.derivedValues);
   const signRetry = await sign(signCommand);
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);

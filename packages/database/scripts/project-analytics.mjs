@@ -1,4 +1,9 @@
 import pg from "pg";
+import {
+  evaluateQualityAndNormalization,
+  NORMALIZATION_RULE_VERSION,
+  QUALITY_RULE_VERSION
+} from "@open-triage/contracts/quality-rules";
 
 const databaseUrl = process.env.DATABASE_URL;
 const PROJECTOR_VERSION = "1.0.0";
@@ -362,6 +367,22 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   }
 
   const elements = [...elementsById.values()];
+  const quality = evaluateQualityAndNormalization(elements.map((element) => ({
+    id: element.id,
+    elementId: element.element_id,
+    valueKind: element.value_kind,
+    valueInteger: element.value_integer,
+    valueNumeric: element.value_numeric,
+    sourceAttributes: element.source_attributes
+  })));
+  const findingsByOccurrence = new Map();
+  for (const finding of quality.qualityFindings) {
+    findingsByOccurrence.set(finding.sourceOccurrenceId,
+      [...(findingsByOccurrence.get(finding.sourceOccurrenceId) ?? []), finding]);
+  }
+  const derivedByOccurrence = new Map(
+    quality.derivedValues.map((derived) => [derived.sourceOccurrenceId, derived])
+  );
   const groupById = new Map(groupResult.rows.map((row) => [row.id, row]));
   const mappingByElement = new Map(mappingResult.rows.map((row) => [row.mapping.elementId, row.mapping]));
   const timeByGroup = new Map(timeResult.rows.map((row) => [row.group_id, row]));
@@ -401,6 +422,8 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   const repeatRows = [];
 
   for (const element of elements) {
+    const elementFindings = findingsByOccurrence.get(element.id) ?? [];
+    const elementDerived = derivedByOccurrence.get(element.id) ?? null;
     const mapping = mappingByElement.get(element.element_id);
     const repeatable = mapping?.analyticalLocation === "repeatable" || (!mapping && element.analytical_repeatable);
     if (!repeatable) {
@@ -482,12 +505,15 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
         element.documented_utc_offset_minutes ?? group.documented_utc_offset_minutes,
       documented_time_precision: element.documented_precision,
       server_received_time: element.server_received_time,
-      normalized_numeric: null,
-      normalized_unit_code: null,
-      normalization_rule_version: null,
+      normalized_numeric: elementDerived?.derivedNumeric ?? null,
+      source_unit_code: elementDerived?.sourceUnitCode ?? elementFindings[0]?.sourceUnitCode ?? null,
+      normalized_unit_code: elementDerived?.derivedUnitCode ?? null,
+      normalization_rule_id: elementDerived?.ruleId ?? null,
+      normalization_rule_version: elementDerived?.ruleVersion ?? null,
       source_attributes: element.source_attributes,
-      quality_flags: null,
-      quality_rule_version: null,
+      quality_flags: elementFindings.length ? elementFindings.map((finding) => finding.code) : null,
+      quality_rule_version: elementFindings.length ? QUALITY_RULE_VERSION : null,
+      quality_findings: elementFindings.length ? elementFindings : null,
       is_identifying: mapping?.identifying ?? element.identifying
     });
   }
@@ -495,8 +521,13 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   wide.element_statuses = sparseObject(statuses);
   wide.additional_elements = sparseObject(additional);
   wide.additional_identifying_elements = sparseObject(additionalIdentifying);
-  wide.quality_flags = null;
-  wide.quality_rule_version = null;
+  wide.quality_flags = quality.qualityFindings.length
+    ? [...new Set(quality.qualityFindings.map((finding) => finding.code))]
+    : null;
+  wide.quality_rule_version = QUALITY_RULE_VERSION;
+  wide.quality_findings = quality.qualityFindings.length ? quality.qualityFindings : null;
+  wide.derived_values = quality.derivedValues.length ? quality.derivedValues : null;
+  wide.normalization_rule_version = NORMALIZATION_RULE_VERSION;
 
   if (onlyIfStale) {
     const status = (await client.query(

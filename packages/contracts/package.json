@@ -9,6 +9,7 @@
   "exports": {
     ".": { "types": "./src/index.ts", "default": "./dist/index.js" },
     "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
+    "./quality-rules": { "types": "./quality-rules.d.ts", "default": "./quality-rules.mjs" },
     "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json"
   },
   "scripts": {

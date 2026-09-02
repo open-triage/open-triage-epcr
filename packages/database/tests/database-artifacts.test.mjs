@@ -3,18 +3,70 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  evaluateQualityAndNormalization,
+  NORMALIZATION_RULE_VERSION,
+  QUALITY_RULE_VERSION
+} from "@open-triage/contracts/quality-rules";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig] = await Promise.all([
+const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig, qualityPolicy] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "deploy/kubernetes/analytics-projector-cronjobs.yaml"), "utf8"),
   readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
-  readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse)
+  readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "docs/quality-normalization-policy.md"), "utf8")
 ]);
+
+test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
+  const boundary = evaluateQualityAndNormalization([
+    { id: "sbp-low-boundary", elementId: "eVitals.06", valueKind: "integer", valueInteger: 40 },
+    { id: "sbp-high-boundary", elementId: "eVitals.06", valueKind: "integer", valueInteger: 300 }
+  ]);
+  assert.deepEqual(boundary, { qualityFindings: [], derivedValues: [] });
+
+  const source = {
+    id: "etco2-source", elementId: "eVitals.16", valueKind: "numeric",
+    valueNumeric: "14.000", sourceAttributes: { ETCO2Type: "3340005" }
+  };
+  const evaluated = evaluateQualityAndNormalization([source]);
+  assert.equal(source.valueNumeric, "14.000");
+  assert.deepEqual(evaluated.qualityFindings[0], {
+    sourceOccurrenceId: source.id,
+    elementId: source.elementId,
+    code: "vital.etco2.unusual",
+    severity: "warning",
+    message: "eVitals.16 value 14 kPa is outside the inclusive 1.3-13.3 review range",
+    observedNumeric: 14,
+    sourceUnitCode: "kPa",
+    expectedMinInclusive: 1.3,
+    expectedMaxInclusive: 13.3,
+    ruleVersion: QUALITY_RULE_VERSION
+  });
+  assert.deepEqual(evaluated.derivedValues[0], {
+    sourceOccurrenceId: source.id,
+    elementId: source.elementId,
+    sourceNumeric: 14,
+    sourceUnitCode: "kPa",
+    derivedNumeric: 105.009,
+    derivedUnitCode: "mm[Hg]",
+    ruleId: "etco2.kpa-to-mmhg",
+    ruleVersion: NORMALIZATION_RULE_VERSION
+  });
+  assert.ok(Math.abs(evaluated.derivedValues[0].derivedNumeric / 7.50062 - 14) < 0.0001);
+});
+
+test("documents the pending quality and normalization policy without self-approval", () => {
+  assert.match(qualityPolicy, /clinical and product approval required before merge/i);
+  assert.match(qualityPolicy, new RegExp(QUALITY_RULE_VERSION));
+  assert.match(qualityPolicy, new RegExp(NORMALIZATION_RULE_VERSION));
+  assert.match(migration, /quality_findings jsonb not null default '\[\]'::jsonb/);
+  assert.match(migration, /normalized_numeric numeric,[\s\S]*normalization_rule_id text/);
+});
 
 test("maps every PatientCareReport element to exactly one analytical location", () => {
   const patientCareElements = catalog.elements.filter((element) =>

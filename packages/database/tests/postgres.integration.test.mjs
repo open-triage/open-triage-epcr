@@ -521,7 +521,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       { value_kind: "pertinent-negative", absence_code: "8801019", absence_display: "Denied" });
     await addOccurrence("eVitals.13", ids.vitalGroup, 0, { value_kind: "absent" });
     await addOccurrence("eVitals.16", ids.vitalGroup, 0,
-      { value_kind: "numeric", value_numeric: "98.70", value_lexical: "98.70" });
+      { value_kind: "numeric", value_numeric: "14.000", value_lexical: "14.000",
+        source_attributes: { ETCO2Type: "3340005" } });
     await addOccurrence("eHistory.01", ids.historyGroup, 0,
       { value_kind: "text", value_text: "Language barrier" });
     await addOccurrence("ePayment.60", ids.insuranceGroup, 0,
@@ -581,7 +582,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       erecord_01, edisposition_11, edisposition_11_lexical, eexam_01, eexam_01_lexical,
       epatient_17::text, epatient_17_precision, etimes_01, etimes_01_precision,
       etimes_01_utc_offset_minutes, earrest_01, earrest_01_display, earrest_01_system,
-      earrest_01_terminology_version, element_statuses
+      earrest_01_terminology_version, element_statuses, quality_flags, quality_rule_version,
+      quality_findings, derived_values, normalization_rule_version
       from analytics_private.epcr where report_id = $1`, [ids.report]);
     assert.equal(wide.rowCount, 1);
     assert.deepEqual({
@@ -634,6 +636,12 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].amendment_count, 0);
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
     assert.equal(wide.rows[0].projector_version, "1.0.0");
+    assert.deepEqual(wide.rows[0].quality_flags, ["vital.etco2.unusual"]);
+    assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0-proposed");
+    assert.equal(wide.rows[0].quality_findings[0].observedNumeric, 14);
+    assert.equal(wide.rows[0].derived_values[0].derivedNumeric, 105.009);
+    assert.equal(wide.rows[0].normalization_rule_version,
+      "clinical-normalization-1.0.0-proposed");
     assert.ok(wide.rows[0].projected_at instanceof Date);
     const freshness = await client.query(`select
       extract(epoch from (projection.projected_at - event.occurred_at)) as seconds
@@ -734,7 +742,18 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(repeatById.get("eHistory.01").value_text, "Language barrier");
     assert.equal(repeatById.get("eVitals.06").value_integer, "118");
     assert.equal(repeatById.get("eVitals.06").value_lexical, "0118");
-    assert.equal(repeatById.get("eVitals.16").value_numeric, "98.70");
+    const etco2 = repeatById.get("eVitals.16");
+    assert.equal(etco2.value_numeric, "14.000");
+    assert.equal(etco2.value_lexical, "14.000");
+    assert.deepEqual(etco2.source_attributes, { ETCO2Type: "3340005" });
+    assert.equal(etco2.source_unit_code, "kPa");
+    assert.equal(etco2.normalized_numeric, "105.009");
+    assert.equal(etco2.normalized_unit_code, "mm[Hg]");
+    assert.equal(etco2.normalization_rule_id, "etco2.kpa-to-mmhg");
+    assert.equal(etco2.normalization_rule_version, "clinical-normalization-1.0.0-proposed");
+    assert.deepEqual(etco2.quality_flags, ["vital.etco2.unusual"]);
+    assert.equal(etco2.quality_rule_version, "clinical-quality-1.0.0-proposed");
+    assert.equal(etco2.quality_findings[0].sourceOccurrenceId, etco2.element_occurrence_id);
     const paymentDate = repeatById.get("ePayment.60").value_date;
     assert.equal(
       paymentDate instanceof Date ? paymentDate.toISOString().slice(0, 10) : paymentDate,

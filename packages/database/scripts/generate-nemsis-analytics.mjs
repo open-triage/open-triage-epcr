@@ -239,7 +239,10 @@ const baseViewColumns = [
   "element_statuses",
   "additional_elements",
   "quality_flags",
-  "quality_rule_version"
+  "quality_rule_version",
+  "quality_findings",
+  "derived_values",
+  "normalization_rule_version"
 ];
 const pseudonymousColumns = [
   ...baseViewColumns,
