@@ -154,11 +154,14 @@ export class FormPublicationService {
       }
 
       const published = await manager.query<Array<{ published_at: Date | string }>>(`
-        update forms.form_version
-        set status = 'published', change_note = $2, published_by = $3, published_at = now(),
-            publication_acknowledgements = $4::jsonb
-        where id = $1 and status = 'draft'
-        returning published_at
+        with updated as (
+          update forms.form_version
+          set status = 'published', change_note = $2, published_by = $3, published_at = now(),
+              publication_acknowledgements = $4::jsonb
+          where id = $1 and status = 'draft'
+          returning published_at
+        )
+        select published_at from updated
       `, [version.id, command.changeNote.trim(), command.publishedBy,
         JSON.stringify(command.warningAcknowledgements ?? {})]);
       if (!published[0]) throw new ConflictException("Form version is no longer a draft");
