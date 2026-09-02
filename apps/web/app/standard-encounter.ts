@@ -5,6 +5,9 @@ import { standardEncounterDefinition } from "./standard-encounter-definition";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 import type { CustomDataSet } from "./custom-data-elements";
+import type { EncounterDocument } from "@open-triage/contracts";
+import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
+import { loadEncounterDocument } from "./encounter-document";
 
 export type ShellView = "timeline" | "checklist" | "review" | "summary";
 
@@ -33,15 +36,7 @@ export type Encounter = {
   readonly synthetic: true;
   readonly currentTime: string;
   readonly crew: string;
-  readonly patient: {
-    readonly name: string;
-    readonly age: number;
-    readonly sex: string;
-    readonly identifier: string;
-    readonly medicalHistory: ReadonlyArray<string>;
-    readonly currentMedications: ReadonlyArray<string>;
-    readonly allergies: ReadonlyArray<string>;
-  };
+  readonly document: EncounterDocument;
   readonly incident: { readonly number: string; readonly complaint: string; readonly address: string };
   readonly events: ReadonlyArray<EncounterEvent>;
   /** Namespaced NEMSIS custom results. Unknown compatible entries are deliberately retained by persistence. */
@@ -54,13 +49,17 @@ export const bundledEncounterDefinition = encounterDefinitionProvider.get("stand
 // Fixed usability-test fixture. Everything here is fictional and loaded
 // automatically; this module is never a destination for real patient data.
 export function createSyntheticEncounter(definition: EncounterDefinition): Encounter {
+  const document = loadEncounterDocument({
+    ...structuredClone(syntheticEncounterDocument),
+    formProfile: { id: definition.id, version: String(definition.version) },
+  }, { formProfiles: { [definition.id]: [String(definition.version)] } });
   return {
     definitionId: definition.id,
     definitionVersion: definition.version,
     synthetic: true,
     currentTime: definition.dates.currentTime,
     crew: definition.dispatch.crew,
-    patient: definition.patient.initial,
+    document,
     incident: definition.dispatch.incident,
     events: definition.dispatch.events.map((event, index) => ({ ...event, kind: "transport", id: `baseline-${index + 1}` })),
   };
@@ -92,7 +91,7 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
-  | { readonly type: "patient-updated"; readonly patient: Encounter["patient"] }
+  | { readonly type: "patient-updated"; readonly document: EncounterDocument }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -332,7 +331,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "view-selected":
       return { ...state, view: action.view };
     case "patient-updated":
-      return { ...state, encounter: { ...state.encounter, patient: action.patient } };
+      return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "review-opened":
       return { ...state, view: "review", noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null };
     case "review-finding-selected": {

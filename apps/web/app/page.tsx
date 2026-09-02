@@ -6,7 +6,7 @@ import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { clearShellState, loadShellState, saveShellState } from "./local-persistence";
+import { clearShellState, loadShellStateResult, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -24,6 +24,7 @@ import {
 } from "./standard-encounter";
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
+import { patientSummary } from "./patient-document";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -41,11 +42,13 @@ export default function Home() {
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [patientOpen, setPatientOpen] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
+  const patient = useMemo(() => patientSummary(encounter.document), [encounter.document]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -80,11 +83,12 @@ export default function Home() {
   }, [activeDialog]);
 
   useEffect(() => {
-    const saved = loadShellState(window.localStorage);
-    if (saved) dispatch({ type: "state-restored", state: saved });
+    const result = loadShellStateResult(window.localStorage);
+    if (result.status === "restored") dispatch({ type: "state-restored", state: result.state });
+    else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
+    else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRestored(true);
+    queueMicrotask(() => setRestored(true));
   }, []);
 
   useEffect(() => {
@@ -193,6 +197,7 @@ export default function Home() {
         <strong>Synthetic data only</strong>
         <span>Usability prototype — not for clinical use</span>
       </aside>
+      {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
 
       <header className="encounter-header">
         <div className="header-kicker">
@@ -201,9 +206,9 @@ export default function Home() {
         </div>
         <div className="patient-line">
           <div>
-            <p className="patient-name">{encounter.patient.name}</p>
+            <p className="patient-name">{patient.name}</p>
             <p className="patient-demographics">
-              {encounter.patient.age} y · {encounter.patient.sex} · {encounter.patient.identifier}
+              {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex} · {patient.identifier}
             </p>
           </div>
           <span className="crew-badge" aria-label={`Crew ${encounter.crew}`}>{encounter.crew}</span>
@@ -351,7 +356,7 @@ export default function Home() {
         <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
-      {patientOpen && <PatientDialog patient={encounter.patient} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(patient) => { dispatch({ type: "patient-updated", patient }); setPatientOpen(false); }} />}
+      {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -517,6 +522,7 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
   readonly onContinue: () => void;
 }) {
   const encounter = shell.encounter;
+  const patient = patientSummary(encounter.document);
   return (
     <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
       <div className="summary-label" role="note">
@@ -529,15 +535,15 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
       <section className="summary-section">
         <h2>Patient and incident</h2>
         <dl>
-          <div><dt>Patient</dt><dd>{encounter.patient.name} · {encounter.patient.age} y · {encounter.patient.sex}</dd></div>
-          <div><dt>Synthetic ID</dt><dd>{encounter.patient.identifier}</dd></div>
+          <div><dt>Patient</dt><dd>{patient.name} · {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex}</dd></div>
+          <div><dt>Synthetic ID</dt><dd>{patient.identifier}</dd></div>
           <div><dt>Incident</dt><dd>{encounter.incident.number}</dd></div>
           <div><dt>Complaint</dt><dd>{encounter.incident.complaint}</dd></div>
           <div><dt>Location</dt><dd>{encounter.incident.address}</dd></div>
           <div><dt>Crew</dt><dd>{encounter.crew}</dd></div>
-          <div><dt>Medical history</dt><dd>{encounter.patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Current medications</dt><dd>{encounter.patient.currentMedications.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Medication allergies</dt><dd>{encounter.patient.allergies.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Medical history</dt><dd>{patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Current medications</dt><dd>{patient.currentMedications.join(", ") || "Not documented"}</dd></div>
+          <div><dt>Medication allergies</dt><dd>{patient.allergies.join(", ") || "Not documented"}</dd></div>
         </dl>
       </section>
       <section className="summary-section">

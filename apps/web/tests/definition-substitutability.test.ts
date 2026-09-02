@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type EncounterDefinition } from "../app/encounter-definition";
-import { loadShellState, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
+import { loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import {
   EMPTY_VITALS,
   completedSummaryEvents,
@@ -107,7 +107,9 @@ test("saved state retains definition identity and restores only for an exact com
     status: "incompatible",
     savedDefinition: { id: definition.id, version: definition.version },
     expectedDefinition: { id: nextVersion.id, version: nextVersion.version },
+    recoveryKey: RECOVERY_STORAGE_KEY,
   });
+  assert.ok(storage.getItem(RECOVERY_STORAGE_KEY)?.includes(definition.id));
   assert.equal(loadShellState(storage, nextVersion), null);
   assert.strictEqual(transitionShell(createInitialShellState(nextVersion), { type: "state-restored", state }, nextVersion).encounter.definitionVersion, nextVersion.version);
 });

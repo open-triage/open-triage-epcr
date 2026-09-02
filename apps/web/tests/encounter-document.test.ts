@@ -24,7 +24,7 @@ test("the small synthetic encounter is readable, catalog-compatible, and valid a
   assert.equal(document.groups[0]?.id, "ePatient.PatientNameGroup");
   const text = readFileSync(new URL("../app/data/synthetic-encounter-document.json", import.meta.url), "utf8");
   assert.ok(text.includes("\n  \"documentType\""));
-  assert.ok(text.split("\n").length < 120);
+  assert.ok(text.split("\n").length < 200);
   assert.doesNotMatch(text, /systolicField|patientNameInput|vitalDraft/);
 });
 
@@ -64,18 +64,11 @@ test("repeating NEMSIS groups retain stable group and occurrence identities plus
 
 test("standard coded, NV, and PN values are checked against the pinned NEMSIS model", () => {
   const coded = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };
-  coded.groups.push({
-    id: "ePatient.AgeGroup",
-    instances: [{
-      instanceId: "age-1",
-      elements: [{ id: "ePatient.16", values: [{ kind: "coded", occurrenceId: "age-units-1", code: "2516009", display: "Years" }] }],
-    }],
-  });
   assert.doesNotThrow(() => loadEncounterDocument(coded));
 
   const invalidCode = structuredClone(coded) as typeof coded;
-  const ageGroup = invalidCode.groups.at(-1) as { instances: Array<{ elements: Array<{ values: Array<{ code: string }> }> }> };
-  ageGroup.instances[0]!.elements[0]!.values[0]!.code = "not-a-code";
+  const ageGroup = invalidCode.groups.find((group) => group.id === "ePatient.AgeGroup") as { instances: Array<{ elements: Array<{ id: string; values: Array<{ code: string }> }> }> };
+  ageGroup.instances[0]!.elements.find(({ id }) => id === "ePatient.16")!.values[0]!.code = "not-a-code";
   assert.ok(encounterDocumentDiagnostics(invalidCode).some(({ path, message }) => path.endsWith(".code") && message.includes("exhaustive value set")));
 
   const pertinentNegative = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };

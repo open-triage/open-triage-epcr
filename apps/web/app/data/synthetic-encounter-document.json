@@ -30,9 +30,87 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "patient-last-name-1",
-                  "value": "Example"
+                  "value": "Rivera"
                 }
               ]
+            },
+            {
+              "id": "ePatient.03",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "patient-first-name-1",
+                  "value": "Jordan"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ePatientSection",
+      "instances": [
+        {
+          "instanceId": "patient-1",
+          "elements": [
+            {
+              "id": "ePatient.01",
+              "values": [{ "kind": "scalar", "occurrenceId": "patient-id-1", "value": "SYNTHETIC-0001" }]
+            },
+            {
+              "id": "ePatient.13",
+              "values": [{ "kind": "coded", "occurrenceId": "patient-sex-1", "code": "9906005", "display": "Unknown (Unable to Determine)" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ePatient.AgeGroup",
+      "instances": [
+        {
+          "instanceId": "patient-age-1",
+          "elements": [
+            {
+              "id": "ePatient.15",
+              "values": [{ "kind": "scalar", "occurrenceId": "patient-age-value-1", "value": 54 }]
+            },
+            {
+              "id": "ePatient.16",
+              "values": [{ "kind": "coded", "occurrenceId": "patient-age-unit-1", "code": "2516009", "display": "Years" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eHistorySection",
+      "instances": [
+        {
+          "instanceId": "history-1",
+          "elements": [
+            {
+              "id": "eHistory.08",
+              "values": [{ "kind": "pertinent-negative", "occurrenceId": "history-none-1", "code": "8801015", "display": "None Reported" }]
+            },
+            {
+              "id": "eHistory.06",
+              "values": [{ "kind": "pertinent-negative", "occurrenceId": "allergies-none-1", "code": "8801013", "display": "No Known Drug Allergy" }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eHistory.CurrentMedsGroup",
+      "instances": [
+        {
+          "instanceId": "current-medication-1",
+          "elements": [
+            {
+              "id": "eHistory.12",
+              "values": [{ "kind": "pertinent-negative", "occurrenceId": "current-medications-none-1", "code": "8801015", "display": "None Reported" }]
             }
           ]
         }

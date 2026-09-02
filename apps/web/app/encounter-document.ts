@@ -113,6 +113,24 @@ function validateStandardValue(
   }
   if (value.kind === "scalar") {
     if (resolveNemsisElementValues(element).kind !== "scalar") diagnostic(list, `${path}.kind`, `${element.id} requires a coded value`);
+    const scalar = value.value;
+    const { base, constraints } = element.datatype;
+    if ((base === "integer" && (typeof scalar !== "number" || !Number.isInteger(scalar)))
+      || (["decimal", "double", "float"].includes(base) && typeof scalar !== "number")
+      || (base === "boolean" && typeof scalar !== "boolean")
+      || (!["integer", "decimal", "double", "float", "boolean"].includes(base) && typeof scalar !== "string")) {
+      diagnostic(list, `${path}.value`, `must match the catalog datatype ${base} for ${element.id}`);
+      return;
+    }
+    if (typeof scalar === "number") {
+      if (typeof constraints.minInclusive === "number" && scalar < constraints.minInclusive) diagnostic(list, `${path}.value`, `must be at least ${constraints.minInclusive}`);
+      if (typeof constraints.maxInclusive === "number" && scalar > constraints.maxInclusive) diagnostic(list, `${path}.value`, `must be at most ${constraints.maxInclusive}`);
+    }
+    if (typeof scalar === "string") {
+      if (typeof constraints.minLength === "number" && scalar.length < constraints.minLength) diagnostic(list, `${path}.value`, `must contain at least ${constraints.minLength} characters`);
+      if (typeof constraints.maxLength === "number" && scalar.length > constraints.maxLength) diagnostic(list, `${path}.value`, `must contain at most ${constraints.maxLength} characters`);
+      if (typeof constraints.pattern === "string" && !new RegExp(`^(?:${constraints.pattern})$`).test(scalar)) diagnostic(list, `${path}.value`, `must match the catalog pattern for ${element.id}`);
+    }
   }
 }
 
