@@ -103,7 +103,8 @@ test("version two browser state upgrades deterministically and removes the paral
   assert.equal("incident" in first.result.state.encounter, false);
   assert.equal("crew" in first.result.state.encounter, false);
   saveShellState(first.storage, first.result.state);
-  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":3/);
+  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":4/);
+  assert.doesNotMatch(first.storage.getItem(STORAGE_KEY)!, /"state":/);
 });
 
 test("malformed supported-version incident state is preserved and reported for recovery", () => {
