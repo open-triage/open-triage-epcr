@@ -77,7 +77,7 @@ vertical slices still need to add:
   sets, including validation of amendment payloads;
 - integration tests against a real supported PostgreSQL version, including
   triggers, partitions, grants, loader replay, projector replay, and query plans;
-- projector reconciliation/backfill operations and production scheduling;
+- production scheduling for the projector and its recovery operations;
 - reviewed identifying-element classification and role provisioning for the
   deployment environment;
 - HMAC pseudonymous-key derivation and secret rotation policy;
@@ -91,6 +91,27 @@ seed the catalog and one complete form; implement one draft command end to end;
 implement atomic signing and projection; implement amendments and reconciliation;
 then add access controls, retention operations, and ten-year-scale performance
 tests.
+
+## Projection recovery operations
+
+`npm run project -w @open-triage/database` consumes the transactional outbox. The
+same projector also rebuilds projections directly from immutable signed state and
+ordered amendments:
+
+```sh
+npm run project -w @open-triage/database -- --replay REPORT_UUID
+npm run project -w @open-triage/database -- --reconcile --report REPORT_UUID
+npm run project -w @open-triage/database -- --reconcile --from 2026-01-01 --to 2026-01-31
+npm run project -w @open-triage/database -- --backfill JOB_KEY --from 2026-01-01 --to 2026-01-31
+```
+
+Date bounds are inclusive. A backfill job's selector is immutable, its cursor is
+advanced in the same transaction as each report rebuild, and rerunning the same
+job key resumes it safely. `ANALYTICS_PROJECTOR_BATCH_SIZE` bounds work per run.
+Every rebuild locks one report, removes both old analytical shapes across all
+partitions, and inserts both effective shapes in one transaction. The latest
+signed amendment carrying a reporting-date correction determines the destination
+year and month.
 
 OpenTriage uses PostgreSQL 15 or newer as the portable system of record. PostgreSQL
 15 is the minimum because the schema uses `UNIQUE NULLS NOT DISTINCT` to enforce
