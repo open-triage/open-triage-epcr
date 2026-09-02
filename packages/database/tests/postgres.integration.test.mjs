@@ -213,8 +213,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
-        has_function_privilege('open_triage_retention_executor', 'retention.delete_verified_batch(uuid,text)', 'execute') as retention_delete,
-        not has_function_privilege('open_triage_operational', 'retention.delete_verified_batch(uuid,text)', 'execute') as no_operational_delete,
+        has_function_privilege('open_triage_retention_executor', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as retention_delete,
+        not has_function_privilege('open_triage_operational', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as no_operational_delete,
         to_regclass('auth.users') is null as no_supabase_auth_dependency
     `);
     assert.deepEqual(grants.rows[0], {
@@ -408,6 +408,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       waveformGroup: "36000000-0000-4000-8000-00000000000a"
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
+    const administratorId = "32000000-0000-4000-8000-000000000002";
     const clinicianId = "32000000-0000-4000-8000-000000000003";
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
     const formVersionId = "32000000-0000-4000-8000-000000000008";
@@ -1051,18 +1052,23 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await client.query("select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
         [batch, `${destination}${batch}.ndjson`, archive.archive_sha256]);
 
+      await assert.rejects(
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, clinicianId]),
+        /active installation administrator/
+      );
+
       const lateHold = await client.query(`insert into retention.legal_hold
         (organization_id, report_id, reason, authority_reference, placed_by)
         values ($1, $2, 'Late preservation request', 'CASE-LATE', 'legal-user') returning id`,
       [organizationId, ids.report]);
       await assert.rejects(
-        client.query("select retention.delete_verified_batch($1, 'delete-operator')", [batch]),
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, administratorId]),
         /legal hold now protects/
       );
       await client.query(`update retention.legal_hold set released_by = 'legal-user', released_at = now(),
         release_reason = 'Late request withdrawn' where id = $1`, [lateHold.rows[0].id]);
       const deletion = (await client.query(
-        "select retention.delete_verified_batch($1, 'delete-operator') as evidence", [batch]
+        "select retention.delete_verified_batch($1, $2) as evidence", [batch, administratorId]
       )).rows[0].evidence;
       assert.equal(deletion.reports, 1);
       assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 0);
@@ -1071,12 +1077,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await client.query("select retention.maintain_partitions($1, 'maintenance-operator')", [batch]);
       assert.equal((await client.query("select to_regclass('analytics_private.epcr_y2043') is not null as retained")).rows[0].retained, true);
 
-      const evidence = await client.query(`select sequence, event_type, previous_hash, event_hash
+      const evidence = await client.query(`select sequence, event_type, actor, previous_hash, event_hash
         from retention.evidence where batch_id = $1 order by sequence`, [batch]);
       assert.deepEqual(evidence.rows.map((row) => row.event_type), ["prepared", "archive_verified", "deleted", "partition_maintained"]);
       assert.equal(evidence.rows[0].previous_hash, null);
       assert.equal(evidence.rows[1].previous_hash, evidence.rows[0].event_hash);
       assert.equal(evidence.rows[2].previous_hash, evidence.rows[1].event_hash);
+      assert.equal(evidence.rows[2].actor, administratorId);
       assert.equal(evidence.rows[3].previous_hash, evidence.rows[2].event_hash);
       await assert.rejects(client.query("delete from retention.evidence where batch_id = $1", [batch]), /append-only/);
       assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);

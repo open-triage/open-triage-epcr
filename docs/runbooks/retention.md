@@ -1,9 +1,10 @@
 # Retention operations
 
 This runbook is disabled until an installation owner approves the proposed
-[retention policy](../retention-archival-deletion-policy.md). Use dedicated
-credentials that can assume `open_triage_retention_executor`; never use an API,
-clinical, projector, or analyst credential.
+[retention policy](../retention-archival-deletion-policy.md). An authenticated
+application administrator authorizes deletion; the retention service uses
+dedicated credentials that can assume `open_triage_retention_executor`. Never
+grant that database role to an API, clinical, projector, or analyst connection.
 
 ## Configure and approve
 
@@ -57,12 +58,15 @@ npm run retention -w @open-triage/database -- verify \
 
 ## Delete and reconcile evidence
 
-Use a different authorized operator for deletion. Confirm no hold was added and
-then invoke the atomic path:
+Use a different authenticated application administrator for deletion. The user
+must be active, belong to the batch organization, and hold the existing
+`installation:administer` capability. The database validates the supplied user
+UUID and records that UUID as the deletion actor; a display name or free-form
+actor string is not accepted. Confirm no hold was added and invoke the atomic path:
 
 ```bash
 npm run retention -w @open-triage/database -- delete \
-  --batch BATCH_UUID --actor DELETION_OPERATOR_ID
+  --batch BATCH_UUID --admin-user ADMINISTRATOR_USER_UUID
 
 npm run retention -w @open-triage/database -- maintain \
   --batch BATCH_UUID --actor MAINTENANCE_OPERATOR_ID

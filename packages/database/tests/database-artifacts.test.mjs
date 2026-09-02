@@ -164,12 +164,15 @@ test("requires approved archive-before-delete retention with durable evidence", 
   assert.match(migration, /a legal hold now protects one or more reports/);
   assert.match(migration, /drop_empty_expired_partitions/);
   assert.match(migration, /create role open_triage_retention_executor nologin/);
-  assert.ok(!migration.includes("grant execute on function retention.delete_verified_batch(uuid, text) to open_triage_operational"));
+  assert.match(migration, /capability\.capability_key = 'installation:administer'/);
+  assert.match(migration, /retention\.delete_verified_batch\(uuid, uuid\)/);
+  assert.ok(!migration.includes("grant execute on function retention.delete_verified_batch(uuid, uuid) to open_triage_operational"));
   for (const decision of ["Archive destination", "Deletion authority", "Evidence format", "Online retention"]) {
     assert.ok(retentionPolicy.includes(decision), `retention policy is missing ${decision}`);
   }
   assert.match(retentionPolicy, /proposed — installation-owner approval required/);
   assert.match(retentionRunbook, /Object Lock/);
-  assert.match(retentionRunbook, /different authorized operator/);
+  assert.match(retentionRunbook, /active, belong to the batch organization/);
+  assert.match(retentionRunbook, /--admin-user ADMINISTRATOR_USER_UUID/);
   assert.match(retentionScript, /export checksum mismatch/);
 });

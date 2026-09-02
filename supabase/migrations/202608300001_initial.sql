@@ -2602,7 +2602,7 @@ create table retention.policy (
   retention_years integer not null default 10 check (retention_years between 1 and 100),
   archive_destination_uri text not null check (archive_destination_uri ~ '^s3://[^/]+/.+'),
   archive_storage_control text not null default 'S3 Object Lock compliance mode',
-  deletion_authority text not null default 'open_triage_retention_executor',
+  deletion_authority text not null default 'active installation:administer application user via open_triage_retention_executor',
   evidence_format text not null default 'canonical NDJSON + SHA-256 manifest; immutable object version and database hash chain',
   review_status text not null default 'pending-installation-owner-approval'
     check (review_status in ('pending-installation-owner-approval', 'approved-installation-owner')),
@@ -2901,7 +2901,7 @@ begin
 end;
 $$;
 
-create function retention.delete_verified_batch(candidate_batch_id uuid, actor text)
+create function retention.delete_verified_batch(candidate_batch_id uuid, candidate_admin_user_id uuid)
 returns jsonb
 language plpgsql
 security definer
@@ -2909,9 +2909,20 @@ set search_path = pg_catalog, retention, clinical, clinical_audit, integration, 
 as $$
 declare selected_batch retention.archive_batch%rowtype; selected_report record; deleted_reports integer := 0;
   wide_rows integer := 0; repeat_rows integer := 0; affected integer; deletion_counts jsonb;
+  actor text;
 begin
   select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
   if selected_batch.status <> 'archive_verified' then raise exception 'archive verification is required before deletion'; end if;
+  select u.id::text into actor
+  from app_identity.app_user u
+  join app_identity.user_capability capability on capability.user_id = u.id
+  where u.id = candidate_admin_user_id
+    and u.organization_id = selected_batch.organization_id
+    and u.active
+    and capability.capability_key = 'installation:administer';
+  if actor is null then
+    raise exception 'retention deletion requires an active installation administrator in the batch organization';
+  end if;
   if actor = selected_batch.prepared_by or actor = selected_batch.archive_verified_by then
     raise exception 'deletion operator must be independent of preparation and archive verification';
   end if;
@@ -3079,7 +3090,7 @@ grant select on retention.policy, retention.legal_hold, retention.archive_batch,
 grant insert, update on retention.policy, retention.legal_hold to open_triage_retention_executor;
 grant execute on function retention.prepare_archive_batch(uuid, date, text),
   retention.report_archive_payload(uuid), retention.verify_archive(uuid, text, text, text, text),
-  retention.fail_archive(uuid, text, text, text), retention.delete_verified_batch(uuid, text),
+  retention.fail_archive(uuid, text, text, text), retention.delete_verified_batch(uuid, uuid),
   retention.maintain_partitions(uuid, text)
   to open_triage_retention_executor;
 

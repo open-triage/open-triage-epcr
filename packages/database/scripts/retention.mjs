@@ -75,8 +75,8 @@ try {
   }
 
   if (command === "delete") {
-    const result = await client.query("select retention.delete_verified_batch($1::uuid, $2) as evidence", [
-      option("batch"), option("actor")
+    const result = await client.query("select retention.delete_verified_batch($1::uuid, $2::uuid) as evidence", [
+      option("batch"), option("admin-user")
     ]);
     console.log(JSON.stringify({ batchId: option("batch"), status: "deleted", ...result.rows[0].evidence }));
   }
