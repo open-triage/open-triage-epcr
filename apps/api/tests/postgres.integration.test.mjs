@@ -248,3 +248,161 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     assert.deepEqual(state.rows[0], { status: "draft", sections: 0 });
   });
 });
+
+integrationTest("draft report commands create, incrementally save, retrieve, and replay through the public API", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const formId = randomUUID();
+  const formVersionId = randomUUID();
+  const agencyVersionId = randomUUID();
+  const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
+  const releaseId = release.rows[0].id;
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Draft API', 'UTC')", [organizationId]);
+  await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Clinician')", [userId, organizationId]);
+  await client.query(`insert into app_identity.agency_demographic_version
+    (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
+     definition_sha256, effective_from, created_by)
+    values ($1, $2, $3, 1, 'DRAFT-AGENCY', 'DRAFT-UNIT', '00', $4, now() - interval '1 day', $5)`,
+  [agencyVersionId, organizationId, releaseId, "a".repeat(64), userId]);
+  await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, $3, 'Draft command form')",
+    [formId, organizationId, `draft-${formId}`]);
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+     change_note, created_by, published_by, published_at)
+    values ($1, $2, $3, 1, 'published', '{"schemaVersion":1,"sections":[]}', $4,
+            'Draft API integration fixture', $5, $5, now())`,
+  [formVersionId, formId, releaseId, "b".repeat(64), userId]);
+
+  const selected = await client.query(`
+    select
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id
+        where e.release_id = $1 and e.base_datatype = 'string' order by e.element_id limit 1) as text_id,
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id
+        where e.release_id = $1 and e.base_datatype = 'dateTime' order by e.element_id limit 1) as datetime_id,
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
+        (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'inline') order by e.element_id limit 1) as coded_id,
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
+        (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'not-value') order by e.element_id limit 1) as null_id,
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
+        (select 1 from catalog.element_option o where o.release_id = e.release_id and o.element_id = e.element_id and o.source_kind = 'pertinent-negative') order by e.element_id limit 1) as negative_id,
+      (select group_id from catalog.group_definition where release_id = $1 order by cardinality(path), group_id limit 1) as group_id
+  `, [releaseId]);
+  const ids = selected.rows[0];
+  for (const [key, value] of Object.entries(ids)) assert.ok(value, `catalog fixture requires ${key}`);
+  const option = async (elementId, sourceKind) => (await client.query(`select code, display, code_system from catalog.element_option
+    where release_id = $1 and element_id = $2 and source_kind = $3 order by code limit 1`,
+  [releaseId, elementId, sourceKind])).rows[0];
+  const coded = await option(ids.coded_id, "inline");
+  const notValue = await option(ids.null_id, "not-value");
+  const negative = await option(ids.negative_id, "pertinent-negative");
+
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix("api");
+  await app.listen(0, "127.0.0.1");
+  t.after(() => app.close());
+  const address = app.getHttpServer().address();
+  const baseUrl = `http://127.0.0.1:${address.port}/api`;
+  const request = async (path, method, body) => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method, headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    return { response, payload: await response.json() };
+  };
+
+  const reportId = randomUUID();
+  const createCommand = {
+    commandId: randomUUID(), reportId, incidentId: randomUUID(), patientId: randomUUID(),
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown",
+    patientPseudonymousKey: "c".repeat(64)
+  };
+  const created = await request("/reports", "POST", createCommand);
+  assert.equal(created.response.status, 201, JSON.stringify(created.payload));
+  assert.equal(created.payload.revision, 0);
+  assert.equal(created.payload.formVersionId, formVersionId);
+  assert.equal(created.payload.agencyDemographicVersionId, agencyVersionId);
+  assert.equal(created.payload.catalogReleaseId, releaseId);
+
+  const createRetry = await request("/reports", "POST", createCommand);
+  assert.equal(createRetry.response.status, 201);
+  assert.deepEqual(createRetry.payload, created.payload);
+  const changedRetry = await request("/reports", "POST", { ...createCommand, patientIdentityState: "temporary" });
+  assert.equal(changedRetry.response.status, 409);
+  const secondCreate = await request("/reports", "POST", { ...createCommand, commandId: randomUUID() });
+  assert.equal(secondCreate.response.status, 201);
+  assert.equal(secondCreate.payload.id, reportId);
+  assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [reportId])).rows[0].count, 1);
+
+  const groupInstanceId = randomUUID();
+  const textOccurrenceId = randomUUID();
+  const ordinals = new Map();
+  const nextOrdinal = (elementId) => {
+    const ordinal = ordinals.get(elementId) ?? 0;
+    ordinals.set(elementId, ordinal + 1);
+    return ordinal;
+  };
+  const firstSave = {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "offline-unit-7",
+    clientTime: "2026-08-30T14:00:00-04:00",
+    groups: [{ id: groupInstanceId, groupId: ids.group_id, ordinal: 0, correlationId: "offline-group-1" }],
+    occurrences: [
+      { id: textOccurrenceId, elementId: ids.text_id, ordinal: nextOrdinal(ids.text_id), value: { kind: "text", value: "initial" } },
+      { id: randomUUID(), elementId: ids.datetime_id, ordinal: nextOrdinal(ids.datetime_id), value: {
+        kind: "datetime", value: "2026-08-30T14:03:04-04:00", utcOffsetMinutes: -240, precision: "second"
+      } },
+      { id: randomUUID(), elementId: ids.coded_id, ordinal: nextOrdinal(ids.coded_id), value: {
+        kind: "coded", code: coded.code, ...(coded.code_system ? { codeSystem: coded.code_system } : {}), display: coded.display
+      } },
+      { id: randomUUID(), elementId: ids.null_id, ordinal: nextOrdinal(ids.null_id), value: {
+        kind: "null", absenceCode: notValue.code, display: notValue.display
+      } },
+      { id: randomUUID(), elementId: ids.negative_id, ordinal: nextOrdinal(ids.negative_id), value: {
+        kind: "pertinent-negative", absenceCode: negative.code, display: negative.display
+      } },
+      { id: randomUUID(), elementId: ids.text_id, ordinal: 1, groupInstanceId, value: { kind: "absent" } }
+    ]
+  };
+  const saved = await request(`/reports/${reportId}/draft-changes`, "POST", firstSave);
+  assert.equal(saved.response.status, 201, JSON.stringify(saved.payload));
+  assert.equal(saved.payload.revision, 1);
+  const saveRetry = await request(`/reports/${reportId}/draft-changes`, "POST", firstSave);
+  assert.equal(saveRetry.response.status, 201);
+  assert.equal(saveRetry.payload.revision, 1);
+
+  const retrieved = await request(`/reports/${reportId}`, "GET");
+  assert.equal(retrieved.response.status, 200);
+  assert.equal(retrieved.payload.revision, 1);
+  assert.equal(retrieved.payload.groups.length, 1);
+  assert.deepEqual(new Set(retrieved.payload.occurrences.map((row) => row.valueKind)),
+    new Set(["text", "datetime", "coded", "null", "pertinent-negative", "absent"]));
+  assert.equal(retrieved.payload.occurrences.find((row) => row.valueKind === "datetime").valueUtcOffsetMinutes, -240);
+
+  const secondSave = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 1, authorId: userId,
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "updated" } }]
+  });
+  assert.equal(secondSave.response.status, 201, JSON.stringify(secondSave.payload));
+  assert.equal(secondSave.payload.revision, 2);
+  const stored = await client.query(`select
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select count(*)::integer from clinical.element_occurrence where report_id = $1) as occurrences,
+    (select value_text from clinical.element_occurrence where id = $2) as current_text`, [reportId, textOccurrenceId]);
+  assert.deepEqual(stored.rows[0], { changes: 2, occurrences: 6, current_text: "updated" });
+
+  const stale = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId,
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "stale" } }]
+  });
+  assert.equal(stale.response.status, 409);
+  assert.equal((await client.query("select revision from clinical.report where id = $1", [reportId])).rows[0].revision, "2");
+});

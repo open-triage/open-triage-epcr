@@ -57,7 +57,9 @@ adds:
 - catalog loading, projection, generated-artifact checks, static database tests,
   TypeORM mappings for the renamed core entities, and operator documentation;
 - an explicit, replay-safe synthetic bootstrap that creates a complete installation
-  and a baseline draft report pinned to its immutable agency, form, and catalog versions.
+  and a baseline draft report pinned to its immutable agency, form, and catalog versions;
+- public API transactions for form publication, one-patient draft creation, retrieval,
+  and incremental autosave with optimistic revisions and replay-safe command receipts.
 
 The generated audit found 34 repeating groups: 11 have exactly one local NEMSIS
 date-time element and 23 have no local candidate. Every exception is visible in
@@ -70,8 +72,7 @@ one custom date-time element before use.
 This branch is a foundation, not a production-ready clinical database. Follow-up
 vertical slices still need to add:
 
-- API commands and transactions for report creation, draft mutation, conflict
-  responses, form publication, signing, and amendments;
+- API commands and transactions for signing and amendments;
 - authoritative semantic validation against the pinned form, catalog, and value
   sets, including validation of amendment payloads;
 - integration tests against a real supported PostgreSQL version, including
