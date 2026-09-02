@@ -8,7 +8,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test tests/form-publication.test.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
   },
   "dependencies": {

@@ -41,6 +41,14 @@ The fixture uses an unknown patient with a one-way synthetic pseudonym and ficti
 dispatch metadata—no real patient data. It is only loaded by this explicit command;
 production API and migration entry points do not import it.
 
+Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
+incident, patient, and command identities. Incremental autosaves go to
+`POST /api/reports/:id/draft-changes` with an expected revision, stable group and
+occurrence identities, and sparse typed values. `GET /api/reports/:id` returns the
+pinned versions, current revision, groups, and occurrences. Retrying an identical
+command returns its original result; reusing its identity for different content or
+saving against a stale revision returns HTTP 409.
+
 ## Static prototype
 
 The browser-only MVP is published at
