@@ -250,12 +250,12 @@ export class DraftReportService {
           parent_group_instance_id = excluded.parent_group_instance_id,
           ordinal = excluded.ordinal, correlation_id = excluded.correlation_id,
           documented_time = excluded.documented_time,
-          documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
-          tombstoned_at = null
+          documented_utc_offset_minutes = excluded.documented_utc_offset_minutes
         where clinical.group_instance.report_id = excluded.report_id
           and clinical.group_instance.group_id = excluded.group_id
           and clinical.group_instance.source_kind = excluded.source_kind
           and clinical.group_instance.custom_group_definition_id is not distinct from excluded.custom_group_definition_id
+          and clinical.group_instance.tombstoned_at is null
         returning id
       `, [group.id, report.id, report.catalog_release_id, group.parentGroupInstanceId ?? null,
         group.groupId, sourceKind, group.customGroupDefinitionId ?? null, group.ordinal,
@@ -320,10 +320,11 @@ export class DraftReportService {
         provenance_detail = excluded.provenance_detail, documented_time = excluded.documented_time,
         documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
         documented_precision = excluded.documented_precision, author_id = excluded.author_id,
-        server_received_time = now(), updated_at = now(), tombstoned_at = null
+        server_received_time = now(), updated_at = now()
       where clinical.element_occurrence.report_id = excluded.report_id
         and clinical.element_occurrence.element_identity_id = excluded.element_identity_id
         and clinical.element_occurrence.element_id = excluded.element_id
+        and clinical.element_occurrence.tombstoned_at is null
       returning id
     `, [occurrence.id, report.id, report.catalog_release_id, occurrence.groupInstanceId ?? null,
       metadata.element_identity_id, occurrence.elementId, occurrence.formFieldId ?? null,
@@ -490,7 +491,7 @@ export class DraftReportService {
 
   private rethrowDatabaseConflict(error: unknown): never {
     if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
-    if (typeof error === "object" && error !== null && "code" in error && ["23503", "23505", "23514", "23P01"].includes(String(error.code))) {
+    if (typeof error === "object" && error !== null && "code" in error && ["23503", "23505", "23514", "23P01", "40001", "40P01"].includes(String(error.code))) {
       throw new ConflictException("The command conflicts with existing clinical data");
     }
     throw error;
