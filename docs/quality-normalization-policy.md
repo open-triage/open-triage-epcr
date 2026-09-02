@@ -67,7 +67,10 @@ unchanged.
   occurrences, including signed amendments, under the projector's current
   explicitly reported rule versions.
 
-The executable policy is
+The single source of truth for every proposed version, behavior, range, unit,
+ETCO2 type mapping, conversion factor, and rounding increment is
+[`packages/contracts/quality-normalization-policy.json`](../packages/contracts/quality-normalization-policy.json).
+Both signing and projection consume it through the shared evaluator in
 [`packages/contracts/quality-rules.mjs`](../packages/contracts/quality-rules.mjs).
 
 ## Approval record

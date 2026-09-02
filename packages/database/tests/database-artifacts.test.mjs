@@ -11,7 +11,8 @@ import {
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig, qualityPolicy] = await Promise.all([
+const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
+  qualityPolicy, qualityPolicyConfig, qualityEvaluator] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -19,7 +20,9 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
   readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),
-  readFile(path.join(repoRoot, "docs/quality-normalization-policy.md"), "utf8")
+  readFile(path.join(repoRoot, "docs/quality-normalization-policy.md"), "utf8"),
+  readFile(path.join(repoRoot, "packages/contracts/quality-normalization-policy.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "packages/contracts/quality-rules.mjs"), "utf8")
 ]);
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
@@ -64,6 +67,32 @@ test("documents the pending quality and normalization policy without self-approv
   assert.match(qualityPolicy, /clinical and product approval required before merge/i);
   assert.match(qualityPolicy, new RegExp(QUALITY_RULE_VERSION));
   assert.match(qualityPolicy, new RegExp(NORMALIZATION_RULE_VERSION));
+  assert.equal(qualityPolicyConfig.policyStatus, "proposed-clinical-product-review-required");
+  assert.equal(qualityPolicyConfig.qualityRuleVersion, QUALITY_RULE_VERSION);
+  assert.equal(qualityPolicyConfig.normalizationRuleVersion, NORMALIZATION_RULE_VERSION);
+  assert.deepEqual(qualityPolicyConfig.semantics, {
+    bounds: "inclusive",
+    findingsBlockSigning: false,
+    sourceValuesImmutable: true,
+    normalizationsAreAdditive: true,
+    missingOrUnrecognizedETCO2Type: "retain-source-without-quality-evaluation-or-normalization"
+  });
+  assert.equal(qualityPolicyConfig.qualityRules.length, 7);
+  assert.deepEqual(Object.keys(qualityPolicyConfig.etco2.typeMappings).sort(),
+    ["3340001", "3340003", "3340005"]);
+  assert.deepEqual(qualityPolicyConfig.normalizationRules, [{
+    ruleId: "etco2.kpa-to-mmhg",
+    elementId: "eVitals.16",
+    sourceAttribute: "ETCO2Type",
+    sourceAttributeValue: "3340005",
+    sourceUnitCode: "kPa",
+    derivedUnitCode: "mm[Hg]",
+    operation: "multiply",
+    factor: 7.50062,
+    roundTo: 0.001
+  }]);
+  assert.match(qualityEvaluator,
+    /import policy from "\.\/quality-normalization-policy\.json" with \{ type: "json" \}/);
   assert.match(migration, /quality_findings jsonb not null default '\[\]'::jsonb/);
   assert.match(migration, /normalized_numeric numeric,[\s\S]*normalization_rule_id text/);
 });

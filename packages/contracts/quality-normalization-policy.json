@@ -1,0 +1,98 @@
+{
+  "policyStatus": "proposed-clinical-product-review-required",
+  "qualityRuleVersion": "clinical-quality-1.0.0-proposed",
+  "normalizationRuleVersion": "clinical-normalization-1.0.0-proposed",
+  "semantics": {
+    "bounds": "inclusive",
+    "findingsBlockSigning": false,
+    "sourceValuesImmutable": true,
+    "normalizationsAreAdditive": true,
+    "missingOrUnrecognizedETCO2Type": "retain-source-without-quality-evaluation-or-normalization"
+  },
+  "qualityRules": [
+    {
+      "code": "vital.sbp.unusual",
+      "elementId": "eVitals.06",
+      "unitCode": "mm[Hg]",
+      "minInclusive": 40,
+      "maxInclusive": 300
+    },
+    {
+      "code": "vital.dbp.unusual",
+      "elementId": "eVitals.07",
+      "unitCode": "mm[Hg]",
+      "minInclusive": 20,
+      "maxInclusive": 200
+    },
+    {
+      "code": "vital.heart-rate.unusual",
+      "elementId": "eVitals.10",
+      "unitCode": "/min",
+      "minInclusive": 20,
+      "maxInclusive": 250
+    },
+    {
+      "code": "vital.spo2.unusual",
+      "elementId": "eVitals.12",
+      "unitCode": "%",
+      "minInclusive": 50,
+      "maxInclusive": 100
+    },
+    {
+      "code": "vital.respiratory-rate.unusual",
+      "elementId": "eVitals.14",
+      "unitCode": "/min",
+      "minInclusive": 4,
+      "maxInclusive": 80
+    },
+    {
+      "code": "vital.glucose.unusual",
+      "elementId": "eVitals.18",
+      "unitCode": "mg/dL",
+      "minInclusive": 20,
+      "maxInclusive": 600
+    },
+    {
+      "code": "vital.temperature.unusual",
+      "elementId": "eVitals.24",
+      "unitCode": "Cel",
+      "minInclusive": 25,
+      "maxInclusive": 45
+    }
+  ],
+  "etco2": {
+    "elementId": "eVitals.16",
+    "qualityCode": "vital.etco2.unusual",
+    "typeAttribute": "ETCO2Type",
+    "typeMappings": {
+      "3340001": {
+        "unitCode": "mm[Hg]",
+        "minInclusive": 10,
+        "maxInclusive": 100
+      },
+      "3340003": {
+        "unitCode": "%",
+        "minInclusive": 1.3,
+        "maxInclusive": 13.2
+      },
+      "3340005": {
+        "unitCode": "kPa",
+        "minInclusive": 1.3,
+        "maxInclusive": 13.3
+      }
+    }
+  },
+  "normalizationRules": [
+    {
+      "ruleId": "etco2.kpa-to-mmhg",
+      "elementId": "eVitals.16",
+      "sourceAttribute": "ETCO2Type",
+      "sourceAttributeValue": "3340005",
+      "sourceUnitCode": "kPa",
+      "derivedUnitCode": "mm[Hg]",
+      "operation": "multiply",
+      "factor": 7.50062,
+      "roundTo": 0.001
+    }
+  ]
+}
