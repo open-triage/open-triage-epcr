@@ -1,3 +1,7 @@
+# Support custom data elements
+
+**Status:** Completed — merged in PR #56.
+
 ## What to build
 
 Make custom data elements first-class extensions of the same data model used for standard NEMSIS elements. A deployment can define, validate, persist, display, and transfer namespaced custom elements and custom result values without changing application code or weakening the integrity of standard element definitions.

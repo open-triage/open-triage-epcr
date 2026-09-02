@@ -1,3 +1,7 @@
+# Configured procedure event
+
+**Status:** Completed — merged in PR #37.
+
 ## What to build
 
 Drive procedure capture end to end from the versioned encounter definition while preserving the bundled NEMSIS terminology catalog and current quick-capture behavior.

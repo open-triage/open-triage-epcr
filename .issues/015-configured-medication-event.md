@@ -1,3 +1,7 @@
+# Configured medication event
+
+**Status:** Completed — merged in PR #36.
+
 ## What to build
 
 Drive medication capture end to end from the versioned encounter definition while preserving the bundled NEMSIS terminology catalog and current quick-capture behavior.

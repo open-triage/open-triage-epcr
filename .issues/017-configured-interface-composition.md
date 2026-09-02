@@ -1,3 +1,7 @@
+# Configured interface composition
+
+**Status:** Completed — merged in PR #38.
+
 ## What to build
 
 Compose the phone interface from the versioned definition so event availability, quick-action order, labels, validation grouping, and completed-summary ordering can change without modifying React components.

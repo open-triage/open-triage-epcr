@@ -1,3 +1,7 @@
+# Prove definition substitutability
+
+**Status:** Completed — merged in PR #39.
+
 ## What to build
 
 Prove the configuration seam with a test-only alternate encounter definition. Demonstrate that supported interface changes can be made through configuration alone while rejecting invalid definitions and preserving compatible saved state.

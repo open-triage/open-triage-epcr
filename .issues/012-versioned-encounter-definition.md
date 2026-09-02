@@ -1,3 +1,7 @@
+# Versioned encounter definition
+
+**Status:** Completed — merged in PR #33.
+
 ## What to build
 
 Render the existing synthetic encounter's scenario, patient, and dispatch context from a validated, versioned definition obtained through a definition-provider interface. The initial provider remains a bundled static implementation so the prototype retains static deployment while UI code no longer depends on where definitions are stored.

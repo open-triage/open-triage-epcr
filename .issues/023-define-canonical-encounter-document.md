@@ -1,3 +1,7 @@
+# Define the canonical encounter document
+
+**Status:** Completed — merged in PR #57.
+
 ## What to build
 
 Define the canonical, versioned JSON encounter document used for all internal patient-data handling. Encounter values are stored using stable NEMSIS group and element identities, preserve repeats and attributes, support custom elements, and remain understandable without knowledge of React components or application-specific state shapes.

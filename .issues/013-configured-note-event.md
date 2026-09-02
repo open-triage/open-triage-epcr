@@ -1,3 +1,7 @@
+# Configured note event
+
+**Status:** Completed — merged in PR #34.
+
 ## What to build
 
 Drive note capture end to end from an event definition, establishing the reusable event-configuration seam through the simplest event type. The configured behavior must cover quick action, editor, validation, timeline, review navigation, and completed summary.

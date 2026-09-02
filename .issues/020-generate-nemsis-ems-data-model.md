@@ -1,3 +1,7 @@
+# Generate the NEMSIS EMS data model
+
+**Status:** Completed — merged in PR #52.
+
 ## What to build
 
 Generate and commit a comprehensive, deterministic, human-readable JSON catalog for the pinned NEMSIS 3.5.1 EMS/PCR dataset. The generated catalog is the authoritative universe of standard patient-care data elements available to internal records and form profiles, with no runtime dependency on nemsis.org.

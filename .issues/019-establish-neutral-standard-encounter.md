@@ -1,3 +1,7 @@
+# Establish a neutral standard encounter
+
+**Status:** Completed — merged in PR #51.
+
 ## What to build
 
 Establish one clinically neutral standard encounter throughout the active application so form behavior, persistence, validation, and documentation no longer encode or depend on a complaint category. Replace category-specific definition identities and synthetic scenario assumptions with neutral names and data while preserving the accepted phone workflow.

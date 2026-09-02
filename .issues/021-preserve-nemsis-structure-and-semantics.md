@@ -1,3 +1,7 @@
+# Preserve NEMSIS structure and semantics
+
+**Status:** Completed — merged in PR #53.
+
 ## What to build
 
 Enrich the generated NEMSIS data-model catalog with the structural and validation semantics required to represent patient records faithfully. Preserve where elements occur, how groups repeat, which datatypes and attributes apply, and which values are structurally valid so later form and interchange code does not duplicate or guess standard rules.
