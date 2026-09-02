@@ -23,15 +23,21 @@ try {
   const state = (await client.query("select pg_is_in_recovery() as is_replica")).rows[0];
   if (!state.is_replica && !allowPrimary) throw new Error("reporting endpoint is not a physical standby");
 
+  const isolation = (await client.query(`select
+    has_table_privilege($1, 'analytics_private.epcr', 'select') as private_epcr,
+    has_table_privilege($1, 'clinical.report', 'select') as clinical_report
+  `, [role])).rows[0];
+  if (isolation.private_epcr || isolation.clinical_report) {
+    throw new Error("reporting role has access to private database tables");
+  }
+
   await client.query("begin read only");
   await client.query(`set local role ${role}`);
   for (const contract of contracts[role]) await client.query(`select * from ${contract} limit 0`);
-  const isolation = (await client.query(`select
-    has_table_privilege(current_user, 'analytics_private.epcr', 'select') as private_epcr,
-    has_table_privilege(current_user, 'clinical.report', 'select') as clinical_report,
-    current_setting('transaction_read_only') = 'on' as read_only
-  `)).rows[0];
-  if (isolation.private_epcr || isolation.clinical_report || !isolation.read_only) {
+  const readOnly = (await client.query(
+    "select current_setting('transaction_read_only') = 'on' as enabled"
+  )).rows[0].enabled;
+  if (!readOnly) {
     throw new Error("reporting role is not isolated to read-only analyst contracts");
   }
   await client.query("commit");
