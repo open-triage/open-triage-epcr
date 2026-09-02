@@ -672,4 +672,85 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     (error) => error.code === "P0001");
   await assert.rejects(client.query("delete from clinical.report where id = $1", [reportId]),
     (error) => error.code === "P0001");
+
+  const signedHash = signed.payload.canonicalSha256;
+  const codedBeforeAmendment = (await client.query(`select id, element_id, group_instance_id, ordinal,
+      code, code_system, code_display, terminology_version
+    from clinical.element_occurrence where id = $1`, [codedOccurrence.id])).rows[0];
+  const replacementOccurrenceId = randomUUID();
+  const amendmentCommand = {
+    commandId: randomUUID(), expectedSequence: 1, authorId: userId,
+    reason: "Correct the required response and replace a coded occurrence",
+    attestation: { meaning: "author approval of amendment", version: 1 },
+    actorPersona: "clinician", sessionId: "integration-amendment", deviceId: "force-amendment-rollback",
+    clientTime: "2026-08-30T15:00:00-04:00",
+    changes: [
+      { action: "replace", targetElementOccurrenceId: requiredOccurrenceId,
+        value: { kind: "text", value: "corrected by amendment" } },
+      { action: "remove", targetElementOccurrenceId: codedOccurrence.id },
+      { action: "add", occurrence: {
+        id: replacementOccurrenceId, elementId: codedBeforeAmendment.element_id,
+        groupInstanceId: codedBeforeAmendment.group_instance_id, ordinal: codedBeforeAmendment.ordinal,
+        value: { kind: "coded", code: codedBeforeAmendment.code,
+          codeSystem: codedBeforeAmendment.code_system, display: codedBeforeAmendment.code_display,
+          terminologyVersion: codedBeforeAmendment.terminology_version }
+      } }
+    ]
+  };
+  await client.query(`create function clinical.integration_reject_amendment_audit()
+    returns trigger language plpgsql as $$ begin
+      if new.device_id = 'force-amendment-rollback' then raise exception 'forced amendment rollback'; end if;
+      return new;
+    end; $$;
+    create trigger integration_reject_amendment_audit before insert on clinical_audit.event
+    for each row execute function clinical.integration_reject_amendment_audit()`);
+  try {
+    const rolledBackAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
+    assert.equal(rolledBackAmendment.response.status, 500);
+  } finally {
+    await client.query("drop trigger integration_reject_amendment_audit on clinical_audit.event");
+    await client.query("drop function clinical.integration_reject_amendment_audit()");
+  }
+  assert.deepEqual((await client.query(`select
+      (select count(*)::integer from clinical.amendment where report_id = $1) as amendments,
+      (select count(*)::integer from clinical.amendment_change ac join clinical.amendment a on a.id = ac.amendment_id where a.report_id = $1) as changes,
+      (select count(*)::integer from clinical_audit.event where report_id = $1 and action = 'amend') as audits,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = $1 and event_type = 'amendment') as events,
+      (select count(*)::integer from clinical.command_receipt where idempotency_key = $2) as receipts`,
+  [reportId, amendmentCommand.commandId])).rows[0],
+  { amendments: 0, changes: 0, audits: 0, events: 0, receipts: 0 });
+
+  amendmentCommand.deviceId = "unit-7";
+  const amended = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
+  assert.equal(amended.response.status, 201, JSON.stringify(amended.payload));
+  assert.equal(amended.payload.amendmentSequence, 1);
+  assert.equal(amended.payload.changeCount, 3);
+  assert.equal(amended.payload.reason, amendmentCommand.reason);
+  assert.match(amended.payload.canonicalSha256, /^[a-f0-9]{64}$/);
+  const amendmentState = (await client.query(`select a.sequence, a.author_id, a.reason, a.attestation,
+      count(ac.id)::integer as changes,
+      (select canonical_sha256 from clinical.signed_snapshot where report_id = a.report_id) as signed_hash,
+      (select value_text from clinical.element_occurrence where id = $2) as original_value,
+      (select count(*)::integer from clinical.element_occurrence where id = $3) as added_in_original,
+      (select count(*)::integer from clinical_audit.event where report_id = a.report_id and action = 'amend') as audits,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = a.report_id and event_type = 'amendment') as events
+    from clinical.amendment a join clinical.amendment_change ac on ac.amendment_id = a.id
+    where a.report_id = $1 group by a.id`, [reportId, requiredOccurrenceId, replacementOccurrenceId])).rows[0];
+  assert.deepEqual(amendmentState, {
+    sequence: 1, author_id: userId, reason: amendmentCommand.reason,
+    attestation: amendmentCommand.attestation, changes: 3, signed_hash: signedHash,
+    original_value: "required", added_in_original: 0, audits: 1, events: 1
+  });
+  const replayedAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
+  assert.equal(replayedAmendment.response.status, 201);
+  assert.deepEqual(replayedAmendment.payload, amended.payload);
+  const staleAmendment = await request(`/reports/${reportId}/amendments`, "POST", {
+    ...amendmentCommand, commandId: randomUUID(), changes: [
+      { action: "replace", targetElementOccurrenceId: requiredOccurrenceId, value: { kind: "text", value: "stale" } }
+    ]
+  });
+  assert.equal(staleAmendment.response.status, 409);
+  assert.equal((await client.query("select count(*)::integer as count from clinical.amendment where report_id = $1", [reportId])).rows[0].count, 1);
+  await assert.rejects(client.query("update clinical.amendment set reason = 'mutated' where id = $1", [amended.payload.amendmentId]),
+    (error) => error.code === "P0001");
 });

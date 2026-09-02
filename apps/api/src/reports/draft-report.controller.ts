@@ -3,6 +3,8 @@ import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
+import { AmendReportService } from "./amend-report.service.js";
+import type { AmendedReportResult } from "./amend-report.types.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 
@@ -10,7 +12,8 @@ const uuidV4 = new ParseUUIDPipe({ version: "4" });
 export class DraftReportController {
   constructor(
     private readonly reports: DraftReportService,
-    private readonly signing: SignReportService
+    private readonly signing: SignReportService,
+    private readonly amendments: AmendReportService
   ) {}
 
   @Post()
@@ -26,6 +29,11 @@ export class DraftReportController {
   @Post(":id/sign")
   sign(@Param("id", uuidV4) id: string, @Body() body: unknown): Promise<SignedReportResult> {
     return this.signing.sign(id, body);
+  }
+
+  @Post(":id/amendments")
+  amend(@Param("id", uuidV4) id: string, @Body() body: unknown): Promise<AmendedReportResult> {
+    return this.amendments.amend(id, body);
   }
 
   @Get(":id")
