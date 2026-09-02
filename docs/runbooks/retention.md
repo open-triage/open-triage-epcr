@@ -69,8 +69,9 @@ npm run retention -w @open-triage/database -- maintain \
 ```
 
 Partition maintenance runs after the deletion transaction so it never waits on
-the deletion's row locks. It drops only empty partitions wholly before the batch
-cutoff, skips any partition it cannot lock within 100 ms, and records its result.
+the deletion's row locks. It checks only year/month partitions represented in
+the expired batch, drops them only when empty, skips any partition it cannot lock
+within 100 ms, and records its result.
 
 Reconcile `retention.archive_batch.report_count` to the deletion result and
 inspect every `retention.evidence` sequence. Verify each `previous_hash` equals

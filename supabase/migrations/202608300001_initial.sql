@@ -2870,7 +2870,7 @@ begin
 end;
 $$;
 
-create function retention.drop_empty_expired_partitions(cutoff_date date)
+create function retention.drop_empty_expired_partitions(candidate_batch_id uuid)
 returns integer
 language plpgsql
 security definer
@@ -2879,17 +2879,13 @@ as $$
 declare partition_record record; removed integer := 0; has_rows boolean;
 begin
   for partition_record in
-    select child.oid::regclass as partition_name
-    from pg_inherits i join pg_class parent on parent.oid = i.inhparent join pg_class child on child.oid = i.inhrelid
-    join pg_namespace namespace on namespace.oid = child.relnamespace
-    where namespace.nspname = 'analytics_private'
-      and (
-        (parent.relname = 'epcr'
-          and (to_date(substring(child.relname from 'y([0-9]{4})$') || '0101', 'YYYYMMDD') + interval '1 year')::date <= cutoff_date)
-        or (parent.relname = 'epcr_repeatable_element'
-          and (to_date(substring(child.relname from 'm([0-9]{6})$') || '01', 'YYYYMMDD') + interval '1 month')::date <= cutoff_date)
-      )
+    select distinct to_regclass('analytics_private.epcr_y' || to_char(reporting_date, 'YYYY')) as partition_name
+    from retention.archive_batch_report where batch_id = candidate_batch_id
+    union
+    select distinct to_regclass('analytics_private.epcr_repeatable_element_m' || to_char(reporting_date, 'YYYYMM'))
+    from retention.archive_batch_report where batch_id = candidate_batch_id
   loop
+    if partition_record.partition_name is null then continue; end if;
     execute format('select exists (select 1 from %s limit 1)', partition_record.partition_name) into has_rows;
     if not has_rows then
       begin
@@ -2963,7 +2959,7 @@ declare selected_batch retention.archive_batch%rowtype; removed integer;
 begin
   select * into selected_batch from retention.archive_batch where id = candidate_batch_id for update;
   if selected_batch.status <> 'deleted' then raise exception 'partition maintenance requires a deleted retention batch'; end if;
-  removed := retention.drop_empty_expired_partitions(selected_batch.cutoff_date);
+  removed := retention.drop_empty_expired_partitions(candidate_batch_id);
   perform retention.append_evidence(candidate_batch_id, 'partition_maintained', actor,
     jsonb_build_object('emptyPartitionsRemoved', removed, 'cutoffDate', selected_batch.cutoff_date));
   return removed;
