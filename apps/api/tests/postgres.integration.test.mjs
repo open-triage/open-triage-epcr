@@ -586,7 +586,7 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.equal(removedDuplicate.response.status, 201, JSON.stringify(removedDuplicate.payload));
 
   await client.query(`update clinical.element_occurrence set
-    value_kind = 'coded', value_text = null, code = 'INVALID-DATATYPE', code_system = ''
+    value_kind = 'integer', value_text = null, value_integer = 42, value_lexical = '42'
     where id = $1`, [requiredOccurrenceId]);
   const invalidCatalog = await sign({
     commandId: randomUUID(), expectedRevision: 8, signerId: userId,
@@ -597,7 +597,7 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.deepEqual((await client.query("select status, revision from clinical.report where id = $1", [reportId])).rows[0],
     { status: "draft", revision: "8" });
   await client.query(`update clinical.element_occurrence set
-    value_kind = 'text', value_text = 'required', code = null, code_system = null
+    value_kind = 'text', value_text = 'required', value_integer = null, value_lexical = null
     where id = $1`, [requiredOccurrenceId]);
 
   const codedOccurrence = (await client.query(`select id, code from clinical.element_occurrence
