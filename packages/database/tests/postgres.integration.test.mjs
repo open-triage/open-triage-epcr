@@ -596,7 +596,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
           id: addedOccurrenceId, report_id: ids.report, catalog_release_id: releaseId,
           group_instance_id: ids.historyGroup, element_identity_id: historyDefinition.element_identity_id,
           element_id: "eHistory.01", ordinal: 0, analytical_repeatable: true, identifying: false,
-          value_kind: "text", value_text: "Amended language-barrier note"
+          value_kind: "text", value_text: "Amended language-barrier note",
+          server_received_time: "2042-02-04T20:00:00Z"
         })]);
       await client.query("commit");
     } catch (error) {
