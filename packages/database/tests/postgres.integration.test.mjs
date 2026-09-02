@@ -47,6 +47,13 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
+  const priorPgOptions = process.env.PGOPTIONS;
+  process.env.PGOPTIONS = [priorPgOptions, "-c statement_timeout=10000"].filter(Boolean).join(" ");
+  t.after(() => {
+    if (priorPgOptions === undefined) delete process.env.PGOPTIONS;
+    else process.env.PGOPTIONS = priorPgOptions;
+  });
+  await client.query("set statement_timeout = '10s'");
 
   const version = await client.query("show server_version_num");
   assert.ok(Number(version.rows[0].server_version_num) >= 150000);
@@ -982,8 +989,6 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
     await t.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
-      await client.query("set statement_timeout = '10s'");
-      t.after(() => client.query("set statement_timeout = 0"));
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
       await client.query(`insert into clinical.report
