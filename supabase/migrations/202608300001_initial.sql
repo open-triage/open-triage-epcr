@@ -862,6 +862,9 @@ create table clinical.amendment (
   attestation jsonb not null check (jsonb_typeof(attestation) = 'object' and attestation <> '{}'::jsonb),
   canonical_sha256 text not null check (canonical_sha256 ~ '^[a-f0-9]{64}$'),
   signed_at timestamptz not null default now(),
+  reporting_date date,
+  reporting_date_source text check (reporting_date_source in ('service-date', 'earliest-clinical-time', 'earliest-server-time', 'signing-time')),
+  check ((reporting_date is null) = (reporting_date_source is null)),
   unique (report_id, sequence)
 );
 
@@ -1030,6 +1033,24 @@ create table integration.outbox_event (
 );
 
 create index outbox_pending_idx on integration.outbox_event (available_at, occurred_at) where processed_at is null;
+
+create table integration.projection_backfill_job (
+  id text primary key check (length(btrim(id)) between 1 and 200),
+  report_id uuid references clinical.report(id),
+  start_date date,
+  end_date date,
+  cursor_reporting_date date,
+  cursor_report_id uuid,
+  processed_count integer not null default 0 check (processed_count >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz,
+  check (
+    (report_id is not null and start_date is null and end_date is null)
+    or (report_id is null and start_date is not null and end_date is not null and start_date <= end_date)
+  ),
+  check ((cursor_reporting_date is null) = (cursor_report_id is null))
+);
 
 create function integration.enqueue_report_projection()
 returns trigger
@@ -2497,6 +2518,7 @@ grant select on analytics.epcr, analytics.epcr_repeatable_element, analytics.ele
 grant usage on schema analytics_private, integration to open_triage_projector;
 grant select, insert, update, delete on all tables in schema analytics_private to open_triage_projector;
 grant select, update on integration.outbox_event to open_triage_projector;
+grant select, insert, update on integration.projection_backfill_job to open_triage_projector;
 grant usage on schema clinical, forms, catalog, app_identity to open_triage_projector;
 grant select on all tables in schema clinical, forms, catalog, app_identity to open_triage_projector;
 grant execute on function analytics_private.ensure_partitions(date, date) to open_triage_projector;

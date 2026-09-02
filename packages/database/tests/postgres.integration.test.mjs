@@ -722,6 +722,73 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       original_wide: "PCR-2042-0001", original_repeatable: "Language barrier", lineage_changes: 3
     });
 
+    await execFileAsync(process.execPath, [projector, "--replay", ids.report], {
+      env: { ...process.env, DATABASE_URL: databaseUrl }
+    });
+    assert.deepEqual((await client.query(`select
+      (select count(*)::integer from analytics_private.epcr where report_id = $1) as wide,
+      (select count(*)::integer from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable`,
+    [ids.report])).rows[0], { wide: 1, repeatable: 11 });
+
+    await assert.rejects(execFileAsync(process.execPath, [projector, "--replay", ids.report], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_FAIL_AFTER_DELETE: "1" }
+    }), /Injected analytical projection failure after delete/);
+    assert.deepEqual((await client.query(`select
+      (select erecord_01 from analytics_private.epcr where report_id = $1) as wide_value,
+      (select count(*)::integer from analytics_private.epcr_repeatable_element where report_id = $1) as repeatable`,
+    [ids.report])).rows[0], { wide_value: "PCR-2042-CORRECTED", repeatable: 11 });
+
+    await client.query(`delete from analytics_private.epcr_repeatable_element
+      where report_id = $1 and element_id = 'eHistory.01'`, [ids.report]);
+    const reconciliation = await execFileAsync(process.execPath,
+      [projector, "--reconcile", "--report", ids.report],
+      { env: { ...process.env, DATABASE_URL: databaseUrl } });
+    assert.match(reconciliation.stdout, /Reconciled 1 signed report; rebuilt 1 projection/);
+    assert.equal((await client.query(`select count(*)::integer as count
+      from analytics_private.epcr_repeatable_element where report_id = $1`, [ids.report])).rows[0].count, 11);
+
+    await client.query("delete from analytics_private.epcr_repeatable_element where report_id = $1", [ids.report]);
+    await client.query("delete from analytics_private.epcr where report_id = $1", [ids.report]);
+    const interruptedBackfill = await execFileAsync(process.execPath,
+      [projector, "--backfill", "integration-report-2042", "--from", "2042-02-01", "--to", "2042-02-28"],
+      { env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_INTERRUPT_AFTER: "1" } });
+    assert.match(interruptedBackfill.stdout, /1 total; resumable/);
+    const resumedBackfill = await execFileAsync(process.execPath,
+      [projector, "--backfill", "integration-report-2042", "--from", "2042-02-01", "--to", "2042-02-28"],
+      { env: { ...process.env, DATABASE_URL: databaseUrl } });
+    assert.match(resumedBackfill.stdout, /1 total; complete/);
+    assert.deepEqual((await client.query(`select processed_count, completed_at is not null as complete,
+      (select count(*)::integer from analytics_private.epcr where report_id = $2) as wide,
+      (select count(*)::integer from analytics_private.epcr_repeatable_element where report_id = $2) as repeatable
+      from integration.projection_backfill_job where id = $1`,
+    ["integration-report-2042", ids.report])).rows[0], {
+      processed_count: 1, complete: true, wide: 1, repeatable: 11
+    });
+
+    const reportingDateAmendmentId = "38000000-0000-4000-8000-000000000001";
+    await client.query(`insert into clinical.amendment
+      (id, report_id, sequence, author_id, reason, attestation, canonical_sha256, signed_at,
+       reporting_date, reporting_date_source)
+      values ($1, $2, 2, $3, 'Correct reporting date', '{"statement":"date correction"}',
+        repeat('c', 64), '2043-03-05T12:00:00Z', '2043-03-04', 'service-date')`,
+    [reportingDateAmendmentId, ids.report, clinicianId]);
+    await execFileAsync(process.execPath, [projector], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
+    });
+    assert.deepEqual((await client.query(`select
+      (select count(*)::integer from analytics_private.epcr_y2042 where report_id = $1) as old_wide,
+      (select count(*)::integer from analytics_private.epcr_repeatable_element_m204202 where report_id = $1) as old_repeatable,
+      (select tableoid::regclass::text from analytics_private.epcr where report_id = $1) as wide_partition,
+      (select min(tableoid::regclass::text) from analytics_private.epcr_repeatable_element where report_id = $1) as repeat_partition,
+      (select reporting_date::text from analytics_private.epcr where report_id = $1) as reporting_date`,
+    [ids.report])).rows[0], {
+      old_wide: 0,
+      old_repeatable: 0,
+      wide_partition: "analytics_private.epcr_y2043",
+      repeat_partition: "analytics_private.epcr_repeatable_element_m204303",
+      reporting_date: "2043-03-04"
+    });
+
     const dictionary = await client.query(`select
       count(*)::integer as count,
       count(*) filter (where name is not null and description is not null and base_datatype is not null

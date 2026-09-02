@@ -91,6 +91,7 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.amendment",
     "create table clinical_audit.event",
     "create table integration.outbox_event",
+    "create table integration.projection_backfill_job",
     "create table analytics_private.epcr",
     "create table analytics_private.epcr_repeatable_element",
     "create view analytics.epcr",
