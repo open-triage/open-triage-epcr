@@ -569,6 +569,72 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       repeatById.get("eVitals.13").absence_kind
     ], ["null", "pertinent-negative", "absent"]);
 
+    const amendmentId = "37000000-0000-4000-8000-000000000001";
+    const addedOccurrenceId = "37000000-0000-4000-8000-000000000002";
+    const sourceRows = await client.query(`select element_id, to_jsonb(o) as occurrence
+      from clinical.element_occurrence o where report_id = $1 and element_id = any($2::text[])`,
+    [ids.report, ["eRecord.01", "eHistory.01"]]);
+    const sourceByElement = new Map(sourceRows.rows.map((row) => [row.element_id, row.occurrence]));
+    const recordOccurrence = sourceByElement.get("eRecord.01");
+    const historyOccurrence = sourceByElement.get("eHistory.01");
+    const historyDefinition = definitionById.get("eHistory.01");
+    await client.query("begin");
+    try {
+      await client.query(`insert into clinical.amendment
+        (id, report_id, sequence, author_id, reason, attestation, canonical_sha256, signed_at)
+        values ($1, $2, 1, $3, 'Correct projection fixture', '{"statement":"signed correction"}',
+          repeat('b', 64), '2042-02-04T20:00:00Z')`, [amendmentId, ids.report, clinicianId]);
+      await client.query(`insert into clinical.amendment_change
+        (amendment_id, action, target_element_occurrence_id, target_path, original_value, corrected_value)
+        values
+          ($1, 'replace', $2, '{"elementId":"eRecord.01"}', $3::jsonb,
+            '{"value_kind":"text","value_text":"PCR-2042-CORRECTED"}'),
+          ($1, 'remove', $4, '{"elementId":"eHistory.01"}', $5::jsonb, null),
+          ($1, 'add', null, '{"elementId":"eHistory.01"}', null, $6::jsonb)`,
+      [amendmentId, recordOccurrence.id, JSON.stringify(recordOccurrence), historyOccurrence.id,
+        JSON.stringify(historyOccurrence), JSON.stringify({
+          id: addedOccurrenceId, report_id: ids.report, catalog_release_id: releaseId,
+          group_instance_id: ids.historyGroup, element_identity_id: historyDefinition.element_identity_id,
+          element_id: "eHistory.01", ordinal: 0, analytical_repeatable: true, identifying: false,
+          value_kind: "text", value_text: "Amended language-barrier note"
+        })]);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+    await assert.rejects(client.query("update clinical.amendment set reason = 'changed' where id = $1", [amendmentId]),
+      (error) => error.code === "P0001");
+    const amendmentProjection = await execFileAsync(process.execPath, [projector], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
+    });
+    assert.match(amendmentProjection.stdout, /Processed 1 analytical projection event/);
+    const effectiveWide = (await client.query(`select erecord_01, signed_snapshot_id,
+      signed_snapshot_sha256, amendment_count, effective_amendment_sequence, last_amended_at
+      from analytics.epcr where report_id = $1`, [ids.report])).rows[0];
+    assert.equal(effectiveWide.erecord_01, "PCR-2042-CORRECTED");
+    assert.equal(effectiveWide.signed_snapshot_id, ids.snapshot);
+    assert.equal(effectiveWide.signed_snapshot_sha256, "a".repeat(64));
+    assert.equal(effectiveWide.amendment_count, 1);
+    assert.equal(effectiveWide.effective_amendment_sequence, 1);
+    assert.equal(effectiveWide.last_amended_at.toISOString(), "2042-02-04T20:00:00.000Z");
+    const effectiveHistory = await client.query(`select element_occurrence_id, value_text,
+      signed_snapshot_id, effective_amendment_sequence from analytics.epcr_repeatable_element
+      where report_id = $1 and element_id = 'eHistory.01'`, [ids.report]);
+    assert.deepEqual(effectiveHistory.rows, [{
+      element_occurrence_id: addedOccurrenceId,
+      value_text: "Amended language-barrier note",
+      signed_snapshot_id: ids.snapshot,
+      effective_amendment_sequence: 1
+    }]);
+    assert.deepEqual((await client.query(`select
+      (select value_text from clinical.element_occurrence where id = $1) as original_wide,
+      (select value_text from clinical.element_occurrence where id = $2) as original_repeatable,
+      (select count(*)::integer from clinical.amendment_change where amendment_id = $3) as lineage_changes`,
+    [recordOccurrence.id, historyOccurrence.id, amendmentId])).rows[0], {
+      original_wide: "PCR-2042-0001", original_repeatable: "Language barrier", lineage_changes: 3
+    });
+
     const dictionary = await client.query(`select
       count(*)::integer as count,
       count(*) filter (where name is not null and description is not null and base_datatype is not null

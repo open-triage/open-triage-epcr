@@ -53,7 +53,7 @@ function validTimestamp(value: unknown): boolean {
   return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
-function validateValue(value: unknown, path: string, findings: string[]): value is DraftValue {
+export function validateDraftValue(value: unknown, path: string, findings: string[]): value is DraftValue {
   if (!isRecord(value) || typeof value.kind !== "string") {
     findings.push(`${path} must be a typed value`);
     return false;
@@ -163,7 +163,7 @@ function validateOccurrence(value: unknown, path: string, findings: string[]): v
   if (value.tombstone) {
     if (value.value !== undefined) findings.push(`${path}.value must be omitted for a tombstone`);
   } else if (value.value === undefined) findings.push(`${path}.value is required`);
-  else validateValue(value.value, `${path}.value`, findings);
+  else validateDraftValue(value.value, `${path}.value`, findings);
   return true;
 }
 

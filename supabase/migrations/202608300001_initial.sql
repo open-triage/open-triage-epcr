@@ -854,8 +854,8 @@ create table clinical.amendment (
   report_id uuid not null references clinical.report(id),
   sequence integer not null check (sequence > 0),
   author_id uuid not null references app_identity.app_user(id),
-  reason text not null,
-  attestation jsonb not null,
+  reason text not null check (length(btrim(reason)) > 0),
+  attestation jsonb not null check (jsonb_typeof(attestation) = 'object' and attestation <> '{}'::jsonb),
   canonical_sha256 text not null check (canonical_sha256 ~ '^[a-f0-9]{64}$'),
   signed_at timestamptz not null default now(),
   unique (report_id, sequence)
@@ -867,10 +867,16 @@ language plpgsql
 as $$
 declare
   report_status text;
+  report_organization_id uuid;
   next_sequence integer;
 begin
-  select status into report_status from clinical.report where id = new.report_id for update;
+  select status, organization_id into report_status, report_organization_id
+  from clinical.report where id = new.report_id for update;
   if report_status <> 'signed' then raise exception 'only a signed report may be amended'; end if;
+  if not exists (select 1 from app_identity.app_user
+      where id = new.author_id and organization_id = report_organization_id and active) then
+    raise exception 'amendment author must be an active user in the report organization';
+  end if;
   select coalesce(max(sequence), 0) + 1 into next_sequence from clinical.amendment where report_id = new.report_id;
   if new.sequence <> next_sequence then raise exception 'amendment sequence must be %, received %', next_sequence, new.sequence; end if;
   return new;
