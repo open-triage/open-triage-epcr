@@ -131,7 +131,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         "insert into clinical.incident (id, organization_id) values ('10000000-0000-5000-8000-000000000099', $1)",
         [organizationId], "23514");
       await client.query("insert into clinical.incident (id, organization_id) values ($1, $2)", [incidentId, organizationId]);
-      await client.query("insert into clinical.patient (id, organization_id, identity_state) values ($1, $2, 'unknown')", [patientId, organizationId]);
+      await client.query(`insert into clinical.patient
+        (id, organization_id, identity_state, pseudonymous_key)
+        values ($1, $2, 'unknown', repeat('d', 64))`, [patientId, organizationId]);
       await client.query(`insert into app_identity.agency_demographic_version
         (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
          definition_sha256, effective_from, created_by)
