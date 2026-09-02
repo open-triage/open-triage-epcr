@@ -38,3 +38,12 @@ not interpreted. NEMSIS NV codes live in a null value's `notValue` object.
 Attributes are retained on group and value occurrences. Unknown compatible
 properties and namespaced custom groups/elements are preserved losslessly by
 the loader and serializer.
+
+## Standard encounter form
+
+`standard-encounter-form.json` is the human-readable, complaint-neutral phone
+form profile. It selects fields by stable catalog identifiers and controls
+section visibility, quick actions, ordering, labels, help text, review groups,
+and summary order. The profile compiler rejects unsupported presentation
+structures and semantic overrides; datatypes, cardinality, coded values, and
+NV/PN behavior always come from the catalog above.

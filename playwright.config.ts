@@ -17,7 +17,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev -w @open-triage/web -- --hostname 127.0.0.1 --port 3108",
-    env: { TMPDIR: "/private/tmp" },
+    env: { TMPDIR: process.platform === "darwin" ? "/private/tmp" : "/tmp" },
     url: "http://127.0.0.1:3108",
     reuseExistingServer: true,
     timeout: 120_000,

@@ -1,7 +1,7 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATIONS } from "./medication-catalog";
 import { validateVitals } from "./vital-validation";
-import { standardEncounterDefinition } from "./standard-encounter-definition";
+import { standardEncounterDefinition } from "./encounter-form-profile";
 import { createBundledDefinitionProvider } from "./encounter-definition";
 import type { ConfiguredEventType, EncounterDefinition, MedicationFieldId, VitalField as ConfiguredVitalField, VitalNullValue } from "./encounter-definition";
 import type { CustomDataSet } from "./custom-data-elements";
