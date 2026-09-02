@@ -25,6 +25,22 @@ The clinical and analytical database design is documented in
 [`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
 load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
 
+For local API journeys, bootstrap a clean PostgreSQL database into a complete,
+fictional installation with one command:
+
+```sh
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  npm run bootstrap:synthetic -w @open-triage/database
+```
+
+The command applies the foundation migration when needed, loads the pinned catalog,
+and creates a synthetic organization, versioned agency demographics, users and
+capabilities, a published form, and a baseline draft report. It is safe to replay:
+stable fixture identities are verified and immutable versions are never rewritten.
+The fixture uses an unknown patient with a one-way synthetic pseudonym and fictional
+dispatch metadata—no real patient data. It is only loaded by this explicit command;
+production API and migration entry points do not import it.
+
 ## Static prototype
 
 The browser-only MVP is published at

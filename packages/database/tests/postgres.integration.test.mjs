@@ -204,4 +204,81 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       no_supabase_auth_dependency: true
     });
   });
+
+  await t.test("bootstraps and safely replays a complete synthetic installation", async () => {
+    const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
+    const environment = { ...process.env, DATABASE_URL: databaseUrl };
+    const first = await execFileAsync(process.execPath, [bootstrap], { env: environment });
+    const second = await execFileAsync(process.execPath, [bootstrap], { env: environment });
+    assert.equal(JSON.parse(first.stdout).status, "ready");
+    assert.equal(JSON.parse(second.stdout).status, "ready");
+
+    const fixture = await client.query(`
+      select
+        r.organization_id,
+        r.agency_demographic_version_id,
+        r.form_version_id,
+        r.catalog_release_id,
+        r.synthetic as report_synthetic,
+        r.baseline as report_baseline,
+        i.synthetic as incident_synthetic,
+        i.baseline as incident_baseline,
+        p.identity_state,
+        fv.status as form_status,
+        count(distinct u.id)::integer as users,
+        count(distinct uc.capability_key)::integer as capabilities
+      from clinical.report r
+      join clinical.incident i on i.id = r.incident_id
+      join clinical.patient p on p.id = r.patient_id
+      join forms.form_version fv on fv.id = r.form_version_id
+      join app_identity.app_user u on u.organization_id = r.organization_id and u.synthetic
+      join app_identity.user_capability uc on uc.user_id = u.id
+      where r.id = '32000000-0000-4000-8000-00000000000e'
+      group by r.id, i.id, p.id, fv.id
+    `);
+    assert.deepEqual(fixture.rows[0], {
+      organization_id: "32000000-0000-4000-8000-000000000001",
+      agency_demographic_version_id: "32000000-0000-4000-8000-000000000006",
+      form_version_id: "32000000-0000-4000-8000-000000000008",
+      catalog_release_id: fixture.rows[0].catalog_release_id,
+      report_synthetic: true,
+      report_baseline: true,
+      incident_synthetic: true,
+      incident_baseline: true,
+      identity_state: "unknown",
+      form_status: "published",
+      users: 2,
+      capabilities: 3
+    });
+
+    const stableCounts = await client.query(`
+      select
+        (select count(*)::integer from app_identity.organization
+          where id = '32000000-0000-4000-8000-000000000001') as organizations,
+        (select count(*)::integer from app_identity.agency_demographic_version
+          where organization_id = '32000000-0000-4000-8000-000000000001') as agency_versions,
+        (select count(*)::integer from forms.form_version
+          where form_id = '32000000-0000-4000-8000-000000000007') as form_versions,
+        (select count(*)::integer from clinical.report
+          where organization_id = '32000000-0000-4000-8000-000000000001') as reports
+    `);
+    assert.deepEqual(stableCounts.rows[0], {
+      organizations: 1,
+      agency_versions: 1,
+      form_versions: 1,
+      reports: 1
+    });
+
+    await client.query("begin");
+    try {
+      await rejectsSql(client,
+        "update app_identity.agency_demographic_version set dagency_02 = 'changed' where id = $1",
+        [fixture.rows[0].agency_demographic_version_id], "P0001");
+      await rejectsSql(client,
+        "update forms.form_version set change_note = 'changed' where id = $1",
+        [fixture.rows[0].form_version_id], "P0001");
+    } finally {
+      await client.query("rollback");
+    }
+  });
 });

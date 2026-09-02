@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "node scripts/generate-nemsis-analytics.mjs",
     "check": "node scripts/generate-nemsis-analytics.mjs --check",
+    "bootstrap:synthetic": "node scripts/bootstrap-synthetic-installation.mjs",
     "load:catalog": "node scripts/load-nemsis-catalog.mjs",
     "project": "node scripts/project-analytics.mjs",
     "test": "node --test tests/*.test.mjs",
