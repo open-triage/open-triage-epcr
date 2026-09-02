@@ -288,9 +288,8 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
         where e.release_id = $1 and e.base_datatype = 'dateTime' order by e.element_id limit 1) as datetime_id,
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1
-        and exists (select 1 from catalog.value_set_element vse join catalog.value_set vs
-          on vs.release_id = vse.release_id and vs.value_set_id = vse.value_set_id
-          where vse.release_id = e.release_id and vse.element_id = e.element_id and vs.exhaustive)
+        and e.definition #>> '{valueSource,kind}' = 'inline-enumerated'
+        and (e.definition #>> '{valueSource,exhaustive}')::boolean
         order by e.element_id limit 1) as coded_id,
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id where e.release_id = $1 and exists
@@ -305,15 +304,8 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const option = async (elementId, sourceKind) => (await client.query(`select code, display, code_system from catalog.element_option
     where release_id = $1 and element_id = $2 and source_kind = $3 order by code limit 1`,
   [releaseId, elementId, sourceKind])).rows[0];
-  const coded = (await client.query(`select option.code, option.display, option.code_system
-    from catalog.value_set_element element
-    join catalog.value_set value_set on value_set.release_id = element.release_id
-      and value_set.value_set_id = element.value_set_id and value_set.exhaustive
-    join catalog.value_set_option option on option.release_id = element.release_id
-      and option.value_set_id = element.value_set_id
-    where element.release_id = $1 and element.element_id = $2
-    order by element.value_set_id, option.code_system, option.code limit 1`, [releaseId, ids.coded_id])).rows[0];
-  assert.ok(coded, "catalog fixture requires an exhaustive coded value");
+  const coded = await option(ids.coded_id, "inline");
+  assert.ok(coded, "catalog fixture requires an inline coded value");
   const notValue = await option(ids.null_id, "not-value");
   const negative = await option(ids.negative_id, "pertinent-negative");
 

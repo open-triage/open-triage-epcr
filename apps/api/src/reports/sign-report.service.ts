@@ -258,6 +258,18 @@ export class SignReportService {
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
       }
       if (occurrence.value_kind === "coded") {
+        const invalidInline = await manager.query<Array<{ element_id: string }>>(`
+          select e.element_id from catalog.element_definition e
+          where e.release_id = $1 and e.element_id = $2
+            and e.definition #>> '{valueSource,kind}' = 'inline-enumerated'
+            and (e.definition #>> '{valueSource,exhaustive}')::boolean
+            and not exists (select 1 from catalog.element_option option
+              where option.release_id = e.release_id and option.element_id = e.element_id
+                and option.source_kind = 'inline' and option.code = $3
+                and option.code_system = coalesce($4, ''))
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (invalidInline[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
+          `Code ${occurrence.code} is not in the exhaustive inline value set for ${occurrence.element_id}`));
         const exhaustive = await manager.query<Array<{ value_set_ids: string }>>(`
           select string_agg(vse.value_set_id, ', ' order by vse.value_set_id) as value_set_ids
           from catalog.value_set_element vse
