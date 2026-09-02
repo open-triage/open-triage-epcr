@@ -6,14 +6,18 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig] = await Promise.all([
+const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
+  retentionPolicy, retentionRunbook, retentionScript] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "deploy/kubernetes/analytics-projector-cronjobs.yaml"), "utf8"),
   readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
-  readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse)
+  readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "docs/retention-archival-deletion-policy.md"), "utf8"),
+  readFile(path.join(repoRoot, "docs/runbooks/retention.md"), "utf8"),
+  readFile(path.join(packageRoot, "scripts/retention.mjs"), "utf8")
 ]);
 
 test("maps every PatientCareReport element to exactly one analytical location", () => {
@@ -146,4 +150,26 @@ test("records the human-approved privacy boundary", () => {
   assert.match(migration, /grant select on analytics\.epcr, analytics\.epcr_repeatable_element, analytics\.element_dictionary, analytics\.agency to open_triage_analyst/);
   assert.ok(!migration.includes("grant select on analytics.epcr_identified to open_triage_analyst"));
   assert.match(migration, /identifying boolean not null,\n  definition jsonb not null/);
+});
+
+test("requires approved archive-before-delete retention with durable evidence", () => {
+  for (const table of ["retention.policy", "retention.legal_hold", "retention.archive_batch",
+    "retention.archive_batch_report", "retention.evidence"]) {
+    assert.ok(migration.includes(`create table ${table}`), `missing ${table}`);
+  }
+  assert.match(migration, /retention_years integer not null default 10/);
+  assert.match(migration, /pending-installation-owner-approval/);
+  assert.match(migration, /r\.status = 'signed'[\s\S]*r\.reporting_date < selected_cutoff[\s\S]*h\.released_at is null/);
+  assert.match(migration, /if selected_batch\.status <> 'archive_verified' then raise exception 'archive verification is required before deletion'/);
+  assert.match(migration, /a legal hold now protects one or more reports/);
+  assert.match(migration, /drop_empty_expired_partitions/);
+  assert.match(migration, /create role open_triage_retention_executor nologin/);
+  assert.ok(!migration.includes("grant execute on function retention.delete_verified_batch(uuid, text) to open_triage_operational"));
+  for (const decision of ["Archive destination", "Deletion authority", "Evidence format", "Online retention"]) {
+    assert.ok(retentionPolicy.includes(decision), `retention policy is missing ${decision}`);
+  }
+  assert.match(retentionPolicy, /proposed — installation-owner approval required/);
+  assert.match(retentionRunbook, /Object Lock/);
+  assert.match(retentionRunbook, /different authorized operator/);
+  assert.match(retentionScript, /export checksum mismatch/);
 });

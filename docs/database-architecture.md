@@ -83,7 +83,6 @@ vertical slices still need to add:
   boundary, and HMAC custody/rotation policy in
   [Analytical privacy boundary](analytical-privacy-boundary.md);
 - approved normalization and quality-flag rule sets;
-- retention archival, legal-hold, partition maintenance, and deletion jobs; and
 - database backup/restore, read-replica, query-audit, monitoring, and load testing.
 
 The recommended implementation order is: validate the migration in PostgreSQL;
@@ -258,7 +257,8 @@ Production installations may point analysts at a PostgreSQL read replica or
 reporting instance. Use named or short-lived database credentials and log query
 metadata. Do not log returned clinical values or SQL bind values. The configured
 retention defaults to ten years; legal holds and verifiable archival/deletion are
-operator workflows and must never be exposed as ordinary clinical deletes.
+available only through the dedicated workflow documented in
+[Retention operations](runbooks/retention.md), never as ordinary clinical deletes.
 
 ## Example queries
 
