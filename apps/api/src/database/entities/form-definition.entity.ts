@@ -1,27 +1,29 @@
 import type { FormDefinition } from "@open-triage/contracts";
-import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { PatientCareReportEntity } from "./patient-care-report.entity.js";
 
-@Entity({ name: "form_definitions", schema: "public" })
-@Index(["slug", "version", "locale"], { unique: true })
+@Entity({ name: "form_version", schema: "forms" })
 export class FormDefinitionEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;
 
-  @Column({ type: "text" })
-  slug!: string;
+  @Column({ name: "form_id", type: "uuid" })
+  formId!: string;
 
-  @Column({ type: "text" })
-  version!: string;
+  @Column({ name: "catalog_release_id", type: "uuid" })
+  catalogReleaseId!: string;
 
-  @Column({ type: "text", default: "en" })
-  locale!: string;
+  @Column({ type: "integer" })
+  version!: number;
 
-  @Column({ type: "jsonb" })
-  definition!: FormDefinition;
+  @Column({ type: "text", default: "draft" })
+  status!: "draft" | "published";
 
-  @Column({ name: "published_at", type: "timestamptz", nullable: true })
-  publishedAt!: Date | null;
+  @Column({ name: "canonical_definition", type: "jsonb" })
+  canonicalDefinition!: FormDefinition;
+
+  @Column({ name: "definition_sha256", type: "text" })
+  definitionSha256!: string;
 
   @CreateDateColumn({ name: "created_at", type: "timestamptz" })
   createdAt!: Date;

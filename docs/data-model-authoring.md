@@ -11,7 +11,9 @@ The pinned inputs and provenance are described in
 official versioned dictionary, enumeration export, XSD archive, and public lists;
 retain their original bytes; update release, retrieval date, and URLs in the
 generator; then run `npm run generate:nemsis-data-model` and
-`npm run audit:nemsis-catalog`. Commit sources and generated JSON together. The
+`npm run audit:nemsis-catalog`, followed by `npm run generate:database`. Commit
+sources, generated JSON, the analytical mapping, and generated migration blocks
+together. The
 audit rejects element/enumeration omissions and additions and requires identical
 pretty-printed output. Never hand-edit the generated catalog.
 

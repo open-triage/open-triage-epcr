@@ -1,0 +1,105 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(packageRoot, "../..");
+const [mapping, migration, catalog] = await Promise.all([
+  readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
+  readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse)
+]);
+
+test("maps every PatientCareReport element to exactly one analytical location", () => {
+  const patientCareElements = catalog.elements.filter((element) =>
+    element.groupPath.includes("PatientCareReportGroup")
+  );
+  assert.equal(patientCareElements.length, 441);
+  assert.equal(mapping.elements.length, patientCareElements.length);
+  assert.equal(new Set(mapping.elements.map((element) => element.elementId)).size, patientCareElements.length);
+  assert.deepEqual(mapping.counts, {
+    patientCareReportElements: 441,
+    wideElements: 198,
+    repeatableElements: 243,
+    identifyingElements: 43,
+    repeatingGroups: 34,
+    repeatingGroupsWithOneLocalTimeCandidate: 11,
+    repeatingGroupsFlaggedForZeroOrMultipleCandidates: 23
+  });
+});
+
+test("uses deterministic simple SQL names and valid NEMSIS-compatible UUID identities", () => {
+  const sqlColumns = mapping.elements
+    .filter((element) => element.analyticalLocation === "wide")
+    .flatMap((element) => element.columns.map((column) => column.name));
+  assert.equal(new Set(sqlColumns).size, sqlColumns.length);
+  assert.ok(sqlColumns.includes("esituation_11"));
+  assert.ok(sqlColumns.every((column) => /^[a-z][a-z0-9_]*$/.test(column)));
+  assert.ok(
+    mapping.elements.every((element) =>
+      /^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        element.applicationId
+      )
+    )
+  );
+});
+
+test("requires an explicit time resolution for every repeating group", () => {
+  assert.equal(mapping.repeatingGroupTimeMappings.length, mapping.counts.repeatingGroups);
+  for (const group of mapping.repeatingGroupTimeMappings) {
+    assert.match(group.resolution, /^(element|inherited|non-temporal)$/);
+    assert.ok(group.note.length > 0);
+    if (group.resolution === "element") {
+      assert.equal(group.candidateCount, 1);
+      assert.equal(group.candidateTimeElementIds[0], group.timeElementId);
+    }
+    if (group.resolution === "inherited") {
+      assert.ok(group.inheritedFromGroupId);
+      assert.ok(group.timeElementId);
+    }
+    if (group.resolution === "non-temporal") assert.equal(group.timeElementId, null);
+  }
+});
+
+test("commits generated columns and keeps identifying values out of the default view", () => {
+  const wideMappings = mapping.elements.filter((element) => element.analyticalLocation === "wide");
+  for (const element of wideMappings) {
+    for (const column of element.columns) {
+      assert.match(migration, new RegExp(`\\n  ${column.name} ${column.type},`));
+    }
+  }
+  const viewBlock = migration.slice(
+    migration.indexOf("-- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS"),
+    migration.indexOf("-- END GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS")
+  );
+  for (const element of wideMappings.filter((element) => element.identifying)) {
+    assert.ok(element.columns.every((column) => !viewBlock.includes(`\n  ${column.name}`)));
+  }
+  assert.ok(viewBlock.includes("\n  esituation_11"));
+  assert.ok(!viewBlock.includes("\n  enarrative_01"));
+});
+
+test("defines the transactional invariants and two private analytical base tables", () => {
+  for (const expected of [
+    "create table clinical.incident",
+    "create table clinical.report",
+    "create table clinical.group_instance",
+    "create table clinical.element_occurrence",
+    "create table clinical.signed_snapshot",
+    "create table clinical.amendment",
+    "create table clinical_audit.event",
+    "create table integration.outbox_event",
+    "create table analytics_private.epcr",
+    "create table analytics_private.epcr_repeatable_element",
+    "create view analytics.epcr",
+    "create view analytics.epcr_repeatable_element"
+  ]) {
+    assert.ok(migration.includes(expected), `missing ${expected}`);
+  }
+  assert.ok(migration.includes("unique nulls not distinct"));
+  assert.ok(migration.includes("substring(id::text from 15 for 1) = '4'"));
+  assert.ok(!migration.includes("auth.users"));
+  assert.ok(!migration.includes("patient_care_reports"));
+});

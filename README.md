@@ -17,8 +17,13 @@ Browser-based electronic patient care reporting, initially modeled on NEMSIS 3.5
 
 Web runs on http://localhost:3000 and the API on http://localhost:3001.
 
-The NestJS API uses TypeORM with `DATABASE_URL`. Supabase SQL migrations remain the single
-source of truth for schema changes; TypeORM's `synchronize` option is disabled.
+The NestJS API uses TypeORM with `DATABASE_URL` and requires PostgreSQL 15 or newer.
+Supabase SQL migrations remain the single source of truth for schema changes;
+TypeORM's `synchronize` option is disabled.
+
+The clinical and analytical database design is documented in
+[`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
+load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
 
 ## Static prototype
 
