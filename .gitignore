@@ -2,6 +2,7 @@ node_modules/
 .next/
 dist/
 coverage/
+packages/database/artifacts/
 apps/web/out/
 playwright-report/
 test-results/

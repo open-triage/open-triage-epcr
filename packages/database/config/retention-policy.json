@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "policyVersion": "retention-1.0.0",
+  "reviewStatus": "approved-installation-owner",
+  "approvedBy": "requesting human reviewer in the ticket 042 Codex session",
+  "approvedOn": "2026-09-02",
+  "archiveDestinationTemplate": "s3://open-triage-retention-archive/<installation-id>/<organization-id>/",
+  "archiveStorageControl": "S3 Object Lock compliance mode in a separate security account with versioning, retained for at least the applicable legal retention period",
+  "deletionAuthority": "active same-organization application user with installation:administer, validated and attributed by UUID, via open_triage_retention_executor, distinct from preparation and verification identities",
+  "evidenceFormat": "canonical PostgreSQL jsonb NDJSON with per-report, manifest, and archive SHA-256 digests; immutable object URI/version; actor UUIDs, timestamps, counts, failures; append-only SHA-256-chained database events without copied clinical values",
+  "retentionYearsDefault": 10,
+  "localRetentionOverride": null
+}

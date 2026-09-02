@@ -17,8 +17,41 @@ Browser-based electronic patient care reporting, initially modeled on NEMSIS 3.5
 
 Web runs on http://localhost:3000 and the API on http://localhost:3001.
 
-The NestJS API uses TypeORM with `DATABASE_URL`. Supabase SQL migrations remain the single
-source of truth for schema changes; TypeORM's `synchronize` option is disabled.
+The NestJS API uses TypeORM with `DATABASE_URL` and requires PostgreSQL 15 or newer.
+Supabase SQL migrations remain the single source of truth for schema changes;
+TypeORM's `synchronize` option is disabled.
+
+The clinical and analytical database design is documented in
+[`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
+load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
+
+For local API journeys, bootstrap a clean PostgreSQL database into a complete,
+fictional installation with one command:
+
+```sh
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+PATIENT_KEY_INSTALLATION_ID=00000000-0000-4000-8000-000000000001 \
+PATIENT_KEY_VERSION=1 \
+PATIENT_KEY_SECRET_BASE64='<base64-encoded-random-32-byte-secret>' \
+  npm run bootstrap:synthetic -w @open-triage/database
+```
+
+The command applies the foundation migration when needed, loads the pinned catalog,
+and creates a synthetic organization, versioned agency demographics, users and
+capabilities, a published form, and a baseline draft report. It is safe to replay:
+stable fixture identities are verified and immutable versions are never rewritten.
+The fixture uses an unknown patient with a one-way synthetic pseudonym and fictional
+dispatch metadata—no real patient data. It is only loaded by this explicit command;
+production API and migration entry points do not import it.
+
+Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
+incident, patient, and command identities. The API derives the analytical patient
+key; clients must not submit one. Incremental autosaves go to
+`POST /api/reports/:id/draft-changes` with an expected revision, stable group and
+occurrence identities, and sparse typed values. `GET /api/reports/:id` returns the
+pinned versions, current revision, groups, and occurrences. Retrying an identical
+command returns its original result; reusing its identity for different content or
+saving against a stale revision returns HTTP 409.
 
 ## Static prototype
 

@@ -7,7 +7,9 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:integration": "npm run build && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

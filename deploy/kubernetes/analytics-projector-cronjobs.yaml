@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-projector
+spec:
+  # Two minutes leaves three minutes of normal-operation margin against the SLO.
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 12
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 110
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: projector
+              # Deployment automation must replace this with an immutable release image.
+              image: open-triage:replace-with-release
+              imagePullPolicy: IfNotPresent
+              command: ["npm", "run", "project", "-w", "@open-triage/database"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: open-triage-database
+                      key: projector-url
+                - name: ANALYTICS_PROJECTOR_BATCH_SIZE
+                  value: "500"
+                - name: ANALYTICS_PROJECTOR_MAX_ATTEMPTS
+                  value: "12"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-projector-health
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 12
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 50
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: health
+              image: open-triage:replace-with-release
+              imagePullPolicy: IfNotPresent
+              command: ["npm", "run", "project:health", "-w", "@open-triage/database"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: open-triage-database
+                      key: operational-url
+                - name: ANALYTICS_PROJECTOR_FRESHNESS_TARGET_SECONDS
+                  value: "300"

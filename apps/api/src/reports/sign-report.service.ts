@@ -1,0 +1,471 @@
+import { randomUUID } from "node:crypto";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException
+} from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import {
+  evaluateQualityAndNormalization,
+  NORMALIZATION_RULE_VERSION,
+  QUALITY_RULE_VERSION
+} from "@open-triage/contracts/quality-rules";
+import { DataSource, type EntityManager } from "typeorm";
+import { commandSha256 } from "./draft-report.validation.js";
+import type {
+  SignedReportResult,
+  SigningFinding,
+  SignReportCommand
+} from "./sign-report.types.js";
+import { SignReportValidationError, validateSignReportCommand } from "./sign-report.validation.js";
+
+type ReceiptRow = {
+  report_id: string | null;
+  command_type: string;
+  request_sha256: string;
+  response_body: unknown;
+};
+
+type ReportRow = {
+  id: string;
+  status: "draft" | "signed";
+  revision: string | number;
+  organization_id: string;
+  incident_id: string;
+  patient_id: string;
+  agency_demographic_version_id: string;
+  form_version_id: string;
+  catalog_release_id: string;
+  documenting_user_id: string;
+  reporting_date: string | null;
+};
+
+type FieldRow = {
+  id: string;
+  stable_key: string;
+  required: boolean;
+  catalog_element_identity_id: string | null;
+  custom_element_definition_id: string | null;
+  min_occurs: number | null;
+};
+
+type RuleRow = {
+  target_field_id: string;
+  target_key: string;
+  rule_kind: "visibility" | "requiredness";
+  expression: RuleExpression;
+};
+
+type RuleExpression =
+  | { operator: "exists"; field: string }
+  | { operator: "equals"; field: string; value: unknown }
+  | { operator: "not"; condition: RuleExpression }
+  | { operator: "and" | "or"; conditions: RuleExpression[] };
+
+type OccurrenceRow = {
+  id: string;
+  element_identity_id: string;
+  element_id: string;
+  form_field_id: string | null;
+  group_instance_id: string | null;
+  ordinal: number;
+  value_kind: string;
+  scalar_value: unknown;
+  code: string | null;
+  code_system: string | null;
+  absence_code: string | null;
+  base_datatype: string | null;
+  min_occurs: number | null;
+  max_occurs: number | null;
+};
+
+type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
+
+const RULE_VERSION = "signing-1.0.0";
+
+@Injectable()
+export class SignReportService {
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  async sign(reportId: string, input: unknown): Promise<SignedReportResult> {
+    let command: SignReportCommand;
+    try {
+      command = validateSignReportCommand(input);
+    } catch (error) {
+      if (error instanceof SignReportValidationError) {
+        throw new UnprocessableEntityException({ message: error.message, findings: error.findings });
+      }
+      throw error;
+    }
+    const digest = commandSha256(command);
+    let attempt: SigningAttempt;
+    try {
+      attempt = await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
+        const replay = await this.replay(manager, command.commandId, digest, reportId);
+        if (replay) return { result: replay };
+
+        const rows = await manager.query<ReportRow[]>("select * from clinical.report where id = $1 for update", [reportId]);
+        const report = rows[0];
+        if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
+        if (report.status !== "draft") throw new ConflictException("Report is already signed");
+        const revision = Number(report.revision);
+        if (revision !== command.expectedRevision) {
+          throw new ConflictException({
+            message: "Draft revision is stale",
+            expectedRevision: command.expectedRevision,
+            currentRevision: revision
+          });
+        }
+        const signer = await manager.query<Array<{ id: string }>>(`
+          select id from app_identity.app_user
+          where id = $1 and organization_id = $2 and active
+        `, [command.signerId, report.organization_id]);
+        if (!signer[0]) throw new UnprocessableEntityException("signerId must be an active user in the report organization");
+        if (command.signerId !== report.documenting_user_id) {
+          throw new UnprocessableEntityException("Only the documenting clinician may sign the report");
+        }
+
+        const findings = await this.validateSemantics(manager, report);
+        await manager.query("delete from clinical.validation_finding where report_id = $1", [report.id]);
+        for (const finding of findings) {
+          await manager.query(`insert into clinical.validation_finding
+            (report_id, revision, severity, code, path, message, rule_version)
+            values ($1, $2, $3, $4, $5, $6, $7)`,
+          [report.id, revision, finding.severity, finding.code, finding.path, finding.message, finding.ruleVersion]);
+        }
+        if (findings.some((finding) => finding.severity === "error")) return { findings };
+
+        const payload = await this.canonicalPayload(manager, report, revision);
+        const quality = await this.evaluateQuality(manager, report.id);
+        const canonicalSha256 = commandSha256(payload);
+        const snapshotId = randomUUID();
+        const signedAt = new Date().toISOString();
+        const reporting = await this.reportingDate(manager, report, signedAt);
+
+        await manager.query(`update clinical.report
+          set status = 'signed', reporting_date = $2, reporting_date_source = $3, updated_at = $4
+          where id = $1 and status = 'draft'`,
+        [report.id, reporting.date, reporting.source, signedAt]);
+        await manager.query(`insert into clinical.signed_snapshot
+          (id, report_id, signed_revision, form_version_id, catalog_release_id, signer_id,
+           signed_at, canonical_sha256, attestation, warning_acknowledgements,
+           quality_rule_version, normalization_rule_version, quality_findings, derived_values)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
+                  $11, $12, $13::jsonb, $14::jsonb)`,
+        [snapshotId, report.id, revision, report.form_version_id, report.catalog_release_id,
+          command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
+          JSON.stringify(command.warningAcknowledgements ?? {}), QUALITY_RULE_VERSION,
+          NORMALIZATION_RULE_VERSION, JSON.stringify(quality.qualityFindings),
+          JSON.stringify(quality.derivedValues)]);
+
+        await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
+        const result: SignedReportResult = {
+          id: report.id,
+          status: "signed",
+          signedRevision: revision,
+          signedSnapshotId: snapshotId,
+          canonicalSha256,
+          signerId: command.signerId,
+          signedAt,
+          formVersionId: report.form_version_id,
+          catalogReleaseId: report.catalog_release_id,
+          reportingDate: reporting.date,
+          reportingDateSource: reporting.source,
+          qualityRuleVersion: QUALITY_RULE_VERSION,
+          normalizationRuleVersion: NORMALIZATION_RULE_VERSION,
+          qualityFindings: quality.qualityFindings,
+          derivedValues: quality.derivedValues
+        };
+        await manager.query(`insert into clinical.command_receipt
+          (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
+          values ($1, $2, 'sign-report', $3, 201, $4::jsonb)`,
+        [command.commandId, report.id, digest, JSON.stringify(result)]);
+        return { result };
+      });
+    } catch (error) {
+      this.rethrowDatabaseConflict(error);
+    }
+    if (attempt.findings) {
+      throw new UnprocessableEntityException({ message: "Report validation failed", findings: attempt.findings });
+    }
+    return attempt.result!;
+  }
+
+  private async evaluateQuality(manager: EntityManager, reportId: string) {
+    const rows = await manager.query<Array<{
+      id: string;
+      element_id: string;
+      value_kind: string;
+      value_integer: string | number | null;
+      value_numeric: string | number | null;
+      source_attributes: Record<string, unknown> | null;
+    }>>(`select id, element_id, value_kind, value_integer, value_numeric, source_attributes
+      from clinical.element_occurrence
+      where report_id = $1 and tombstoned_at is null
+      order by element_id, ordinal, id`, [reportId]);
+    return evaluateQualityAndNormalization(rows.map((row) => ({
+      id: row.id,
+      elementId: row.element_id,
+      valueKind: row.value_kind,
+      valueInteger: row.value_integer,
+      valueNumeric: row.value_numeric,
+      sourceAttributes: row.source_attributes
+    })));
+  }
+
+  private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
+    const findings: SigningFinding[] = [];
+    const form = await manager.query<Array<{ status: string; catalog_release_id: string }>>(`
+      select status, catalog_release_id from forms.form_version where id = $1
+    `, [report.form_version_id]);
+    if (!form[0] || form[0].status !== "published" || form[0].catalog_release_id !== report.catalog_release_id) {
+      findings.push(this.finding("catalog.pinned-version", "$.formVersionId",
+        "The report does not reference a published form and matching catalog release"));
+      return findings;
+    }
+    const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
+      ff.catalog_element_identity_id, ff.custom_element_definition_id, e.min_occurs
+      from forms.form_field ff
+      left join catalog.element_definition e on e.release_id = $2
+        and e.element_identity_id = ff.catalog_element_identity_id
+      where ff.form_version_id = $1 order by ff.stable_key`, [report.form_version_id, report.catalog_release_id]);
+    const rules = await manager.query<RuleRow[]>(`select r.target_field_id, f.stable_key as target_key,
+      r.rule_kind, r.expression
+      from forms.form_rule r join forms.form_field f on f.id = r.target_field_id
+      where r.form_version_id = $1 order by f.stable_key, r.position`, [report.form_version_id]);
+    const occurrences = await manager.query<OccurrenceRow[]>(`select o.id, o.element_identity_id, o.element_id,
+      o.form_field_id, o.group_instance_id, o.ordinal, o.value_kind,
+      case o.value_kind
+        when 'text' then to_jsonb(o.value_text) when 'uri' then to_jsonb(o.value_text)
+        when 'integer' then to_jsonb(o.value_integer) when 'numeric' then to_jsonb(o.value_numeric)
+        when 'boolean' then to_jsonb(o.value_boolean) when 'date' then to_jsonb(o.value_date)
+        when 'datetime' then to_jsonb(o.value_datetime) when 'time' then to_jsonb(o.value_time)
+        when 'duration' then to_jsonb(o.value_duration) else null end as scalar_value,
+      o.code, o.code_system, o.absence_code, coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
+      e.min_occurs, e.max_occurs
+      from clinical.element_occurrence o
+      left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id
+      left join forms.custom_element_definition ced on ced.id = o.element_identity_id
+      where o.report_id = $1 and o.tombstoned_at is null order by o.element_id, o.ordinal, o.id`, [report.id]);
+
+    const byField = new Map(fields.map((field) => [field.stable_key,
+      occurrences.filter((item) => item.form_field_id === field.id ||
+        (!item.form_field_id && item.element_identity_id === (field.catalog_element_identity_id ?? field.custom_element_definition_id)))]));
+    for (const field of fields) {
+      const values = byField.get(field.stable_key)!;
+      if (field.required && values.length === 0) {
+        findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
+          `Required form field ${field.stable_key} has no value`));
+      }
+      if (field.min_occurs !== null && values.length < field.min_occurs) {
+        findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
+          `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
+      }
+    }
+    for (const rule of rules) {
+      const applies = this.evaluateRule(rule.expression, byField);
+      const target = byField.get(rule.target_key) ?? [];
+      if (rule.rule_kind === "requiredness" && applies && target.length === 0) {
+        findings.push(this.finding("form.conditional-required", `$.fields.${rule.target_key}`,
+          `Field ${rule.target_key} is required by its current form condition`));
+      }
+      if (rule.rule_kind === "visibility" && !applies && target.length > 0) {
+        findings.push(this.finding("form.conditional-hidden", `$.fields.${rule.target_key}`,
+          `Field ${rule.target_key} has a value while its visibility condition is false`));
+      }
+    }
+
+    const expectedKinds: Record<string, string> = {
+      string: "text", integer: "integer", decimal: "numeric", boolean: "boolean", date: "date",
+      dateTime: "datetime", time: "time", duration: "duration", binary: "binary", anyURI: "uri"
+    };
+    for (const occurrence of occurrences) {
+      const path = `$.occurrences.${occurrence.id}`;
+      if (!occurrence.base_datatype) {
+        findings.push(this.finding("catalog.element", path,
+          `${occurrence.element_id} is not defined by the report's pinned catalog`));
+        continue;
+      }
+      if (!["coded", "null", "pertinent-negative", "absent"].includes(occurrence.value_kind) &&
+          expectedKinds[occurrence.base_datatype] !== occurrence.value_kind) {
+        findings.push(this.finding("catalog.datatype", `${path}.value`,
+          `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
+      }
+      if (occurrence.value_kind === "coded") {
+        const invalidInline = await manager.query<Array<{ element_id: string }>>(`
+          select e.element_id from catalog.element_definition e
+          where e.release_id = $1 and e.element_id = $2
+            and e.definition #>> '{valueSource,kind}' = 'inline-enumerated'
+            and (e.definition #>> '{valueSource,exhaustive}')::boolean
+            and not exists (select 1 from catalog.element_option option
+              where option.release_id = e.release_id and option.element_id = e.element_id
+                and option.source_kind = 'inline' and option.code = $3
+                and option.code_system = coalesce($4, ''))
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (invalidInline[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
+          `Code ${occurrence.code} is not in the exhaustive inline value set for ${occurrence.element_id}`));
+        const exhaustive = await manager.query<Array<{ value_set_ids: string }>>(`
+          select string_agg(vse.value_set_id, ', ' order by vse.value_set_id) as value_set_ids
+          from catalog.value_set_element vse
+          join catalog.value_set vs on vs.release_id = vse.release_id and vs.value_set_id = vse.value_set_id
+          where vse.release_id = $1 and vse.element_id = $2 and vs.exhaustive
+            and not exists (select 1 from catalog.value_set_element valid_element
+              join catalog.value_set valid_set on valid_set.release_id = valid_element.release_id
+                and valid_set.value_set_id = valid_element.value_set_id and valid_set.exhaustive
+              join catalog.value_set_option option on option.release_id = valid_element.release_id
+                and option.value_set_id = valid_element.value_set_id
+              where valid_element.release_id = vse.release_id and valid_element.element_id = vse.element_id
+                and option.code = $3 and option.code_system = coalesce($4, ''))
+          having count(*) > 0
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (exhaustive[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
+          `Code ${occurrence.code} is not in exhaustive value set(s) ${exhaustive[0].value_set_ids} for ${occurrence.element_id}`));
+      }
+    }
+    const byElementAndParent = new Map<string, OccurrenceRow[]>();
+    for (const occurrence of occurrences) {
+      const key = `${occurrence.element_id}:${occurrence.group_instance_id ?? "root"}`;
+      byElementAndParent.set(key, [...(byElementAndParent.get(key) ?? []), occurrence]);
+    }
+    for (const values of byElementAndParent.values()) {
+      const first = values[0]!;
+      if (first.max_occurs !== null && values.length > first.max_occurs) {
+        findings.push(this.finding("catalog.cardinality", `$.elements.${first.element_id}`,
+          `${first.element_id} permits at most ${first.max_occurs} occurrence(s) in this group; found ${values.length}`));
+      }
+    }
+    return findings;
+  }
+
+  private evaluateRule(expression: RuleExpression, values: Map<string, OccurrenceRow[]>): boolean {
+    switch (expression.operator) {
+      case "exists": return (values.get(expression.field)?.length ?? 0) > 0;
+      case "equals": {
+        const occurrences = values.get(expression.field) ?? [];
+        return occurrences.some((item) => {
+          const actual = item.value_kind === "coded" ? item.code
+            : ["null", "pertinent-negative", "absent"].includes(item.value_kind) ? item.absence_code ?? null
+              : item.scalar_value;
+          return String(actual) === String(expression.value);
+        });
+      }
+      case "not": return !this.evaluateRule(expression.condition, values);
+      case "and": return expression.conditions.every((item) => this.evaluateRule(item, values));
+      case "or": return expression.conditions.some((item) => this.evaluateRule(item, values));
+    }
+  }
+
+  private async canonicalPayload(manager: EntityManager, report: ReportRow, revision: number): Promise<unknown> {
+    const content = await manager.query<Array<{ groups: unknown; occurrences: unknown }>>(`select
+      coalesce((select jsonb_agg(to_jsonb(g) order by g.group_id, g.ordinal, g.id) from (
+        select id, parent_group_instance_id, group_id, source_kind, custom_group_definition_id,
+               ordinal, correlation_id, documented_time, documented_utc_offset_minutes
+        from clinical.group_instance where report_id = $1 and tombstoned_at is null
+      ) g), '[]'::jsonb) as groups,
+      coalesce((select jsonb_agg(to_jsonb(o) order by o.element_id, o.ordinal, o.id) from (
+        select id, group_instance_id, element_identity_id, element_id, form_field_id, ordinal,
+               value_kind, value_text, value_integer, value_numeric, value_boolean, value_date,
+               value_datetime, value_time, value_duration, encode(value_binary, 'base64') as value_binary,
+               value_lexical, value_utc_offset_minutes, value_precision, code, code_system, code_display,
+               terminology_version, absence_code, absence_display, source_attributes, correlation_id,
+               provenance_kind, provenance_detail, documented_time, documented_utc_offset_minutes,
+               documented_precision, author_id
+        from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
+      ) o), '[]'::jsonb) as occurrences`, [report.id]);
+    return {
+      schemaVersion: 1,
+      report: {
+        id: report.id,
+        organizationId: report.organization_id,
+        incidentId: report.incident_id,
+        patientId: report.patient_id,
+        agencyDemographicVersionId: report.agency_demographic_version_id,
+        formVersionId: report.form_version_id,
+        catalogReleaseId: report.catalog_release_id,
+        documentingUserId: report.documenting_user_id,
+        revision
+      },
+      groups: content[0]!.groups,
+      occurrences: content[0]!.occurrences
+    };
+  }
+
+  private async reportingDate(
+    manager: EntityManager,
+    report: ReportRow,
+    signedAt: string
+  ): Promise<{ date: string; source: SignedReportResult["reportingDateSource"] }> {
+    if (report.reporting_date) return { date: report.reporting_date, source: "service-date" };
+    const rows = await manager.query<Array<{ clinical_date: string | null; server_date: string | null }>>(`select
+      least(min(value_date), min((value_datetime at time zone 'UTC')::date),
+            min((documented_time at time zone 'UTC')::date)) as clinical_date,
+      min((server_received_time at time zone 'UTC')::date) as server_date
+      from clinical.element_occurrence where report_id = $1 and tombstoned_at is null`, [report.id]);
+    if (rows[0]?.clinical_date) return { date: rows[0].clinical_date, source: "earliest-clinical-time" };
+    if (rows[0]?.server_date) return { date: rows[0].server_date, source: "earliest-server-time" };
+    return { date: signedAt.slice(0, 10), source: "signing-time" };
+  }
+
+  private async appendAudit(
+    manager: EntityManager,
+    report: ReportRow,
+    command: SignReportCommand,
+    snapshotId: string,
+    canonicalSha256: string,
+    signedAt: string
+  ): Promise<void> {
+    const prior = await manager.query<Array<{ report_sequence: string | number; event_hash: string }>>(`
+      select report_sequence, event_hash from clinical_audit.event
+      where report_id = $1 order by report_sequence desc limit 1`, [report.id]);
+    const sequence = prior[0] ? Number(prior[0].report_sequence) + 1 : 1;
+    const previousHash = prior[0]?.event_hash ?? null;
+    const nextValue = { snapshotId, signedRevision: Number(report.revision), canonicalSha256 };
+    const eventHash = commandSha256({
+      reportId: report.id, reportSequence: sequence, actorId: command.signerId,
+      actorPersona: command.actorPersona ?? null, sessionId: command.sessionId ?? null,
+      deviceId: command.deviceId ?? null, clientTime: command.clientTime ?? null,
+      serverTime: signedAt, action: "sign", targetType: "signed_snapshot", targetId: snapshotId,
+      priorValue: { status: "draft", revision: Number(report.revision) }, newValue: nextValue, previousHash
+    });
+    await manager.query(`insert into clinical_audit.event
+      (report_id, report_sequence, actor_id, actor_persona, session_id, device_id, client_time,
+       server_time, action, target_type, target_id, prior_value, new_value, previous_hash, event_hash)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, 'sign', 'signed_snapshot', $9,
+              $10::jsonb, $11::jsonb, $12, $13)`,
+    [report.id, sequence, command.signerId, command.actorPersona ?? null, command.sessionId ?? null,
+      command.deviceId ?? null, command.clientTime ?? null, signedAt, snapshotId,
+      JSON.stringify({ status: "draft", revision: Number(report.revision) }), JSON.stringify(nextValue),
+      previousHash, eventHash]);
+  }
+
+  private finding(code: string, path: string, message: string): SigningFinding {
+    return { severity: "error", code, path, message, ruleVersion: RULE_VERSION };
+  }
+
+  private async replay(
+    manager: EntityManager,
+    commandId: string,
+    digest: string,
+    reportId: string
+  ): Promise<SignedReportResult | null> {
+    const rows = await manager.query<ReceiptRow[]>(
+      "select * from clinical.command_receipt where idempotency_key = $1", [commandId]);
+    const receipt = rows[0];
+    if (!receipt) return null;
+    if (receipt.command_type !== "sign-report" || receipt.request_sha256 !== digest || receipt.report_id !== reportId) {
+      throw new ConflictException("The command identity was already used with different content");
+    }
+    return receipt.response_body as SignedReportResult;
+  }
+
+  private rethrowDatabaseConflict(error: unknown): never {
+    if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
+    if (typeof error === "object" && error !== null && "code" in error &&
+        ["23503", "23505", "23514", "23P01", "40001", "40P01"].includes(String(error.code))) {
+      throw new ConflictException("The signing command conflicts with existing clinical data");
+    }
+    throw error;
+  }
+}

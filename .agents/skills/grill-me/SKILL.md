@@ -16,6 +16,6 @@ Interview the user about every material aspect of their plan or design until bot
 5. With every question, provide a recommended answer and a concise rationale. Make the recommendation specific enough for the user to accept, reject, or modify.
 6. Use each answer to resolve the current branch and choose the next unresolved, dependency-appropriate question.
 7. Continue until all material branches, assumptions, constraints, tradeoffs, failure modes, interfaces, and success criteria are resolved.
-8. When shared understanding is reached, summarize the agreed design, decisions, remaining risks, and next actions.
+8. When shared understanding is reached, summarize the agreed design, decisions, remaining risks, and next actions. Do not write code, only summarize.
 
 Do not stop merely because the initial plan sounds reasonable. Probe ambiguity and consequential edge cases while avoiding questions already answered by the user, repository, or prior discussion.
