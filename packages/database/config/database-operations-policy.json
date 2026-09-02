@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "1.0.0",
+  "policyVersion": "database-operations-1.0.0-proposed",
+  "reviewStatus": "pending-installation-owner-approval",
+  "backup": {
+    "destinationTemplate": "s3://open-triage-database-backups/<installation-id>/",
+    "accountBoundary": "separate-security-account",
+    "encryption": "deployment-kms-key",
+    "immutability": "object-lock-compliance-mode",
+    "continuousWalArchive": true,
+    "baseBackupFrequencyHours": 24,
+    "retentionDays": 35
+  },
+  "recoveryObjectives": {
+    "rpoMinutes": 5,
+    "rtoHours": 4,
+    "exerciseFrequencyDays": 90
+  },
+  "reportingReplica": {
+    "topology": "one-asynchronous-physical-hot-standby",
+    "placement": "same-region-different-availability-zone",
+    "analystTrafficOnly": true,
+    "maximumReplayLagSeconds": 300,
+    "failClosedWhenLagExceedsTarget": true
+  },
+  "credentials": {
+    "analystAccess": "per-user-short-lived-gateway-credential",
+    "analystMaximumLifetimeMinutes": 15,
+    "serviceCredentialMaximumLifetimeDays": 30,
+    "rotationOverlapHours": 24,
+    "breakGlassMaximumLifetimeMinutes": 60,
+    "groupRolesRemainNoLogin": true
+  },
+  "monitoring": {
+    "mechanism": "postgres-exporter-and-open-triage-operations-views",
+    "queryAuditCollector": "trusted-analyst-gateway-to-primary-metadata-table",
+    "queryAuditRetentionDays": 365,
+    "statementTextCaptured": false,
+    "bindValuesCaptured": false,
+    "returnedClinicalValuesCaptured": false,
+    "postgresSettings": {
+      "log_statement": "none",
+      "log_min_duration_statement": -1,
+      "log_parameter_max_length": 0,
+      "log_parameter_max_length_on_error": 0
+    }
+  }
+}
