@@ -404,5 +404,102 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "stale" } }]
   });
   assert.equal(stale.response.status, 409);
-  assert.equal((await client.query("select revision from clinical.report where id = $1", [reportId])).rows[0].revision, "2");
+  assert.equal(stale.payload.currentRevision, 2);
+  assert.deepEqual((await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select value_text from clinical.element_occurrence where id = $2) as current_text`,
+  [reportId, textOccurrenceId])).rows[0], { revision: "2", changes: 2, current_text: "updated" });
+
+  const concurrentCommands = ["device-a", "device-b"].map((value) => ({
+    commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: value,
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value } }]
+  }));
+  const concurrent = await Promise.all(concurrentCommands.map((command) =>
+    request(`/reports/${reportId}/draft-changes`, "POST", command)));
+  assert.deepEqual(concurrent.map(({ response }) => response.status).sort(), [201, 409]);
+  const acceptedIndex = concurrent.findIndex(({ response }) => response.status === 201);
+  assert.equal(concurrent[acceptedIndex].payload.revision, 3);
+  const concurrentState = (await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select value_text from clinical.element_occurrence where id = $2) as current_text`,
+  [reportId, textOccurrenceId])).rows[0];
+  assert.deepEqual(concurrentState, {
+    revision: "3", changes: 3,
+    current_text: concurrentCommands[acceptedIndex].occurrences[0].value.value
+  });
+
+  const deleteCommand = {
+    commandId: randomUUID(), expectedRevision: 3, authorId: userId,
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, tombstone: true }]
+  };
+  const deleted = await request(`/reports/${reportId}/draft-changes`, "POST", deleteCommand);
+  assert.equal(deleted.response.status, 201, JSON.stringify(deleted.payload));
+  assert.equal(deleted.payload.revision, 4);
+  const deleteRetry = await request(`/reports/${reportId}/draft-changes`, "POST", deleteCommand);
+  assert.equal(deleteRetry.response.status, 201);
+  assert.deepEqual(deleteRetry.payload, deleted.payload);
+  const deletedState = (await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select count(*)::integer from clinical.element_occurrence where id = $2) as identities,
+    (select tombstoned_at is not null from clinical.element_occurrence where id = $2) as tombstoned`,
+  [reportId, textOccurrenceId])).rows[0];
+  assert.deepEqual(deletedState, { revision: "4", changes: 4, identities: 1, tombstoned: true });
+
+  const resurrection = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 4, authorId: userId,
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "resurrected" } }]
+  });
+  assert.equal(resurrection.response.status, 409);
+  assert.deepEqual((await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select tombstoned_at is not null from clinical.element_occurrence where id = $2) as tombstoned`,
+  [reportId, textOccurrenceId])).rows[0], { revision: "4", changes: 4, tombstoned: true });
+
+  await client.query(`
+    create function clinical.integration_reject_draft_change()
+    returns trigger language plpgsql as $$
+    begin
+      if new.device_id = 'force-rollback' then raise exception 'forced draft rollback'; end if;
+      return new;
+    end;
+    $$;
+    create trigger integration_reject_draft_change
+    before insert on clinical.report_change
+    for each row execute function clinical.integration_reject_draft_change();
+  `);
+  const rollbackOccurrenceId = randomUUID();
+  const rollbackCommand = {
+    commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "force-rollback",
+    occurrences: [{ id: rollbackOccurrenceId, elementId: ids.text_id, ordinal: 6,
+      value: { kind: "text", value: "must roll back" } }]
+  };
+  try {
+    const rolledBack = await request(`/reports/${reportId}/draft-changes`, "POST", rollbackCommand);
+    assert.equal(rolledBack.response.status, 500);
+  } finally {
+    await client.query("drop trigger integration_reject_draft_change on clinical.report_change");
+    await client.query("drop function clinical.integration_reject_draft_change()");
+  }
+  assert.deepEqual((await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select count(*)::integer from clinical.element_occurrence where id = $2) as occurrences,
+    (select count(*)::integer from clinical.command_receipt where idempotency_key = $3) as receipts`,
+  [reportId, rollbackOccurrenceId, rollbackCommand.commandId])).rows[0],
+  { revision: "4", changes: 4, occurrences: 0, receipts: 0 });
+
+  const retriedAfterRollback = await request(`/reports/${reportId}/draft-changes`, "POST", rollbackCommand);
+  assert.equal(retriedAfterRollback.response.status, 201, JSON.stringify(retriedAfterRollback.payload));
+  assert.equal(retriedAfterRollback.payload.revision, 5);
+  assert.deepEqual((await client.query(`select
+    (select revision from clinical.report where id = $1) as revision,
+    (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
+    (select count(*)::integer from clinical.element_occurrence where id = $2) as occurrences,
+    (select count(*)::integer from clinical.command_receipt where idempotency_key = $3) as receipts`,
+  [reportId, rollbackOccurrenceId, rollbackCommand.commandId])).rows[0],
+  { revision: "5", changes: 5, occurrences: 1, receipts: 1 });
 });
