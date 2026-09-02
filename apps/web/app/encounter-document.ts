@@ -271,7 +271,14 @@ export function loadEncounterDocument(
 }
 
 export function serializeEncounterDocument(document: EncounterDocument): string {
-  return JSON.stringify(loadEncounterDocument(document), null, 2);
+  return `${JSON.stringify(sortObjectKeys(loadEncounterDocument(document)), null, 2)}\n`;
+}
+
+/** Recursively orders object members while retaining the meaningful order of repeats. */
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortObjectKeys(value[key])]));
 }
 
 export function deserializeEncounterDocument(
