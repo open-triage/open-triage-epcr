@@ -50,6 +50,14 @@ const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "checklist", label: "Checklist" },
 ];
 
+const quickActionText: Record<QuickActionId, string> = {
+  vitals: "Vitals",
+  medication: "Medications",
+  procedure: "Procedures",
+  note: "Notes",
+  patient: "Patient",
+};
+
 function localClinicalTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -90,6 +98,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
+  const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
     for (const finding of reviewFindings) {
@@ -350,7 +359,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
+        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
       </nav>
 
       <nav className="view-switcher" aria-label="Encounter views">
@@ -376,7 +385,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
 
       {(shell.view === "timeline" || shell.view === "checklist") && (
         <div className="sign-action-bar">
-          <button type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
+          <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
         </div>
       )}
 
@@ -472,6 +481,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
+          validationClear={validationClear}
           signing={signing}
           signError={signError}
           onFinding={editValidationFinding}
@@ -582,12 +592,13 @@ export default function Home() {
   )}</ClinicianSessionGate>;
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, signing, signError, onFinding, onWarning, onSign }: {
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, onFinding, onWarning, onSign }: {
   readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
+  readonly validationClear: boolean;
   readonly signing: boolean;
   readonly signError: string | null;
   readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
@@ -605,7 +616,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, signing, s
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
 
       <div className="review-actions">
-        <button type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
+        <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
       </div>
       {!canFinish && <p className="finish-help" role="status">Signing stays blocked until errors are fixed and every warning is acknowledged.</p>}
       {signError && <p className="finish-help" role="alert">{signError}</p>}

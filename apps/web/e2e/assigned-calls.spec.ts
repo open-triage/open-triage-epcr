@@ -292,6 +292,10 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await expect(cards.nth(0)).toContainText("Sep 3", { ignoreCase: true });
   await expect(cards.nth(0)).toContainText("Validation errors2");
   await expect(cards.nth(1)).toContainText("SYN-20260903-000");
+  await expect(cards.nth(0)).toHaveAttribute("data-validation-status", "error");
+  await expect(cards.nth(1)).toHaveAttribute("data-validation-status", "clear");
+  const callNumberColors = await cards.locator(".assigned-call-title strong").evaluateAll((calls) => calls.map((call) => getComputedStyle(call).color));
+  expect(callNumberColors[0]).not.toBe(callNumberColors[1]);
 
   await cards.nth(0).getByRole("button", { name: "Reopen call" }).click();
   const active = page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true });

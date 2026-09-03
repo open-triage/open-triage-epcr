@@ -91,6 +91,7 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
     "Add vital signs", "Add medication", "Add procedure", "Add clinical note",
   ]);
+  expect(await page.locator(".quick-actions button span").allTextContents()).toEqual(["Vitals", "Medications", "Procedures", "Notes"]);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 
@@ -160,6 +161,35 @@ test("all four documentation dialogs share a slightly portrait, near-square size
     await page.getByRole("button", { name: closeLabel }).click();
   }
   expect(new Set(sizes).size).toBe(1);
+});
+
+test("review and sign actions stay at the viewport bottom and turn green when validation is clear", async ({ page }) => {
+  await openCall(page);
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  const values = [
+    [/Systolic BP/, "120"],
+    [/Diastolic BP/, "80"],
+    [/Heart rate/, "70"],
+    [/SpO₂/, "98"],
+    [/Respiratory rate/, "16"],
+    [/GCS total/, "15"],
+    [/Pain score/, "0"],
+  ] as const;
+  for (const [label, value] of values) await dialog.getByRole("textbox", { name: label }).fill(value);
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+
+  const reviewButton = page.getByRole("button", { name: "Review & sign" });
+  await expect(reviewButton).toHaveClass(/validation-clear/);
+  expect(await reviewButton.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe("rgb(0, 120, 58)");
+  const reviewBar = await page.locator(".sign-action-bar").boundingBox();
+  expect(Math.abs((reviewBar!.y + reviewBar!.height) - page.viewportSize()!.height)).toBeLessThanOrEqual(1);
+
+  await reviewButton.click();
+  const signButton = page.getByRole("button", { name: "Sign record" });
+  await expect(signButton).toHaveClass(/validation-clear/);
+  const signBar = await page.locator(".review-actions").boundingBox();
+  expect(Math.abs((signBar!.y + signBar!.height) - page.viewportSize()!.height)).toBeLessThanOrEqual(1);
 });
 
 test("vital fields retain focus while values are entered", async ({ page }) => {

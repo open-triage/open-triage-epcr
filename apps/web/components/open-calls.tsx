@@ -138,7 +138,11 @@ export function OpenCalls({
       {calls.length > 0 && (
         <ul className="assigned-call-list">
           {calls.map((call) => (
-            <li key={call.reportId} className="assigned-call-card open-call-card">
+            <li
+              key={call.reportId}
+              className={`assigned-call-card open-call-card validation-${call.validationErrorCount > 0 ? "error" : "clear"}`}
+              data-validation-status={call.validationErrorCount > 0 ? "error" : "clear"}
+            >
               <div className="assigned-call-title">
                 <strong>{call.callNumber}</strong>
                 <span>{call.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
