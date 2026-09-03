@@ -26,6 +26,7 @@ import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 import { patientSummary } from "./patient-document";
 import { documentTimeline, incidentSummary } from "./incident-document";
+import { ClinicianSessionGate } from "../components/clinician-session-gate";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -37,7 +38,7 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-export default function Home() {
+function EncounterWorkspace() {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -456,6 +457,10 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+export default function Home() {
+  return <ClinicianSessionGate><EncounterWorkspace /></ClinicianSessionGate>;
 }
 
 function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {

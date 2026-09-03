@@ -13,6 +13,10 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
 
+  await expect(page.getByLabel("Username")).toHaveValue("demo.clinician");
+  await expect(page.getByLabel("Password")).toHaveValue("open-triage-demo");
+  await page.getByRole("button", { name: "Sign in" }).click();
+
   const safetyNotice = page.getByRole("note", { name: "Prototype safety notice" });
   await expect(safetyNotice).toContainText("Synthetic data only");
   await expect(safetyNotice).toContainText("not for clinical use");

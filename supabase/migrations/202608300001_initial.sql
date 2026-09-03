@@ -28,6 +28,7 @@ create table app_identity.organization (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   retention_years integer not null default 10 check (retention_years between 1 and 100),
+  shift_session_duration_hours integer not null default 14 check (shift_session_duration_hours between 1 and 72),
   deployment_timezone text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
