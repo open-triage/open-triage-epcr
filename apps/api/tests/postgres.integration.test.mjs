@@ -668,8 +668,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const mergeReportId = randomUUID();
   const mergeCreated = await request("/reports", "POST", {
     commandId: randomUUID(), reportId: mergeReportId, incidentId: randomUUID(), patientId: randomUUID(),
-    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown",
-    patientPseudonymousKey: "d".repeat(64)
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
   });
   assert.equal(mergeCreated.response.status, 201, JSON.stringify(mergeCreated.payload));
   const mergeOccurrenceA = randomUUID();

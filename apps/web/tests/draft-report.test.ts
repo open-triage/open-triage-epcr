@@ -26,7 +26,11 @@ test("the draft adapter retains stable report, group, and occurrence identities"
 
 test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {
   const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   let request: { input: string; init?: RequestInit } | undefined;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     request = { input: String(input), init };
     return new Response(JSON.stringify({ id: reportId, status: "signed" }), { status: 201 });
@@ -42,6 +46,10 @@ test("signing sends the current revision, clinician attestation, and warning ack
     assert.equal(body.attestation.meaning, "clinician approval");
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
   }
 });
 
