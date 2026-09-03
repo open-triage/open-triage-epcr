@@ -6,7 +6,7 @@ import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { clearShellState, loadShellStateResult, saveShellState } from "./local-persistence";
+import { clearShellState, loadShellStateResult, saveReportSyncStatus, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -161,6 +161,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     if (!restored) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
+    saveReportSyncStatus(window.localStorage, report.id, "Saving");
     pendingSave.current = {
       state: shell,
       commandId: pendingSave.current?.commandId ?? crypto.randomUUID(),
@@ -170,6 +171,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
   }, [flushSave, restored, shell, report]);
+
+  useEffect(() => {
+    if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);
+  }, [report, syncStatus]);
 
   useEffect(() => {
     const retry = () => { if (pendingSave.current) void flushSave(); };

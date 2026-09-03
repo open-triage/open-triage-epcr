@@ -5,6 +5,7 @@ import { migrateLegacyIncidentDocument } from "./incident-document";
 import { bundledEncounterDefinition, createInitialShellState, type ShellState } from "./standard-encounter";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
+export const REPORT_SYNC_STORAGE_PREFIX = "open-triage:report-sync-v1";
 export const RECOVERY_STORAGE_KEY = `${STORAGE_KEY}:recovery`;
 export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
 export const PERSISTENCE_VERSION = 4 as const;
@@ -14,6 +15,14 @@ export const ENCOUNTER_EXTENSION_VERSION = "1.0.0" as const;
 
 export function reportStorageKey(reportId?: string): string {
   return reportId ? `${STORAGE_KEY}:report:${reportId}` : STORAGE_KEY;
+}
+
+export function reportSyncStorageKey(reportId: string): string {
+  return `${REPORT_SYNC_STORAGE_PREFIX}:${reportId}`;
+}
+
+export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string, status: "Saved" | "Saving" | "Offline" | "Conflict"): void {
+  storage.setItem(reportSyncStorageKey(reportId), status);
 }
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -215,6 +224,18 @@ export function loadShellState(storage: LocalStoragePort, definition: EncounterD
 
 export function clearShellState(storage: LocalStoragePort, reportId?: string): void {
   storage.removeItem(reportStorageKey(reportId));
+  if (reportId) storage.removeItem(reportSyncStorageKey(reportId));
   storage.removeItem(RECOVERY_STORAGE_KEY);
   LEGACY_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
+}
+
+/** Removes only report-scoped state confirmed complete by the server. */
+export function purgeCompletedReportCaches(storage: LocalStoragePort, reportIds: ReadonlyArray<string>): void {
+  reportIds.forEach((reportId) => {
+    const syncKey = reportSyncStorageKey(reportId);
+    const status = storage.getItem(syncKey);
+    if (status && status !== "Saved") return;
+    storage.removeItem(reportStorageKey(reportId));
+    storage.removeItem(syncKey);
+  });
 }

@@ -24,6 +24,7 @@ export function ClinicianSessionGate({ children }: {
   const [submitting, setSubmitting] = useState(false);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   const [openCallsRevision, setOpenCallsRevision] = useState(0);
+  const [lifecycleNotice, setLifecycleNotice] = useState<string | null>(null);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -113,27 +114,37 @@ export function ClinicianSessionGate({ children }: {
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       <>
-        <OpenCalls key={openCallsRevision} session={session} onReopened={(opened) => setActiveReport({
-          id: opened.report.id,
-          revision: opened.report.revision,
-          formVersionId: opened.report.formVersionId,
-          callNumber: opened.callNumber
-        })} />
-        <AssignedCalls session={session} onOpened={(opened) => setActiveReport({
-          id: opened.report.id,
-          revision: opened.report.revision,
-          formVersionId: opened.report.formVersionId
-        })} />
+        <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onCompleted={() => {
+          setActiveReport(null);
+          setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
+        }} onReopened={(opened) => {
+          setLifecycleNotice(null);
+          setActiveReport({
+            id: opened.report.id,
+            revision: opened.report.revision,
+            formVersionId: opened.report.formVersionId,
+            callNumber: opened.callNumber
+          });
+        }} />
+        <AssignedCalls session={session} onOpened={(opened) => {
+          setLifecycleNotice(null);
+          setActiveReport({
+            id: opened.report.id,
+            revision: opened.report.revision,
+            formVersionId: opened.report.formVersionId
+          });
+        }} />
       </>
+      {lifecycleNotice && <p className="assignment-notice active-report-completed" role="status">{lifecycleNotice}</p>}
       {activeReport &&
         <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
+      {!lifecycleNotice && (typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
-      } }) : children}
+      } }) : children)}
     </div>
   );
 }

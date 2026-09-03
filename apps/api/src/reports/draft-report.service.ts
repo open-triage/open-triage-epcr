@@ -53,6 +53,7 @@ type ElementMetadata = {
 
 type OpenCallRow = {
   report_id: string;
+  status: "draft" | "signed";
   call_number: string;
   last_saved_at: Date | string;
   revision: string | number;
@@ -256,7 +257,7 @@ export class DraftReportService {
   async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
     const session = this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<OpenCallRow[]>(`
-      select r.id as report_id, ca.call_number, r.updated_at as last_saved_at,
+      select r.id as report_id, r.status, ca.call_number, r.updated_at as last_saved_at,
              r.revision, r.form_version_id, r.catalog_release_id,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
                as validation_error_count
@@ -264,12 +265,12 @@ export class DraftReportService {
       join clinical.call_assignment ca
         on ca.organization_id = r.organization_id and ca.report_id = r.id
       left join clinical.validation_finding vf on vf.report_id = r.id
-      where r.organization_id = $1 and r.documenting_user_id = $2 and r.status = 'draft'
+      where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
       group by r.id, ca.call_number
       order by r.updated_at desc, r.id
     `, [session.organization.id, session.user.id]);
     return {
-      openCalls: rows.map((row) => ({
+      openCalls: rows.filter((row) => row.status === "draft").map((row) => ({
         reportId: row.report_id,
         callNumber: row.call_number,
         lastSavedAt: new Date(row.last_saved_at).toISOString(),
@@ -279,6 +280,7 @@ export class DraftReportService {
         formVersionId: row.form_version_id,
         catalogReleaseId: row.catalog_release_id
       })),
+      completedReportIds: rows.filter((row) => row.status === "signed").map((row) => row.report_id),
       refreshedAt: now.toISOString()
     };
   }

@@ -105,6 +105,7 @@ export interface OpenCall {
 
 export interface OpenCallsResponse {
   openCalls: OpenCall[];
+  completedReportIds: string[];
   refreshedAt: string;
 }
 

@@ -1,8 +1,9 @@
 "use client";
 
 import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-triage/contracts";
-import { useCallback, useEffect, useState } from "react";
-import { fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
+import { purgeCompletedReportCaches } from "../app/local-persistence";
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -15,9 +16,13 @@ function savedTime(value: string): string {
 
 export function OpenCalls({
   session,
+  activeReportId,
+  onCompleted,
   onReopened
 }: {
   readonly session: ClinicianSession;
+  readonly activeReportId?: string;
+  readonly onCompleted?: (reportId: string) => void;
   readonly onReopened?: (opened: ReopenOpenCallResponse) => void;
 }) {
   const [calls, setCalls] = useState<OpenCall[]>([]);
@@ -25,20 +30,31 @@ export function OpenCalls({
   const [refreshing, setRefreshing] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const callsRef = useRef<OpenCall[]>([]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const response = await fetchOpenCalls(session.accessToken);
+      const completedReportIds = response.completedReportIds ?? [];
+      const completedIds = new Set(completedReportIds);
+      const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
+      purgeCompletedReportCaches(window.localStorage, completedReportIds);
+      callsRef.current = response.openCalls;
       setCalls(response.openCalls);
       setLoaded(true);
       setError(null);
+      if (removed.length > 0) setNotice(removed.length === 1
+        ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
+        : `${removed.length} calls were completed on the stationary interface.`);
+      if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Open calls could not be refreshed.");
     } finally {
       setRefreshing(false);
     }
-  }, [session.accessToken]);
+  }, [activeReportId, onCompleted, session.accessToken]);
 
   const reopen = useCallback(async (call: OpenCall) => {
     setReopeningId(call.reportId);
@@ -55,7 +71,24 @@ export function OpenCalls({
   }, [onReopened, session.accessToken]);
 
   useEffect(() => {
+    let pollTimer: number | null = null;
+    const startOrPausePolling = () => {
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      pollTimer = document.visibilityState === "visible"
+        ? window.setInterval(() => void refresh(), ASSIGNED_CALL_POLL_INTERVAL_MS)
+        : null;
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "visible") void refresh();
+      startOrPausePolling();
+    };
     queueMicrotask(() => void refresh());
+    startOrPausePolling();
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
   }, [refresh]);
 
   return (
@@ -69,6 +102,7 @@ export function OpenCalls({
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+      {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="assignment-empty">Loading open calls…</p>}
       {loaded && calls.length === 0 && <p className="assignment-empty">You have no open calls.</p>}

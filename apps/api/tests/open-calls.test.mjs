@@ -27,12 +27,14 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     return [
       {
         report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
+        status: "draft",
         last_saved_at: "2026-09-03T14:00:00.000Z", revision: "4",
         form_version_id: "52000000-0000-4000-8000-000000000002", catalog_release_id: "62000000-0000-4000-8000-000000000002",
         validation_error_count: 2
       },
       {
         report_id: "42000000-0000-4000-8000-000000000001", call_number: "CALL-OLD",
+        status: "draft",
         last_saved_at: new Date("2026-09-03T13:00:00.000Z"), revision: 1,
         form_version_id: "52000000-0000-4000-8000-000000000001", catalog_release_id: "62000000-0000-4000-8000-000000000001",
         validation_error_count: "0"
@@ -52,9 +54,27 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     catalogReleaseId: "62000000-0000-4000-8000-000000000002"
   });
   assert.deepEqual(queries[0].parameters, [ownerSession.organization.id, ownerSession.user.id]);
-  assert.match(queries[0].sql, /r\.documenting_user_id = \$2 and r\.status = 'draft'/);
+  assert.deepEqual(result.completedReportIds, []);
+  assert.match(queries[0].sql, /r\.documenting_user_id = \$2 and r\.status in \('draft', 'signed'\)/);
   assert.match(queries[0].sql, /order by r\.updated_at desc/);
   assert.match(queries[0].sql, /vf\.severity = 'error' and vf\.revision = r\.revision/);
+});
+
+test("stationary-completed reports are returned as reconciliation identities, not open calls", async () => {
+  const completedReportId = "42000000-0000-4000-8000-000000000003";
+  const dataSource = { query: async () => [{
+    report_id: completedReportId, status: "signed", call_number: "CALL-COMPLETE",
+    last_saved_at: "2026-09-03T14:10:00.000Z", revision: 5,
+    form_version_id: "52000000-0000-4000-8000-000000000003",
+    catalog_release_id: "62000000-0000-4000-8000-000000000003",
+    validation_error_count: 0
+  }] };
+  const service = new DraftReportService(dataSource, sessions());
+
+  const result = await service.listOpen(ownerSession.accessToken);
+
+  assert.deepEqual(result.openCalls, []);
+  assert.deepEqual(result.completedReportIds, [completedReportId]);
 });
 
 test("reopening restores the creator's report with its pinned form and saved content", async () => {
