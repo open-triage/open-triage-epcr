@@ -139,6 +139,67 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   expect(opens).toBe(2);
 });
 
+test("encounter edits debounce through the revisioned draft API and Save & close awaits persistence", async ({ page }) => {
+  const savedCommands: Array<Record<string, unknown>> = [];
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as Record<string, unknown>;
+    savedCommands.push(command);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: Number(command.expectedRevision) + 1
+    }) });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Persist this without completing validation");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saving");
+
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.locator(".active-report-notice")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
+  expect(savedCommands).toHaveLength(1);
+  expect(savedCommands[0]?.expectedRevision).toBe(0);
+  expect(savedCommands[0]?.commandId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(JSON.stringify(savedCommands[0])).toContain("Persist this without completing validation");
+});
+
+test("draft synchronization exposes Saved, Saving, Offline, and Conflict and retries one command identity", async ({ page }) => {
+  const commandIds: string[] = [];
+  let requests = 0;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    requests += 1;
+    const command = route.request().postDataJSON() as { commandId: string; expectedRevision: number };
+    commandIds.push(command.commandId);
+    if (requests === 1) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: openedAssignment.report.id, status: "draft", revision: 1 }) });
+    if (requests === 2) return route.abort("internetdisconnected");
+    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "Draft revision is stale" }) });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saving");
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Offline draft");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Offline", { timeout: 3_000 });
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Conflict", { timeout: 3_000 });
+  expect(commandIds[1]).toBe(commandIds[2]);
+
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.locator(".active-report-notice")).toHaveCount(0);
+});
+
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.abort("internetdisconnected"));
