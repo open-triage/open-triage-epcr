@@ -13,13 +13,17 @@ import {
 } from "../app/clinician-session";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
+import type { ActiveDraftReport } from "../app/draft-report";
 
-export function ClinicianSessionGate({ children }: { readonly children: ReactNode }) {
+export function ClinicianSessionGate({ children }: {
+  readonly children: ReactNode | ((context: { session: ClinicianSession; report: ActiveDraftReport | null; closeReport: () => void }) => ReactNode);
+}) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [activeReport, setActiveReport] = useState<{ id: string; formVersionId: string; callNumber?: string } | null>(null);
+  const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
+  const [openCallsRevision, setOpenCallsRevision] = useState(0);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -108,21 +112,28 @@ export function ClinicianSessionGate({ children }: { readonly children: ReactNod
         <span>Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
-      <OpenCalls session={session} onReopened={(opened) => setActiveReport({
-        id: opened.report.id,
-        formVersionId: opened.report.formVersionId,
-        callNumber: opened.callNumber
-      })} />
-      <AssignedCalls session={session} onOpened={(opened) => setActiveReport({
-        id: opened.report.id,
-        formVersionId: opened.report.formVersionId
-      })} />
-      {activeReport && (
+      <>
+        <OpenCalls key={openCallsRevision} session={session} onReopened={(opened) => setActiveReport({
+          id: opened.report.id,
+          revision: opened.report.revision,
+          formVersionId: opened.report.formVersionId,
+          callNumber: opened.callNumber
+        })} />
+        <AssignedCalls session={session} onOpened={(opened) => setActiveReport({
+          id: opened.report.id,
+          revision: opened.report.revision,
+          formVersionId: opened.report.formVersionId
+        })} />
+      </>
+      {activeReport &&
         <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
-      )}
-      {children}
+      }
+      {typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
+        setActiveReport(null);
+        setOpenCallsRevision((value) => value + 1);
+      } }) : children}
     </div>
   );
 }

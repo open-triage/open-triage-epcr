@@ -27,6 +27,14 @@ import { localClinicalDate } from "./time-picker";
 import { patientSummary } from "./patient-document";
 import { documentTimeline, incidentSummary } from "./incident-document";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
+import {
+  DRAFT_SAVE_DEBOUNCE_MS,
+  saveDraftReport,
+  shellStateToDraftMutations,
+  type ActiveDraftReport,
+  type DraftSyncStatus,
+} from "./draft-report";
+import type { ClinicianSession } from "@open-triage/contracts";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -38,7 +46,11 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace() {
+function EncounterWorkspace({ session, report, onSaveAndClose }: {
+  readonly session: ClinicianSession;
+  readonly report: ActiveDraftReport | null;
+  readonly onSaveAndClose: () => void;
+}) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -46,6 +58,12 @@ function EncounterWorkspace() {
   const [patientOpen, setPatientOpen] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
+  const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
+  const revision = useRef(report?.revision ?? 0);
+  const pendingSave = useRef<{ state: ShellState; commandId: string; clientTime: string } | null>(null);
+  const activeSave = useRef<Promise<void> | null>(null);
+  const lastSaveFailed = useRef(false);
+  const saveTimer = useRef<number | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -90,17 +108,77 @@ function EncounterWorkspace() {
   }, [activeDialog]);
 
   useEffect(() => {
-    const result = loadShellStateResult(window.localStorage);
+    const result = loadShellStateResult(window.localStorage, bundledEncounterDefinition, report?.id);
     if (result.status === "restored") dispatch({ type: "state-restored", state: result.state });
     else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
     else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
     queueMicrotask(() => setRestored(true));
-  }, []);
+  }, [report?.id]);
+
+  const flushSave = useCallback(async (): Promise<void> => {
+    if (!report) return;
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (activeSave.current) {
+      await activeSave.current;
+      if (lastSaveFailed.current) return;
+    }
+    while (pendingSave.current) {
+      const queued = pendingSave.current;
+      pendingSave.current = null;
+      lastSaveFailed.current = false;
+      setSyncStatus("Saving");
+      const attempt = (async () => {
+        try {
+          const saved = await saveDraftReport(session.accessToken, report.id, {
+            commandId: queued.commandId,
+            expectedRevision: revision.current,
+            authorId: session.user.id,
+            deviceId: `web:${report.id}`,
+            clientTime: queued.clientTime,
+            ...shellStateToDraftMutations(report.id, queued.state),
+          });
+          revision.current = saved.revision;
+          setSyncStatus(pendingSave.current ? "Saving" : "Saved");
+        } catch (error) {
+          lastSaveFailed.current = true;
+          const reason = error instanceof Error ? error.message : "offline";
+          if (reason !== "conflict") pendingSave.current = queued; // preserve command identity for a retry.
+          setSyncStatus(reason === "conflict" ? "Conflict" : "Offline");
+        }
+      })();
+      activeSave.current = attempt;
+      await attempt;
+      activeSave.current = null;
+      if (lastSaveFailed.current) return;
+    }
+  }, [report, session.accessToken, session.user.id]);
 
   useEffect(() => {
-    if (restored) saveShellState(window.localStorage, shell);
-  }, [restored, shell]);
+    if (!restored) return;
+    saveShellState(window.localStorage, shell, report?.id);
+    if (!report) return;
+    pendingSave.current = {
+      state: shell,
+      commandId: pendingSave.current?.commandId ?? crypto.randomUUID(),
+      clientTime: pendingSave.current?.clientTime ?? new Date().toISOString(),
+    };
+    queueMicrotask(() => setSyncStatus("Saving"));
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
+  }, [flushSave, restored, shell, report]);
+
+  useEffect(() => {
+    const retry = () => { if (pendingSave.current) void flushSave(); };
+    window.addEventListener("online", retry);
+    return () => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      window.removeEventListener("online", retry);
+    };
+  }, [flushSave]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -190,7 +268,7 @@ function EncounterWorkspace() {
 
   function resetPrototype() {
     if (!window.confirm("Remove your notes and restore the original synthetic encounter?")) return;
-    clearShellState(window.localStorage);
+    clearShellState(window.localStorage, report?.id);
     dispatch({ type: "prototype-reset" });
   }
 
@@ -207,6 +285,10 @@ function EncounterWorkspace() {
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
 
       <header className="encounter-header">
+        {report && <div className="draft-actions">
+          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase()}`} role="status" aria-live="polite">{syncStatus}</span>
+          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
+        </div>}
         <div className="header-kicker">
           <span>{incidentEvents[0]?.time ?? "--:--"}</span>
           <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
@@ -460,7 +542,9 @@ function EncounterWorkspace() {
 }
 
 export default function Home() {
-  return <ClinicianSessionGate><EncounterWorkspace /></ClinicianSessionGate>;
+  return <ClinicianSessionGate>{({ session, report, closeReport }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} />
+  )}</ClinicianSessionGate>;
 }
 
 function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {
