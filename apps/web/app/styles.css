@@ -28,6 +28,25 @@ input, select, textarea { touch-action: manipulation; }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
 .authenticated-shell .safety-notice { top: 48px; }
 .authenticated-shell .quick-actions { top: 86px; }
+.assigned-calls { padding: 18px 16px 20px; border-bottom: 1px solid var(--line); background: #f3f7f4; }
+.assigned-calls-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.assigned-calls-heading h1 { margin: 2px 0 0; font-size: 26px; letter-spacing: -.025em; }
+.assigned-calls-heading button { min-width: 92px; padding: 7px 12px; border: 1px solid var(--green); border-radius: 6px; color: var(--green-dark); background: #fff; font-weight: 800; cursor: pointer; }
+.assigned-calls-heading button:disabled { opacity: .65; cursor: wait; }
+.assigned-call-list { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.assigned-call-card { padding: 14px; border: 1px solid #cfd7d0; border-left: 4px solid var(--green); border-radius: 7px; background: #fff; box-shadow: 0 2px 8px rgb(20 39 27 / 6%); }
+.assigned-call-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.assigned-call-title strong { overflow-wrap: anywhere; font-size: 18px; }
+.assigned-call-title span { padding: 4px 8px; border-radius: 999px; color: #fff; background: var(--green); font-size: 10px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.assigned-call-card > p { margin: 8px 0 12px; color: #343733; font-size: 14px; font-weight: 650; }
+.assigned-call-card dl { display: grid; grid-template-columns: 1fr 1.5fr; gap: 10px; margin: 0; }
+.assigned-call-card dl > div { display: grid; gap: 2px; }
+.assigned-call-card dt { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.assigned-call-card dd { margin: 0; font-size: 13px; font-weight: 650; }
+.assignment-empty, .assignment-error, .assignment-notice { margin: 12px 0 0; padding: 10px 12px; font-size: 13px; line-height: 1.35; }
+.assignment-empty { color: var(--muted); padding-inline: 0; }
+.assignment-error { border-left: 3px solid #a5342d; color: #812b26; background: #fff1f0; }
+.assignment-notice { border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; }
 .app-shell { min-height: 100dvh; max-width: 480px; margin: 0 auto; padding-bottom: calc(24px + env(safe-area-inset-bottom)); background: var(--paper); box-shadow: 0 0 36px rgb(20 39 27 / 12%); }
 .safety-notice { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 7px 12px; color: #fff; background: #2d332e; text-align: center; font-size: 12px; line-height: 1.2; }
 .safety-notice strong { text-transform: uppercase; letter-spacing: .045em; }

@@ -41,7 +41,8 @@ create table app_identity.app_user (
   active boolean not null default true,
   synthetic boolean not null default false,
   created_at timestamptz not null default now(),
-  deactivated_at timestamptz
+  deactivated_at timestamptz,
+  unique (organization_id, id)
 );
 
 create table app_identity.external_identity (
@@ -303,7 +304,8 @@ create table forms.form (
   slug text not null,
   name text not null,
   created_at timestamptz not null default now(),
-  unique (organization_id, slug)
+  unique (organization_id, slug),
+  unique (organization_id, id)
 );
 
 create table forms.custom_element_definition (
@@ -521,6 +523,30 @@ for each row execute function forms.prevent_published_form_child_mutation();
 create trigger publication_validation_immutable before insert or update or delete on forms.publication_validation
 for each row execute function forms.prevent_published_form_child_mutation();
 
+create table app_identity.operational_unit (
+  id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  organization_id uuid not null references app_identity.organization(id),
+  call_sign text not null,
+  name text not null,
+  default_form_id uuid not null,
+  active boolean not null default true,
+  synthetic boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (organization_id, call_sign),
+  unique (organization_id, id),
+  foreign key (organization_id, default_form_id) references forms.form(organization_id, id)
+);
+
+create table app_identity.unit_clinician (
+  organization_id uuid not null references app_identity.organization(id),
+  unit_id uuid not null,
+  user_id uuid not null,
+  assigned_at timestamptz not null default now(),
+  primary key (unit_id, user_id),
+  foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
+  foreign key (organization_id, user_id) references app_identity.app_user(organization_id, id)
+);
+
 create table clinical.incident (
   id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
   organization_id uuid not null references app_identity.organization(id),
@@ -530,7 +556,8 @@ create table clinical.incident (
   updated_at timestamptz not null default now(),
   expires_at timestamptz,
   synthetic boolean not null default false,
-  baseline boolean not null default false
+  baseline boolean not null default false,
+  unique (organization_id, id)
 );
 
 create table clinical.patient (
@@ -563,6 +590,7 @@ create table clinical.report (
   baseline boolean not null default false,
   check ((status = 'draft') or (reporting_date is not null and reporting_date_source is not null)),
   unique (id, catalog_release_id),
+  unique (organization_id, id),
   foreign key (organization_id, agency_demographic_version_id, catalog_release_id)
     references app_identity.agency_demographic_version(organization_id, id, catalog_release_id)
 );
@@ -570,6 +598,31 @@ create table clinical.report (
 create index report_incident_idx on clinical.report (incident_id);
 create index report_patient_idx on clinical.report (patient_id);
 create index report_status_updated_idx on clinical.report (status, updated_at);
+
+create table clinical.call_assignment (
+  id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  organization_id uuid not null references app_identity.organization(id),
+  unit_id uuid not null,
+  incident_id uuid not null,
+  call_number text not null,
+  dispatched_at timestamptz not null,
+  dispatch_reason text,
+  chief_complaint text,
+  status text not null default 'assigned' check (status in ('assigned', 'opened', 'canceled')),
+  report_id uuid,
+  synthetic boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, call_number),
+  check (dispatch_reason is not null or chief_complaint is not null),
+  check ((status = 'opened' and report_id is not null) or (status <> 'opened' and report_id is null)),
+  foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
+  foreign key (organization_id, incident_id) references clinical.incident(organization_id, id),
+  foreign key (organization_id, report_id) references clinical.report(organization_id, id)
+);
+
+create index call_assignment_unit_status_idx
+on clinical.call_assignment (unit_id, status, dispatched_at desc);
 
 create table clinical.report_contributor (
   report_id uuid not null references clinical.report(id) on delete cascade,

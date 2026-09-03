@@ -11,6 +11,7 @@ import {
   loadClinicianSession,
   storeClinicianSession
 } from "../app/clinician-session";
+import { AssignedCalls } from "./assigned-calls";
 
 export function ClinicianSessionGate({ children }: { readonly children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -104,6 +105,7 @@ export function ClinicianSessionGate({ children }: { readonly children: ReactNod
         <span>Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
+      <AssignedCalls session={session} />
       {children}
     </div>
   );

@@ -29,7 +29,10 @@ const ids = Object.freeze({
   responseField: "32000000-0000-4000-8000-00000000000b",
   incident: "32000000-0000-4000-8000-00000000000c",
   patient: "32000000-0000-4000-8000-00000000000d",
-  report: "32000000-0000-4000-8000-00000000000e"
+  report: "32000000-0000-4000-8000-00000000000e",
+  assignmentIncident: "32000000-0000-4000-8000-00000000000f",
+  unit: "32000000-0000-4000-8000-000000000010",
+  assignment: "32000000-0000-4000-8000-000000000011"
 });
 
 function stableValue(value) {
@@ -200,6 +203,38 @@ try {
     }
 
     await client.query(`
+      insert into app_identity.operational_unit
+        (id, organization_id, call_sign, name, default_form_id, synthetic)
+      values ($1, $2, 'Medic 32', 'Demo Medic Unit 32', $3, true)
+      on conflict do nothing
+    `, [ids.unit, ids.organization, ids.form]);
+    await client.query(`
+      insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
+      values ($3, $1, $2)
+      on conflict do nothing
+    `, [ids.unit, ids.clinician, ids.organization]);
+
+    await client.query(`
+      insert into clinical.incident
+        (id, organization_id, operational_state, dispatch_provenance, synthetic, baseline)
+      values ($1, $2, 'assigned', $3::jsonb, true, true)
+      on conflict do nothing
+    `, [ids.assignmentIncident, ids.organization, JSON.stringify({
+      fixture: "open-triage-synthetic-assignment-v1",
+      synthetic: true,
+      callNumber: "SYN-2026-0903-001",
+      dispatchedAt: "2026-09-03T12:00:00Z"
+    })]);
+    await client.query(`
+      insert into clinical.call_assignment
+        (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
+         dispatch_reason, status, synthetic)
+      values ($1, $2, $3, $4, 'SYN-2026-0903-001', '2026-09-03T12:00:00Z',
+              'Medical assistance requested', 'assigned', true)
+      on conflict do nothing
+    `, [ids.assignment, ids.organization, ids.unit, ids.assignmentIncident]);
+
+    await client.query(`
       insert into clinical.incident
         (id, organization_id, operational_state, dispatch_provenance, synthetic, baseline)
       values ($1, $2, 'created', $3::jsonb, true, true)
@@ -228,11 +263,16 @@ try {
              r.form_version_id, r.catalog_release_id, r.synthetic, r.baseline,
              fv.status as form_status, fv.definition_sha256 as form_sha256,
              adv.definition_sha256 as agency_sha256,
-             u.organization_id as user_organization_id, u.synthetic as user_is_synthetic
+             u.organization_id as user_organization_id, u.synthetic as user_is_synthetic,
+             ou.id as unit_id, ou.default_form_id, ca.id as assignment_id,
+             ca.status as assignment_status, ca.synthetic as assignment_is_synthetic
       from clinical.report r
       join forms.form_version fv on fv.id = r.form_version_id
       join app_identity.agency_demographic_version adv on adv.id = r.agency_demographic_version_id
       join app_identity.app_user u on u.id = r.documenting_user_id
+      join app_identity.unit_clinician uc on uc.user_id = u.id
+      join app_identity.operational_unit ou on ou.id = uc.unit_id
+      join clinical.call_assignment ca on ca.unit_id = ou.id
       where r.id = $1 and r.organization_id = $2
     `, [ids.report, ids.organization]);
     const expected = installation.rows[0];
@@ -241,7 +281,9 @@ try {
         expected.form_status !== "published" || expected.form_sha256 !== sha256(formDefinition) ||
         expected.agency_sha256 !== sha256(agencyDefinition) ||
         expected.user_organization_id !== ids.organization || !expected.synthetic || !expected.baseline ||
-        !expected.user_is_synthetic) {
+        !expected.user_is_synthetic || expected.unit_id !== ids.unit ||
+        expected.default_form_id !== ids.form || expected.assignment_id !== ids.assignment ||
+        expected.assignment_status !== "assigned" || !expected.assignment_is_synthetic) {
       throw new Error("Existing data conflicts with the deterministic synthetic installation");
     }
 

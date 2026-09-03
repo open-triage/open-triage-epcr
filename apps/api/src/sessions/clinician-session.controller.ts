@@ -3,7 +3,7 @@ import type { ClinicianSession, EndClinicianSessionResponse } from "@open-triage
 import { ClinicianSessionService } from "./clinician-session.service.js";
 import { validateCreateClinicianSession } from "./clinician-session.validation.js";
 
-function bearerToken(authorization: string | undefined): string {
+export function bearerToken(authorization: string | undefined): string {
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
   if (!match?.[1]) throw new UnauthorizedException("A clinician session is required");
   return match[1];
