@@ -77,6 +77,22 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.ok(bytes.has(OFFLINE_REPORTS_STORAGE_KEY));
 });
 
+test("cached work is listable and reopenable only when both ownership fields match the clinician", () => {
+  const bytes = new Map<string, string>();
+  const storage = memoryStorage(bytes);
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+
+  assert.equal(cachedOpenReports(storage, "clinician-2").length, 0);
+  assert.equal(cachedReopenResponse(storage, "clinician-2", opened.report.id), null);
+
+  const tampered = JSON.parse(bytes.get(OFFLINE_REPORTS_STORAGE_KEY)!) as Array<Record<string, unknown>>;
+  tampered[0] = { ...tampered[0], ownerUserId: "clinician-2" };
+  bytes.set(OFFLINE_REPORTS_STORAGE_KEY, JSON.stringify(tampered));
+
+  assert.equal(cachedOpenReports(storage, "clinician-2").length, 0);
+  assert.equal(cachedReopenResponse(storage, "clinician-2", opened.report.id), null);
+});
+
 test("reconnect replay keeps attempted command identities and advances queued revisions in order", () => {
   const storage = memoryStorage();
   cacheOpenedReport(storage, session, opened, "CALL-51");

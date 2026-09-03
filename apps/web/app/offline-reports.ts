@@ -102,7 +102,9 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
 
 export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
   return read(storage)
-    .filter((candidate) => candidate.ownerUserId === ownerUserId && candidate.workflowState === "open")
+    .filter((candidate) => candidate.ownerUserId === ownerUserId
+      && candidate.report.documentingUserId === ownerUserId
+      && candidate.workflowState === "open")
     .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt));
 }
 
