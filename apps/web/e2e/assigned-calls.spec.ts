@@ -294,6 +294,43 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 });
 
+test("the requested SYN-20260903-005 stale queue is cleared against its saved server revision", async ({ page }) => {
+  const reportId = "568e1a08-ed1e-4eb9-8dbf-3d5cbb56c386";
+  const serverCall = {
+    reportId,
+    callNumber: "SYN-20260903-005",
+    lastSavedAt: "2026-09-03T15:35:42.682Z",
+    syncStatus: "saved",
+    validationErrorCount: 0,
+    revision: 43,
+    formVersionId: openedAssignment.report.formVersionId,
+    catalogReleaseId: openedAssignment.report.catalogReleaseId,
+  } as const;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ openCalls: [serverCall], completedReportIds: [], refreshedAt: new Date().toISOString() }),
+  }));
+  await signIn(page);
+  await page.evaluate(({ call, userId }) => {
+    localStorage.setItem("open-triage:offline-reports-v1", JSON.stringify([{
+      report: { id: call.reportId, revision: 43, formVersionId: call.formVersionId, catalogReleaseId: call.catalogReleaseId, documentingUserId: userId, status: "draft" },
+      ownerUserId: userId,
+      callNumber: call.callNumber,
+      workflowState: "open",
+      syncStatus: "pending",
+      lastSavedAt: call.lastSavedAt,
+      validationErrorCount: 0,
+      queuedChanges: [{ attempted: true, command: { commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 43, authorId: userId, deviceId: `web:${call.reportId}`, clientTime: new Date().toISOString(), groups: [], occurrences: [] } }],
+    }]));
+  }, { call: serverCall, userId: openedAssignment.report.documentingUserId });
+  await page.reload();
+
+  const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: serverCall.callNumber });
+  await expect(card).toContainText("Saved");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toEqual([]);
+});
+
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.abort("internetdisconnected"));

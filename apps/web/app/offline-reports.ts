@@ -180,6 +180,24 @@ export function acceptDraftChange(storage: StoragePort, reportId: string, comman
   });
 }
 
+/** Explicitly abandons a known stale local queue and trusts the supplied server snapshot. */
+export function discardQueuedDraftChanges(
+  storage: StoragePort,
+  reportId: string,
+  serverRevision: number,
+  serverSavedAt: string,
+): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return;
+  replace(storage, {
+    ...cached,
+    report: { ...cached.report, revision: serverRevision },
+    syncStatus: "saved",
+    lastSavedAt: serverSavedAt,
+    queuedChanges: [],
+  });
+}
+
 export function expectedRevisionForNextChange(storage: StoragePort, reportId: string, fallbackRevision: number): number {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   const last = cached?.queuedChanges.at(-1);

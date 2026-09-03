@@ -8,6 +8,7 @@ import {
   cachedOpenCalls,
   cachedOpenReports,
   cachedReopenResponse,
+  discardQueuedDraftChanges,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
@@ -112,6 +113,20 @@ test("reconnect replay keeps attempted command identities and advances queued re
   const cached = cachedOpenReports(storage, session.user.id)[0]!;
   assert.equal(cached.report.revision, 6);
   assert.equal(cached.syncStatus, "saved");
+  assert.equal(nextDraftChange(storage, opened.report.id), null);
+});
+
+test("an explicitly discarded stale queue resets only that report to the server snapshot", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+
+  discardQueuedDraftChanges(storage, opened.report.id, 9, "2026-09-03T16:00:00.000Z");
+
+  const cached = cachedOpenReports(storage, session.user.id)[0]!;
+  assert.equal(cached.syncStatus, "saved");
+  assert.equal(cached.report.revision, 9);
+  assert.equal(cached.lastSavedAt, "2026-09-03T16:00:00.000Z");
   assert.equal(nextDraftChange(storage, opened.report.id), null);
 });
 
