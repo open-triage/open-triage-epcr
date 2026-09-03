@@ -532,7 +532,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                 <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
                 <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button aria-label={noteDefinition.labels.closeEditor} type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
+              <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
             </div>
             <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
             <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
@@ -566,7 +566,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
-              <button aria-label={vitalDefinition.labels.closeEditor} type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
+              <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
             <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <div className="vital-grid">

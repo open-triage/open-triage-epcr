@@ -35,6 +35,14 @@ test("editing a vital set corrects the canonical entry and its clinical time", (
   assert.equal(matching.length, 1); assert.equal(matching[0]?.time, "08:25"); assert.match(matching[0]?.detail ?? "", /BP 126\/80/);
 });
 
+test("remove deletes the opened vital group", () => {
+  let state = transitionShell(fill(started("vital-remove")), { type: "vitals-saved" });
+  state = transitionShell(state, { type: "vitals-opened", id: "vital-remove" });
+  state = transitionShell(state, { type: "vitals-removed" });
+  assert.equal(state.vitalDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "vital-remove"), false);
+});
+
 test("NEMSIS ranges block errors while plausible-range warnings remain saveable", () => {
   assert.equal(validateVitals("25:00", normal).valid, false);
   const invalid = validateVitals("09:00", { ...normal, spo2: "101" });

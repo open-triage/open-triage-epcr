@@ -31,7 +31,7 @@ export const standardEncounterDefinition = {
       quickAction: { visible: true, label: "Add clinical note" },
       labels: {
         category: "Note", timelineTitle: "Clinical note", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event",
-        editorTitle: "Clinical note", closeEditor: "Close note editor", time: "Clinical time",
+        editorTitle: "Clinical note", remove: "Remove", time: "Clinical time",
         timeHelp: "Correct the time if documentation was entered later.", summary: "Note summary",
         summaryPlaceholder: "Document the clinical observation or decision…", cancel: "Cancel", add: "Add to timeline", save: "Save changes",
       },
@@ -44,7 +44,7 @@ export const standardEncounterDefinition = {
       fieldOrder: ["procedure", "time", "attempts", "success", "outcome", "complications"],
       labels: {
         category: "Procedure", newEyebrow: "New treatment event", editEyebrow: "Edit canonical event", editorTitle: "Procedure",
-        closeEditor: "Close procedure editor", search: "Search procedures", searchPlaceholder: "Try ECG, IV, oxygen…",
+        remove: "Remove", search: "Search procedures", searchPlaceholder: "Try ECG, IV, oxygen…",
         offlineCaption: "shown · available offline", noResults: "No procedure matches all search terms.", change: "Change",
         procedure: "Procedure", time: "Procedure time", attempts: "Attempts", success: "Successful", outcome: "Patient response",
         complications: "Complications", select: "Select…", cancel: "Cancel", add: "Add procedure", save: "Save changes",
@@ -84,7 +84,7 @@ export const standardEncounterDefinition = {
       doseUnits: medicationMetadata.doseUnits,
       routes: medicationMetadata.routes,
       labels: {
-        category: "Medication", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event", editorTitle: "Medication", closeEditor: "Close medication editor",
+        category: "Medication", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event", editorTitle: "Medication", remove: "Remove",
         searchResults: "Medication search results", availableOffline: "available offline", noMatches: "No medication matches your search.", change: "Change", select: "Select…", selectRoute: "Select route…",
         cancel: "Cancel", add: "Add medication", save: "Save changes", medicationMissing: "Medication not selected", routeMissing: "Route not documented", responseMissing: "Response not documented",
       },
@@ -97,7 +97,7 @@ export const standardEncounterDefinition = {
       quickAction: { visible: true, label: "Add vital signs" },
       labels: {
         category: "Vital", timelineTitle: "Vital signs", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event",
-        editorTitle: "Vital signs", closeEditor: "Close vital signs editor", time: "Clinical time",
+        editorTitle: "Vital signs", remove: "Remove", time: "Clinical time",
         absenceHelp: "Unavailable and pertinent-negative choices vary by field.", cancel: "Cancel", add: "Add vital set", save: "Save changes",
         absentSummary: "not recorded",
       },

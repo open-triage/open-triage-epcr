@@ -146,20 +146,20 @@ test("dialog focus, touch targets, and enlarged text preserve required actions",
 test("all four documentation dialogs share a slightly portrait, near-square size", async ({ page }) => {
   await openCall(page);
   const dialogs = [
-    ["Add vital signs", "Close vital signs editor"],
-    ["Add medication", "Close medication editor"],
-    ["Add procedure", "Close procedure editor"],
-    ["Add clinical note", "Close note editor"],
+    "Add vital signs",
+    "Add medication",
+    "Add procedure",
+    "Add clinical note",
   ] as const;
   const sizes: string[] = [];
-  for (const [openLabel, closeLabel] of dialogs) {
+  for (const openLabel of dialogs) {
     await page.getByRole("button", { name: openLabel }).click();
     const box = await page.getByRole("dialog").boundingBox();
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThan(box!.width);
     expect(box!.height / box!.width).toBeLessThanOrEqual(1.11);
     sizes.push(`${Math.round(box!.width)}x${Math.round(box!.height)}`);
-    await page.getByRole("button", { name: closeLabel }).click();
+    await page.getByRole("button", { name: "Remove" }).click();
   }
   expect(new Set(sizes).size).toBe(1);
 });

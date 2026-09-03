@@ -45,12 +45,12 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await page.getByRole("button", { name: "Add medication" }).click();
   await page.getByRole("searchbox", { name: /Search medications/ }).fill("morphine");
   await expect(page.getByRole("button", { name: /Morphine/ }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Close medication editor" }).click();
+  await page.getByRole("button", { name: "Remove" }).click();
 
   await page.getByRole("button", { name: "Add procedure" }).click();
   await page.getByRole("searchbox", { name: /Search procedures/ }).fill("12 lead");
   await expect(page.getByRole("button", { name: /ECG, 12 lead/ }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Close procedure editor" }).click();
+  await page.getByRole("button", { name: "Remove" }).click();
 
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await page.getByLabel("Note summary").fill("Static deployment autosave check");

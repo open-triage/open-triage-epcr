@@ -33,7 +33,7 @@ export function ProcedureDialog({ dialogRef, draft, definition, search, onSearch
   };
 
   return <div className="dialog-backdrop" role="presentation"><section ref={dialogRef} className="note-dialog procedure-dialog" role="dialog" aria-modal="true" aria-labelledby="procedure-dialog-title">
-    <div className="note-dialog-heading"><div><p className="eyebrow">{draft.isNew ? definition.labels.newEyebrow : definition.labels.editEyebrow}</p><h2 id="procedure-dialog-title">{definition.labels.editorTitle}</h2></div><button aria-label={definition.labels.closeEditor} type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>×</button></div>
+    <div className="note-dialog-heading"><div><p className="eyebrow">{draft.isNew ? definition.labels.newEyebrow : definition.labels.editEyebrow}</p><h2 id="procedure-dialog-title">{definition.labels.editorTitle}</h2></div><button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "procedure-removed" })}>{definition.labels.remove}</button></div>
     <div className="procedure-fields">{definition.fieldOrder.map(renderField)}</div>
     {draft.procedureCode && <div className="note-dialog-actions"><button type="button" onClick={() => dispatch({ type: "procedure-cancelled" })}>{definition.labels.cancel}</button><button type="button" onClick={() => dispatch({ type: "procedure-saved" })}>{draft.isNew ? definition.labels.add : definition.labels.save}</button></div>}
   </section></div>;

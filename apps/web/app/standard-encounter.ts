@@ -90,6 +90,7 @@ export type ShellAction =
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
+  | { readonly type: "note-removed" }
   | { readonly type: "note-saved" }
   | { readonly type: "review-opened" }
   | { readonly type: "review-finding-selected"; readonly id: string }
@@ -101,6 +102,7 @@ export type ShellAction =
   | { readonly type: "procedure-complication-toggled"; readonly code: string }
   | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "procedure-cancelled" }
+  | { readonly type: "procedure-removed" }
   | { readonly type: "procedure-saved" }
   | { readonly type: "medication-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "medication-opened"; readonly id: string }
@@ -108,6 +110,7 @@ export type ShellAction =
   | { readonly type: "medication-draft-changed"; readonly field: Exclude<MedicationField, "codeType">; readonly value: string }
   | { readonly type: "medication-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "medication-cancelled" }
+  | { readonly type: "medication-removed" }
   | { readonly type: "medication-saved" }
   | { readonly type: "vitals-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "vitals-opened"; readonly id: string }
@@ -116,6 +119,7 @@ export type ShellAction =
   | { readonly type: "vitals-value-changed"; readonly field: VitalField; readonly value: string }
   | { readonly type: "vitals-null-changed"; readonly field: VitalField; readonly value: NullValue }
   | { readonly type: "vitals-cancelled" }
+  | { readonly type: "vitals-removed" }
   | { readonly type: "vitals-saved" }
   | { readonly type: "state-restored"; readonly state: ShellState };
 
@@ -399,6 +403,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.noteDraft ? { ...state, noteDraft: { ...state.noteDraft, [action.field]: action.value } } : state;
     case "note-cancelled":
       return { ...state, noteDraft: null };
+    case "note-removed":
+      return state.noteDraft ? { ...state, noteDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.noteDraft!.id) } } : state;
     case "note-saved": {
       const draft = state.noteDraft;
       if (!draft) return state;
@@ -494,6 +500,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       } : state;
     case "procedure-cancelled":
       return { ...state, procedureDraft: null };
+    case "procedure-removed":
+      return state.procedureDraft ? { ...state, procedureDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.procedureDraft!.id) } } : state;
     case "procedure-saved": {
       const draft = state.procedureDraft;
       if (!draft) return state;
@@ -542,6 +550,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, warningAcknowledged: action.acknowledged } } : state;
     case "medication-cancelled":
       return { ...state, medicationDraft: null };
+    case "medication-removed":
+      return state.medicationDraft ? { ...state, medicationDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.medicationDraft!.id) } } : state;
     case "medication-saved": {
       const draft = state.medicationDraft;
       if (!draft) return state;
@@ -586,6 +596,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: "", nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: action.value } } } } : state;
     case "vitals-cancelled":
       return { ...state, vitalDraft: null };
+    case "vitals-removed":
+      return state.vitalDraft ? { ...state, vitalDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.vitalDraft!.id) } } : state;
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft) return state;

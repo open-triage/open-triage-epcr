@@ -97,6 +97,14 @@ test("multiple administrations persist distinctly and reopen for canonical editi
   assert.equal(loadShellState(storage)?.encounter.events.find((event) => event.id === "med-2")?.medication?.medicationCode, "1191");
 });
 
+test("remove deletes the opened medication group", () => {
+  let state = completeMedication(INITIAL_SHELL_STATE, "med-remove", "08:35", "Morphine", "7052");
+  state = transitionShell(state, { type: "medication-opened", id: "med-remove" });
+  state = transitionShell(state, { type: "medication-removed" });
+  assert.equal(state.medicationDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "med-remove"), false);
+});
+
 test("configured medication metadata drives validation, warnings, review, and restored presentation", () => {
   const base = standardEncounterDefinition.events.medication;
   const definition: EncounterDefinition = {

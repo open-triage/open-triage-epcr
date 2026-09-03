@@ -91,6 +91,14 @@ test("multiple procedures persist as distinct events and reopen for canonical ed
   assert.equal(state.encounter.events.find((event) => event.id === "procedure-1")?.time, "08:38");
 });
 
+test("remove deletes the opened procedure group", () => {
+  let state = transitionShell(completedProcedure("procedure-remove", "08:37"), { type: "procedure-saved" });
+  state = transitionShell(state, { type: "procedure-opened", id: "procedure-remove" });
+  state = transitionShell(state, { type: "procedure-removed" });
+  assert.equal(state.procedureDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "procedure-remove"), false);
+});
+
 test("drafts, coded records, and warning acknowledgements survive refresh", () => {
   const storage = memoryStorage();
   let state = completedProcedure("procedure-warning", "08:40");

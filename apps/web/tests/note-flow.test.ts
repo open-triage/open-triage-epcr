@@ -53,6 +53,21 @@ test("opening and revising a note updates the canonical event without duplicatio
   assert.equal(matching[0]?.time, "08:31");
 });
 
+test("remove deletes an existing note and discards a new note draft", () => {
+  let state = beginNote();
+  state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Remove me" });
+  state = transitionShell(state, { type: "note-saved" });
+  state = transitionShell(state, { type: "note-opened", id: "visitor-note-1" });
+  state = transitionShell(state, { type: "note-removed" });
+  assert.equal(state.noteDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "visitor-note-1"), false);
+
+  state = transitionShell(state, { type: "note-started", id: "unsaved-note", time: "09:03" });
+  state = transitionShell(state, { type: "note-removed" });
+  assert.equal(state.noteDraft, null);
+  assert.equal(state.encounter.events.some((event) => event.id === "unsaved-note"), false);
+});
+
 test("the phone flow survives refresh with an in-progress draft and saved encounter", () => {
   const storage = memoryStorage();
   let state = beginNote("08:36");
