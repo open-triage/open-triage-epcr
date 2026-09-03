@@ -26,6 +26,15 @@ test("the authenticated call-list integration returns only the clinician's assig
         dispatch_reason: "Medical assistance requested",
         chief_complaint: null,
         status: "assigned"
+      }, {
+        id: "32000000-0000-4000-8000-000000000012",
+        call_number: "SYN-2026-0903-002",
+        unit_id: "32000000-0000-4000-8000-000000000010",
+        call_sign: "Medic 32",
+        dispatched_at: new Date("2026-09-03T12:15:00.000Z"),
+        dispatch_reason: "Canceled before opening",
+        chief_complaint: null,
+        status: "canceled"
       }];
     }
   };
@@ -46,7 +55,7 @@ test("the authenticated call-list integration returns only the clinician's assig
     chiefComplaint: null,
     status: "assigned"
   }]);
-  assert.deepEqual(result.canceledAssignmentIds, []);
+  assert.deepEqual(result.canceledAssignmentIds, ["32000000-0000-4000-8000-000000000012"]);
   assert.deepEqual(queries[0].parameters, [session.user.id, session.organization.id]);
   assert.match(queries[0].sql, /ca\.status in \('assigned', 'canceled'\)/);
   assert.match(queries[0].sql, /uc\.user_id = \$1/);

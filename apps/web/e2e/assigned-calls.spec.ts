@@ -121,7 +121,7 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   });
   await signIn(page);
 
-  await page.getByRole("button", { name: "Open call" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
   await expect(page.getByText("Documenting opened call", { exact: true })).toBeVisible();
@@ -216,7 +216,7 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ openCalls, refreshedAt: "2026-09-03T14:06:00.000Z" })
+    body: JSON.stringify({ openCalls, completedReportIds: [], refreshedAt: "2026-09-03T14:06:00.000Z" })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/reopen`, (route) => route.fulfill({
     contentType: "application/json",
@@ -242,4 +242,64 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await expect(active).toHaveAttribute("data-report-id", openedAssignment.report.id);
   await expect(active).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+});
+
+test("a stationary-completed report disappears from Open calls and only its cache is purged", async ({ page }) => {
+  let completed = false;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      openCalls: completed ? openCalls.slice(1) : openCalls,
+      completedReportIds: completed ? [openedAssignment.report.id] : [],
+      refreshedAt: "2026-09-03T14:06:00.000Z"
+    })
+  }));
+  await signIn(page);
+  const section = page.getByRole("region", { name: "Open calls" });
+  await expect(section.getByText(assignedCall.callNumber, { exact: true })).toBeVisible();
+  await page.evaluate(({ completedId, openId }) => {
+    localStorage.setItem(`open-triage:standard-encounter-v1:report:${completedId}`, "completed cache");
+    localStorage.setItem(`open-triage:standard-encounter-v1:report:${openId}`, "open cache");
+    localStorage.setItem("open-triage:unsynced-command:other", "unsynced");
+  }, { completedId: openedAssignment.report.id, openId: openCalls[1].reportId });
+
+  completed = true;
+  await section.getByRole("button", { name: "Refresh" }).click();
+
+  await expect(section.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+  await expect(section.getByRole("status")).toContainText("completed on the stationary interface");
+  const cached = await page.evaluate(({ completedId, openId }) => ({
+    completed: localStorage.getItem(`open-triage:standard-encounter-v1:report:${completedId}`),
+    open: localStorage.getItem(`open-triage:standard-encounter-v1:report:${openId}`),
+    unsynced: localStorage.getItem("open-triage:unsynced-command:other")
+  }), { completedId: openedAssignment.report.id, openId: openCalls[1].reportId });
+  expect(cached).toEqual({ completed: null, open: "open cache", unsynced: "unsynced" });
+});
+
+test("completion discovered while a form is active stops editing and returns to the call list", async ({ page }) => {
+  let completed = false;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      openCalls: completed ? [] : openCalls.slice(0, 1),
+      completedReportIds: completed ? [openedAssignment.report.id] : [],
+      refreshedAt: "2026-09-03T14:06:00.000Z"
+    })
+  }));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+
+  completed = true;
+  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Refresh" }).click();
+
+  await expect(page.getByText("This report was completed on the stationary interface. Further edits have stopped.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
+  await expect(page.locator(".active-report-notice")).toHaveCount(0);
 });
