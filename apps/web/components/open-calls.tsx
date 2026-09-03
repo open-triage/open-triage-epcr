@@ -4,6 +4,13 @@ import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-t
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
 import { purgeCompletedReportCaches } from "../app/local-persistence";
+import {
+  cacheOpenCallSummary,
+  cacheReopenedReport,
+  cachedOpenCalls,
+  cachedReopenResponse,
+  purgeCompletedOfflineReports,
+} from "../app/offline-reports";
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -41,8 +48,11 @@ export function OpenCalls({
       const completedIds = new Set(completedReportIds);
       const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
-      callsRef.current = response.openCalls;
-      setCalls(response.openCalls);
+      purgeCompletedOfflineReports(window.localStorage, completedReportIds);
+      response.openCalls.forEach((call) => cacheOpenCallSummary(window.localStorage, session, call));
+      const visible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
+      callsRef.current = visible;
+      setCalls(visible);
       setLoaded(true);
       setError(null);
       if (removed.length > 0) setNotice(removed.length === 1
@@ -50,17 +60,28 @@ export function OpenCalls({
         : `${removed.length} calls were completed on the stationary interface.`);
       if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Open calls could not be refreshed.");
+      const cached = cachedOpenCalls(window.localStorage, session.user.id);
+      setCalls(cached);
+      setLoaded(true);
+      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open calls could not be refreshed.");
     } finally {
       setRefreshing(false);
     }
-  }, [activeReportId, onCompleted, session.accessToken]);
+  }, [activeReportId, onCompleted, session]);
 
   const reopen = useCallback(async (call: OpenCall) => {
     setReopeningId(call.reportId);
     setError(null);
     try {
-      const opened = await reopenOpenCall(session.accessToken, call.reportId);
+      let opened: ReopenOpenCallResponse;
+      try {
+        opened = await reopenOpenCall(session.accessToken, call.reportId);
+        cacheReopenedReport(window.localStorage, session, opened);
+      } catch (error) {
+        const cached = cachedReopenResponse(window.localStorage, session.user.id, call.reportId);
+        if (!cached) throw error;
+        opened = cached;
+      }
       onReopened?.(opened);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (reopenError) {
@@ -68,7 +89,7 @@ export function OpenCalls({
     } finally {
       setReopeningId(null);
     }
-  }, [onReopened, session.accessToken]);
+  }, [onReopened, session]);
 
   useEffect(() => {
     let pollTimer: number | null = null;
@@ -82,14 +103,22 @@ export function OpenCalls({
       if (document.visibilityState === "visible") void refresh();
       startOrPausePolling();
     };
-    queueMicrotask(() => void refresh());
+    queueMicrotask(() => {
+      const cached = cachedOpenCalls(window.localStorage, session.user.id);
+      if (cached.length) {
+        callsRef.current = cached;
+        setCalls(cached);
+        setLoaded(true);
+      }
+      void refresh();
+    });
     startOrPausePolling();
     document.addEventListener("visibilitychange", visibilityChanged);
     return () => {
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [refresh]);
+  }, [refresh, session.user.id]);
 
   return (
     <section className="assigned-calls open-calls" aria-labelledby="open-calls-title">
@@ -112,7 +141,7 @@ export function OpenCalls({
             <li key={call.reportId} className="assigned-call-card open-call-card">
               <div className="assigned-call-title">
                 <strong>{call.callNumber}</strong>
-                <span>{call.syncStatus}</span>
+                <span>{call.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
               </div>
               <dl>
                 <div><dt>Last saved</dt><dd><time dateTime={call.lastSavedAt}>{savedTime(call.lastSavedAt)}</time></dd></div>

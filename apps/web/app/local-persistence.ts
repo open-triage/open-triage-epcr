@@ -21,7 +21,7 @@ export function reportSyncStorageKey(reportId: string): string {
   return `${REPORT_SYNC_STORAGE_PREFIX}:${reportId}`;
 }
 
-export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string, status: "Saved" | "Saving" | "Offline" | "Conflict"): void {
+export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string, status: "Saved" | "Saving" | "Pending sync" | "Conflict"): void {
   storage.setItem(reportSyncStorageKey(reportId), status);
 }
 

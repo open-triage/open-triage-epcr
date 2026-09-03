@@ -52,7 +52,7 @@ input, select, textarea { touch-action: manipulation; }
 .draft-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }
 .sync-status { display: inline-flex; align-items: center; min-height: 28px; padding: 3px 9px; border-radius: 999px; color: #195b3b; background: #e8f3ee; font-size: 13px; font-weight: 800; }
 .sync-saving { color: #624500; background: #fff3c4; }
-.sync-offline, .sync-conflict { color: #8b251c; background: #fde7e4; }
+.sync-pending-sync, .sync-conflict { color: #8b251c; background: #fde7e4; }
 .assigned-call-card > button { width: 100%; margin-top: 10px; padding: 10px 12px; }
 .app-shell { min-height: 100dvh; max-width: 480px; margin: 0 auto; padding-bottom: calc(24px + env(safe-area-inset-bottom)); background: var(--paper); box-shadow: 0 0 36px rgb(20 39 27 / 12%); }
 .safety-notice { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 7px 12px; color: #fff; background: #2d332e; text-align: center; font-size: 12px; line-height: 1.2; }

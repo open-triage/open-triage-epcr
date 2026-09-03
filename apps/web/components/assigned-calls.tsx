@@ -23,7 +23,7 @@ export function AssignedCalls({
   onOpened
 }: {
   readonly session: ClinicianSession;
-  readonly onOpened?: (opened: OpenAssignmentResponse) => void;
+  readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void;
 }) {
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -66,7 +66,7 @@ export function AssignedCalls({
       }
       callsRef.current = nextCalls;
       setCalls(nextCalls);
-      onOpened?.(opened);
+      onOpened?.(opened, call);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "The call could not be opened.");

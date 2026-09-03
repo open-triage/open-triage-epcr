@@ -1,0 +1,173 @@
+import type { ClinicianSession, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
+
+export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
+
+export interface QueuedDraftChange {
+  readonly command: SaveDraftReportCommand;
+  readonly attempted: boolean;
+}
+
+export interface CachedOpenReport {
+  readonly report: ActiveDraftReport & {
+    readonly documentingUserId: string;
+    readonly catalogReleaseId: string;
+  };
+  readonly ownerUserId: string;
+  readonly callNumber: string;
+  readonly workflowState: "open";
+  readonly syncStatus: "saved" | "pending";
+  readonly lastSavedAt: string;
+  readonly validationErrorCount: number;
+  readonly queuedChanges: ReadonlyArray<QueuedDraftChange>;
+}
+
+type StoragePort = Pick<Storage, "getItem" | "setItem">;
+
+function read(storage: StoragePort): CachedOpenReport[] {
+  try {
+    const value: unknown = JSON.parse(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((candidate): candidate is CachedOpenReport => {
+      if (!candidate || typeof candidate !== "object") return false;
+      const record = candidate as Partial<CachedOpenReport>;
+      return !!record.report && typeof record.report.id === "string" && typeof record.ownerUserId === "string"
+        && typeof record.callNumber === "string" && Array.isArray(record.queuedChanges);
+    });
+  } catch {
+    return [];
+  }
+}
+
+function write(storage: StoragePort, reports: ReadonlyArray<CachedOpenReport>): void {
+  storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, JSON.stringify(reports));
+}
+
+function replace(storage: StoragePort, report: CachedOpenReport): CachedOpenReport {
+  const reports = read(storage).filter((candidate) => candidate.report.id !== report.report.id);
+  write(storage, [...reports, report]);
+  return report;
+}
+
+export function cacheOpenedReport(
+  storage: StoragePort,
+  session: ClinicianSession,
+  opened: OpenAssignmentResponse,
+  callNumber: string,
+  now = new Date(),
+): CachedOpenReport {
+  const existing = read(storage).find((candidate) => candidate.report.id === opened.report.id);
+  return replace(storage, {
+    report: { ...opened.report, callNumber },
+    ownerUserId: session.user.id,
+    callNumber,
+    workflowState: "open",
+    syncStatus: existing?.queuedChanges.length ? "pending" : "saved",
+    lastSavedAt: existing?.lastSavedAt ?? now.toISOString(),
+    validationErrorCount: existing?.validationErrorCount ?? 0,
+    queuedChanges: existing?.queuedChanges ?? [],
+  });
+}
+
+export function cacheReopenedReport(
+  storage: StoragePort,
+  session: ClinicianSession,
+  opened: ReopenOpenCallResponse,
+  now = new Date(),
+): CachedOpenReport {
+  return cacheOpenedReport(storage, session, { assignmentId: "cached-reopen", report: opened.report, replacementAssignment: null }, opened.callNumber, now);
+}
+
+export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSession, call: OpenCall): CachedOpenReport {
+  const existing = read(storage).find((candidate) => candidate.report.id === call.reportId);
+  return replace(storage, {
+    report: {
+      id: call.reportId,
+      revision: existing?.queuedChanges.length ? existing.report.revision : call.revision,
+      formVersionId: call.formVersionId,
+      callNumber: call.callNumber,
+      documentingUserId: session.user.id,
+      catalogReleaseId: call.catalogReleaseId,
+      status: "draft",
+    },
+    ownerUserId: session.user.id,
+    callNumber: call.callNumber,
+    workflowState: "open",
+    syncStatus: existing?.queuedChanges.length ? "pending" : "saved",
+    lastSavedAt: existing?.queuedChanges.length ? existing.lastSavedAt : call.lastSavedAt,
+    validationErrorCount: call.validationErrorCount,
+    queuedChanges: existing?.queuedChanges ?? [],
+  });
+}
+
+export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
+  return read(storage)
+    .filter((candidate) => candidate.ownerUserId === ownerUserId && candidate.workflowState === "open")
+    .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt));
+}
+
+/** Removes completed report metadata only after every local command was accepted. */
+export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: ReadonlyArray<string>): void {
+  if (!reportIds.length) return;
+  const completed = new Set(reportIds);
+  write(storage, read(storage).filter((candidate) => !completed.has(candidate.report.id) || candidate.queuedChanges.length > 0));
+}
+
+export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): OpenCall[] {
+  return cachedOpenReports(storage, ownerUserId).map((cached) => ({
+    reportId: cached.report.id,
+    callNumber: cached.callNumber,
+    lastSavedAt: cached.lastSavedAt,
+    syncStatus: cached.syncStatus,
+    validationErrorCount: cached.validationErrorCount,
+    revision: cached.report.revision,
+    formVersionId: cached.report.formVersionId,
+    catalogReleaseId: cached.report.catalogReleaseId,
+  }));
+}
+
+export function cachedReopenResponse(storage: StoragePort, ownerUserId: string, reportId: string): ReopenOpenCallResponse | null {
+  const cached = cachedOpenReports(storage, ownerUserId).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return null;
+  return { callNumber: cached.callNumber, report: { ...cached.report, status: "draft", groups: [], occurrences: [] } };
+}
+
+export function queueDraftChange(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) throw new Error(`Report ${reportId} is not cached for offline use`);
+  const queued = [...cached.queuedChanges];
+  const last = queued.at(-1);
+  if (last && !last.attempted) queued[queued.length - 1] = { command, attempted: false };
+  else queued.push({ command, attempted: false });
+  replace(storage, { ...cached, syncStatus: "pending", queuedChanges: queued });
+}
+
+export function nextDraftChange(storage: StoragePort, reportId: string): QueuedDraftChange | null {
+  return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges[0] ?? null;
+}
+
+export function markDraftChangeAttempted(storage: StoragePort, reportId: string, commandId: string): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return;
+  replace(storage, { ...cached, queuedChanges: cached.queuedChanges.map((queued) => queued.command.commandId === commandId ? { ...queued, attempted: true } : queued) });
+}
+
+export function acceptDraftChange(storage: StoragePort, reportId: string, commandId: string, saved: SavedDraftReport, now = new Date()): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return;
+  const queuedChanges = cached.queuedChanges.filter((queued) => queued.command.commandId !== commandId);
+  replace(storage, {
+    ...cached,
+    report: { ...cached.report, revision: saved.revision },
+    syncStatus: queuedChanges.length ? "pending" : "saved",
+    lastSavedAt: now.toISOString(),
+    queuedChanges,
+  });
+}
+
+export function expectedRevisionForNextChange(storage: StoragePort, reportId: string, fallbackRevision: number): number {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  const last = cached?.queuedChanges.at(-1);
+  if (last && !last.attempted) return last.command.expectedRevision;
+  return (cached?.report.revision ?? fallbackRevision) + (cached?.queuedChanges.length ?? 0);
+}

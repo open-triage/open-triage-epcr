@@ -90,7 +90,7 @@ export interface OpenAssignmentResponse {
   replacementAssignment: AssignedCall | null;
 }
 
-export type OpenCallSyncStatus = "saved";
+export type OpenCallSyncStatus = "saved" | "pending";
 
 export interface OpenCall {
   reportId: string;
