@@ -9,7 +9,7 @@ const formVersionId = "32000000-0000-4000-8000-000000000008";
 
 const assignedCall = {
   id: "32000000-0000-4000-8000-000000000052",
-  callNumber: "SYN-2026-0903-052",
+  callNumber: "SYN-20260903-052",
   unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
   dispatchedAt: "2026-09-03T12:00:00.000Z",
   dispatchReason: "Medical assistance requested",

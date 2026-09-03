@@ -222,14 +222,14 @@ try {
     `, [ids.assignmentIncident, ids.organization, JSON.stringify({
       fixture: "open-triage-synthetic-assignment-v1",
       synthetic: true,
-      callNumber: "SYN-2026-0903-001",
+      callNumber: "SYN-20260903-001",
       dispatchedAt: "2026-09-03T12:00:00Z"
     })]);
     await client.query(`
       insert into clinical.call_assignment
         (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
          dispatch_reason, status, synthetic)
-      values ($1, $2, $3, $4, 'SYN-2026-0903-001', '2026-09-03T12:00:00Z',
+      values ($1, $2, $3, $4, 'SYN-20260903-001', '2026-09-03T12:00:00Z',
               'Medical assistance requested', 'assigned', true)
       on conflict do nothing
     `, [ids.assignment, ids.organization, ids.unit, ids.assignmentIncident]);

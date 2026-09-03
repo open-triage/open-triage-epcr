@@ -11,7 +11,7 @@ const medicationMetadata = medicationElementMetadata(medicationReferences);
 
 export const standardEncounterDefinition = {
   schemaVersion: 1, id: "standard-encounter-v1", version: 1, synthetic: true,
-  labels: { prototypeStatus: "Prototype", incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", savePatient: "Save patient" },
+  labels: { incident: "Incident", patientDialogEyebrow: "Quick patient details", patientDialogTitle: "Patient information", savePatient: "Save patient" },
   patient: {
     quickAction: { visible: true, label: "Edit patient information", title: "Patient information" },
   },

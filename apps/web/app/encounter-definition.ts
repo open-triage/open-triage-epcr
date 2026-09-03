@@ -129,7 +129,7 @@ export type EncounterDefinition = {
   readonly version: number;
   readonly synthetic: true;
   readonly labels: {
-    readonly prototypeStatus: string; readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
+    readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
     readonly savePatient: string;
   };
   readonly patient: {
@@ -178,7 +178,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (root.schemaVersion !== 1) diagnostics.push("schemaVersion must be 1");
   if (typeof root.id !== "string" || !root.id.trim()) diagnostics.push("id is required");
   if (!Number.isInteger(root.version) || Number(root.version) < 1) diagnostics.push("version must be a positive integer");
-  if (root.synthetic !== true) diagnostics.push("synthetic must be true for the bundled prototype");
+  if (root.synthetic !== true) diagnostics.push("synthetic must be true for the bundled record");
   const requiredStrings = (candidate: unknown, path: string, keys: readonly string[]) => {
     if (!isRecord(candidate)) { diagnostics.push(`${path} must be an object`); return; }
     for (const key of keys) if (typeof candidate[key] !== "string" || !(candidate[key] as string).trim()) diagnostics.push(`${path}.${key} is required`);
@@ -190,7 +190,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
     }
   };
   rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "patient", "composition", "events"]);
-  requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
+  requiredStrings(root.labels, "labels", ["incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
   const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
   if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");

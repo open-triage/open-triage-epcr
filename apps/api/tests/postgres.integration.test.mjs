@@ -284,7 +284,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   const payload = await response.json();
   assert.deepEqual(payload.assignedCalls, [{
     id: "32000000-0000-4000-8000-000000000011",
-    callNumber: "SYN-2026-0903-001",
+    callNumber: "SYN-20260903-001",
     unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
     dispatchedAt: "2026-09-03T12:00:00.000Z",
     dispatchReason: "Medical assistance requested",
@@ -351,7 +351,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     assert.equal(retry.replacementAssignment, null);
     assert.equal(opened.report.documentingUserId, session.user.id);
     assert.equal(opened.report.formVersionId, latestBeforeOpen);
-    assert.equal(opened.replacementAssignment.callNumber, "SYN-2026-0903-002");
+    assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
     assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
 
     const state = (await client.query(`

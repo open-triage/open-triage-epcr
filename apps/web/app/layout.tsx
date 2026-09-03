@@ -6,7 +6,7 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
 
 export const metadata: Metadata = {
   title: "OpenTriage synthetic encounter",
-  description: "Synthetic-data-only ePCR usability prototype — not for clinical use",
+  description: "Synthetic-data-only mobile ePCR documentation",
   manifest: `${basePath}/manifest.webmanifest`
 };
 

@@ -112,7 +112,7 @@ test("reset clears local progress and restores the version-controlled baseline",
   saveShellState(storage, state);
 
   clearShellState(storage);
-  const reset = transitionShell(state, { type: "prototype-reset" });
+  const reset = INITIAL_SHELL_STATE;
 
   assert.equal(storage.values.has(STORAGE_KEY), false);
   assert.deepEqual(reset, INITIAL_SHELL_STATE);

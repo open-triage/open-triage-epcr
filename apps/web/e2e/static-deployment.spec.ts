@@ -39,7 +39,6 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   const safetyNotice = page.getByRole("note", { name: "Prototype safety notice" });
   await expect(safetyNotice).toContainText("Synthetic data only");
   await expect(safetyNotice).toContainText("not for clinical use");
-  await expect(page.getByText("Prototype", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect.poll(async () => page.evaluate(async () => (await navigator.serviceWorker.ready).scope)).toContain("/open-triage-epcr-demo/");
 
@@ -62,19 +61,17 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await expect(page.getByText("Static deployment autosave check")).toBeVisible();
   await expect(safetyNotice).toContainText("not for clinical use");
 
-  await page.getByRole("button", { name: /Checklist, 0 errors, 0 warnings/ }).click();
+  await page.getByRole("button", { name: /Checklist, 0 errors, 1 warning/ }).click();
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
-  await expect(page.getByText("No warnings or errors")).toBeVisible();
+  await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
   await expect(safetyNotice).toContainText("Synthetic data only");
 
   await page.getByRole("button", { name: "Review & sign" }).click();
-  await expect(page.getByRole("heading", { name: "Review and finish" })).toBeVisible();
-  await page.getByRole("button", { name: "Finish prototype" }).click();
-  await expect(page.getByRole("heading", { name: "Encounter summary" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue editing" }).click();
-
-  await page.getByRole("button", { name: /Timeline/ }).click();
-  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
+  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  await page.getByRole("button", { name: "Sign record" }).click();
+  await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Open calls" }).getByText("SYN-20260903-001", { exact: true })).toHaveCount(0);
   expect(unexpectedRequests).toEqual([]);
 });

@@ -49,7 +49,7 @@ test("associates the demo clinician, operational unit, default published form, a
   }
   assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
   assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
-  assert.match(bootstrap, /SYN-2026-0903-001/);
+  assert.match(bootstrap, /SYN-20260903-001/);
   assert.match(bootstrap, /'Medical assistance requested', 'assigned', true/);
   assert.match(bootstrap, /fv\.status as form_status/);
   assert.match(bootstrap, /expected\.form_status !== "published"/);

@@ -124,6 +124,10 @@ export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: Re
   write(storage, read(storage).filter((candidate) => !completed.has(candidate.report.id) || candidate.queuedChanges.length > 0));
 }
 
+export function removeSignedOfflineReport(storage: StoragePort, reportId: string): void {
+  write(storage, read(storage).filter((candidate) => candidate.report.id !== reportId));
+}
+
 export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): OpenCall[] {
   return cachedOpenReports(storage, ownerUserId).map((cached) => ({
     reportId: cached.report.id,

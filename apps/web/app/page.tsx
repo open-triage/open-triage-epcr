@@ -6,18 +6,17 @@ import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { loadShellStateResult, saveReportSyncStatus, saveShellState } from "./local-persistence";
+import { loadShellStateResult, purgeCompletedReportCaches, saveReportSyncStatus, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
-  completedSummaryEvents,
   INITIAL_SHELL_STATE,
+  MISSING_VITALS_FINDING_ID,
   encounterEventDetail,
   encounterEventPresentation,
   reviewEncounter,
   standardEncounterReducer,
   type ReviewFinding,
-  type ShellState,
   type ShellView,
   type VitalField,
   bundledEncounterDefinition,
@@ -29,7 +28,9 @@ import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
   saveDraftReport,
+  signDraftReport,
   shellStateToDraftMutations,
+  usesLocalDemoDrafts,
   type ActiveDraftReport,
   type DraftSyncStatus,
 } from "./draft-report";
@@ -39,6 +40,7 @@ import {
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
+  removeSignedOfflineReport,
   queueDraftChange,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
@@ -66,6 +68,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
   const activeSave = useRef<Promise<void> | null>(null);
   const skipInitialQueue = useRef(false);
@@ -259,6 +263,11 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     rememberTrigger(trigger);
     setEditingFinding(finding);
     setOpenNullField(null);
+    if (finding.id === MISSING_VITALS_FINDING_ID) {
+      dispatch({ type: "view-selected", view: "timeline" });
+      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+      return;
+    }
     dispatch({ type: "review-finding-selected", id: finding.id });
   }
 
@@ -296,6 +305,28 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
   };
 
+  async function signRecord() {
+    if (!report || !canFinish || signing) return;
+    setSigning(true);
+    setSignError(null);
+    await flushSave();
+    if (!usesLocalDemoDrafts() && nextDraftChange(window.localStorage, report.id)) {
+      setSignError("The record must finish syncing before it can be signed.");
+      setSigning(false);
+      return;
+    }
+    try {
+      await signDraftReport(session.accessToken, report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
+      purgeCompletedReportCaches(window.localStorage, [report.id]);
+      removeSignedOfflineReport(window.localStorage, report.id);
+      onSaveAndClose();
+    } catch (error) {
+      setSignError(error instanceof Error ? error.message : "The record could not be signed.");
+    } finally {
+      setSigning(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
@@ -309,10 +340,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
           <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
           <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
         </div>}
-        <div className="header-kicker">
-          <span>{incidentEvents[0]?.time ?? "--:--"}</span>
-          <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
-        </div>
+        <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
         <div className="incident-line">
           <div>
             <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
@@ -325,7 +353,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
         {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
       </nav>
 
-      {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
+      <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
@@ -344,7 +372,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
             </span>}
           </button>
         ))}
-      </nav>}
+      </nav>
 
       {(shell.view === "timeline" || shell.view === "checklist") && (
         <div className="sign-action-bar">
@@ -444,15 +472,12 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
-          onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
+          signing={signing}
+          signError={signError}
+          onFinding={editValidationFinding}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
-          onContinue={() => dispatch({ type: "summary-editing-continued" })}
-          onFinish={() => dispatch({ type: "review-finished" })}
+          onSign={() => void signRecord()}
         />
-      )}
-
-      {shell.view === "summary" && (
-        <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
       {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
@@ -557,32 +582,33 @@ export default function Home() {
   )}</ClinicianSessionGate>;
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, signing, signError, onFinding, onWarning, onSign }: {
   readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
-  readonly onFinding: (id: string) => void;
+  readonly signing: boolean;
+  readonly signError: string | null;
+  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
-  readonly onContinue: () => void;
-  readonly onFinish: () => void;
+  readonly onSign: () => void;
 }) {
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
       <div className="section-heading">
-        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and finish</h1></div>
+        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and sign</h1></div>
         <span>{errors.length} errors · {warnings.length} warnings</span>
       </div>
-      <p className="review-intro">Resolve every blocking error and acknowledge each warning before producing the prototype summary.</p>
+      <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
 
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
 
       <div className="review-actions">
-        <button type="button" onClick={onContinue}>Continue editing</button>
-        <button type="button" disabled={!canFinish} onClick={onFinish}>Finish prototype</button>
+        <button type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
       </div>
-      {!canFinish && <p className="finish-help" role="status">Completion stays blocked until errors are fixed and every warning is acknowledged.</p>}
+      {!canFinish && <p className="finish-help" role="status">Signing stays blocked until errors are fixed and every warning is acknowledged.</p>}
+      {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
 }
@@ -591,7 +617,7 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
   readonly title: string;
   readonly empty: string;
   readonly findings: ReadonlyArray<ReviewFinding>;
-  readonly onFinding: (id: string) => void;
+  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
   return (
@@ -601,7 +627,7 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
         <ul className="review-findings">
           {findings.map((finding) => (
             <li key={finding.id} className={finding.severity}>
-              <button type="button" onClick={() => onFinding(finding.id)}>
+              <button type="button" onClick={(event) => onFinding(finding, event.currentTarget)}>
                 <span className="finding-category">{finding.category} · {finding.reference}</span>
                 <strong>{finding.title}</strong>
                 <span>{finding.message}</span>
@@ -618,50 +644,5 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
         </ul>
       )}
     </section>
-  );
-}
-
-function ReadOnlySummary({ shell, warnings, onContinue }: {
-  readonly shell: ShellState;
-  readonly warnings: ReadonlyArray<ReviewFinding>;
-  readonly onContinue: () => void;
-}) {
-  const encounter = shell.encounter;
-  const incident = incidentSummary(encounter.document);
-  const incidentEvents = documentTimeline(encounter.document);
-  return (
-    <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
-      <div className="summary-label" role="note">
-        <strong>Synthetic usability prototype summary</strong>
-        <span>Read-only preview — not a signed or complete legal clinical record</span>
-      </div>
-      <div className="section-heading">
-        <div><p className="eyebrow">Review produced</p><h1 id="summary-heading">Encounter summary</h1></div>
-      </div>
-      <section className="summary-section">
-        <h2>Incident</h2>
-        <dl>
-          <div><dt>Incident</dt><dd>{incident.number}</dd></div>
-          <div><dt>Complaint</dt><dd>{incident.complaint}</dd></div>
-          <div><dt>Location</dt><dd>{incident.address}</dd></div>
-          <div><dt>Crew</dt><dd>{incident.crew}</dd></div>
-        </dl>
-      </section>
-      <section className="summary-section">
-        <h2>Timeline</h2>
-        <ol className="summary-timeline">
-          {incidentEvents.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
-          {completedSummaryEvents(encounter.events, bundledEncounterDefinition).map((event) => {
-            const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
-            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, bundledEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
-          })}
-        </ol>
-      </section>
-      <section className="summary-section">
-        <h2>Warning acknowledgements</h2>
-        {warnings.length ? <ul className="summary-warnings">{warnings.map((warning) => <li key={warning.id}><strong>Acknowledged</strong><span>{warning.title}: {warning.message}</span></li>)}</ul> : <p>No validation warnings were present at finish.</p>}
-      </section>
-      <button className="continue-editing" type="button" onClick={onContinue}>Continue editing</button>
-    </article>
   );
 }

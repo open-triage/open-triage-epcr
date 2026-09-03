@@ -54,7 +54,7 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     return response.json() as Promise<ClinicianSession>;
   }
 
-  // The static synthetic prototype has no server. It mirrors the seeded demo
+  // The static synthetic build has no server. It mirrors the seeded demo
   // organization so the published, non-clinical artifact remains usable.
   if (command.username !== DEMO_CLINICIAN_USERNAME || command.password !== DEMO_CLINICIAN_PASSWORD) {
     throw new Error("The username or password is incorrect.");

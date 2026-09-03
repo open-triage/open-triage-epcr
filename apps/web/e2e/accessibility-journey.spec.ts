@@ -77,7 +77,7 @@ test("the browser hides clinical content at the fixed session deadline", async (
 
 test("canonical incident header and timing entries render in the phone flow", async ({ page }) => {
   await openCall(page);
-  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-2026-0418-113 · 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260418-113 · 3-9-7-4-0");
   await expect(page.locator(".encounter-header")).toContainText("Medical assistance requested");
   await expect(page.locator(".encounter-header")).not.toContainText("Rivera, Jordan");
   await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toBeVisible();
@@ -91,19 +91,19 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
     "Add vital signs", "Add medication", "Add procedure", "Add clinical note",
   ]);
-  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 
-  await page.getByRole("button", { name: /Checklist, 0 errors, 0 warnings/ }).click();
+  await page.getByRole("button", { name: /Checklist, 0 errors, 1 warning/ }).click();
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
-  await expect(page.getByText("No warnings or errors")).toBeVisible();
+  await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
   await expectNoBlockingAccessibilityViolations(page);
   await page.getByRole("button", { name: "Review & sign" }).click();
-  await expect(page.getByRole("heading", { name: "Review and finish" })).toBeVisible();
-  await page.getByRole("button", { name: "Finish prototype" }).click();
-  await expect(page.getByRole("heading", { name: "Encounter summary" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue editing" }).click();
+  await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
+  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  await expect(page.getByRole("button", { name: "Sign record" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
   await page.getByRole("button", { name: /Timeline/ }).click();
   const addNote = page.getByRole("button", { name: "Add clinical note" });
   await addNote.click();
@@ -121,7 +121,6 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await page.reload();
   await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
 });
 
 test("dialog focus, touch targets, and enlarged text preserve required actions", async ({ page }) => {
@@ -134,12 +133,33 @@ test("dialog focus, touch targets, and enlarged text preserve required actions",
 
   await page.addStyleTag({ content: `
     .safety-notice, .encounter-header, .view-switcher, .section-heading, .timeline-list, .quick-actions,
-    .note-dialog, .review-panel, .prototype-summary { font-size: 125% !important; }
+    .note-dialog, .review-panel { font-size: 125% !important; }
   ` });
   await expectPhoneLayout(page);
   await expect(page.getByRole("button", { name: "Add clinical note" })).toBeVisible();
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await expect(page.getByRole("button", { name: "Add to timeline" })).toBeVisible();
+});
+
+test("all four documentation dialogs share a slightly portrait, near-square size", async ({ page }) => {
+  await openCall(page);
+  const dialogs = [
+    ["Add vital signs", "Close vital signs editor"],
+    ["Add medication", "Close medication editor"],
+    ["Add procedure", "Close procedure editor"],
+    ["Add clinical note", "Close note editor"],
+  ] as const;
+  const sizes: string[] = [];
+  for (const [openLabel, closeLabel] of dialogs) {
+    await page.getByRole("button", { name: openLabel }).click();
+    const box = await page.getByRole("dialog").boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThan(box!.width);
+    expect(box!.height / box!.width).toBeLessThanOrEqual(1.11);
+    sizes.push(`${Math.round(box!.width)}x${Math.round(box!.height)}`);
+    await page.getByRole("button", { name: closeLabel }).click();
+  }
+  expect(new Set(sizes).size).toBe(1);
 });
 
 test("vital fields retain focus while values are entered", async ({ page }) => {

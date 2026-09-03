@@ -180,6 +180,10 @@ function apiBaseUrl(): string | null {
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 }
 
+export function usesLocalDemoDrafts(): boolean {
+  return apiBaseUrl() === null;
+}
+
 export function draftChangesUrl(reportId: string): string {
   const base = apiBaseUrl();
   const path = `/api/reports/${reportId}/draft-changes`;
@@ -196,4 +200,37 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport>;
+}
+
+export async function signDraftReport(
+  accessToken: string,
+  reportId: string,
+  expectedRevision: number,
+  signerId: string,
+  warningAcknowledgements: ReadonlyArray<string>,
+): Promise<void> {
+  const base = apiBaseUrl();
+  if (!base) return;
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/reports/${reportId}/sign`, {
+      method: "POST",
+      cache: "no-store",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        commandId: crypto.randomUUID(),
+        expectedRevision,
+        signerId,
+        attestation: { meaning: "clinician approval" },
+        warningAcknowledgements: Object.fromEntries(warningAcknowledgements.map((id) => [id, true])),
+        deviceId: `web:${reportId}`,
+        clientTime: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    throw new Error("The record could not be signed. Check your connection and try again.");
+  }
+  if (response.status === 409) throw new Error("The record changed before it could be signed. Reopen it and try again.");
+  if (response.status === 422) throw new Error("The record did not pass server validation and was not signed.");
+  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The record could not be signed.");
 }

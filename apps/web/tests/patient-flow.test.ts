@@ -94,9 +94,8 @@ test("editing, refresh recovery, and reset use the same canonical document", () 
   assert.equal(unavailable.groups.find(({ id }) => id === "ePatient.AgeGroup")?.instances[0]?.elements.find(({ id }) => id === "ePatient.15")?.values[0]?.kind, "null");
   assert.throws(() => updatePatientDocument(original, { ...draft, age: 0 }), /must be at least 1/);
 
-  state = transitionShell(restored.state, { type: "prototype-reset" });
-  assert.deepEqual(state.encounter.document, baseline);
-  assert.equal(patientSummary(state.encounter.document).name, "Rivera, Jordan");
+  assert.deepEqual(INITIAL_SHELL_STATE.encounter.document, baseline);
+  assert.equal(patientSummary(INITIAL_SHELL_STATE.encounter.document).name, "Rivera, Jordan");
 });
 
 test("the supported legacy patient shape upgrades deterministically without retaining legacy state", () => {
@@ -105,7 +104,7 @@ test("the supported legacy patient shape upgrades deterministically without reta
   delete legacy.encounter.document;
   legacy.encounter.currentTime = "07:51";
   legacy.encounter.crew = "AN";
-  legacy.encounter.incident = { number: "SYN-2026-0418-113 · 3-9-7-4-0", complaint: "Medical assistance requested", address: "100 Example Avenue, Unit 3 (fictional)" };
+  legacy.encounter.incident = { number: "SYN-20260418-113 · 3-9-7-4-0", complaint: "Medical assistance requested", address: "100 Example Avenue, Unit 3 (fictional)" };
   legacy.encounter.events = [
     { id: "baseline-1", time: "07:51", kind: "transport", title: "Arrived on scene", detail: "Fictional residence — standard access", reference: "eTimes.07" },
     { id: "baseline-2", time: "07:44", kind: "transport", title: "Unit en route", detail: "Routine response", reference: "eTimes.06" },

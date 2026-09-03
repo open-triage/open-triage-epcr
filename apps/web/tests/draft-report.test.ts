@@ -4,6 +4,7 @@ import {
   DRAFT_SAVE_DEBOUNCE_MS,
   draftChangesUrl,
   saveDraftReport,
+  signDraftReport,
   shellStateToDraftMutations,
   stableDraftId,
 } from "../app/draft-report";
@@ -19,6 +20,27 @@ test("the draft adapter retains stable report, group, and occurrence identities"
   assert.equal(new Set(first.groups.map(({ id }) => id)).size, first.groups.length);
   assert.equal(new Set(first.occurrences.map(({ id }) => id)).size, first.occurrences.length);
   assert.equal(DRAFT_SAVE_DEBOUNCE_MS, 1_000);
+});
+
+test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { input: string; init?: RequestInit } | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    request = { input: String(input), init };
+    return new Response(JSON.stringify({ id: reportId, status: "signed" }), { status: 201 });
+  }) as typeof fetch;
+  try {
+    await signDraftReport("token", reportId, 8, "32000000-0000-4000-8000-000000000003", ["missing-vitals"]);
+    const body = JSON.parse(String(request?.init?.body));
+    assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}/sign`);
+    assert.equal(request?.init?.method, "POST");
+    assert.equal(body.expectedRevision, 8);
+    assert.equal(body.signerId, "32000000-0000-4000-8000-000000000003");
+    assert.deepEqual(body.warningAcknowledgements, { "missing-vitals": true });
+    assert.equal(body.attestation.meaning, "clinician approval");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("timeline edits become typed revisioned API mutations without changing their identities", () => {

@@ -19,7 +19,7 @@ test("the authenticated call-list integration returns only the clinician's assig
       queries.push({ sql, parameters });
       return [{
         id: "32000000-0000-4000-8000-000000000011",
-        call_number: "SYN-2026-0903-001",
+        call_number: "SYN-20260903-001",
         unit_id: "32000000-0000-4000-8000-000000000010",
         call_sign: "Medic 32",
         dispatched_at: new Date("2026-09-03T12:00:00.000Z"),
@@ -28,7 +28,7 @@ test("the authenticated call-list integration returns only the clinician's assig
         status: "assigned"
       }, {
         id: "32000000-0000-4000-8000-000000000012",
-        call_number: "SYN-2026-0903-002",
+        call_number: "SYN-20260903-002",
         unit_id: "32000000-0000-4000-8000-000000000010",
         call_sign: "Medic 32",
         dispatched_at: new Date("2026-09-03T12:15:00.000Z"),
@@ -48,7 +48,7 @@ test("the authenticated call-list integration returns only the clinician's assig
 
   assert.deepEqual(result.assignedCalls, [{
     id: "32000000-0000-4000-8000-000000000011",
-    callNumber: "SYN-2026-0903-001",
+    callNumber: "SYN-20260903-001",
     unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
     dispatchedAt: "2026-09-03T12:00:00.000Z",
     dispatchReason: "Medical assistance requested",
@@ -72,7 +72,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     organization_id: session.organization.id,
     unit_id: "32000000-0000-4000-8000-000000000010",
     incident_id: "32000000-0000-4000-8000-00000000000f",
-    call_number: "SYN-2026-0903-001",
+    call_number: "SYN-20260903-001",
     call_sign: "Medic 32",
     dispatched_at: new Date("2026-09-03T12:00:00.000Z"),
     dispatch_reason: "Medical assistance requested",
@@ -124,7 +124,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.id, retried.report.id);
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
-  assert.equal(opened.replacementAssignment.callNumber, "SYN-2026-0903-002");
+  assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
   assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
   assert.equal(retried.replacementAssignment, null);
   assert.deepEqual(writes, ["patient", "report", "replacement-incident", "replacement-assignment"]);

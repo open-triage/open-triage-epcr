@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 const assignedCall = {
   id: "32000000-0000-4000-8000-000000000011",
-  callNumber: "SYN-2026-0903-001",
+  callNumber: "SYN-20260903-001",
   unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
   dispatchedAt: "2026-09-03T12:00:00.000Z",
   dispatchReason: "Medical assistance requested",
@@ -13,7 +13,7 @@ const assignedCall = {
 const replacementCall = {
   ...assignedCall,
   id: "42000000-0000-4000-8000-000000000012",
-  callNumber: "SYN-2026-0903-002",
+  callNumber: "SYN-20260903-002",
   dispatchedAt: "2026-09-03T12:15:00.000Z"
 } as const;
 
@@ -41,7 +41,7 @@ const openCalls = [{
   catalogReleaseId: openedAssignment.report.catalogReleaseId
 }, {
   reportId: "42000000-0000-4000-8000-000000000099",
-  callNumber: "SYN-2026-0903-000",
+  callNumber: "SYN-20260903-000",
   lastSavedAt: "2026-09-03T13:05:00.000Z",
   syncStatus: "saved",
   validationErrorCount: 0,
@@ -76,7 +76,7 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(page.getByRole("region", { name: "Open calls" })).toBeVisible();
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
   const card = section.locator(".assigned-call-card");
-  await expect(card).toContainText("SYN-2026-0903-001");
+  await expect(card).toContainText("SYN-20260903-001");
   await expect(card).toContainText("Medic 32");
   await expect(card).toContainText("Medical assistance requested");
   await expect(card).toContainText("Assigned", { ignoreCase: true });
@@ -85,7 +85,7 @@ test("the demo unit's assigned call shows its operational summary and manual can
   canceled = true;
   await section.getByRole("button", { name: "Refresh" }).click();
   await expect(card).toHaveCount(0);
-  await expect(section.getByRole("status")).toHaveText("Call SYN-2026-0903-001 assignment canceled.");
+  await expect(section.getByRole("status")).toHaveText("Call SYN-20260903-001 assignment canceled.");
 });
 
 test("assignment polling runs every ten seconds only while visible and refreshes on foreground return", async ({ page }) => {
@@ -96,7 +96,7 @@ test("assignment polling runs every ten seconds only while visible and refreshes
     await fulfill(route);
   });
   await signIn(page);
-  await expect(page.getByText("SYN-2026-0903-001", { exact: true })).toBeVisible();
+  await expect(page.getByText("SYN-20260903-001", { exact: true })).toBeVisible();
   const launchRequests = requests;
 
   await page.clock.fastForward(10_000);
@@ -134,7 +134,6 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit patient information" })).toHaveCount(0);
   await expect(page.getByText("Rivera, Jordan", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
 
   const retriedReportId = await page.evaluate(async ({ assignmentId }) => {
     const stored = JSON.parse(localStorage.getItem("open-triage.clinician-session.v1")!);
@@ -195,11 +194,37 @@ test("Save & close carries the form's current validation error count onto the op
 
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await page.getByRole("button", { name: "Add to timeline" }).click();
-  await expect(page.getByRole("button", { name: /Checklist, 1 error, 0 warnings/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Checklist, 1 error, 1 warning/ })).toBeVisible();
   await page.getByRole("button", { name: "Save & close" }).click();
 
   const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
   await expect(card).toContainText("Validation errors1");
+});
+
+test("Sign record requires acknowledged validation and removes the report from Open calls", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1
+    }) });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+
+  await page.getByRole("button", { name: "Review & sign" }).click();
+  await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
+  await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
+  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  await page.getByRole("button", { name: "Sign record" }).click();
+
+  await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Open calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
 });
 
 test("draft synchronization exposes Saved, Saving, Pending sync, and Conflict and retries one command identity", async ({ page }) => {
@@ -266,7 +291,7 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await expect(cards.nth(0)).toContainText("Saved", { ignoreCase: true });
   await expect(cards.nth(0)).toContainText("Sep 3", { ignoreCase: true });
   await expect(cards.nth(0)).toContainText("Validation errors2");
-  await expect(cards.nth(1)).toContainText("SYN-2026-0903-000");
+  await expect(cards.nth(1)).toContainText("SYN-20260903-000");
 
   await cards.nth(0).getByRole("button", { name: "Reopen call" }).click();
   const active = page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true });

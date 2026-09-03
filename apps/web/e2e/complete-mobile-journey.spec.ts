@@ -11,7 +11,7 @@ const supportedViewports: Record<string, { width: number; height: number }> = {
 
 const assignedCall = {
   id: "32000000-0000-4000-8000-000000000056",
-  callNumber: "SYN-2026-0903-056",
+  callNumber: "SYN-20260903-056",
   unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
   dispatchedAt: "2026-09-03T12:00:00.000Z",
   dispatchReason: "Synthetic mobile workflow validation",
@@ -22,7 +22,7 @@ const assignedCall = {
 const replacementCall = {
   ...assignedCall,
   id: "32000000-0000-4000-8000-000000000057",
-  callNumber: "SYN-2026-0903-057",
+  callNumber: "SYN-20260903-057",
   dispatchedAt: "2026-09-03T12:10:00.000Z",
 } as const;
 
