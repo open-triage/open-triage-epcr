@@ -14,6 +14,8 @@ import type {
   DraftOccurrenceMutation,
   DraftReportResult,
   DraftValue,
+  PostSignatureDraftResult,
+  SaveDraftReportResult,
   SaveDraftReportCommand
 } from "./draft-report.types.js";
 import {
@@ -201,7 +203,7 @@ export class DraftReportService {
     }
   }
 
-  async save(accessToken: string, reportId: string, input: unknown): Promise<DraftReportResult> {
+  async save(accessToken: string, reportId: string, input: unknown): Promise<SaveDraftReportResult> {
     const session = this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
@@ -222,20 +224,23 @@ export class DraftReportService {
         `, [reportId, session.organization.id, session.user.id]);
         const report = rows[0];
         if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
-        if (report.status !== "draft") throw new ConflictException("A signed report cannot be autosaved");
         if (command.authorId !== session.user.id) {
           throw new NotFoundException("The draft is not available to this clinician");
         }
-        const replay = await this.replay<DraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
+        const replay = await this.replay<SaveDraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
         if (replay) return replay;
-        const revision = Number(report.revision);
-        if (command.expectedRevision > revision) {
-          throw new ConflictException({ message: "Draft revision is ahead of the server", expectedRevision: command.expectedRevision, currentRevision: revision });
-        }
         const authors = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.app_user where id = $1 and organization_id = $2 and active
         `, [command.authorId, report.organization_id]);
         if (!authors[0]) throw new UnprocessableEntityException("authorId must be an active user in the report organization");
+
+        if (report.status === "signed") {
+          return this.retainPostSignatureAttempt(manager, report, command, digest);
+        }
+        const revision = Number(report.revision);
+        if (command.expectedRevision > revision) {
+          throw new ConflictException({ message: "Draft revision is ahead of the server", expectedRevision: command.expectedRevision, currentRevision: revision });
+        }
 
         const nextRevision = revision + 1;
         const received = await manager.query<Array<{ received_at: Date | string }>>("select clock_timestamp() as received_at");
@@ -312,6 +317,56 @@ export class DraftReportService {
     } catch (error) {
       this.rethrowDatabaseConflict(error);
     }
+  }
+
+  private async retainPostSignatureAttempt(
+    manager: EntityManager,
+    report: ReportRow,
+    command: SaveDraftReportCommand,
+    digest: string
+  ): Promise<PostSignatureDraftResult> {
+    const snapshots = await manager.query<Array<{
+      id: string;
+      signed_revision: string | number;
+      canonical_sha256: string;
+    }>>(`
+      select id, signed_revision, canonical_sha256
+      from clinical.signed_snapshot where report_id = $1
+    `, [report.id]);
+    const snapshot = snapshots[0];
+    if (!snapshot) throw new ConflictException("The signed report snapshot is unavailable");
+
+    const received = await manager.query<Array<{ received_at: Date | string }>>(
+      "select clock_timestamp() as received_at"
+    );
+    const serverReceivedTime = received[0]!.received_at;
+    const targets: Array<{ type: DraftTargetType; value: DraftGroupMutation | DraftOccurrenceMutation }> = [
+      ...(command.groups ?? []).map((value) => ({ type: "group" as const, value })),
+      ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
+    ];
+    for (const target of targets) {
+      await manager.query(`
+        insert into clinical_audit.post_signature_audit_note
+          (report_id, idempotency_key, target_type, target_id, attempted_change,
+           author_id, device_id, client_edit_time, server_received_time,
+           expected_revision, signed_revision, signed_snapshot_id, signed_canonical_sha256)
+        values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13)
+      `, [report.id, command.commandId, target.type, target.value.id,
+        JSON.stringify(target.value), command.authorId, command.deviceId ?? null,
+        command.clientTime ?? null, serverReceivedTime, command.expectedRevision,
+        snapshot.signed_revision, snapshot.id, snapshot.canonical_sha256]);
+    }
+    const result: PostSignatureDraftResult = {
+      id: report.id,
+      status: "signed",
+      revision: Number(report.revision),
+      signedRevision: Number(snapshot.signed_revision),
+      signedSnapshotId: snapshot.id,
+      canonicalSha256: snapshot.canonical_sha256,
+      retainedAuditNoteCount: targets.length
+    };
+    await this.storeReceipt(manager, command.commandId, report.id, "save-draft", digest, result);
+    return result;
   }
 
   private async targetState(
@@ -763,7 +818,7 @@ export class DraftReportService {
     reportId: string,
     type: string,
     digest: string,
-    response: DraftReportResult
+    response: SaveDraftReportResult
   ): Promise<void> {
     await manager.query(`insert into clinical.command_receipt
       (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)

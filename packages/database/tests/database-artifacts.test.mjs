@@ -94,6 +94,7 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.amendment",
     "create table clinical_audit.event",
     "create table clinical_audit.draft_reconciliation",
+    "create table clinical_audit.post_signature_audit_note",
     "create table integration.outbox_event",
     "create table integration.projection_run",
     "create table integration.projection_backfill_job",
@@ -131,7 +132,8 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.match(migration, /grant select on operations\.unsigned_report_work_queue,[\s\S]*to open_triage_operational/);
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
   assert.match(migration, /draft_reconciliation_append_only[\s\S]*prevent_update_or_delete/);
-  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation to open_triage_auditor/);
+  assert.match(migration, /post_signature_audit_note_append_only[\s\S]*prevent_update_or_delete/);
+  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });

@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post } 
 import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
-import type { DraftReportResult } from "./draft-report.types.js";
+import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
 import { AmendReportService } from "./amend-report.service.js";
@@ -33,7 +33,7 @@ export class DraftReportController {
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
     @Headers("authorization") authorization?: string
-  ): Promise<DraftReportResult> {
+  ): Promise<SaveDraftReportResult> {
     return this.reports.save(bearerToken(authorization), id, body);
   }
 
