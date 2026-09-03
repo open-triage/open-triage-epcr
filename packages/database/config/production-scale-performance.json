@@ -1,0 +1,60 @@
+{
+  "policyVersion": "production-scale-performance-1.0.0",
+  "policyStatus": "approved-under-requesting-owner-delegation",
+  "approval": {
+    "approvedOn": "2026-09-02",
+    "approvedBy": "requesting-product-and-operations-owner",
+    "context": "ticket-045-complete-feature-without-further-input"
+  },
+  "capacityModel": {
+    "onlineYears": 10,
+    "reportsPerYear": 1000000,
+    "totalReports": 10000000
+  },
+  "thresholds": {
+    "commonWideQueryP95Ms": 250,
+    "commonRepeatableQueryP95Ms": 500,
+    "partitionPrunedQueryP95Ms": 250,
+    "signingWritesPerSecond": 100,
+    "projectorReportsPerSecond": 100,
+    "projectorBatchSize": 500,
+    "projectorBatchMaxMs": 5000,
+    "reconciliationReportsPerSecond": 10000,
+    "amendmentReplayReportsPerSecond": 100,
+    "recoveryRpoMinutes": 5,
+    "recoveryRtoHours": 4,
+    "steadyStateCpuPercentMax": 70,
+    "peakCpuPercentMax": 80,
+    "connectionUtilizationPercentMax": 70,
+    "storageHeadroomPercentMin": 30,
+    "commonQueryTempBytesMax": 0
+  },
+  "profiles": {
+    "ci": {
+      "reports": 10000,
+      "years": 10,
+      "repeatableElementsPerReport": 4,
+      "amendmentRate": 0.05,
+      "measurementIterations": 5,
+      "signingBatchSize": 500,
+      "projectorBatchSize": 500
+    },
+    "production": {
+      "reports": 10000000,
+      "years": 10,
+      "repeatableElementsPerReport": 6,
+      "amendmentRate": 0.05,
+      "measurementIterations": 20,
+      "signingBatchSize": 500,
+      "projectorBatchSize": 500
+    }
+  },
+  "productionOnlyThresholds": [
+    "recoveryRpoMinutes",
+    "recoveryRtoHours",
+    "steadyStateCpuPercentMax",
+    "peakCpuPercentMax",
+    "connectionUtilizationPercentMax",
+    "storageHeadroomPercentMin"
+  ]
+}

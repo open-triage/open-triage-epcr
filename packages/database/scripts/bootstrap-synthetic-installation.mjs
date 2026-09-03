@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -12,6 +13,7 @@ const repoRoot = path.resolve(packageRoot, "../..");
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to bootstrap the synthetic installation");
+const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
 
 // Stable UUIDs make this fixture an idempotent installation baseline. Every clinical
 // UUID is v4-shaped so the same constraints used for offline-created records apply.
@@ -245,10 +247,12 @@ try {
       dispatchedAt: "2020-01-01T12:00:00Z"
     })]);
     await client.query(`
-      insert into clinical.patient (id, organization_id, identity_state, pseudonymous_key)
-      values ($1, $2, 'unknown', $3)
+      insert into clinical.patient
+        (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
+      values ($1, $2, 'unknown', $3, $4)
       on conflict do nothing
-    `, [ids.patient, ids.organization, sha256("open-triage-synthetic-patient-v1")]);
+    `, [ids.patient, ids.organization,
+      derivePatientKey(patientKeyConfig, ids.organization, ids.patient), patientKeyConfig.keyVersion]);
     await client.query(`
       insert into clinical.report
         (id, organization_id, incident_id, patient_id, agency_demographic_version_id,

@@ -6,11 +6,17 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const databaseUrl = process.env.DATABASE_URL;
+const patientKeyEnvironment = {
+  PATIENT_KEY_INSTALLATION_ID: "90000000-0000-4000-8000-000000000001",
+  PATIENT_KEY_VERSION: "1",
+  PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x31).toString("base64")
+};
 
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
   throw new Error("DATABASE_URL is required for the PostgreSQL integration suite");
@@ -25,6 +31,16 @@ async function rejectsSql(client, sql, params, expectedCode) {
   } finally {
     await client.query("rollback to savepoint expected_failure");
   }
+}
+
+async function connectAsRole(role) {
+  if (!["open_triage_analyst", "open_triage_identified_analyst"].includes(role)) {
+    throw new Error(`Unsupported integration-test role ${role}`);
+  }
+  const roleClient = new pg.Client({ connectionString: databaseUrl });
+  await roleClient.connect();
+  await roleClient.query(`set role ${role}`);
+  return roleClient;
 }
 
 integrationTest("the database foundation runs on a clean PostgreSQL 15+ server", async (t) => {
@@ -197,6 +213,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
+        has_function_privilege('open_triage_retention_executor', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as retention_delete,
+        not has_function_privilege('open_triage_operational', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as no_operational_delete,
         to_regclass('auth.users') is null as no_supabase_auth_dependency
     `);
     assert.deepEqual(grants.rows[0], {
@@ -207,13 +225,15 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       projector_run_insert: true,
       operational_health: true,
       operational_failures: true,
+      retention_delete: true,
+      no_operational_delete: true,
       no_supabase_auth_dependency: true
     });
   });
 
   await t.test("bootstraps and safely replays a complete synthetic installation", async () => {
     const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
-    const environment = { ...process.env, DATABASE_URL: databaseUrl };
+    const environment = { ...process.env, ...patientKeyEnvironment, DATABASE_URL: databaseUrl };
     const first = await execFileAsync(process.execPath, [bootstrap], { env: environment });
     const second = await execFileAsync(process.execPath, [bootstrap], { env: environment });
     assert.equal(JSON.parse(first.stdout).status, "ready");
@@ -374,7 +394,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await t.test("projects one signed report from the outbox into lossless analyst contracts", async () => {
+  await t.test("projects one signed report from the outbox into lossless analyst contracts", async (projectionTest) => {
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
       incident: "36000000-0000-4000-8000-000000000002",
@@ -388,6 +408,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       waveformGroup: "36000000-0000-4000-8000-00000000000a"
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
+    const administratorId = "32000000-0000-4000-8000-000000000002";
     const clinicianId = "32000000-0000-4000-8000-000000000003";
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
     const formVersionId = "32000000-0000-4000-8000-000000000008";
@@ -505,7 +526,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       { value_kind: "pertinent-negative", absence_code: "8801019", absence_display: "Denied" });
     await addOccurrence("eVitals.13", ids.vitalGroup, 0, { value_kind: "absent" });
     await addOccurrence("eVitals.16", ids.vitalGroup, 0,
-      { value_kind: "numeric", value_numeric: "98.70", value_lexical: "98.70" });
+      { value_kind: "numeric", value_numeric: "14.000", value_lexical: "14.000",
+        source_attributes: { ETCO2Type: "3340005" } });
     await addOccurrence("eHistory.01", ids.historyGroup, 0,
       { value_kind: "text", value_text: "Language barrier" });
     await addOccurrence("ePayment.60", ids.insuranceGroup, 0,
@@ -565,7 +587,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       erecord_01, edisposition_11, edisposition_11_lexical, eexam_01, eexam_01_lexical,
       epatient_17::text, epatient_17_precision, etimes_01, etimes_01_precision,
       etimes_01_utc_offset_minutes, earrest_01, earrest_01_display, earrest_01_system,
-      earrest_01_terminology_version, element_statuses
+      earrest_01_terminology_version, element_statuses, quality_flags, quality_rule_version,
+      quality_findings, derived_values, normalization_rule_version
       from analytics_private.epcr where report_id = $1`, [ids.report]);
     assert.equal(wide.rowCount, 1);
     assert.deepEqual({
@@ -618,6 +641,12 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(wide.rows[0].amendment_count, 0);
     assert.equal(wide.rows[0].effective_amendment_sequence, 0);
     assert.equal(wide.rows[0].projector_version, "1.0.0");
+    assert.deepEqual(wide.rows[0].quality_flags, ["vital.etco2.unusual"]);
+    assert.equal(wide.rows[0].quality_rule_version, "clinical-quality-1.0.0");
+    assert.equal(wide.rows[0].quality_findings[0].observedNumeric, 14);
+    assert.equal(wide.rows[0].derived_values[0].derivedNumeric, 105.009);
+    assert.equal(wide.rows[0].normalization_rule_version,
+      "clinical-normalization-1.0.0");
     assert.ok(wide.rows[0].projected_at instanceof Date);
     const freshness = await client.query(`select
       extract(epoch from (projection.projected_at - event.occurred_at)) as seconds
@@ -633,6 +662,79 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(healthAfterProjection.last_run_processed_count, 1);
     assert.ok(healthAfterProjection.last_successful_run_at instanceof Date);
 
+    const analystClient = await connectAsRole("open_triage_analyst");
+    try {
+      assert.equal((await analystClient.query("select current_user")).rows[0].current_user, "open_triage_analyst");
+      const pseudonymous = await analystClient.query("select patient_key from analytics.epcr where report_id = $1", [ids.report]);
+      assert.equal(pseudonymous.rowCount, 1);
+      await assert.rejects(analystClient.query("select epatient_17 from analytics.epcr limit 1"),
+        (error) => error.code === "42703");
+      await assert.rejects(analystClient.query("select * from analytics.epcr_identified limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(analystClient.query("select * from analytics_private.epcr limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(analystClient.query("select * from clinical.patient limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await analystClient.end();
+    }
+
+    const identifiedClient = await connectAsRole("open_triage_identified_analyst");
+    try {
+      assert.equal((await identifiedClient.query("select current_user")).rows[0].current_user,
+        "open_triage_identified_analyst");
+      const identified = await identifiedClient.query("select epatient_17::text from analytics.epcr_identified where report_id = $1", [ids.report]);
+      assert.equal(identified.rows[0].epatient_17, "1985-07-01");
+      await assert.rejects(identifiedClient.query("select * from analytics_private.epcr limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(identifiedClient.query("select * from clinical.patient limit 1"),
+        (error) => error.code === "42501");
+      await assert.rejects(identifiedClient.query("select * from integration.outbox_event limit 1"),
+        (error) => error.code === "42501");
+    } finally {
+      await identifiedClient.end();
+    }
+
+    const originalPatientKey = wide.rows[0].patient_key;
+    const rotatedEnvironment = {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      PATIENT_KEY_INSTALLATION_ID: patientKeyEnvironment.PATIENT_KEY_INSTALLATION_ID,
+      PATIENT_KEY_VERSION: "2",
+      PATIENT_KEY_SECRET_BASE64: Buffer.alloc(32, 0x32).toString("base64")
+    };
+    const rotation = await execFileAsync(process.execPath,
+      [path.join(packageRoot, "scripts/rotate-patient-keys.mjs")], { env: rotatedEnvironment });
+    assert.deepEqual(JSON.parse(rotation.stdout), {
+      event: "patient_key_rotation", keyVersion: 2, rotatedPatients: 2
+    });
+    const expectedRotatedKey = derivePatientKey(
+      patientKeyConfigFromEnvironment(rotatedEnvironment), organizationId, ids.patient
+    );
+    const rotated = (await client.query(`select
+      patient.pseudonymous_key, patient.pseudonymous_key_version,
+      wide.patient_key as wide_key, wide.patient_key_version as wide_version,
+      bool_and(repeatable.patient_key = patient.pseudonymous_key) as repeatable_key_matches,
+      bool_and(repeatable.patient_key_version = patient.pseudonymous_key_version) as repeatable_version_matches
+      from clinical.patient patient
+      join clinical.report report on report.patient_id = patient.id
+      join analytics_private.epcr wide on wide.report_id = report.id
+      join analytics_private.epcr_repeatable_element repeatable on repeatable.report_id = report.id
+      where patient.id = $1
+      group by patient.id, wide.reporting_date, wide.report_id`, [ids.patient])).rows[0];
+    assert.notEqual(rotated.pseudonymous_key, originalPatientKey);
+    assert.deepEqual(rotated, {
+      pseudonymous_key: expectedRotatedKey,
+      pseudonymous_key_version: 2,
+      wide_key: expectedRotatedKey,
+      wide_version: 2,
+      repeatable_key_matches: true,
+      repeatable_version_matches: true
+    });
+    const rotationReplay = await execFileAsync(process.execPath,
+      [path.join(packageRoot, "scripts/rotate-patient-keys.mjs")], { env: rotatedEnvironment });
+    assert.equal(JSON.parse(rotationReplay.stdout).rotatedPatients, 0);
+
     const repeatable = await client.query(`select *, tableoid::regclass::text as partition
       from analytics_private.epcr_repeatable_element where report_id = $1
       order by element_id`, [ids.report]);
@@ -645,7 +747,18 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(repeatById.get("eHistory.01").value_text, "Language barrier");
     assert.equal(repeatById.get("eVitals.06").value_integer, "118");
     assert.equal(repeatById.get("eVitals.06").value_lexical, "0118");
-    assert.equal(repeatById.get("eVitals.16").value_numeric, "98.70");
+    const etco2 = repeatById.get("eVitals.16");
+    assert.equal(etco2.value_numeric, "14.000");
+    assert.equal(etco2.value_lexical, "14.000");
+    assert.deepEqual(etco2.source_attributes, { ETCO2Type: "3340005" });
+    assert.equal(etco2.source_unit_code, "kPa");
+    assert.equal(etco2.normalized_numeric, "105.009");
+    assert.equal(etco2.normalized_unit_code, "mm[Hg]");
+    assert.equal(etco2.normalization_rule_id, "etco2.kpa-to-mmhg");
+    assert.equal(etco2.normalization_rule_version, "clinical-normalization-1.0.0");
+    assert.deepEqual(etco2.quality_flags, ["vital.etco2.unusual"]);
+    assert.equal(etco2.quality_rule_version, "clinical-quality-1.0.0");
+    assert.equal(etco2.quality_findings[0].sourceOccurrenceId, etco2.element_occurrence_id);
     const paymentDate = repeatById.get("ePayment.60").value_date;
     assert.equal(
       paymentDate instanceof Date ? paymentDate.toISOString().slice(0, 10) : paymentDate,
@@ -887,5 +1000,199 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       env: { ...process.env, DATABASE_URL: databaseUrl }
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
+
+    await projectionTest.test("verifies recovery, replica roles, and metadata-only query auditing", async () => {
+      const recoveryBefore = (await client.query("select * from operations.recovery_readiness")).rows[0];
+      assert.deepEqual({
+        missing_snapshot_count: Number(recoveryBefore.missing_snapshot_count),
+        mismatched_snapshot_count: Number(recoveryBefore.mismatched_snapshot_count),
+        orphan_snapshot_count: Number(recoveryBefore.orphan_snapshot_count),
+        broken_audit_chain_count: Number(recoveryBefore.broken_audit_chain_count),
+        missing_or_stale_projection_count: Number(recoveryBefore.missing_or_stale_projection_count)
+      }, {
+        missing_snapshot_count: 0,
+        mismatched_snapshot_count: 0,
+        orphan_snapshot_count: 0,
+        broken_audit_chain_count: 0,
+        missing_or_stale_projection_count: 0
+      });
+
+      const recoveryVerifier = path.join(packageRoot, "scripts/verify-recovery.mjs");
+      const recovery = await execFileAsync(process.execPath, [recoveryVerifier], {
+        env: { ...process.env, RESTORED_DATABASE_URL: databaseUrl,
+          RECOVERY_EXERCISE_ACKNOWLEDGE_RESTORED_DATABASE: "1" }
+      });
+      const recoveryEvidence = JSON.parse(recovery.stdout);
+      assert.equal(recoveryEvidence.status, "succeeded");
+      assert.equal(recoveryEvidence.authoritativeIntegrityFailures, 0);
+      assert.equal(recoveryEvidence.staleProjectionsAfter, 0);
+      assert.ok(recoveryEvidence.projectionsChecked >= 1);
+
+      const replicaVerifier = path.join(packageRoot, "scripts/verify-reporting-replica.mjs");
+      for (const role of ["open_triage_analyst", "open_triage_identified_analyst"]) {
+        const verification = await execFileAsync(process.execPath, [replicaVerifier], {
+          env: { ...process.env, REPORTING_REPLICA_DATABASE_URL: databaseUrl,
+            REPORTING_REPLICA_ROLE: role, ALLOW_PRIMARY_REPLICA_TEST: "1" }
+        });
+        assert.deepEqual({
+          status: JSON.parse(verification.stdout).status,
+          role: JSON.parse(verification.stdout).role,
+          readOnly: JSON.parse(verification.stdout).readOnly,
+          privateAccess: JSON.parse(verification.stdout).privateAccess
+        }, { status: "succeeded", role, readOnly: true, privateAccess: false });
+      }
+
+      const auditColumns = await client.query(`select column_name from information_schema.columns
+        where table_schema = 'operations' and table_name = 'query_audit_event'
+        order by ordinal_position`);
+      const names = auditColumns.rows.map((row) => row.column_name);
+      assert.ok(!names.some((name) => /query_text|sql_text|bind|result_value|clinical_value/.test(name)));
+      assert.ok(names.includes("statement_fingerprint_sha256"));
+      assert.ok(names.includes("returned_row_count"));
+
+      await client.query("begin");
+      try {
+        await client.query("set local role open_triage_query_auditor");
+        const recorded = await client.query(`select operations.record_query_audit(
+          '44000000-0000-4000-8000-000000000001', 'open_triage_analyst', 'analytics.epcr',
+          'monthly.primary-impression-count', $1, 12.345, 4, true, null, 'analyst-gateway') as id`,
+        ["4".repeat(64)]);
+        assert.ok(Number(recorded.rows[0].id) > 0);
+        await rejectsSql(client, "select * from operations.query_audit_event", [], "42501");
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+
+      const audit = (await client.query(`select database_role, analyst_contract, statement_name,
+        statement_fingerprint_sha256, duration_ms::text, returned_row_count, succeeded, sqlstate,
+        application_name from operations.query_audit_event
+        where session_id = '44000000-0000-4000-8000-000000000001'`)).rows[0];
+      assert.deepEqual(audit, {
+        database_role: "open_triage_analyst",
+        analyst_contract: "analytics.epcr",
+        statement_name: "monthly.primary-impression-count",
+        statement_fingerprint_sha256: "4".repeat(64),
+        duration_ms: "12.345",
+        returned_row_count: "4",
+        succeeded: true,
+        sqlstate: null,
+        application_name: "analyst-gateway"
+      });
+      await assert.rejects(client.query("update operations.query_audit_event set duration_ms = 0"),
+        /append-only/);
+      const health = (await client.query("select * from operations.query_audit_health")).rows[0];
+      assert.equal(Number(health.events_last_hour), 1);
+      assert.equal(Number(health.failures_last_hour), 0);
+    });
+
+    await projectionTest.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
+      const heldReportId = "39000000-0000-4000-8000-000000000001";
+      const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
+      await client.query(`insert into clinical.report
+        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+         form_version_id, catalog_release_id, documenting_user_id)
+        values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [heldReportId, organizationId, ids.incident, ids.patient, agencyVersionId,
+        formVersionId, releaseId, clinicianId]);
+      await client.query("begin");
+      try {
+        await client.query(`update clinical.report set status = 'signed', revision = 1,
+          reporting_date = '2043-03-05', reporting_date_source = 'service-date' where id = $1`,
+        [heldReportId]);
+        await client.query(`insert into clinical.signed_snapshot
+          (id, report_id, signed_revision, form_version_id, catalog_release_id, signer_id,
+           signed_at, canonical_sha256, attestation)
+          values ($1, $2, 1, $3, $4, $5, '2043-03-05T12:00:00Z', repeat('d', 64),
+            '{"statement":"retention hold fixture"}')`,
+        [heldSnapshotId, heldReportId, formVersionId, releaseId, clinicianId]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+      await execFileAsync(process.execPath, [projector], {
+        env: { ...process.env, DATABASE_URL: databaseUrl, ANALYTICS_PROJECTOR_BATCH_SIZE: "100" }
+      });
+
+      const destination = `s3://open-triage-retention-archive/integration/${organizationId}/`;
+      await client.query(`insert into retention.policy
+        (organization_id, retention_years, archive_destination_uri)
+        values ($1, 10, $2)`, [organizationId, destination]);
+      await assert.rejects(
+        client.query("select retention.prepare_archive_batch($1, '2054-01-01', 'operator-a')", [organizationId]),
+        /installation-owner approval is required/
+      );
+      await client.query(`update retention.policy set review_status = 'approved-installation-owner',
+        approved_by = 'integration-owner', approved_at = now(), approval_note = 'integration only'
+        where organization_id = $1`, [organizationId]);
+
+      const hold = await client.query(`insert into retention.legal_hold
+        (organization_id, report_id, reason, authority_reference, placed_by)
+        values ($1, $2, 'Preserve test record', 'CASE-042', 'legal-user') returning id`,
+      [organizationId, heldReportId]);
+      const failedBatch = (await client.query(
+        "select retention.prepare_archive_batch($1, '2054-01-01', 'operator-a') as id",
+        [organizationId]
+      )).rows[0].id;
+      const failedMembers = await client.query(
+        "select report_id from retention.archive_batch_report where batch_id = $1", [failedBatch]
+      );
+      assert.deepEqual(failedMembers.rows, [{ report_id: ids.report }]);
+      await client.query("select retention.fail_archive($1, 'operator-a', 'UPLOAD_FAILED', 'simulated')", [failedBatch]);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 1);
+
+      const batch = (await client.query(
+        "select retention.prepare_archive_batch($1, '2054-01-01', 'operator-b') as id",
+        [organizationId]
+      )).rows[0].id;
+      const archive = (await client.query(
+        "select archive_sha256 from retention.archive_batch where id = $1", [batch]
+      )).rows[0];
+      await assert.rejects(client.query(
+        "select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
+        [batch, `${destination}${batch}.ndjson`, "0".repeat(64)]
+      ), /checksum does not match/);
+      await client.query("select retention.verify_archive($1, $2, 'version-1', $3, 'verifier')",
+        [batch, `${destination}${batch}.ndjson`, archive.archive_sha256]);
+
+      await assert.rejects(
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, clinicianId]),
+        /active installation administrator/
+      );
+
+      const lateHold = await client.query(`insert into retention.legal_hold
+        (organization_id, report_id, reason, authority_reference, placed_by)
+        values ($1, $2, 'Late preservation request', 'CASE-LATE', 'legal-user') returning id`,
+      [organizationId, ids.report]);
+      await assert.rejects(
+        client.query("select retention.delete_verified_batch($1, $2)", [batch, administratorId]),
+        /legal hold now protects/
+      );
+      await client.query(`update retention.legal_hold set released_by = 'legal-user', released_at = now(),
+        release_reason = 'Late request withdrawn' where id = $1`, [lateHold.rows[0].id]);
+      const deletion = (await client.query(
+        "select retention.delete_verified_batch($1, $2) as evidence", [batch, administratorId]
+      )).rows[0].evidence;
+      assert.equal(deletion.reports, 1);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 0);
+      assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [heldReportId])).rows[0].count, 1);
+      assert.equal((await client.query("select count(*)::integer as count from analytics_private.epcr where report_id = $1", [heldReportId])).rows[0].count, 1);
+      await client.query("select retention.maintain_partitions($1, 'maintenance-operator')", [batch]);
+      assert.equal((await client.query("select to_regclass('analytics_private.epcr_y2043') is not null as retained")).rows[0].retained, true);
+
+      const evidence = await client.query(`select sequence, event_type, actor, previous_hash, event_hash
+        from retention.evidence where batch_id = $1 order by sequence`, [batch]);
+      assert.deepEqual(evidence.rows.map((row) => row.event_type), ["prepared", "archive_verified", "deleted", "partition_maintained"]);
+      assert.equal(evidence.rows[0].previous_hash, null);
+      assert.equal(evidence.rows[1].previous_hash, evidence.rows[0].event_hash);
+      assert.equal(evidence.rows[2].previous_hash, evidence.rows[1].event_hash);
+      assert.equal(evidence.rows[2].actor, administratorId);
+      assert.equal(evidence.rows[3].previous_hash, evidence.rows[2].event_hash);
+      await assert.rejects(client.query("delete from retention.evidence where batch_id = $1", [batch]), /append-only/);
+      assert.equal((await client.query("select count(*)::integer as count from retention.evidence where batch_id = $1", [failedBatch])).rows[0].count, 2);
+      assert.equal(hold.rowCount, 1);
+    });
   });
 });

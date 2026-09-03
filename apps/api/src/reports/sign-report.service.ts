@@ -6,6 +6,11 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
+import {
+  evaluateQualityAndNormalization,
+  NORMALIZATION_RULE_VERSION,
+  QUALITY_RULE_VERSION
+} from "@open-triage/contracts/quality-rules";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
@@ -144,6 +149,7 @@ export class SignReportService {
         if (findings.some((finding) => finding.severity === "error")) return { findings };
 
         const payload = await this.canonicalPayload(manager, report, revision);
+        const quality = await this.evaluateQuality(manager, report.id);
         const canonicalSha256 = commandSha256(payload);
         const snapshotId = randomUUID();
         const signedAt = new Date().toISOString();
@@ -155,11 +161,15 @@ export class SignReportService {
         [report.id, reporting.date, reporting.source, signedAt]);
         await manager.query(`insert into clinical.signed_snapshot
           (id, report_id, signed_revision, form_version_id, catalog_release_id, signer_id,
-           signed_at, canonical_sha256, attestation, warning_acknowledgements)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)`,
+           signed_at, canonical_sha256, attestation, warning_acknowledgements,
+           quality_rule_version, normalization_rule_version, quality_findings, derived_values)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
+                  $11, $12, $13::jsonb, $14::jsonb)`,
         [snapshotId, report.id, revision, report.form_version_id, report.catalog_release_id,
           command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
-          JSON.stringify(command.warningAcknowledgements ?? {})]);
+          JSON.stringify(command.warningAcknowledgements ?? {}), QUALITY_RULE_VERSION,
+          NORMALIZATION_RULE_VERSION, JSON.stringify(quality.qualityFindings),
+          JSON.stringify(quality.derivedValues)]);
 
         await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
         const result: SignedReportResult = {
@@ -173,7 +183,11 @@ export class SignReportService {
           formVersionId: report.form_version_id,
           catalogReleaseId: report.catalog_release_id,
           reportingDate: reporting.date,
-          reportingDateSource: reporting.source
+          reportingDateSource: reporting.source,
+          qualityRuleVersion: QUALITY_RULE_VERSION,
+          normalizationRuleVersion: NORMALIZATION_RULE_VERSION,
+          qualityFindings: quality.qualityFindings,
+          derivedValues: quality.derivedValues
         };
         await manager.query(`insert into clinical.command_receipt
           (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
@@ -188,6 +202,28 @@ export class SignReportService {
       throw new UnprocessableEntityException({ message: "Report validation failed", findings: attempt.findings });
     }
     return attempt.result!;
+  }
+
+  private async evaluateQuality(manager: EntityManager, reportId: string) {
+    const rows = await manager.query<Array<{
+      id: string;
+      element_id: string;
+      value_kind: string;
+      value_integer: string | number | null;
+      value_numeric: string | number | null;
+      source_attributes: Record<string, unknown> | null;
+    }>>(`select id, element_id, value_kind, value_integer, value_numeric, source_attributes
+      from clinical.element_occurrence
+      where report_id = $1 and tombstoned_at is null
+      order by element_id, ordinal, id`, [reportId]);
+    return evaluateQualityAndNormalization(rows.map((row) => ({
+      id: row.id,
+      elementId: row.element_id,
+      valueKind: row.value_kind,
+      valueInteger: row.value_integer,
+      valueNumeric: row.value_numeric,
+      sourceAttributes: row.source_attributes
+    })));
   }
 
   private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {

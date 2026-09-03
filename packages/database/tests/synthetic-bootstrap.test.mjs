@@ -27,7 +27,8 @@ test("exposes the synthetic installation only through an explicit command", () =
 
 test("uses deterministic synthetic identities and contains no patient identity fixture", () => {
   assert.ok(!bootstrap.includes("randomUUID"));
-  assert.match(bootstrap, /identity_state, pseudonymous_key/);
+  assert.match(bootstrap, /identity_state, pseudonymous_key, pseudonymous_key_version/);
+  assert.match(bootstrap, /derivePatientKey/);
   assert.match(bootstrap, /'unknown'/);
   assert.match(bootstrap, /synthetic, baseline/);
   assert.match(bootstrap, /on conflict do nothing/);

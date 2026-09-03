@@ -9,7 +9,6 @@ export interface CreateDraftReportCommand {
   documentingUserId: string;
   formId: string;
   patientIdentityState: PatientIdentityState;
-  patientPseudonymousKey: string;
 }
 
 export type DraftValue =

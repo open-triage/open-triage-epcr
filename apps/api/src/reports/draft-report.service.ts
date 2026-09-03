@@ -7,6 +7,7 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type {
   CreateDraftReportCommand,
@@ -125,6 +126,10 @@ export class DraftReportService {
     if (command.documentingUserId !== session.user.id || command.organizationId !== session.organization.id) {
       throw new NotFoundException("The draft is not available to this clinician");
     }
+    const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
+    const patientPseudonymousKey = derivePatientKey(
+      patientKeyConfig, command.organizationId, command.patientId
+    );
     const digest = commandSha256(command);
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
@@ -168,17 +173,20 @@ export class DraftReportService {
           values ($1, $2) on conflict (id) do nothing
         `, [command.incidentId, command.organizationId]);
         await manager.query(`
-          insert into clinical.patient (id, organization_id, identity_state, pseudonymous_key)
-          values ($1, $2, $3, $4) on conflict (id) do nothing
-        `, [command.patientId, command.organizationId, command.patientIdentityState, command.patientPseudonymousKey]);
+          insert into clinical.patient
+            (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
+          values ($1, $2, $3, $4, $5) on conflict (id) do nothing
+        `, [command.patientId, command.organizationId, command.patientIdentityState,
+          patientPseudonymousKey, patientKeyConfig.keyVersion]);
 
         const related = await manager.query<Array<{ incident_ok: boolean; patient_ok: boolean }>>(`
           select
             exists(select 1 from clinical.incident where id = $1 and organization_id = $3) as incident_ok,
             exists(select 1 from clinical.patient where id = $2 and organization_id = $3
-                   and identity_state = $4 and pseudonymous_key = $5) as patient_ok
+                   and identity_state = $4 and pseudonymous_key = $5
+                   and pseudonymous_key_version = $6) as patient_ok
         `, [command.incidentId, command.patientId, command.organizationId,
-          command.patientIdentityState, command.patientPseudonymousKey]);
+          command.patientIdentityState, patientPseudonymousKey, patientKeyConfig.keyVersion]);
         if (!related[0]?.incident_ok || !related[0]?.patient_ok) {
           throw new ConflictException("A stable incident or patient identity already belongs to different data");
         }

@@ -20,6 +20,9 @@ const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
 const databaseUrl = process.env.DATABASE_URL;
+process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
+process.env.PATIENT_KEY_VERSION ??= "1";
+process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
   throw new Error("DATABASE_URL is required for the API PostgreSQL integration suite");
@@ -224,9 +227,9 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       ($1, 'integration', $3), ($2, 'integration', $4)`,
       [timeElementId, textElementId, `integration.time-${timeElementId}`, `integration.text-${textElementId}`]);
     await client.query(`insert into forms.custom_element_definition
-      (id, organization_id, namespace, slug, title, base_datatype, definition) values
-      ($1, $3, 'integration', $4, 'Clinical time', 'dateTime', '{}'),
-      ($2, $3, 'integration', $5, 'Clinical text', 'string', '{}')`,
+      (id, organization_id, namespace, slug, title, base_datatype, identifying, definition) values
+      ($1, $3, 'integration', $4, 'Clinical time', 'dateTime', false, '{}'),
+      ($2, $3, 'integration', $5, 'Clinical text', 'string', false, '{}')`,
       [timeElementId, textElementId, organizationId, `time-${timeElementId}`, `text-${textElementId}`]);
     await client.query(`insert into forms.custom_group_definition
       (id, organization_id, namespace, slug, temporal_kind, clinical_time_element_id, definition)
@@ -491,8 +494,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const reportId = randomUUID();
   const createCommand = {
     commandId: randomUUID(), reportId, incidentId: randomUUID(), patientId: randomUUID(),
-    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown",
-    patientPseudonymousKey: "c".repeat(64)
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
   };
   const created = await request("/reports", "POST", createCommand);
   assert.equal(created.response.status, 201, JSON.stringify(created.payload));
@@ -904,6 +906,18 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     { status: "draft", revision: "8" });
   await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
 
+  const temperatureOccurrenceId = randomUUID();
+  const temperatureDefinition = (await client.query(`select m.element_identity_id,
+      (m.analytical_location = 'repeatable') as analytical_repeatable, m.identifying
+    from catalog.analytics_element_mapping m
+    where m.release_id = $1 and m.element_id = 'eVitals.24'`, [releaseId])).rows[0];
+  await client.query(`insert into clinical.element_occurrence
+    (id, report_id, catalog_release_id, element_identity_id, element_id, ordinal,
+     analytical_repeatable, identifying, value_kind, value_numeric, value_lexical, author_id)
+    values ($1, $2, $3, $4, 'eVitals.24', 0, $5, $6, 'numeric', 46, '46.0', $7)`,
+  [temperatureOccurrenceId, reportId, releaseId, temperatureDefinition.element_identity_id,
+    temperatureDefinition.analytical_repeatable, temperatureDefinition.identifying, userId]);
+
   await client.query(`create function clinical.integration_reject_signature_audit()
     returns trigger language plpgsql as $$ begin
       if new.device_id = 'force-sign-rollback' then raise exception 'forced signing rollback'; end if;
@@ -938,17 +952,42 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(signed.payload.status, "signed");
   assert.equal(signed.payload.signedRevision, 8);
   assert.match(signed.payload.canonicalSha256, /^[a-f0-9]{64}$/);
+  assert.equal(signed.payload.qualityRuleVersion, "clinical-quality-1.0.0");
+  assert.equal(signed.payload.normalizationRuleVersion, "clinical-normalization-1.0.0");
+  assert.deepEqual(signed.payload.derivedValues, []);
+  assert.equal(signed.payload.qualityFindings.length, 1);
+  assert.deepEqual({
+    sourceOccurrenceId: signed.payload.qualityFindings[0].sourceOccurrenceId,
+    code: signed.payload.qualityFindings[0].code,
+    observedNumeric: signed.payload.qualityFindings[0].observedNumeric,
+    sourceUnitCode: signed.payload.qualityFindings[0].sourceUnitCode
+  }, {
+    sourceOccurrenceId: temperatureOccurrenceId,
+    code: "vital.temperature.unusual",
+    observedNumeric: 46,
+    sourceUnitCode: "Cel"
+  });
   const signedState = (await client.query(`select r.status, r.revision, s.signed_revision,
-      s.canonical_sha256, s.signer_id, s.attestation,
+      s.canonical_sha256, s.signer_id, s.attestation, s.quality_rule_version,
+      s.normalization_rule_version, s.quality_findings, s.derived_values,
       (select count(*)::integer from clinical.validation_finding where report_id = r.id) as findings,
       (select count(*)::integer from clinical_audit.event where report_id = r.id and action = 'sign') as audits,
       (select count(*)::integer from integration.outbox_event where aggregate_id = r.id and event_type = 'signed_snapshot') as events
     from clinical.report r join clinical.signed_snapshot s on s.report_id = r.id where r.id = $1`, [reportId])).rows[0];
-  assert.deepEqual({ ...signedState, canonical_sha256: undefined }, {
-    status: "signed", revision: "8", signed_revision: "8", canonical_sha256: undefined,
+  assert.deepEqual({
+    status: signedState.status, revision: signedState.revision,
+    signed_revision: signedState.signed_revision, signer_id: signedState.signer_id,
+    attestation: signedState.attestation, findings: signedState.findings,
+    audits: signedState.audits, events: signedState.events
+  }, {
+    status: "signed", revision: "8", signed_revision: "8",
     signer_id: userId, attestation: signCommand.attestation, findings: 0, audits: 1, events: 1
   });
   assert.equal(signedState.canonical_sha256, signed.payload.canonicalSha256);
+  assert.equal(signedState.quality_rule_version, signed.payload.qualityRuleVersion);
+  assert.equal(signedState.normalization_rule_version, signed.payload.normalizationRuleVersion);
+  assert.deepEqual(signedState.quality_findings, signed.payload.qualityFindings);
+  assert.deepEqual(signedState.derived_values, signed.payload.derivedValues);
   const signRetry = await sign(signCommand);
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);

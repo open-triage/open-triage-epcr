@@ -39,3 +39,9 @@ jobs:
       - run: npm run check:database
       - run: npm run test:integration -w @open-triage/database
       - run: npm run test:integration -w @open-triage/api
+      - run: npm run scale:test:ci -w @open-triage/database
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-scale-test-ci
+          path: packages/database/artifacts/scale-test-ci.json
