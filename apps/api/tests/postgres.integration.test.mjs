@@ -12,7 +12,8 @@ import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 import {
   DEMO_CLINICIAN_PASSWORD,
-  DEMO_CLINICIAN_USERNAME
+  DEMO_CLINICIAN_USERNAME,
+  ClinicianSessionService
 } from "../dist/sessions/clinician-session.service.js";
 
 const execFileAsync = promisify(execFile);
@@ -460,6 +461,17 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const negative = await option(ids.negative_id, "pertinent-negative");
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  const integrationAccessToken = "draft-api-owner-token";
+  app.get(ClinicianSessionService).get = (token) => {
+    assert.equal(token, integrationAccessToken);
+    return {
+      accessToken: integrationAccessToken,
+      user: { id: userId, displayName: "Clinician" },
+      organization: { id: organizationId, name: "Draft API" },
+      startedAt: "2026-09-03T08:00:00.000Z",
+      expiresAt: "2026-09-03T22:00:00.000Z"
+    };
+  };
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -467,7 +479,10 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
   const request = async (path, method, body) => {
     const response = await fetch(`${baseUrl}${path}`, {
-      method, headers: body ? { "content-type": "application/json" } : undefined,
+      method, headers: {
+        authorization: `Bearer ${integrationAccessToken}`,
+        ...(body ? { "content-type": "application/json" } : {})
+      },
       body: body ? JSON.stringify(body) : undefined
     });
     return { response, payload: await response.json() };

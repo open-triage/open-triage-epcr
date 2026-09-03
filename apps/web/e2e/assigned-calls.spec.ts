@@ -30,6 +30,26 @@ const openedAssignment = {
   replacementAssignment: replacementCall
 } as const;
 
+const openCalls = [{
+  reportId: openedAssignment.report.id,
+  callNumber: assignedCall.callNumber,
+  lastSavedAt: "2026-09-03T14:05:00.000Z",
+  syncStatus: "saved",
+  validationErrorCount: 2,
+  revision: 3,
+  formVersionId: openedAssignment.report.formVersionId,
+  catalogReleaseId: openedAssignment.report.catalogReleaseId
+}, {
+  reportId: "42000000-0000-4000-8000-000000000099",
+  callNumber: "SYN-2026-0903-000",
+  lastSavedAt: "2026-09-03T13:05:00.000Z",
+  syncStatus: "saved",
+  validationErrorCount: 0,
+  revision: 1,
+  formVersionId: "32000000-0000-4000-8000-000000000099",
+  catalogReleaseId: openedAssignment.report.catalogReleaseId
+}] as const;
+
 async function signIn(page: Page) {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
@@ -129,4 +149,36 @@ test("a first open without connectivity leaves the assignment actionable and cre
   await expect(page.locator(".assignment-error")).toContainText("Check your connection");
   const phantom = await page.evaluate(() => Object.keys(localStorage).some((key) => key.includes("report")));
   expect(phantom).toBe(false);
+});
+
+test("open calls show workflow state newest first and reopen the existing pinned report", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ openCalls, refreshedAt: "2026-09-03T14:06:00.000Z" })
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/reopen`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      callNumber: assignedCall.callNumber,
+      report: { ...openedAssignment.report, revision: 3, groups: [], occurrences: [] }
+    })
+  }));
+  await signIn(page);
+
+  const section = page.getByRole("region", { name: "Open calls" });
+  const cards = section.locator(".open-call-card");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText(assignedCall.callNumber);
+  await expect(cards.nth(0)).toContainText("Saved", { ignoreCase: true });
+  await expect(cards.nth(0)).toContainText("Sep 3", { ignoreCase: true });
+  await expect(cards.nth(0)).toContainText("Validation errors2");
+  await expect(cards.nth(1)).toContainText("SYN-2026-0903-000");
+
+  await cards.nth(0).getByRole("button", { name: "Reopen call" }).click();
+  const active = page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true });
+  await expect(active).toBeVisible();
+  await expect(active).toHaveAttribute("data-report-id", openedAssignment.report.id);
+  await expect(active).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 });

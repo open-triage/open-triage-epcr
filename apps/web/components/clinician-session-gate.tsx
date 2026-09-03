@@ -12,13 +12,14 @@ import {
   storeClinicianSession
 } from "../app/clinician-session";
 import { AssignedCalls } from "./assigned-calls";
+import { OpenCalls } from "./open-calls";
 
 export function ClinicianSessionGate({ children }: { readonly children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const [activeReport, setActiveReport] = useState<{ id: string; formVersionId: string; callNumber?: string } | null>(null);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -69,7 +70,7 @@ export function ClinicianSessionGate({ children }: { readonly children: ReactNod
     const accessToken = session?.accessToken;
     clearClinicianSession(window.localStorage);
     setSession(null);
-    setActiveReportId(null);
+    setActiveReport(null);
     setMessage("You have logged out.");
     if (accessToken) void endClinicianSession(accessToken).catch(() => undefined);
   }
@@ -107,8 +108,20 @@ export function ClinicianSessionGate({ children }: { readonly children: ReactNod
         <span>Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
-      <AssignedCalls session={session} onOpened={(opened) => setActiveReportId(opened.report.id)} />
-      {activeReportId && <p className="active-report-notice" role="status">Documenting opened call</p>}
+      <OpenCalls session={session} onReopened={(opened) => setActiveReport({
+        id: opened.report.id,
+        formVersionId: opened.report.formVersionId,
+        callNumber: opened.callNumber
+      })} />
+      <AssignedCalls session={session} onOpened={(opened) => setActiveReport({
+        id: opened.report.id,
+        formVersionId: opened.report.formVersionId
+      })} />
+      {activeReport && (
+        <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
+          {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
+        </p>
+      )}
       {children}
     </div>
   );
