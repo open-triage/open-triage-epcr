@@ -13,9 +13,28 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
 
+  const assignmentId = "32000000-0000-4000-8000-000000000011";
+  const reportId = "42000000-0000-4000-8000-000000000013";
+  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      assignmentId,
+      report: {
+        id: reportId,
+        documentingUserId: "32000000-0000-4000-8000-000000000003",
+        formVersionId: "32000000-0000-4000-8000-000000000008",
+        catalogReleaseId: "42000000-0000-4000-8000-000000000014",
+        revision: 0,
+        status: "draft",
+      },
+      replacementAssignment: null,
+    }),
+  }));
+
   await expect(page.getByLabel("Username")).toHaveValue("demo.clinician");
   await expect(page.getByLabel("Password")).toHaveValue("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
 
   const safetyNotice = page.getByRole("note", { name: "Prototype safety notice" });
   await expect(safetyNotice).toContainText("Synthetic data only");
@@ -39,6 +58,7 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await page.getByRole("button", { name: "Add to timeline" }).click();
   await expect(page.getByText("Static deployment autosave check")).toBeVisible();
   await page.reload();
+  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
   await expect(page.getByText("Static deployment autosave check")).toBeVisible();
   await expect(safetyNotice).toContainText("not for clinical use");
 
@@ -55,9 +75,6 @@ test("static deployment preserves the complete browser-only journey", async ({ p
 
   await page.getByRole("button", { name: /Timeline/ }).click();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Reset prototype data" }).click();
-  await expect(page.getByText("Static deployment autosave check")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Checklist, 0 errors, 0 warnings/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
   expect(unexpectedRequests).toEqual([]);
 });

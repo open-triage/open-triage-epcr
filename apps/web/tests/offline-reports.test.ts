@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ClinicianSession } from "@open-triage/contracts";
 import {
   acceptDraftChange,
+  cacheOpenCallSummary,
   cacheOpenedReport,
   cachedOpenCalls,
   cachedOpenReports,
@@ -13,6 +14,7 @@ import {
   OFFLINE_REPORTS_STORAGE_KEY,
   purgeCompletedOfflineReports,
   queueDraftChange,
+  saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
 
@@ -123,4 +125,41 @@ test("completion purges accepted offline metadata but preserves pending commands
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
   purgeCompletedOfflineReports(storage, [opened.report.id]);
   assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-1");
+});
+
+test("the current draft validation count survives open-call server refreshes", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  saveCachedValidationErrorCount(storage, opened.report.id, 3);
+
+  cacheOpenCallSummary(storage, session, {
+    reportId: opened.report.id,
+    callNumber: "CALL-51",
+    lastSavedAt: "2026-09-03T12:10:00.000Z",
+    syncStatus: "saved",
+    validationErrorCount: 0,
+    revision: 5,
+    formVersionId: opened.report.formVersionId,
+    catalogReleaseId: opened.report.catalogReleaseId,
+  });
+
+  assert.equal(cachedOpenCalls(storage, session.user.id)[0]?.validationErrorCount, 3);
+});
+
+test("a server validation count is used until the form computes a local count", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+
+  cacheOpenCallSummary(storage, session, {
+    reportId: opened.report.id,
+    callNumber: "CALL-51",
+    lastSavedAt: "2026-09-03T12:10:00.000Z",
+    syncStatus: "saved",
+    validationErrorCount: 2,
+    revision: 5,
+    formVersionId: opened.report.formVersionId,
+    catalogReleaseId: opened.report.catalogReleaseId,
+  });
+
+  assert.equal(cachedOpenCalls(storage, session.user.id)[0]?.validationErrorCount, 2);
 });

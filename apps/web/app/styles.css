@@ -59,18 +59,13 @@ input, select, textarea { touch-action: manipulation; }
 .safety-notice strong { text-transform: uppercase; letter-spacing: .045em; }
 .safety-notice span { color: #e7e9e5; }
 .encounter-header { padding: 18px 20px 16px; background: #fff; border-bottom: 1px solid var(--line); }
-.header-kicker, .patient-line, .incident-line { display: flex; align-items: center; justify-content: space-between; }
+.header-kicker, .incident-line { display: flex; align-items: center; justify-content: space-between; }
 .header-kicker { color: var(--muted); font-size: 14px; font-weight: 650; }
 .prototype-status { display: inline-flex; align-items: center; gap: 6px; }
 .prototype-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #d0a927; }
-.patient-line { gap: 16px; margin-top: 18px; }
-.patient-name { margin: 0; font-size: clamp(25px, 7vw, 31px); line-height: 1.08; letter-spacing: -.035em; }
-.patient-demographics { margin: 5px 0 0; color: var(--muted); font-size: 16px; }
-.crew-badge { display: grid; flex: 0 0 52px; width: 52px; height: 52px; place-items: center; border-radius: 50%; color: white; background: var(--green); font-size: 19px; font-weight: 700; }
 .incident-line { align-items: flex-end; gap: 10px; margin-top: 18px; }
 .incident-line > div { display: grid; min-width: 0; gap: 3px; color: var(--muted); font-size: 13px; }
 .incident-line strong { overflow-wrap: anywhere; color: #343733; font-size: 15px; }
-.reset-prototype { display: block; margin: 7px 0 0 auto; padding: 4px 8px; border: 0; color: #535751; background: transparent; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .view-switcher { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .view-switcher button { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; min-height: 52px; padding: 6px 8px; border: 1px solid #c9cbc5; border-radius: 5px; color: #30332f; background: #fff; font-weight: 700; cursor: pointer; }
 .view-switcher button.active { border-color: var(--green); color: white; background: var(--green); }
@@ -257,7 +252,6 @@ input, select, textarea { touch-action: manipulation; }
 @media (max-width: 370px) {
   .safety-notice { align-items: flex-start; flex-direction: column; gap: 1px; }
   .encounter-header { padding-inline: 16px; }
-  .patient-name { font-size: 25px; }
   .incident-line { align-items: stretch; flex-direction: column; }
   .timeline-list li { padding-inline: 16px; }
   .note-dialog { padding-inline: 16px; }

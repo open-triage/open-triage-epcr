@@ -19,6 +19,7 @@ export interface CachedOpenReport {
   readonly syncStatus: "saved" | "pending";
   readonly lastSavedAt: string;
   readonly validationErrorCount: number;
+  readonly localValidationErrorCount?: number;
   readonly queuedChanges: ReadonlyArray<QueuedDraftChange>;
 }
 
@@ -65,6 +66,7 @@ export function cacheOpenedReport(
     syncStatus: existing?.queuedChanges.length ? "pending" : "saved",
     lastSavedAt: existing?.lastSavedAt ?? now.toISOString(),
     validationErrorCount: existing?.validationErrorCount ?? 0,
+    localValidationErrorCount: existing?.localValidationErrorCount,
     queuedChanges: existing?.queuedChanges ?? [],
   });
 }
@@ -95,9 +97,16 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
     workflowState: "open",
     syncStatus: existing?.queuedChanges.length ? "pending" : "saved",
     lastSavedAt: existing?.queuedChanges.length ? existing.lastSavedAt : call.lastSavedAt,
-    validationErrorCount: call.validationErrorCount,
+    validationErrorCount: existing?.localValidationErrorCount ?? call.validationErrorCount,
+    localValidationErrorCount: existing?.localValidationErrorCount,
     queuedChanges: existing?.queuedChanges ?? [],
   });
+}
+
+export function saveCachedValidationErrorCount(storage: StoragePort, reportId: string, count: number): void {
+  const existing = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!existing) return;
+  replace(storage, { ...existing, validationErrorCount: count, localValidationErrorCount: count });
 }
 
 export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
@@ -121,7 +130,7 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     callNumber: cached.callNumber,
     lastSavedAt: cached.lastSavedAt,
     syncStatus: cached.syncStatus,
-    validationErrorCount: cached.validationErrorCount,
+    validationErrorCount: cached.localValidationErrorCount ?? cached.validationErrorCount,
     revision: cached.report.revision,
     formVersionId: cached.report.formVersionId,
     catalogReleaseId: cached.report.catalogReleaseId,

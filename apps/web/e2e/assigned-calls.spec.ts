@@ -73,6 +73,8 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(page.locator(".encounter-header")).toHaveCount(0);
 
   const section = page.getByRole("region", { name: "Assigned calls" });
+  await expect(page.getByRole("region", { name: "Open calls" })).toBeVisible();
+  expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText("SYN-2026-0903-001");
   await expect(card).toContainText("Medic 32");
@@ -130,6 +132,9 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit patient information" })).toHaveCount(0);
+  await expect(page.getByText("Rivera, Jordan", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
 
   const retriedReportId = await page.evaluate(async ({ assignmentId }) => {
     const stored = JSON.parse(localStorage.getItem("open-triage.clinician-session.v1")!);
@@ -172,6 +177,29 @@ test("encounter edits debounce through the revisioned draft API and Save & close
   expect(savedCommands[0]?.expectedRevision).toBe(0);
   expect(savedCommands[0]?.commandId).toMatch(/^[0-9a-f-]{36}$/);
   expect(JSON.stringify(savedCommands[0])).toContain("Persist this without completing validation");
+});
+
+test("Save & close carries the form's current validation error count onto the open call", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1
+    }) });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.getByRole("button", { name: /Checklist, 1 error, 0 warnings/ })).toBeVisible();
+  await page.getByRole("button", { name: "Save & close" }).click();
+
+  const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  await expect(card).toContainText("Validation errors1");
 });
 
 test("draft synchronization exposes Saved, Saving, Pending sync, and Conflict and retries one command identity", async ({ page }) => {

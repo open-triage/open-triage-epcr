@@ -119,17 +119,17 @@ export function ClinicianSessionGate({ children }: {
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       <div hidden={activeReport !== null}>
+        <AssignedCalls session={session} onOpened={(opened, call) => {
+          setLifecycleNotice(null);
+          const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
+          setActiveReport(cached.report);
+        }} />
         <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onCompleted={() => {
           setActiveReport(null);
           setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
         }} onReopened={(opened) => {
           setLifecycleNotice(null);
           const cached = cacheReopenedReport(window.localStorage, session, opened);
-          setActiveReport(cached.report);
-        }} />
-        <AssignedCalls session={session} onOpened={(opened, call) => {
-          setLifecycleNotice(null);
-          const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
           setActiveReport(cached.report);
         }} />
       </div>

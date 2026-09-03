@@ -1,6 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+const assignmentId = "32000000-0000-4000-8000-000000000011";
+const reportId = "42000000-0000-4000-8000-000000000013";
+
+async function openCall(page: Page) {
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+}
+
 async function expectNoBlockingAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -13,7 +21,7 @@ async function expectPhoneLayout(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 
-  for (const control of await page.locator(".view-switcher button, .sign-action-bar button, .quick-actions button, .reset-prototype").all()) {
+  for (const control of await page.locator(".view-switcher button, .sign-action-bar button, .quick-actions button").all()) {
     const box = await control.boundingBox();
     expect(box, `missing control bounds for ${await control.getAttribute("aria-label") ?? await control.textContent()}`).not.toBeNull();
     expect(box!.height).toBeGreaterThanOrEqual(44);
@@ -22,6 +30,21 @@ async function expectPhoneLayout(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      assignmentId,
+      report: {
+        id: reportId,
+        documentingUserId: "32000000-0000-4000-8000-000000000003",
+        formVersionId: "32000000-0000-4000-8000-000000000008",
+        catalogReleaseId: "42000000-0000-4000-8000-000000000014",
+        revision: 0,
+        status: "draft",
+      },
+      replacementAssignment: null,
+    }),
+  }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
@@ -31,7 +54,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("demo sign in is explicit and manual logout immediately hides clinical content", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
@@ -52,9 +76,10 @@ test("the browser hides clinical content at the fixed session deadline", async (
 });
 
 test("canonical incident header and timing entries render in the phone flow", async ({ page }) => {
+  await openCall(page);
   await expect(page.locator(".encounter-header")).toContainText("Incident SYN-2026-0418-113 · 3-9-7-4-0");
   await expect(page.locator(".encounter-header")).toContainText("Medical assistance requested");
-  await expect(page.getByLabel("Crew AN")).toBeVisible();
+  await expect(page.locator(".encounter-header")).not.toContainText("Rivera, Jordan");
   await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toBeVisible();
   await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toBeVisible();
   await expect(page.locator(".timeline-list").getByText("eTimes.06", { exact: true })).toBeVisible();
@@ -62,10 +87,11 @@ test("canonical incident header and timing entries render in the phone flow", as
 });
 
 test("quick capture phone journey remains operable and persists", async ({ page }) => {
-  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await openCall(page);
   expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
-    "Add vital signs", "Add medication", "Add procedure", "Add clinical note", "Edit patient information",
+    "Add vital signs", "Add medication", "Add procedure", "Add clinical note",
   ]);
+  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 
@@ -93,14 +119,13 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
 
   await page.reload();
+  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Reset prototype data" }).click();
-  await expect(page.getByText("Accessible phone journey note")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Checklist, 0 errors, 0 warnings/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset prototype data" })).toHaveCount(0);
 });
 
 test("dialog focus, touch targets, and enlarged text preserve required actions", async ({ page }) => {
+  await openCall(page);
   const addVitals = page.getByRole("button", { name: "Add vital signs" });
   await addVitals.click();
   await expect(page.getByRole("dialog", { name: "Vital signs" }).getByLabel(/Clinical time/)).toBeFocused();
@@ -118,6 +143,7 @@ test("dialog focus, touch targets, and enlarged text preserve required actions",
 });
 
 test("vital fields retain focus while values are entered", async ({ page }) => {
+  await openCall(page);
   await page.getByRole("button", { name: "Add vital signs" }).click();
   const systolic = page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: /Systolic BP/ });
 

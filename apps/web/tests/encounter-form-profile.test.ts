@@ -12,6 +12,7 @@ test("compiles the neutral JSON form while preserving catalog-owned semantics", 
   assert.ok(systolic.absenceStates.some(({ kind }) => kind === "NV"));
   assert.ok(definition.events.procedure.complicationOptions.length > 1);
   assert.equal(definition.events.procedure.attempts.max, 10);
+  assert.ok(!configuredQuickActions(definition).some(({ id }) => id === "patient"));
 });
 
 test("a test profile hides, relabels, removes, adds, and reorders supported elements", () => {
@@ -47,4 +48,13 @@ test("reports unknown elements, duplicate placements, illegal semantic overrides
     && error.message.includes("$.sections[0].elements[1]: duplicate placement")
     && error.message.includes("$.sections[0].elements[2]: unknown standard or namespaced custom element")
     && error.message.includes("$.review.groups: must contain error and warning exactly once"));
+});
+
+test("rejects patient UI that is not backed by a configured NEMSIS field", () => {
+  const profile = structuredClone(standardEncounterFormProfile) as unknown as {
+    sections: Array<{ id: string; visible: boolean; elements: string[] }>;
+  };
+  profile.sections.find(({ id }) => id === "patient")!.visible = true;
+
+  assert.throws(() => compileEncounterFormProfile(profile), /visible sections must contain at least one configured NEMSIS field/);
 });

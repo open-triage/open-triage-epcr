@@ -6,7 +6,7 @@ import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { clearShellState, loadShellStateResult, saveReportSyncStatus, saveShellState } from "./local-persistence";
+import { loadShellStateResult, saveReportSyncStatus, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -24,7 +24,6 @@ import {
 } from "./standard-encounter";
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
-import { patientSummary } from "./patient-document";
 import { documentTimeline, incidentSummary } from "./incident-document";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
@@ -41,6 +40,7 @@ import {
   markDraftChangeAttempted,
   nextDraftChange,
   queueDraftChange,
+  saveCachedValidationErrorCount,
 } from "./offline-reports";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
@@ -74,7 +74,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const patient = useMemo(() => patientSummary(encounter.document), [encounter.document]);
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(() => documentTimeline(encounter.document), [encounter.document]);
   const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
@@ -195,6 +194,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
   }, [report, syncStatus]);
 
   useEffect(() => {
+    if (report) saveCachedValidationErrorCount(window.localStorage, report.id, reviewErrors.length);
+  }, [report, reviewErrors.length]);
+
+  useEffect(() => {
     const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
     window.addEventListener("online", retry);
     return () => {
@@ -289,12 +292,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
 
-  function resetPrototype() {
-    if (!window.confirm("Remove your notes and restore the original synthetic encounter?")) return;
-    clearShellState(window.localStorage, report?.id);
-    dispatch({ type: "prototype-reset" });
-  }
-
   const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
     vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
   };
@@ -316,22 +313,12 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
           <span>{incidentEvents[0]?.time ?? "--:--"}</span>
           <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
         </div>
-        <div className="patient-line">
-          <div>
-            <p className="patient-name">{patient.name}</p>
-            <p className="patient-demographics">
-              {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex} · {patient.identifier}
-            </p>
-          </div>
-          <span className="crew-badge" aria-label={`Crew ${incident.crew}`}>{incident.crew}</span>
-        </div>
         <div className="incident-line">
           <div>
             <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
             <strong>{incident.complaint}</strong>
           </div>
         </div>
-        <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype data</button>
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
@@ -640,7 +627,6 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
   readonly onContinue: () => void;
 }) {
   const encounter = shell.encounter;
-  const patient = patientSummary(encounter.document);
   const incident = incidentSummary(encounter.document);
   const incidentEvents = documentTimeline(encounter.document);
   return (
@@ -653,17 +639,12 @@ function ReadOnlySummary({ shell, warnings, onContinue }: {
         <div><p className="eyebrow">Review produced</p><h1 id="summary-heading">Encounter summary</h1></div>
       </div>
       <section className="summary-section">
-        <h2>Patient and incident</h2>
+        <h2>Incident</h2>
         <dl>
-          <div><dt>Patient</dt><dd>{patient.name} · {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex}</dd></div>
-          <div><dt>Synthetic ID</dt><dd>{patient.identifier}</dd></div>
           <div><dt>Incident</dt><dd>{incident.number}</dd></div>
           <div><dt>Complaint</dt><dd>{incident.complaint}</dd></div>
           <div><dt>Location</dt><dd>{incident.address}</dd></div>
           <div><dt>Crew</dt><dd>{incident.crew}</dd></div>
-          <div><dt>Medical history</dt><dd>{patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Current medications</dt><dd>{patient.currentMedications.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Medication allergies</dt><dd>{patient.allergies.join(", ") || "Not documented"}</dd></div>
         </dl>
       </section>
       <section className="summary-section">
