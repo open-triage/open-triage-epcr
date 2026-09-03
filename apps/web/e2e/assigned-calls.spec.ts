@@ -74,6 +74,9 @@ test("the demo unit's assigned call shows its operational summary and manual can
 
   const section = page.getByRole("region", { name: "Assigned calls" });
   await expect(page.getByRole("region", { name: "Open calls" })).toBeVisible();
+  const refresh = page.getByRole("button", { name: "Refresh calls" });
+  await expect(refresh).toHaveCount(1);
+  await expect(refresh).toHaveText("Refresh");
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText("SYN-20260903-001");
@@ -83,8 +86,10 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(card.getByText("Sep 3", { exact: false })).toBeVisible();
 
   canceled = true;
-  await section.getByRole("button", { name: "Refresh" }).click();
+  const refreshSize = await refresh.boundingBox();
+  await refresh.click();
   await expect(card).toHaveCount(0);
+  expect(await refresh.boundingBox()).toEqual(refreshSize);
   await expect(section.getByRole("status")).toHaveText("Call SYN-20260903-001 assignment canceled.");
 });
 
@@ -101,6 +106,7 @@ test("assignment polling runs every ten seconds only while visible and refreshes
 
   await page.clock.fastForward(10_000);
   await expect.poll(() => requests).toBeGreaterThan(launchRequests);
+  await expect(page.getByRole("button", { name: "Refresh calls" })).toHaveText("Refresh");
   const visibleRequests = requests;
 
   await page.evaluate(() => {
@@ -400,7 +406,7 @@ test("a stationary-completed report disappears from Open calls and only its cach
   }, { completedId: openedAssignment.report.id, openId: openCalls[1].reportId });
 
   completed = true;
-  await section.getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh calls" }).click();
 
   await expect(section.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(section.getByRole("status")).toContainText("completed on the stationary interface");
@@ -431,7 +437,7 @@ test("completion discovered while a form is active stops editing and returns to 
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 
   completed = true;
-  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Refresh" }).click();
+  await page.getByRole("button", { name: "Refresh calls" }).click();
 
   await expect(page.getByText("This report was completed on the stationary interface. Further edits have stopped.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);

@@ -147,7 +147,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await expect(page.getByRole("note", { name: "Prototype safety notice" })).toContainText("Synthetic data only");
 
     await page.getByRole("button", { name: "Open call", exact: true }).click();
-    await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
+    await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", formVersionId);
     await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
@@ -178,6 +178,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await page.getByRole("button", { name: /^Checklist,/ }).click();
     await expect(page.locator(".checklist-findings li.error").first()).toBeVisible();
     await page.getByRole("button", { name: "Save & close" }).click();
+    await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
     const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
     await expect(pendingCard).toContainText("Pending sync");
     const queuedBeforeRestart = await page.evaluate(({ expectedReportId }) => {
@@ -210,7 +211,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     expect(state.savedCommandIds).toContain(queuedBeforeRestart);
 
     state.completed = true;
-    await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Refresh" }).click();
+    await page.getByRole("button", { name: "Refresh calls" }).click();
     await expect(page.getByText("This report was completed on the stationary interface. Further edits have stopped.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);

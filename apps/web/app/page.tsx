@@ -353,10 +353,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
 
   return (
     <main className="app-shell">
-      <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-        <strong>Synthetic data only</strong>
-        <span>Usability prototype — not for clinical use</span>
-      </aside>
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
 
       <header className="encounter-header">

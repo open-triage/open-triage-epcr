@@ -30,6 +30,7 @@ export function ClinicianSessionGate({ children }: {
   const [submitting, setSubmitting] = useState(false);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   const [openCallsRevision, setOpenCallsRevision] = useState(0);
+  const [refreshRequest, setRefreshRequest] = useState(0);
   const [lifecycleNotice, setLifecycleNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -127,16 +128,25 @@ export function ClinicianSessionGate({ children }: {
   return (
     <div className="authenticated-shell">
       <header className="session-bar">
-        <span>Signed in as <strong>{session.user.displayName}</strong></span>
+        <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
+      <div className="page-banner-row">
+        <div className="refresh-frame">
+          <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
+        </div>
+        <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
+          <strong>Synthetic data only</strong>
+          <span>Usability prototype — not for clinical use</span>
+        </aside>
+      </div>
       <div hidden={activeReport !== null}>
-        <AssignedCalls session={session} onOpened={(opened, call) => {
+        <AssignedCalls session={session} refreshRequest={refreshRequest} onOpened={(opened, call) => {
           setLifecycleNotice(null);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
           setActiveReport(cached.report);
         }} />
-        <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
+        <OpenCalls key={openCallsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
           setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
         }} onReopened={(opened) => {

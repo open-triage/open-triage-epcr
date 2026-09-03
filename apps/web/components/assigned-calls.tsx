@@ -20,22 +20,23 @@ function dispatchTime(value: string): string {
 
 export function AssignedCalls({
   session,
-  onOpened
+  onOpened,
+  refreshRequest = 0,
 }: {
   readonly session: ClinicianSession;
   readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void;
+  readonly refreshRequest?: number;
 }) {
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const callsRef = useRef<AssignedCall[]>([]);
   const noticeTimer = useRef<number | null>(null);
+  const handledRefreshRequest = useRef(refreshRequest);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
     try {
       const response = await fetchAssignedCalls(session.accessToken);
       const removed = canceledAssignedCalls(callsRef.current, response.assignedCalls, response.canceledAssignmentIds);
@@ -50,8 +51,6 @@ export function AssignedCalls({
       }
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Assigned calls could not be refreshed.");
-    } finally {
-      setRefreshing(false);
     }
   }, [session.accessToken]);
 
@@ -98,6 +97,12 @@ export function AssignedCalls({
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (handledRefreshRequest.current === refreshRequest) return;
+    handledRefreshRequest.current = refreshRequest;
+    void refresh();
+  }, [refresh, refreshRequest]);
+
   return (
     <section className="assigned-calls" aria-labelledby="assigned-calls-title">
       <div className="assigned-calls-heading">
@@ -105,9 +110,6 @@ export function AssignedCalls({
           <p className="eyebrow">Demo unit</p>
           <h1 id="assigned-calls-title">Assigned calls</h1>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
       </div>
       {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}

@@ -49,21 +49,23 @@ export function OpenCalls({
   onCompleted,
   onReopened,
   onSessionEnded,
+  refreshRequest = 0,
 }: {
   readonly session: ClinicianSession;
   readonly activeReportId?: string;
   readonly onCompleted?: (reportId: string) => void;
   readonly onReopened?: (opened: ReopenOpenCallResponse) => void;
   readonly onSessionEnded?: () => void;
+  readonly refreshRequest?: number;
 }) {
   const [calls, setCalls] = useState<OpenCall[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const callsRef = useRef<OpenCall[]>([]);
   const syncingCachedReports = useRef(false);
+  const handledRefreshRequest = useRef(refreshRequest);
 
   const syncCachedReports = useCallback(async () => {
     if (activeReportId || syncingCachedReports.current) return;
@@ -89,7 +91,6 @@ export function OpenCalls({
   }, [activeReportId, onSessionEnded, session.accessToken, session.user.id]);
 
   const refresh = useCallback(async () => {
-    setRefreshing(true);
     try {
       const response = await fetchOpenCalls(session.accessToken);
       const completedReportIds = response.completedReportIds ?? [];
@@ -121,8 +122,6 @@ export function OpenCalls({
       setCalls(cached);
       setLoaded(true);
       setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open calls could not be refreshed.");
-    } finally {
-      setRefreshing(false);
     }
   }, [activeReportId, onCompleted, onSessionEnded, session, syncCachedReports]);
 
@@ -178,6 +177,12 @@ export function OpenCalls({
     };
   }, [refresh, session.user.id]);
 
+  useEffect(() => {
+    if (handledRefreshRequest.current === refreshRequest) return;
+    handledRefreshRequest.current = refreshRequest;
+    void refresh();
+  }, [refresh, refreshRequest]);
+
   return (
     <section className="assigned-calls open-calls" aria-labelledby="open-calls-title">
       <div className="assigned-calls-heading">
@@ -185,9 +190,6 @@ export function OpenCalls({
           <p className="eyebrow">Your documentation</p>
           <h1 id="open-calls-title">Open calls</h1>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
       </div>
       {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}
