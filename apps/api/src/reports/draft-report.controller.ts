@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post } from "@nestjs/common";
+import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
-import type { DraftReportResult } from "./draft-report.types.js";
+import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
 import { AmendReportService } from "./amend-report.service.js";
@@ -17,18 +19,40 @@ export class DraftReportController {
   ) {}
 
   @Post()
-  create(@Body() body: unknown): Promise<DraftReportResult> {
-    return this.reports.create(body);
+  create(@Body() body: unknown, @Headers("authorization") authorization?: string): Promise<DraftReportResult> {
+    return this.reports.create(bearerToken(authorization), body);
+  }
+
+  @Get("open")
+  listOpen(@Headers("authorization") authorization?: string): Promise<OpenCallsResponse> {
+    return this.reports.listOpen(bearerToken(authorization));
   }
 
   @Post(":id/draft-changes")
-  save(@Param("id", uuidV4) id: string, @Body() body: unknown): Promise<DraftReportResult> {
-    return this.reports.save(id, body);
+  save(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string
+  ): Promise<SaveDraftReportResult> {
+    return this.reports.save(bearerToken(authorization), id, body);
+  }
+
+  @Post(":id/reopen")
+  @HttpCode(200)
+  reopen(
+    @Param("id", uuidV4) id: string,
+    @Headers("authorization") authorization?: string
+  ): Promise<ReopenOpenCallResponse> {
+    return this.reports.reopen(bearerToken(authorization), id);
   }
 
   @Post(":id/sign")
-  sign(@Param("id", uuidV4) id: string, @Body() body: unknown): Promise<SignedReportResult> {
-    return this.signing.sign(id, body);
+  sign(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string
+  ): Promise<SignedReportResult> {
+    return this.signing.sign(bearerToken(authorization), id, body);
   }
 
   @Post(":id/amendments")
@@ -37,7 +61,10 @@ export class DraftReportController {
   }
 
   @Get(":id")
-  get(@Param("id", uuidV4) id: string): Promise<Record<string, unknown>> {
-    return this.reports.get(id);
+  get(
+    @Param("id", uuidV4) id: string,
+    @Headers("authorization") authorization?: string
+  ): Promise<Record<string, unknown>> {
+    return this.reports.get(bearerToken(authorization), id);
   }
 }

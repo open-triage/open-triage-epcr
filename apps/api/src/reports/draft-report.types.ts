@@ -74,3 +74,15 @@ export interface DraftReportResult {
   catalogReleaseId: string;
   documentingUserId: string;
 }
+
+export interface PostSignatureDraftResult {
+  id: string;
+  status: "signed";
+  revision: number;
+  signedRevision: number;
+  signedSnapshotId: string;
+  canonicalSha256: string;
+  retainedAuditNoteCount: number;
+}
+
+export type SaveDraftReportResult = DraftReportResult | PostSignatureDraftResult;

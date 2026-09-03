@@ -1,0 +1,184 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { DraftReportController } from "../dist/reports/draft-report.controller.js";
+import { DraftReportService } from "../dist/reports/draft-report.service.js";
+import { SignReportService } from "../dist/reports/sign-report.service.js";
+
+const ownerSession = {
+  accessToken: "owner-token",
+  user: { id: "32000000-0000-4000-8000-000000000003", displayName: "Owner" },
+  organization: { id: "32000000-0000-4000-8000-000000000001", name: "Agency" },
+  startedAt: "2026-09-03T08:00:00.000Z",
+  expiresAt: "2026-09-03T22:00:00.000Z"
+};
+
+function sessions() {
+  return { get(token) {
+    if (token !== ownerSession.accessToken) throw new UnauthorizedException();
+    return ownerSession;
+  } };
+}
+
+test("open calls list only creator-owned drafts in newest-activity order with workflow details", async () => {
+  const queries = [];
+  const dataSource = { query: async (sql, parameters) => {
+    queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
+    return [
+      {
+        report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
+        dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Breathing problem",
+        chief_complaint: "Shortness of breath", unit_call_sign: "Medic 32",
+        status: "draft",
+        last_saved_at: "2026-09-03T14:00:00.000Z", revision: "4",
+        form_version_id: "52000000-0000-4000-8000-000000000002", catalog_release_id: "62000000-0000-4000-8000-000000000002",
+        validation_error_count: 2
+      },
+      {
+        report_id: "42000000-0000-4000-8000-000000000001", call_number: "CALL-OLD",
+        dispatched_at: "2026-09-03T11:00:00.000Z", dispatch_reason: "Fall",
+        chief_complaint: null, unit_call_sign: "Medic 31",
+        status: "draft",
+        last_saved_at: new Date("2026-09-03T13:00:00.000Z"), revision: 1,
+        form_version_id: "52000000-0000-4000-8000-000000000001", catalog_release_id: "62000000-0000-4000-8000-000000000001",
+        validation_error_count: "0"
+      }
+    ];
+  } };
+  const service = new DraftReportService(dataSource, sessions());
+  const controller = new DraftReportController(service, {}, {});
+
+  const result = await controller.listOpen(`Bearer ${ownerSession.accessToken}`);
+
+  assert.deepEqual(result.openCalls.map((call) => call.callNumber), ["CALL-NEW", "CALL-OLD"]);
+  assert.deepEqual(result.openCalls[0], {
+    reportId: "42000000-0000-4000-8000-000000000002", callNumber: "CALL-NEW",
+    dispatchedAt: "2026-09-03T12:00:00.000Z", dispatchReason: "Breathing problem",
+    chiefComplaint: "Shortness of breath", unitCallSign: "Medic 32",
+    lastSavedAt: "2026-09-03T14:00:00.000Z", syncStatus: "saved", validationErrorCount: 2,
+    revision: 4, formVersionId: "52000000-0000-4000-8000-000000000002",
+    catalogReleaseId: "62000000-0000-4000-8000-000000000002"
+  });
+  assert.deepEqual(queries[0].parameters, [ownerSession.organization.id, ownerSession.user.id]);
+  assert.deepEqual(result.completedReportIds, []);
+  assert.match(queries[0].sql, /r\.documenting_user_id = \$2 and r\.status in \('draft', 'signed'\)/);
+  assert.match(queries[0].sql, /order by r\.updated_at desc/);
+  assert.match(queries[0].sql, /vf\.severity = 'error' and vf\.revision = r\.revision/);
+});
+
+test("stationary-completed reports are returned as reconciliation identities, not open calls", async () => {
+  const completedReportId = "42000000-0000-4000-8000-000000000003";
+  const dataSource = { query: async () => [{
+    report_id: completedReportId, status: "signed", call_number: "CALL-COMPLETE",
+    dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Transfer",
+    chief_complaint: null, unit_call_sign: "Medic 32",
+    last_saved_at: "2026-09-03T14:10:00.000Z", revision: 5,
+    form_version_id: "52000000-0000-4000-8000-000000000003",
+    catalog_release_id: "62000000-0000-4000-8000-000000000003",
+    validation_error_count: 0
+  }] };
+  const service = new DraftReportService(dataSource, sessions());
+
+  const result = await service.listOpen(ownerSession.accessToken);
+
+  assert.deepEqual(result.openCalls, []);
+  assert.deepEqual(result.completedReportIds, [completedReportId]);
+});
+
+test("reopening restores the creator's report with its pinned form and saved content", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000002";
+  const queries = [];
+  const report = {
+    id: reportId, status: "draft", revision: "4", organization_id: ownerSession.organization.id,
+    incident_id: "incident", patient_id: "patient", agency_demographic_version_id: "agency",
+    form_version_id: "pinned-form", catalog_release_id: "pinned-catalog", documenting_user_id: ownerSession.user.id
+  };
+  const manager = { query: async (sql, parameters) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    queries.push({ sql: normalized, parameters });
+    if (normalized.includes("from clinical.report where id")) return [report];
+    if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
+    if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const dataSource = {
+    transaction: (work) => work(manager),
+    query: async (sql, parameters) => {
+      queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
+      return [{
+        call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
+        dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
+        unit_call_sign: "Medic 32"
+      }];
+    }
+  };
+  const service = new DraftReportService(dataSource, sessions());
+  const controller = new DraftReportController(service, {}, {});
+
+  const reopened = await controller.reopen(reportId, `Bearer ${ownerSession.accessToken}`);
+
+  assert.equal(reopened.callNumber, "CALL-NEW");
+  assert.equal(reopened.dispatchedAt, "2026-09-03T12:00:00.000Z");
+  assert.equal(reopened.dispatchReason, "Breathing problem");
+  assert.equal(reopened.unitCallSign, "Medic 32");
+  assert.equal(reopened.report.formVersionId, "pinned-form");
+  assert.deepEqual(reopened.report.groups, [{ id: "group-1" }]);
+  assert.deepEqual(reopened.report.occurrences, [{ id: "occurrence-1" }]);
+  assert.ok(queries.every(({ parameters }) => !parameters || !parameters.includes("another-user")));
+  assert.deepEqual(queries[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
+});
+
+test("another clinician cannot read, write, reopen, or replay a queued draft command", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000002";
+  const queried = [];
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    queried.push(normalized);
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from clinical.report")) return [];
+    throw new Error(`Ownership must be checked before queued command lookup: ${normalized}`);
+  } };
+  const dataSource = { transaction: (first, second) => (typeof first === "function" ? first(manager) : second(manager)) };
+  const service = new DraftReportService(dataSource, sessions());
+  const save = {
+    commandId: "72000000-0000-4000-8000-000000000001", expectedRevision: 0,
+    authorId: ownerSession.user.id,
+    occurrences: [{
+      id: "72000000-0000-4000-8000-000000000002",
+      elementId: "eScene.01",
+      value: { kind: "text", value: "queued update" }
+    }]
+  };
+
+  await assert.rejects(service.get(ownerSession.accessToken, reportId), NotFoundException);
+  await assert.rejects(service.reopen(ownerSession.accessToken, reportId), NotFoundException);
+  await assert.rejects(service.save(ownerSession.accessToken, reportId, save), NotFoundException);
+  assert.ok(!queried.some((sql) => sql.includes("clinical.command_receipt")));
+});
+
+test("open-call endpoints require a clinician session", () => {
+  const controller = new DraftReportController({ listOpen() {} }, {}, {});
+  assert.throws(() => controller.listOpen(), UnauthorizedException);
+  assert.throws(() => controller.reopen("42000000-0000-4000-8000-000000000002"), UnauthorizedException);
+});
+
+test("another clinician cannot replay a queued signing command", async () => {
+  const queried = [];
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    queried.push(normalized);
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from clinical.report")) return [];
+    throw new Error(`Ownership must be checked before signing receipt lookup: ${normalized}`);
+  } };
+  const dataSource = { transaction: (_isolation, work) => work(manager) };
+  const signing = new SignReportService(dataSource, sessions());
+
+  await assert.rejects(signing.sign(ownerSession.accessToken, "42000000-0000-4000-8000-000000000002", {
+    commandId: "72000000-0000-4000-8000-000000000003",
+    expectedRevision: 1,
+    signerId: ownerSession.user.id,
+    attestation: { meaning: "author approval" }
+  }), NotFoundException);
+  assert.ok(!queried.some((sql) => sql.includes("clinical.command_receipt")));
+});

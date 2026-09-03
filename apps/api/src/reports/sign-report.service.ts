@@ -12,6 +12,7 @@ import {
   QUALITY_RULE_VERSION
 } from "@open-triage/contracts/quality-rules";
 import { DataSource, type EntityManager } from "typeorm";
+import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import type {
   SignedReportResult,
@@ -86,9 +87,13 @@ const RULE_VERSION = "signing-1.0.0";
 
 @Injectable()
 export class SignReportService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly sessions: ClinicianSessionService
+  ) {}
 
-  async sign(reportId: string, input: unknown): Promise<SignedReportResult> {
+  async sign(accessToken: string, reportId: string, input: unknown): Promise<SignedReportResult> {
+    const session = this.sessions.get(accessToken);
     let command: SignReportCommand;
     try {
       command = validateSignReportCommand(input);
@@ -103,12 +108,18 @@ export class SignReportService {
     try {
       attempt = await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
-        const replay = await this.replay(manager, command.commandId, digest, reportId);
-        if (replay) return { result: replay };
-
-        const rows = await manager.query<ReportRow[]>("select * from clinical.report where id = $1 for update", [reportId]);
+        const rows = await manager.query<ReportRow[]>(`
+          select * from clinical.report
+          where id = $1 and organization_id = $2 and documenting_user_id = $3
+          for update
+        `, [reportId, session.organization.id, session.user.id]);
         const report = rows[0];
         if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
+        if (command.signerId !== session.user.id) {
+          throw new NotFoundException("The draft is not available to this clinician");
+        }
+        const replay = await this.replay(manager, command.commandId, digest, reportId);
+        if (replay) return { result: replay };
         if (report.status !== "draft") throw new ConflictException("Report is already signed");
         const revision = Number(report.revision);
         if (revision !== command.expectedRevision) {

@@ -60,7 +60,7 @@ export function MedicationDialog({ draft, dispatch, dialogRef, definition, findi
     <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{draft.isNew ? medication.labels.newEyebrow : medication.labels.editEyebrow}</p><h2 id="medication-dialog-title">{medication.labels.editorTitle}</h2></div>
-        <button aria-label={medication.labels.closeEditor} type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>×</button>
+        <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "medication-removed" })}>{medication.labels.remove}</button>
       </div>
       {medication.fields.map(renderField)}
       <div className="note-dialog-actions">

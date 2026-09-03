@@ -45,7 +45,7 @@ test("response, dispatch, crew, scene, and timing values live at their catalog i
   assert.deepEqual(timing.map(({ reference }) => reference), ["eTimes.06", "eTimes.05", "eTimes.03", "eTimes.01"]);
   assert.deepEqual(timing.map(({ title }) => title), ["Unit Arrived on Scene", "Unit En Route", "Unit Notified by Dispatch", "PSAP Call"]);
   assert.deepEqual(incidentSummary(document), {
-    number: "SYN-2026-0418-113 · 3-9-7-4-0",
+    number: "SYN-20260418-113 · 3-9-7-4-0",
     complaint: "Medical assistance requested",
     address: "100 Example Avenue (fictional), Unit 3",
     crew: "AN",
@@ -72,8 +72,7 @@ test("editing, refresh recovery, and reset keep incident display on the canonica
   assert.deepEqual(incidentSummary(restored.state.encounter.document), before.incident);
   assert.deepEqual(documentTimeline(restored.state.encounter.document), before.timeline);
 
-  state = transitionShell(restored.state, { type: "prototype-reset" });
-  assert.deepEqual(state.encounter.document, baselineDocument);
+  assert.deepEqual(INITIAL_SHELL_STATE.encounter.document, baselineDocument);
 });
 
 test("version two browser state upgrades deterministically and removes the parallel incident shape", () => {

@@ -1,7 +1,7 @@
 {
   "name": "OpenTriage",
   "short_name": "OpenTriage",
-  "description": "Synthetic-data-only ePCR usability prototype — not for clinical use",
+  "description": "Synthetic-data-only mobile ePCR documentation",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

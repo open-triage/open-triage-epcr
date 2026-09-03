@@ -36,6 +36,7 @@ create table app_identity.organization (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   retention_years integer not null default 10 check (retention_years between 1 and 100),
+  shift_session_duration_hours integer not null default 14 check (shift_session_duration_hours between 1 and 72),
   deployment_timezone text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -48,7 +49,8 @@ create table app_identity.app_user (
   active boolean not null default true,
   synthetic boolean not null default false,
   created_at timestamptz not null default now(),
-  deactivated_at timestamptz
+  deactivated_at timestamptz,
+  unique (organization_id, id)
 );
 
 create table app_identity.external_identity (
@@ -310,7 +312,8 @@ create table forms.form (
   slug text not null,
   name text not null,
   created_at timestamptz not null default now(),
-  unique (organization_id, slug)
+  unique (organization_id, slug),
+  unique (organization_id, id)
 );
 
 create table forms.custom_element_definition (
@@ -528,6 +531,30 @@ for each row execute function forms.prevent_published_form_child_mutation();
 create trigger publication_validation_immutable before insert or update or delete on forms.publication_validation
 for each row execute function forms.prevent_published_form_child_mutation();
 
+create table app_identity.operational_unit (
+  id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  organization_id uuid not null references app_identity.organization(id),
+  call_sign text not null,
+  name text not null,
+  default_form_id uuid not null,
+  active boolean not null default true,
+  synthetic boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (organization_id, call_sign),
+  unique (organization_id, id),
+  foreign key (organization_id, default_form_id) references forms.form(organization_id, id)
+);
+
+create table app_identity.unit_clinician (
+  organization_id uuid not null references app_identity.organization(id),
+  unit_id uuid not null,
+  user_id uuid not null,
+  assigned_at timestamptz not null default now(),
+  primary key (unit_id, user_id),
+  foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
+  foreign key (organization_id, user_id) references app_identity.app_user(organization_id, id)
+);
+
 create table clinical.incident (
   id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
   organization_id uuid not null references app_identity.organization(id),
@@ -537,7 +564,8 @@ create table clinical.incident (
   updated_at timestamptz not null default now(),
   expires_at timestamptz,
   synthetic boolean not null default false,
-  baseline boolean not null default false
+  baseline boolean not null default false,
+  unique (organization_id, id)
 );
 
 create table clinical.patient (
@@ -570,6 +598,7 @@ create table clinical.report (
   baseline boolean not null default false,
   check ((status = 'draft') or (reporting_date is not null and reporting_date_source is not null)),
   unique (id, catalog_release_id),
+  unique (organization_id, id),
   foreign key (organization_id, agency_demographic_version_id, catalog_release_id)
     references app_identity.agency_demographic_version(organization_id, id, catalog_release_id)
 );
@@ -577,6 +606,31 @@ create table clinical.report (
 create index report_incident_idx on clinical.report (incident_id);
 create index report_patient_idx on clinical.report (patient_id);
 create index report_status_updated_idx on clinical.report (status, updated_at);
+
+create table clinical.call_assignment (
+  id uuid primary key check (substring(id::text from 15 for 1) = '4' and substring(id::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  organization_id uuid not null references app_identity.organization(id),
+  unit_id uuid not null,
+  incident_id uuid not null,
+  call_number text not null,
+  dispatched_at timestamptz not null,
+  dispatch_reason text,
+  chief_complaint text,
+  status text not null default 'assigned' check (status in ('assigned', 'opened', 'canceled')),
+  report_id uuid,
+  synthetic boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, call_number),
+  check (dispatch_reason is not null or chief_complaint is not null),
+  check ((status = 'opened' and report_id is not null) or (status <> 'opened' and report_id is null)),
+  foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
+  foreign key (organization_id, incident_id) references clinical.incident(organization_id, id),
+  foreign key (organization_id, report_id) references clinical.report(organization_id, id)
+);
+
+create index call_assignment_unit_status_idx
+on clinical.call_assignment (unit_id, status, dispatched_at desc);
 
 create table clinical.report_contributor (
   report_id uuid not null references clinical.report(id) on delete cascade,
@@ -790,6 +844,57 @@ create table clinical.report_change (
 create trigger report_change_append_only before update or delete on clinical.report_change
 for each row execute function public.prevent_update_or_delete();
 
+create table clinical.draft_target_state (
+  report_id uuid not null references clinical.report(id) on delete cascade,
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  revision bigint not null check (revision > 0),
+  idempotency_key uuid not null,
+  author_id uuid not null references app_identity.app_user(id),
+  device_id text,
+  client_time timestamptz,
+  server_received_time timestamptz not null,
+  base_revision bigint not null check (base_revision >= 0),
+  target_value jsonb not null,
+  primary key (report_id, target_type, target_id),
+  foreign key (report_id, revision) references clinical.report_change(report_id, revision),
+  foreign key (report_id, idempotency_key) references clinical.report_change(report_id, idempotency_key)
+);
+
+comment on table clinical.draft_target_state is
+  'Current winning command lineage for each stable draft group or occurrence target.';
+
+create table clinical_audit.draft_reconciliation (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  losing_value jsonb not null,
+  losing_author_id uuid not null references app_identity.app_user(id),
+  losing_device_id text,
+  losing_client_time timestamptz,
+  losing_server_received_time timestamptz not null,
+  losing_base_revision bigint not null check (losing_base_revision >= 0),
+  winning_revision bigint not null,
+  winning_idempotency_key uuid not null,
+  winning_author_id uuid not null references app_identity.app_user(id),
+  winning_device_id text,
+  winning_client_time timestamptz,
+  winning_server_received_time timestamptz not null,
+  winning_base_revision bigint not null check (winning_base_revision >= 0),
+  resolution text not null check (resolution in ('client-time', 'server-receipt-order')),
+  created_at timestamptz not null default now(),
+  foreign key (report_id, winning_revision) references clinical.report_change(report_id, revision),
+  foreign key (report_id, winning_idempotency_key) references clinical.report_change(report_id, idempotency_key)
+);
+
+create index draft_reconciliation_report_target_idx
+on clinical_audit.draft_reconciliation (report_id, target_type, target_id, id);
+
+create trigger draft_reconciliation_append_only
+before update or delete on clinical_audit.draft_reconciliation
+for each row execute function public.prevent_update_or_delete();
+
 create table clinical.validation_finding (
   id uuid primary key default gen_random_uuid(),
   report_id uuid not null references clinical.report(id) on delete cascade,
@@ -863,6 +968,35 @@ deferrable initially deferred
 for each row execute function clinical.require_signed_snapshot();
 
 create trigger signed_snapshot_append_only before update or delete on clinical.signed_snapshot
+for each row execute function public.prevent_update_or_delete();
+
+create table clinical_audit.post_signature_audit_note (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  idempotency_key uuid not null check (substring(idempotency_key::text from 15 for 1) = '4' and substring(idempotency_key::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  attempted_change jsonb not null,
+  author_id uuid not null references app_identity.app_user(id),
+  device_id text,
+  client_edit_time timestamptz,
+  server_received_time timestamptz not null,
+  expected_revision bigint not null check (expected_revision >= 0),
+  signed_revision bigint not null check (signed_revision >= 0),
+  signed_snapshot_id uuid not null references clinical.signed_snapshot(id),
+  signed_canonical_sha256 text not null check (signed_canonical_sha256 ~ '^[a-f0-9]{64}$'),
+  created_at timestamptz not null default now(),
+  unique (report_id, idempotency_key, target_type, target_id)
+);
+
+comment on table clinical_audit.post_signature_audit_note is
+  'Append-only retention of queued mobile draft changes received after the immutable signature boundary.';
+
+create index post_signature_audit_note_report_target_idx
+on clinical_audit.post_signature_audit_note (report_id, target_type, target_id, id);
+
+create trigger post_signature_audit_note_append_only
+before update or delete on clinical_audit.post_signature_audit_note
 for each row execute function public.prevent_update_or_delete();
 
 create table clinical.amendment (
@@ -3233,6 +3367,8 @@ grant execute on function operations.record_query_audit(
 ) to open_triage_query_auditor;
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
+grant usage on schema clinical_audit to open_triage_auditor;
+grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note to open_triage_auditor;
 grant usage on schema retention to open_triage_retention_executor, open_triage_auditor;
 grant select on retention.policy, retention.legal_hold, retention.archive_batch,
   retention.archive_batch_report, retention.evidence to open_triage_auditor;

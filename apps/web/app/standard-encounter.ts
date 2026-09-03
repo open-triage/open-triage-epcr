@@ -9,7 +9,7 @@ import type { EncounterDocument } from "@open-triage/contracts";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 
-export type ShellView = "timeline" | "checklist" | "review" | "summary";
+export type ShellView = "timeline" | "checklist" | "review";
 
 export type EncounterEvent = {
   readonly id: string;
@@ -90,12 +90,11 @@ export type ShellAction =
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
   | { readonly type: "note-cancelled" }
+  | { readonly type: "note-removed" }
   | { readonly type: "note-saved" }
   | { readonly type: "review-opened" }
   | { readonly type: "review-finding-selected"; readonly id: string }
   | { readonly type: "review-warning-acknowledged"; readonly id: string; readonly acknowledged: boolean }
-  | { readonly type: "review-finished" }
-  | { readonly type: "summary-editing-continued" }
   | { readonly type: "procedure-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "procedure-opened"; readonly id: string }
   | { readonly type: "procedure-selected"; readonly code: string }
@@ -103,6 +102,7 @@ export type ShellAction =
   | { readonly type: "procedure-complication-toggled"; readonly code: string }
   | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "procedure-cancelled" }
+  | { readonly type: "procedure-removed" }
   | { readonly type: "procedure-saved" }
   | { readonly type: "medication-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "medication-opened"; readonly id: string }
@@ -110,6 +110,7 @@ export type ShellAction =
   | { readonly type: "medication-draft-changed"; readonly field: Exclude<MedicationField, "codeType">; readonly value: string }
   | { readonly type: "medication-warning-acknowledged"; readonly acknowledged: boolean }
   | { readonly type: "medication-cancelled" }
+  | { readonly type: "medication-removed" }
   | { readonly type: "medication-saved" }
   | { readonly type: "vitals-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "vitals-opened"; readonly id: string }
@@ -118,9 +119,9 @@ export type ShellAction =
   | { readonly type: "vitals-value-changed"; readonly field: VitalField; readonly value: string }
   | { readonly type: "vitals-null-changed"; readonly field: VitalField; readonly value: NullValue }
   | { readonly type: "vitals-cancelled" }
+  | { readonly type: "vitals-removed" }
   | { readonly type: "vitals-saved" }
-  | { readonly type: "state-restored"; readonly state: ShellState }
-  | { readonly type: "prototype-reset" };
+  | { readonly type: "state-restored"; readonly state: ShellState };
 
 export const EMPTY_VITALS: VitalValues = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} };
 export function createInitialShellState(definition: EncounterDefinition): ShellState {
@@ -181,6 +182,8 @@ export type ReviewFinding = {
   };
   readonly acknowledged: boolean;
 };
+
+export const MISSING_VITALS_FINDING_ID = "vital:missing-set:warning";
 
 export function encounterEventPresentation(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): Pick<EncounterEvent, "title" | "reference"> {
   if (event.kind === "note") return { title: definition.events.note.labels.timelineTitle, reference: definition.events.note.references.summary };
@@ -299,8 +302,27 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
     return [];
   });
 
+  const missingVitals: ReadonlyArray<ReviewFinding> = state.encounter.events.some((event) => event.vitals)
+    ? []
+    : [{
+        id: MISSING_VITALS_FINDING_ID,
+        severity: "warning",
+        eventType: "vitals",
+        category: definition.events.vitals.labels.category,
+        reference: definition.events.vitals.references.group,
+        message: "At least one set of vital signs should be documented.",
+        title: "No vital signs documented",
+        target: {
+          eventId: MISSING_VITALS_FINDING_ID,
+          groupId: definition.events.vitals.references.group,
+          instanceId: MISSING_VITALS_FINDING_ID,
+          elementId: definition.events.vitals.references.group,
+        },
+        acknowledged: state.acknowledgedWarnings.includes(MISSING_VITALS_FINDING_ID),
+      }];
+  const findings = [...events, ...missingVitals];
   const typeOrder = new Map(definition.composition.review.eventTypeOrder.map((type, index) => [type, index]));
-  return events.map((finding, index) => ({ finding, index })).sort((a, b) =>
+  return findings.map((finding, index) => ({ finding, index })).sort((a, b) =>
     (typeOrder.get(a.finding.eventType) ?? Number.MAX_SAFE_INTEGER) - (typeOrder.get(b.finding.eventType) ?? Number.MAX_SAFE_INTEGER) || a.index - b.index,
   ).map(({ finding }) => finding);
 }
@@ -371,14 +393,6 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
           ? [...new Set([...state.acknowledgedWarnings, action.id])]
           : state.acknowledgedWarnings.filter((id) => id !== action.id),
       };
-    case "review-finished": {
-      const findings = reviewEncounter(state, definition);
-      return findings.some((finding) => finding.severity === "error" || !finding.acknowledged)
-        ? state
-        : { ...state, view: "summary" };
-    }
-    case "summary-editing-continued":
-      return { ...state, view: "timeline" };
     case "note-started":
       return { ...state, noteDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, summary: "", isNew: true } };
     case "note-opened": {
@@ -389,6 +403,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.noteDraft ? { ...state, noteDraft: { ...state.noteDraft, [action.field]: action.value } } : state;
     case "note-cancelled":
       return { ...state, noteDraft: null };
+    case "note-removed":
+      return state.noteDraft ? { ...state, noteDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.noteDraft!.id) } } : state;
     case "note-saved": {
       const draft = state.noteDraft;
       if (!draft) return state;
@@ -484,6 +500,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       } : state;
     case "procedure-cancelled":
       return { ...state, procedureDraft: null };
+    case "procedure-removed":
+      return state.procedureDraft ? { ...state, procedureDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.procedureDraft!.id) } } : state;
     case "procedure-saved": {
       const draft = state.procedureDraft;
       if (!draft) return state;
@@ -532,6 +550,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, warningAcknowledged: action.acknowledged } } : state;
     case "medication-cancelled":
       return { ...state, medicationDraft: null };
+    case "medication-removed":
+      return state.medicationDraft ? { ...state, medicationDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.medicationDraft!.id) } } : state;
     case "medication-saved": {
       const draft = state.medicationDraft;
       if (!draft) return state;
@@ -576,6 +596,8 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: "", nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: action.value } } } } : state;
     case "vitals-cancelled":
       return { ...state, vitalDraft: null };
+    case "vitals-removed":
+      return state.vitalDraft ? { ...state, vitalDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.vitalDraft!.id) } } : state;
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft) return state;
@@ -587,8 +609,6 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version
         ? { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
         : state;
-    case "prototype-reset":
-      return createInitialShellState(definition);
     default:
       return state;
   }

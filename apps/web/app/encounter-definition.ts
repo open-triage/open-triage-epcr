@@ -20,7 +20,7 @@ export type VitalGroupDefinition = {
   readonly quickAction: { readonly visible: boolean; readonly label: string };
   readonly labels: {
     readonly category: string; readonly timelineTitle: string; readonly newEyebrow: string; readonly editEyebrow: string;
-    readonly editorTitle: string; readonly closeEditor: string; readonly time: string; readonly absenceHelp: string;
+    readonly editorTitle: string; readonly remove: string; readonly time: string; readonly absenceHelp: string;
     readonly cancel: string; readonly add: string; readonly save: string; readonly absentSummary: string;
   };
   readonly references: { readonly group: NemsisReference; readonly time: NemsisReference };
@@ -37,7 +37,7 @@ export type NoteEventDefinition = {
     readonly newEyebrow: string;
     readonly editEyebrow: string;
     readonly editorTitle: string;
-    readonly closeEditor: string;
+    readonly remove: string;
     readonly time: string;
     readonly timeHelp: string;
     readonly summary: string;
@@ -56,7 +56,7 @@ export type ProcedureEventDefinition = {
   readonly fieldOrder: ReadonlyArray<ProcedureField>;
   readonly labels: {
     readonly category: string; readonly newEyebrow: string; readonly editEyebrow: string; readonly editorTitle: string;
-    readonly closeEditor: string; readonly search: string; readonly searchPlaceholder: string; readonly offlineCaption: string;
+    readonly remove: string; readonly search: string; readonly searchPlaceholder: string; readonly offlineCaption: string;
     readonly noResults: string; readonly change: string; readonly procedure: string; readonly time: string; readonly attempts: string;
     readonly success: string; readonly outcome: string; readonly complications: string; readonly select: string;
     readonly cancel: string; readonly add: string; readonly save: string; readonly warningPill: string;
@@ -99,7 +99,7 @@ export type MedicationEventDefinition = {
     readonly newEyebrow: string;
     readonly editEyebrow: string;
     readonly editorTitle: string;
-    readonly closeEditor: string;
+    readonly remove: string;
     readonly searchResults: string;
     readonly availableOffline: string;
     readonly noMatches: string;
@@ -129,7 +129,7 @@ export type EncounterDefinition = {
   readonly version: number;
   readonly synthetic: true;
   readonly labels: {
-    readonly prototypeStatus: string; readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
+    readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
     readonly savePatient: string;
   };
   readonly patient: {
@@ -178,7 +178,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (root.schemaVersion !== 1) diagnostics.push("schemaVersion must be 1");
   if (typeof root.id !== "string" || !root.id.trim()) diagnostics.push("id is required");
   if (!Number.isInteger(root.version) || Number(root.version) < 1) diagnostics.push("version must be a positive integer");
-  if (root.synthetic !== true) diagnostics.push("synthetic must be true for the bundled prototype");
+  if (root.synthetic !== true) diagnostics.push("synthetic must be true for the bundled record");
   const requiredStrings = (candidate: unknown, path: string, keys: readonly string[]) => {
     if (!isRecord(candidate)) { diagnostics.push(`${path} must be an object`); return; }
     for (const key of keys) if (typeof candidate[key] !== "string" || !(candidate[key] as string).trim()) diagnostics.push(`${path}.${key} is required`);
@@ -190,7 +190,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
     }
   };
   rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "patient", "composition", "events"]);
-  requiredStrings(root.labels, "labels", ["prototypeStatus", "incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
+  requiredStrings(root.labels, "labels", ["incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
   const patient = isRecord(root.patient) ? root.patient : {};
   const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
   if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");
@@ -235,7 +235,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   const quickAction = isRecord(note.quickAction) ? note.quickAction : {};
   if (typeof quickAction.visible !== "boolean") diagnostics.push("events.note.quickAction.visible must be a boolean");
   requiredStrings(quickAction, "events.note.quickAction", ["label"]);
-  requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "time", "timeHelp", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
+  requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "remove", "time", "timeHelp", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
   const required = isRecord(note.required) ? note.required : {};
   for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
   requiredStrings(note.references, "events.note.references", ["time", "summary"]);
@@ -249,7 +249,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   if (!Array.isArray(procedure.fieldOrder) || procedure.fieldOrder.length !== procedureFields.length || new Set(procedure.fieldOrder).size !== procedureFields.length || procedure.fieldOrder.some((field) => !procedureFields.includes(field as ProcedureField))) {
     diagnostics.push("events.procedure.fieldOrder must contain every procedure field exactly once");
   }
-  requiredStrings(procedure.labels, "events.procedure.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "search", "searchPlaceholder", "offlineCaption", "noResults", "change", "procedure", "time", "attempts", "success", "outcome", "complications", "select", "cancel", "add", "save", "warningPill"]);
+  requiredStrings(procedure.labels, "events.procedure.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "remove", "search", "searchPlaceholder", "offlineCaption", "noResults", "change", "procedure", "time", "attempts", "success", "outcome", "complications", "select", "cancel", "add", "save", "warningPill"]);
   requiredStrings(procedure.terminology, "events.procedure.terminology", ["catalog", "codeSystem"]);
   const procedureRequired = isRecord(procedure.required) ? procedure.required : {};
   for (const field of procedureFields) if (typeof procedureRequired[field] !== "boolean") diagnostics.push(`events.procedure.required.${field} must be a boolean`);
@@ -290,14 +290,14 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   for (const list of ["doseUnits", "routes"] as const) {
     if (!Array.isArray(medication[list]) || medication[list].length === 0 || medication[list].some((item) => typeof item !== "string" || !item.trim())) diagnostics.push(`events.medication.${list} must contain strings`);
   }
-  requiredStrings(medication.labels, "events.medication.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "searchResults", "availableOffline", "noMatches", "change", "select", "selectRoute", "cancel", "add", "save", "medicationMissing", "routeMissing", "responseMissing"]);
+  requiredStrings(medication.labels, "events.medication.labels", ["category", "newEyebrow", "editEyebrow", "editorTitle", "remove", "searchResults", "availableOffline", "noMatches", "change", "select", "selectRoute", "cancel", "add", "save", "medicationMissing", "routeMissing", "responseMissing"]);
   requiredStrings(medication.validationMessages, "events.medication.validationMessages", ["invalidTime", "invalidMedication", "invalidDose", "invalidUnit", "invalidRoute", "responseMissing"]);
   const vitals = isRecord(events.vitals) ? events.vitals : {};
   rejectUnsupportedKeys(vitals, "events.vitals", ["quickAction", "labels", "references", "validationMessages", "fields", "summary"]);
   const vitalQuickAction = isRecord(vitals.quickAction) ? vitals.quickAction : {};
   if (typeof vitalQuickAction.visible !== "boolean") diagnostics.push("events.vitals.quickAction.visible must be a boolean");
   requiredStrings(vitalQuickAction, "events.vitals.quickAction", ["label"]);
-  requiredStrings(vitals.labels, "events.vitals.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "closeEditor", "time", "absenceHelp", "cancel", "add", "save", "absentSummary"]);
+  requiredStrings(vitals.labels, "events.vitals.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "remove", "time", "absenceHelp", "cancel", "add", "save", "absentSummary"]);
   requiredStrings(vitals.references, "events.vitals.references", ["group", "time"]);
   requiredStrings(vitals.validationMessages, "events.vitals.validationMessages", ["invalidTime", "emptyGroup"]);
   const vitalFieldIds = new Set<string>();

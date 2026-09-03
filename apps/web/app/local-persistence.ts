@@ -5,12 +5,25 @@ import { migrateLegacyIncidentDocument } from "./incident-document";
 import { bundledEncounterDefinition, createInitialShellState, type ShellState } from "./standard-encounter";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
+export const REPORT_SYNC_STORAGE_PREFIX = "open-triage:report-sync-v1";
 export const RECOVERY_STORAGE_KEY = `${STORAGE_KEY}:recovery`;
 export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
 export const PERSISTENCE_VERSION = 4 as const;
 const LEGACY_PERSISTENCE_VERSIONS = [2, 3] as const;
 export const ENCOUNTER_EXTENSION_KEY = "x-open-triage-standard-form" as const;
 export const ENCOUNTER_EXTENSION_VERSION = "1.0.0" as const;
+
+export function reportStorageKey(reportId?: string): string {
+  return reportId ? `${STORAGE_KEY}:report:${reportId}` : STORAGE_KEY;
+}
+
+export function reportSyncStorageKey(reportId: string): string {
+  return `${REPORT_SYNC_STORAGE_PREFIX}:${reportId}`;
+}
+
+export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string, status: "Saved" | "Saving" | "Pending sync" | "Conflict"): void {
+  storage.setItem(reportSyncStorageKey(reportId), status);
+}
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -20,7 +33,7 @@ export type ShellStateLoadResult =
   | { readonly status: "incompatible"; readonly savedDefinition: { readonly id: string | null; readonly version: number | null }; readonly expectedDefinition: { readonly id: string; readonly version: number }; readonly recoveryKey: typeof RECOVERY_STORAGE_KEY }
   | { readonly status: "restored"; readonly state: ShellState; readonly migrated: boolean };
 
-export function saveShellState(storage: LocalStoragePort, state: ShellState): void {
+export function saveShellState(storage: LocalStoragePort, state: ShellState, reportId?: string): void {
   const document = {
     ...state.encounter.document,
     [ENCOUNTER_EXTENSION_KEY]: {
@@ -30,7 +43,7 @@ export function saveShellState(storage: LocalStoragePort, state: ShellState): vo
       ...(state.encounter.customData ? { customData: state.encounter.customData } : {}),
     },
   };
-  storage.setItem(STORAGE_KEY, JSON.stringify({
+  storage.setItem(reportStorageKey(reportId), JSON.stringify({
     persistenceVersion: PERSISTENCE_VERSION,
     document,
     workflow: {
@@ -97,9 +110,11 @@ function migrateLegacyPatient(patient: Record<string, unknown>, baseline: Patien
   };
 }
 
-export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition): ShellStateLoadResult {
-  const serialized = storage.getItem(STORAGE_KEY);
+export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition, reportId?: string): ShellStateLoadResult {
+  const key = reportStorageKey(reportId);
+  const serialized = storage.getItem(key);
   if (serialized === null) {
+    if (reportId) return { status: "empty" };
     const legacyKey = LEGACY_STORAGE_KEYS.find((key) => storage.getItem(key) !== null);
     if (!legacyKey) return { status: "empty" };
     const legacySerialized = storage.getItem(legacyKey)!;
@@ -120,12 +135,12 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
   }
   try {
     const parsed: unknown = JSON.parse(serialized);
-    if (!parsed || typeof parsed !== "object") return { status: "invalid", reason: "saved state must be an object", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (!parsed || typeof parsed !== "object") return { status: "invalid", reason: "saved state must be an object", recoveryKey: preserveForRecovery(storage, serialized, key) };
     const record = parsed as Record<string, unknown>;
     const isCurrentEnvelope = record.persistenceVersion === PERSISTENCE_VERSION && record.document && typeof record.document === "object" && record.workflow && typeof record.workflow === "object";
     const isPreviousEnvelope = LEGACY_PERSISTENCE_VERSIONS.includes(record.persistenceVersion as 2 | 3) && record.state && typeof record.state === "object";
     if (record.persistenceVersion !== undefined && !isCurrentEnvelope && !isPreviousEnvelope) {
-      return { status: "invalid", reason: `saved persistence version ${String(record.persistenceVersion)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized) };
+      return { status: "invalid", reason: `saved persistence version ${String(record.persistenceVersion)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
     const currentDocument = isCurrentEnvelope ? record.document as Record<string, unknown> : null;
     const currentWorkflow = isCurrentEnvelope ? record.workflow as Partial<ShellState> : null;
@@ -133,7 +148,7 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
     const candidate = (isCurrentEnvelope ? currentWorkflow : isEnvelope ? record.state : record) as Partial<ShellState> & { encounter?: Record<string, unknown> };
     const extension = currentDocument?.[ENCOUNTER_EXTENSION_KEY] as Record<string, unknown> | undefined;
     if (isCurrentEnvelope && (!extension || extension.version !== ENCOUNTER_EXTENSION_VERSION)) {
-      return { status: "invalid", reason: `saved extension version ${String(extension?.version)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized) };
+      return { status: "invalid", reason: `saved extension version ${String(extension?.version)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
     const candidateEncounter = candidate.encounter;
     const savedDefinition = {
@@ -142,13 +157,13 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
     };
     const expectedDefinition = { id: definition.id, version: definition.version };
     if (savedDefinition.id !== expectedDefinition.id || savedDefinition.version !== expectedDefinition.version) {
-      return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized) };
+      return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
-    if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (!candidate.view || !["timeline", "checklist", "review", "summary"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported", recoveryKey: preserveForRecovery(storage, serialized, key) };
     const persistedEvents = isCurrentEnvelope ? extension?.events : candidateEncounter?.events;
-    if (!Array.isArray(persistedEvents)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized) };
-    if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
-    if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized) };
+    if (!Array.isArray(persistedEvents)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized, key) };
+    if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
+    if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
 
     const initialDocument = createInitialShellState(definition).encounter.document;
     const legacyEncounter = (candidateEncounter ?? {}) as Record<string, unknown>;
@@ -198,17 +213,29 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
     return { status: "restored", state, migrated };
   } catch (error) {
     const reason = error instanceof EncounterDocumentError || (error instanceof Error && !(error instanceof SyntaxError)) ? error.message : "saved state is not valid JSON";
-    return { status: "invalid", reason, recoveryKey: preserveForRecovery(storage, serialized) };
+    return { status: "invalid", reason, recoveryKey: preserveForRecovery(storage, serialized, key) };
   }
 }
 
-export function loadShellState(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition): ShellState | null {
-  const result = loadShellStateResult(storage, definition);
+export function loadShellState(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition, reportId?: string): ShellState | null {
+  const result = loadShellStateResult(storage, definition, reportId);
   return result.status === "restored" ? result.state : null;
 }
 
-export function clearShellState(storage: LocalStoragePort): void {
-  storage.removeItem(STORAGE_KEY);
+export function clearShellState(storage: LocalStoragePort, reportId?: string): void {
+  storage.removeItem(reportStorageKey(reportId));
+  if (reportId) storage.removeItem(reportSyncStorageKey(reportId));
   storage.removeItem(RECOVERY_STORAGE_KEY);
   LEGACY_STORAGE_KEYS.forEach((key) => storage.removeItem(key));
+}
+
+/** Removes only report-scoped state confirmed complete by the server. */
+export function purgeCompletedReportCaches(storage: LocalStoragePort, reportIds: ReadonlyArray<string>): void {
+  reportIds.forEach((reportId) => {
+    const syncKey = reportSyncStorageKey(reportId);
+    const status = storage.getItem(syncKey);
+    if (status && status !== "Saved") return;
+    storage.removeItem(reportStorageKey(reportId));
+    storage.removeItem(syncKey);
+  });
 }

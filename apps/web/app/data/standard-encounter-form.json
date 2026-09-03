@@ -7,7 +7,7 @@
     { "id": "medication", "visible": true, "quickActionLabel": "Add medication", "elements": ["eMedications.03", "eMedications.01", "eMedications.05", "eMedications.06", "eMedications.04", "eMedications.07"] },
     { "id": "procedure", "visible": true, "quickActionLabel": "Add procedure", "elements": ["eProcedures.03", "eProcedures.01", "eProcedures.05", "eProcedures.06", "eProcedures.08", "eProcedures.07"] },
     { "id": "note", "visible": true, "quickActionLabel": "Add clinical note", "elements": ["eNarrative.01"] },
-    { "id": "patient", "visible": true, "quickActionLabel": "Edit patient information", "elements": [] }
+    { "id": "patient", "visible": false, "quickActionLabel": "Edit patient information", "elements": [] }
   ],
   "labels": {
     "eVitals.06": "Systolic BP",

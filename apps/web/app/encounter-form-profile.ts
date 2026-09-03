@@ -68,6 +68,7 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
       else if (entry.provenance === "custom" && !element.startsWith(`${entry.namespace}.`)) errors.push(`${elementPath}: invalid custom-element namespace for ${element}`);
       if (!supported[id as SectionId].includes(element)) errors.push(`${elementPath}: ${element} is not supported in ${id}`);
     });
+    if (candidate.visible === true && elements.length === 0) errors.push(`${path}.visible: visible sections must contain at least one configured NEMSIS field`);
     parsedSections.push({ id: id as SectionId, visible: candidate.visible as boolean, quickActionLabel: candidate.quickActionLabel as string, elements: elements as string[] });
   });
   sectionIds.forEach((id) => { if (!seenSections.has(id)) errors.push(`$.sections: missing supported section ${id}`); });

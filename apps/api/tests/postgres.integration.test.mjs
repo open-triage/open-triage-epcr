@@ -10,6 +10,11 @@ import { NestFactory } from "@nestjs/core";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
+import {
+  DEMO_CLINICIAN_PASSWORD,
+  DEMO_CLINICIAN_USERNAME,
+  ClinicianSessionService
+} from "../dist/sessions/clinician-session.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -252,7 +257,153 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   });
 });
 
-integrationTest("draft report commands create, incrementally save, retrieve, and replay through the public API", async (t) => {
+integrationTest("the seeded clinician retrieves the server-authoritative demo unit assignment", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+    env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
+
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix("api");
+  await app.listen(0, "127.0.0.1");
+  t.after(() => app.close());
+  const address = app.getHttpServer().address();
+  const baseUrl = `http://127.0.0.1:${address.port}/api`;
+
+  const signIn = await fetch(`${baseUrl}/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+  });
+  assert.equal(signIn.status, 201);
+  const session = await signIn.json();
+  const response = await fetch(`${baseUrl}/calls/assigned`, {
+    headers: { authorization: `Bearer ${session.accessToken}` }
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload.assignedCalls, [{
+    id: "32000000-0000-4000-8000-000000000011",
+    callNumber: "SYN-20260903-001",
+    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
+    dispatchedAt: "2026-09-03T12:00:00.000Z",
+    dispatchReason: "Medical assistance requested",
+    chiefComplaint: null,
+    status: "assigned"
+  }]);
+  assert.deepEqual(payload.canceledAssignmentIds, []);
+
+  try {
+    await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
+    const canceled = await fetch(`${baseUrl}/calls/assigned`, {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+    const canceledPayload = await canceled.json();
+    assert.deepEqual(canceledPayload.assignedCalls, []);
+    assert.deepEqual(canceledPayload.canceledAssignmentIds, [payload.assignedCalls[0].id]);
+  } finally {
+    await client.query("update clinical.call_assignment set status = 'assigned' where id = $1", [payload.assignedCalls[0].id]);
+  }
+});
+
+integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+    env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
+
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix("api");
+  await app.listen(0, "127.0.0.1");
+  t.after(() => app.close());
+  const address = app.getHttpServer().address();
+  const baseUrl = `http://127.0.0.1:${address.port}/api`;
+  const signIn = await fetch(`${baseUrl}/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+  });
+  const session = await signIn.json();
+  const assignmentId = "32000000-0000-4000-8000-000000000011";
+  const latestBeforeOpen = (await client.query(`
+    select fv.id from forms.form_version fv
+    join app_identity.operational_unit ou on ou.default_form_id = fv.form_id
+    where ou.id = '32000000-0000-4000-8000-000000000010' and fv.status = 'published'
+    order by fv.version desc limit 1
+  `)).rows[0].id;
+  let opened;
+  try {
+    const requestOpen = async () => {
+      const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${session.accessToken}` }
+      });
+      const payload = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(payload));
+      return payload;
+    };
+    opened = await requestOpen();
+    const retry = await requestOpen();
+    assert.equal(retry.report.id, opened.report.id);
+    assert.equal(retry.replacementAssignment, null);
+    assert.equal(opened.report.documentingUserId, session.user.id);
+    assert.equal(opened.report.formVersionId, latestBeforeOpen);
+    assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
+    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
+
+    const state = (await client.query(`
+      select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
+        (select count(*)::integer from clinical.report where incident_id = ca.incident_id) as reports,
+        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients
+      from clinical.call_assignment ca join clinical.report r on r.id = ca.report_id
+      where ca.id = $1
+    `, [assignmentId])).rows[0];
+    assert.deepEqual(state, {
+      status: "opened", report_id: opened.report.id, documenting_user_id: session.user.id,
+      form_version_id: latestBeforeOpen, reports: 1, patients: 1
+    });
+
+    const laterVersionId = randomUUID();
+    await client.query(`
+      insert into forms.form_version
+        (id, form_id, catalog_release_id, version, status, canonical_definition,
+         definition_sha256, change_note, created_by, published_by, published_at,
+         publication_acknowledgements)
+      select $1, fv.form_id, fv.catalog_release_id,
+             (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
+             'published', fv.canonical_definition, fv.definition_sha256,
+             'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
+      from forms.form_version fv where fv.id = $2
+    `, [laterVersionId, latestBeforeOpen]);
+    assert.equal((await client.query("select form_version_id from clinical.report where id = $1", [opened.report.id])).rows[0].form_version_id,
+      latestBeforeOpen);
+  } finally {
+    if (opened) {
+      await client.query("begin");
+      try {
+        const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
+        await client.query("update clinical.call_assignment set status = 'assigned', report_id = null where id = $1", [assignmentId]);
+        await client.query("delete from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
+        const patient = await client.query("select patient_id from clinical.report where id = $1", [opened.report.id]);
+        await client.query("delete from clinical.report where id = $1", [opened.report.id]);
+        if (patient.rows[0]) await client.query("delete from clinical.patient where id = $1", [patient.rows[0].patient_id]);
+        if (replacement.rows[0]) await client.query("delete from clinical.incident where id = $1", [replacement.rows[0].incident_id]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+    }
+  }
+});
+
+integrationTest("draft report commands save, replay, and reconcile concurrent target edits with audit lineage", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -313,6 +464,17 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const negative = await option(ids.negative_id, "pertinent-negative");
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  const integrationAccessToken = "draft-api-owner-token";
+  app.get(ClinicianSessionService).get = (token) => {
+    assert.equal(token, integrationAccessToken);
+    return {
+      accessToken: integrationAccessToken,
+      user: { id: userId, displayName: "Clinician" },
+      organization: { id: organizationId, name: "Draft API" },
+      startedAt: "2026-09-03T08:00:00.000Z",
+      expiresAt: "2026-09-03T22:00:00.000Z"
+    };
+  };
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -320,7 +482,10 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
   const request = async (path, method, body) => {
     const response = await fetch(`${baseUrl}${path}`, {
-      method, headers: body ? { "content-type": "application/json" } : undefined,
+      method, headers: {
+        authorization: `Bearer ${integrationAccessToken}`,
+        ...(body ? { "content-type": "application/json" } : {})
+      },
       body: body ? JSON.stringify(body) : undefined
     });
     return { response, payload: await response.json() };
@@ -405,7 +570,7 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.deepEqual(stored.rows[0], { changes: 2, occurrences: 6, current_text: "updated" });
 
   const stale = await request(`/reports/${reportId}/draft-changes`, "POST", {
-    commandId: randomUUID(), expectedRevision: 0, authorId: userId,
+    commandId: randomUUID(), expectedRevision: 3, authorId: userId,
     occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "stale" } }]
   });
   assert.equal(stale.response.status, 409);
@@ -416,15 +581,12 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     (select value_text from clinical.element_occurrence where id = $2) as current_text`,
   [reportId, textOccurrenceId])).rows[0], { revision: "2", changes: 2, current_text: "updated" });
 
-  const concurrentCommands = ["device-a", "device-b"].map((value) => ({
-    commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: value,
-    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value } }]
-  }));
-  const concurrent = await Promise.all(concurrentCommands.map((command) =>
-    request(`/reports/${reportId}/draft-changes`, "POST", command)));
-  assert.deepEqual(concurrent.map(({ response }) => response.status).sort(), [201, 409]);
-  const acceptedIndex = concurrent.findIndex(({ response }) => response.status === 201);
-  assert.equal(concurrent[acceptedIndex].payload.revision, 3);
+  const thirdSave = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: "device-a",
+    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "device-a" } }]
+  });
+  assert.equal(thirdSave.response.status, 201, JSON.stringify(thirdSave.payload));
+  assert.equal(thirdSave.payload.revision, 3);
   const concurrentState = (await client.query(`select
     (select revision from clinical.report where id = $1) as revision,
     (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
@@ -432,7 +594,7 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   [reportId, textOccurrenceId])).rows[0];
   assert.deepEqual(concurrentState, {
     revision: "3", changes: 3,
-    current_text: concurrentCommands[acceptedIndex].occurrences[0].value.value
+    current_text: "device-a"
   });
 
   const deleteCommand = {
@@ -453,11 +615,6 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   [reportId, textOccurrenceId])).rows[0];
   assert.deepEqual(deletedState, { revision: "4", changes: 4, identities: 1, tombstoned: true });
 
-  const resurrection = await request(`/reports/${reportId}/draft-changes`, "POST", {
-    commandId: randomUUID(), expectedRevision: 4, authorId: userId,
-    occurrences: [{ id: textOccurrenceId, elementId: ids.text_id, value: { kind: "text", value: "resurrected" } }]
-  });
-  assert.equal(resurrection.response.status, 409);
   assert.deepEqual((await client.query(`select
     (select revision from clinical.report where id = $1) as revision,
     (select count(*)::integer from clinical.report_change where report_id = $1) as changes,
@@ -507,6 +664,139 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
     (select count(*)::integer from clinical.command_receipt where idempotency_key = $3) as receipts`,
   [reportId, rollbackOccurrenceId, rollbackCommand.commandId])).rows[0],
   { revision: "5", changes: 5, occurrences: 1, receipts: 1 });
+
+  const mergeReportId = randomUUID();
+  const mergeCreated = await request("/reports", "POST", {
+    commandId: randomUUID(), reportId: mergeReportId, incidentId: randomUUID(), patientId: randomUUID(),
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
+  });
+  assert.equal(mergeCreated.response.status, 201, JSON.stringify(mergeCreated.payload));
+  const mergeOccurrenceA = randomUUID();
+  const mergeOccurrenceB = randomUUID();
+  const baseClientTime = Date.now() - 10 * 60 * 1000;
+  const clientTime = (seconds) => new Date(baseClientTime + seconds * 1000).toISOString();
+  const saveMerge = (command) => request(`/reports/${mergeReportId}/draft-changes`, "POST", command);
+
+  const disjoint = await Promise.all([
+    saveMerge({
+      commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "disjoint-a",
+      clientTime: clientTime(1),
+      occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, ordinal: 0,
+        value: { kind: "text", value: "disjoint-a" } }]
+    }),
+    saveMerge({
+      commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "disjoint-b",
+      clientTime: clientTime(2),
+      occurrences: [{ id: mergeOccurrenceB, elementId: ids.text_id, ordinal: 1,
+        value: { kind: "text", value: "disjoint-b" } }]
+    })
+  ]);
+  assert.deepEqual(disjoint.map(({ response }) => response.status), [201, 201]);
+  assert.deepEqual(disjoint.map(({ payload }) => payload.revision).sort((a, b) => a - b), [1, 2]);
+  assert.deepEqual((await client.query(`select value_text from clinical.element_occurrence
+    where id = any($1::uuid[]) order by value_text`, [[mergeOccurrenceA, mergeOccurrenceB]])).rows,
+  [{ value_text: "disjoint-a" }, { value_text: "disjoint-b" }]);
+
+  const collisionCommands = [
+    { commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: "collision-older",
+      clientTime: clientTime(10), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+        value: { kind: "text", value: "collision-older" } }] },
+    { commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: "collision-newer",
+      clientTime: clientTime(20), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+        value: { kind: "text", value: "collision-newer" } }] }
+  ];
+  const collisions = await Promise.all(collisionCommands.map(saveMerge));
+  assert.deepEqual(collisions.map(({ response }) => response.status), [201, 201]);
+  assert.deepEqual(collisions.map(({ payload }) => payload.revision).sort((a, b) => a - b), [3, 4]);
+  assert.equal((await client.query("select value_text from clinical.element_occurrence where id = $1",
+    [mergeOccurrenceA])).rows[0].value_text, "collision-newer");
+
+  const mergeDeleteCommand = {
+    commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "delete-newer",
+    clientTime: clientTime(40), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, tombstone: true }]
+  };
+  const editDelete = await Promise.all([
+    saveMerge({
+      commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "edit-older",
+      clientTime: clientTime(30), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+        value: { kind: "text", value: "edit-before-delete" } }]
+    }),
+    saveMerge(mergeDeleteCommand)
+  ]);
+  assert.deepEqual(editDelete.map(({ response }) => response.status), [201, 201]);
+  assert.equal((await client.query("select tombstoned_at is not null as tombstoned from clinical.element_occurrence where id = $1",
+    [mergeOccurrenceA])).rows[0].tombstoned, true);
+  const deleteRetryResult = await saveMerge(mergeDeleteCommand);
+  assert.equal(deleteRetryResult.response.status, 201);
+  assert.deepEqual(deleteRetryResult.payload, editDelete[1].payload);
+
+  const resurrected = await saveMerge({
+    commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "resurrection",
+    clientTime: clientTime(50), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      value: { kind: "text", value: "resurrected" } }]
+  });
+  assert.equal(resurrected.response.status, 201, JSON.stringify(resurrected.payload));
+  assert.equal(resurrected.payload.revision, 7);
+
+  await saveMerge({
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "skew-base",
+    clientTime: clientTime(60), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      value: { kind: "text", value: "sane-base" } }]
+  });
+  const futureCommand = {
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "future-clock",
+    clientTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      value: { kind: "text", value: "future-clock" } }]
+  };
+  await saveMerge(futureCommand);
+  const afterSkew = await saveMerge({
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "sane-after-skew",
+    clientTime: clientTime(70), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      value: { kind: "text", value: "sane-after-skew" } }]
+  });
+  assert.equal(afterSkew.payload.revision, 10);
+  assert.equal((await client.query("select value_text from clinical.element_occurrence where id = $1",
+    [mergeOccurrenceA])).rows[0].value_text, "sane-after-skew");
+
+  const tieTime = clientTime(80);
+  await saveMerge({
+    commandId: randomUUID(), expectedRevision: 10, authorId: userId, deviceId: "tie-first", clientTime: tieTime,
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, value: { kind: "text", value: "tie-first" } }]
+  });
+  const tieSecondCommand = {
+    commandId: randomUUID(), expectedRevision: 10, authorId: userId, deviceId: "tie-second", clientTime: tieTime,
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, value: { kind: "text", value: "tie-second" } }]
+  };
+  const tieSecond = await saveMerge(tieSecondCommand);
+  const tieRetry = await saveMerge(tieSecondCommand);
+  assert.deepEqual(tieRetry.payload, tieSecond.payload);
+  assert.equal((await client.query("select value_text from clinical.element_occurrence where id = $1",
+    [mergeOccurrenceA])).rows[0].value_text, "tie-second");
+
+  const reconciliation = await client.query(`select target_type, target_id, losing_value,
+      losing_author_id, losing_device_id, losing_client_time, losing_server_received_time,
+      losing_base_revision, winning_revision, winning_idempotency_key, winning_author_id,
+      winning_device_id, winning_client_time, winning_server_received_time,
+      winning_base_revision, resolution
+    from clinical_audit.draft_reconciliation where report_id = $1 order by id`, [mergeReportId]);
+  assert.equal(reconciliation.rowCount, 6);
+  assert.ok(reconciliation.rows.every((row) => row.target_type === "occurrence" &&
+    row.target_id === mergeOccurrenceA && row.losing_author_id === userId &&
+    row.winning_author_id === userId && row.losing_device_id && row.losing_client_time instanceof Date &&
+    row.losing_server_received_time instanceof Date && Number(row.losing_base_revision) >= 0 &&
+    Number(row.winning_revision) > 0 && /^[a-f0-9-]{36}$/.test(row.winning_idempotency_key) &&
+    row.winning_device_id && row.winning_client_time instanceof Date &&
+    row.winning_server_received_time instanceof Date && Number(row.winning_base_revision) >= 0 &&
+    row.losing_value.id === mergeOccurrenceA));
+  assert.equal(reconciliation.rows.at(-1).resolution, "server-receipt-order");
+  assert.equal(reconciliation.rows.at(-1).winning_device_id, "tie-second");
+  const skewAudit = reconciliation.rows.find((row) => row.losing_device_id === "future-clock");
+  assert.equal(skewAudit.resolution, "server-receipt-order");
+  assert.equal(skewAudit.winning_device_id, "sane-after-skew");
+  assert.equal(Number(skewAudit.losing_base_revision), 7);
+  await assert.rejects(client.query("update clinical_audit.draft_reconciliation set resolution = resolution where report_id = $1",
+    [mergeReportId]), /append-only/);
 
   const signingFormVersionId = randomUUID();
   const signingSectionId = randomUUID();
@@ -701,12 +991,76 @@ integrationTest("draft report commands create, incrementally save, retrieve, and
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);
 
-  const postSignSave = await request(`/reports/${reportId}/draft-changes`, "POST", {
-    commandId: randomUUID(), expectedRevision: 8, authorId: userId,
+  const postSignCommand = {
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId,
+    deviceId: "delayed-mobile-unit-7", clientTime: "2026-08-30T14:29:00-04:00",
+    groups: [{ id: groupInstanceId, groupId: ids.group_id, ordinal: 9 }],
     occurrences: [{ id: requiredOccurrenceId, elementId: requiredElement.element_id,
       value: { kind: "text", value: "forbidden" } }]
+  };
+  const immutableBeforeLateSave = (await client.query(`select r.revision,
+      (select ordinal from clinical.group_instance where id = $2) as group_ordinal,
+      (select value_text from clinical.element_occurrence where id = $3) as occurrence_value,
+      (select count(*)::integer from clinical.report_change where report_id = r.id) as changes,
+      (select count(*)::integer from clinical.draft_target_state where report_id = r.id) as target_states,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = r.id) as snapshots,
+      (select canonical_sha256 from clinical.signed_snapshot where report_id = r.id) as signed_hash,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = r.id) as projection_events
+    from clinical.report r where r.id = $1`, [reportId, groupInstanceId, requiredOccurrenceId])).rows[0];
+  const postSignSave = await request(`/reports/${reportId}/draft-changes`, "POST", postSignCommand);
+  assert.equal(postSignSave.response.status, 201, JSON.stringify(postSignSave.payload));
+  assert.deepEqual({
+    status: postSignSave.payload.status,
+    revision: postSignSave.payload.revision,
+    signedRevision: postSignSave.payload.signedRevision,
+    canonicalSha256: postSignSave.payload.canonicalSha256,
+    retainedAuditNoteCount: postSignSave.payload.retainedAuditNoteCount
+  }, {
+    status: "signed", revision: 8, signedRevision: 8,
+    canonicalSha256: signed.payload.canonicalSha256, retainedAuditNoteCount: 2
   });
-  assert.equal(postSignSave.response.status, 409);
+  assert.match(postSignSave.payload.signedSnapshotId, /^[a-f0-9-]{36}$/);
+  const postSignRetry = await request(`/reports/${reportId}/draft-changes`, "POST", postSignCommand);
+  assert.equal(postSignRetry.response.status, 201);
+  assert.deepEqual(postSignRetry.payload, postSignSave.payload);
+  const conflictingPostSignRetry = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    ...postSignCommand,
+    occurrences: [{ ...postSignCommand.occurrences[0], value: { kind: "text", value: "different retry" } }]
+  });
+  assert.equal(conflictingPostSignRetry.response.status, 409);
+
+  const lateAttempts = await client.query(`select target_type, target_id, attempted_change,
+      author_id, device_id, client_edit_time, server_received_time, expected_revision,
+      signed_revision, signed_snapshot_id, signed_canonical_sha256
+    from clinical_audit.post_signature_audit_note
+    where report_id = $1 order by target_type, target_id`, [reportId]);
+  assert.equal(lateAttempts.rowCount, 2);
+  assert.deepEqual(new Set(lateAttempts.rows.map((row) => row.target_type)), new Set(["group", "occurrence"]));
+  assert.deepEqual(new Set(lateAttempts.rows.map((row) => row.target_id)),
+    new Set([groupInstanceId, requiredOccurrenceId]));
+  assert.ok(lateAttempts.rows.every((row) => row.author_id === userId &&
+    row.device_id === postSignCommand.deviceId && row.client_edit_time instanceof Date &&
+    row.server_received_time instanceof Date && Number(row.expected_revision) === 7 &&
+    Number(row.signed_revision) === 8 && row.signed_snapshot_id === postSignSave.payload.signedSnapshotId &&
+    row.signed_canonical_sha256 === signed.payload.canonicalSha256));
+  assert.deepEqual(lateAttempts.rows.find((row) => row.target_type === "occurrence").attempted_change,
+    postSignCommand.occurrences[0]);
+  assert.deepEqual(lateAttempts.rows.find((row) => row.target_type === "group").attempted_change,
+    postSignCommand.groups[0]);
+  assert.deepEqual((await client.query(`select r.revision,
+      (select ordinal from clinical.group_instance where id = $2) as group_ordinal,
+      (select value_text from clinical.element_occurrence where id = $3) as occurrence_value,
+      (select count(*)::integer from clinical.report_change where report_id = r.id) as changes,
+      (select count(*)::integer from clinical.draft_target_state where report_id = r.id) as target_states,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = r.id) as snapshots,
+      (select canonical_sha256 from clinical.signed_snapshot where report_id = r.id) as signed_hash,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = r.id) as projection_events
+    from clinical.report r where r.id = $1`, [reportId, groupInstanceId, requiredOccurrenceId])).rows[0],
+  immutableBeforeLateSave);
+  await assert.rejects(client.query(`update clinical_audit.post_signature_audit_note
+    set attempted_change = attempted_change where report_id = $1`, [reportId]), /append-only/);
+  await assert.rejects(client.query("delete from clinical_audit.post_signature_audit_note where report_id = $1", [reportId]),
+    /append-only/);
   await assert.rejects(client.query("update clinical.element_occurrence set value_text = 'forbidden' where id = $1", [requiredOccurrenceId]),
     (error) => error.code === "P0001");
   await assert.rejects(client.query("delete from clinical.report where id = $1", [reportId]),

@@ -6,38 +6,70 @@ import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
-import { clearShellState, loadShellStateResult, saveShellState } from "./local-persistence";
+import { loadShellStateResult, purgeCompletedReportCaches, saveReportSyncStatus, saveShellState } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
-  completedSummaryEvents,
   INITIAL_SHELL_STATE,
+  MISSING_VITALS_FINDING_ID,
   encounterEventDetail,
   encounterEventPresentation,
   reviewEncounter,
   standardEncounterReducer,
   type ReviewFinding,
-  type ShellState,
   type ShellView,
   type VitalField,
   bundledEncounterDefinition,
 } from "./standard-encounter";
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
-import { patientSummary } from "./patient-document";
 import { documentTimeline, incidentSummary } from "./incident-document";
+import { ClinicianSessionGate } from "../components/clinician-session-gate";
+import {
+  DRAFT_SAVE_DEBOUNCE_MS,
+  DRAFT_SYNC_RETRY_MS,
+  saveDraftReport,
+  signDraftReport,
+  shellStateToDraftMutations,
+  usesLocalDemoDrafts,
+  type ActiveDraftReport,
+  type DraftSyncStatus,
+} from "./draft-report";
+import type { ClinicianSession } from "@open-triage/contracts";
+import {
+  acceptDraftChange,
+  expectedRevisionForNextChange,
+  markDraftChangeAttempted,
+  nextDraftChange,
+  removeSignedOfflineReport,
+  queueDraftChange,
+  saveCachedValidationErrorCount,
+} from "./offline-reports";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
   { id: "checklist", label: "Checklist" },
 ];
 
+const quickActionText: Record<QuickActionId, string> = {
+  vitals: "Vitals",
+  medication: "Medications",
+  procedure: "Procedures",
+  note: "Notes",
+  patient: "Patient",
+};
+
 function localClinicalTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-export default function Home() {
+function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }: {
+  readonly session: ClinicianSession;
+  readonly report: ActiveDraftReport | null;
+  readonly onSaveAndClose: () => void;
+  readonly onSessionEnded: () => void;
+}) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -45,13 +77,40 @@ export default function Home() {
   const [patientOpen, setPatientOpen] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
+  const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+  const revision = useRef(report?.revision ?? 0);
+  const activeSave = useRef<Promise<void> | null>(null);
+  const skipInitialQueue = useRef(false);
+  const saveTimer = useRef<number | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const patient = useMemo(() => patientSummary(encounter.document), [encounter.document]);
-  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
-  const incidentEvents = useMemo(() => documentTimeline(encounter.document), [encounter.document]);
+  const incident = useMemo(() => {
+    const documented = incidentSummary(encounter.document);
+    return {
+      ...documented,
+      number: report?.callNumber ?? documented.number,
+      complaint: report?.dispatchReason ?? report?.chiefComplaint ?? documented.complaint,
+    };
+  }, [encounter.document, report]);
+  const incidentEvents = useMemo(() => {
+    if (!report?.dispatchedAt) return documentTimeline(encounter.document);
+    const dispatched = new Date(report.dispatchedAt);
+    const date = `${dispatched.getFullYear()}-${String(dispatched.getMonth() + 1).padStart(2, "0")}-${String(dispatched.getDate()).padStart(2, "0")}`;
+    const time = `${String(dispatched.getHours()).padStart(2, "0")}:${String(dispatched.getMinutes()).padStart(2, "0")}`;
+    return [{
+      id: `call-dispatch-${report.id}`,
+      date,
+      time,
+      kind: "document" as const,
+      title: "Unit Notified by Dispatch",
+      detail: report.dispatchReason ?? report.chiefComplaint ?? "",
+      reference: "eTimes.03",
+    }];
+  }, [encounter.document, report]);
   const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
     `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
   ), [incidentEvents, encounter.events]);
@@ -62,6 +121,7 @@ export default function Home() {
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
+  const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
     for (const finding of reviewFindings) {
@@ -89,17 +149,111 @@ export default function Home() {
   }, [activeDialog]);
 
   useEffect(() => {
-    const result = loadShellStateResult(window.localStorage);
-    if (result.status === "restored") dispatch({ type: "state-restored", state: result.state });
+    const result = loadShellStateResult(window.localStorage, bundledEncounterDefinition, report?.id);
+    if (result.status === "restored") {
+      skipInitialQueue.current = true;
+      dispatch({ type: "state-restored", state: result.state });
+    }
     else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
     else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    queueMicrotask(() => setRestored(true));
-  }, []);
+    queueMicrotask(() => {
+      if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
+      setRestored(true);
+    });
+  }, [report]);
+
+  const flushSave = useCallback(async (): Promise<void> => {
+    if (!report) return;
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (activeSave.current) {
+      await activeSave.current;
+    }
+    while (true) {
+      const queued = nextDraftChange(window.localStorage, report.id);
+      if (!queued) {
+        setSyncStatus("Saved");
+        return;
+      }
+      setSyncStatus("Saving");
+      markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
+      const attempt = (async () => {
+        try {
+          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
+          revision.current = saved.revision;
+          acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "offline";
+          if (reason === "session") {
+            setSyncStatus("Pending sync");
+            onSessionEnded();
+            return;
+          }
+          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
+        }
+      })();
+      activeSave.current = attempt;
+      await attempt;
+      activeSave.current = null;
+      if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
+    }
+  }, [onSessionEnded, report, session.accessToken]);
 
   useEffect(() => {
-    if (restored) saveShellState(window.localStorage, shell);
-  }, [restored, shell]);
+    if (!restored) return;
+    saveShellState(window.localStorage, shell, report?.id);
+    if (!report) return;
+    if (skipInitialQueue.current) {
+      skipInitialQueue.current = false;
+      if (nextDraftChange(window.localStorage, report.id)) {
+        if (navigator.onLine) queueMicrotask(() => void flushSave());
+        else queueMicrotask(() => setSyncStatus("Pending sync"));
+      }
+      return;
+    }
+    const existing = nextDraftChange(window.localStorage, report.id);
+    const commandId = existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID();
+    const clientTime = existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString();
+    queueDraftChange(window.localStorage, report.id, {
+      commandId,
+      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
+      authorId: session.user.id,
+      deviceId: `web:${report.id}`,
+      clientTime,
+      ...shellStateToDraftMutations(report.id, shell),
+    });
+    queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
+  }, [flushSave, restored, shell, report, session.user.id]);
+
+  useEffect(() => {
+    if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);
+  }, [report, syncStatus]);
+
+  useEffect(() => {
+    if (report) saveCachedValidationErrorCount(window.localStorage, report.id, reviewErrors.length);
+  }, [report, reviewErrors.length]);
+
+  useEffect(() => {
+    const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
+    window.addEventListener("online", retry);
+    return () => {
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      window.removeEventListener("online", retry);
+    };
+  }, [flushSave, report]);
+
+  useEffect(() => {
+    if (!report || syncStatus !== "Pending sync") return;
+    const retryTimer = window.setTimeout(() => {
+      if (navigator.onLine && nextDraftChange(window.localStorage, report.id)) void flushSave();
+    }, DRAFT_SYNC_RETRY_MS);
+    return () => window.clearTimeout(retryTimer);
+  }, [flushSave, report, syncStatus]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -154,6 +308,11 @@ export default function Home() {
     rememberTrigger(trigger);
     setEditingFinding(finding);
     setOpenNullField(null);
+    if (finding.id === MISSING_VITALS_FINDING_ID) {
+      dispatch({ type: "view-selected", view: "timeline" });
+      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+      return;
+    }
     dispatch({ type: "review-finding-selected", id: finding.id });
   }
 
@@ -187,52 +346,55 @@ export default function Home() {
     dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
 
-  function resetPrototype() {
-    if (!window.confirm("Remove your notes and restore the original synthetic encounter?")) return;
-    clearShellState(window.localStorage);
-    dispatch({ type: "prototype-reset" });
-  }
-
   const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
     vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
   };
 
+  async function signRecord() {
+    if (!report || !canFinish || signing) return;
+    setSigning(true);
+    setSignError(null);
+    await flushSave();
+    if (!usesLocalDemoDrafts() && nextDraftChange(window.localStorage, report.id)) {
+      setSignError("The record must finish syncing before it can be signed.");
+      setSigning(false);
+      return;
+    }
+    try {
+      await signDraftReport(session.accessToken, report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
+      purgeCompletedReportCaches(window.localStorage, [report.id]);
+      removeSignedOfflineReport(window.localStorage, report.id);
+      onSaveAndClose();
+    } catch (error) {
+      setSignError(error instanceof Error ? error.message : "The record could not be signed.");
+    } finally {
+      setSigning(false);
+    }
+  }
+
   return (
     <main className="app-shell">
-      <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-        <strong>Synthetic data only</strong>
-        <span>Usability prototype — not for clinical use</span>
-      </aside>
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
 
       <header className="encounter-header">
-        <div className="header-kicker">
-          <span>{incidentEvents[0]?.time ?? "--:--"}</span>
-          <span className="prototype-status">{bundledEncounterDefinition.labels.prototypeStatus}</span>
-        </div>
-        <div className="patient-line">
-          <div>
-            <p className="patient-name">{patient.name}</p>
-            <p className="patient-demographics">
-              {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex} · {patient.identifier}
-            </p>
-          </div>
-          <span className="crew-badge" aria-label={`Crew ${incident.crew}`}>{incident.crew}</span>
-        </div>
+        {report && <div className="draft-actions">
+          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
+          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
+        </div>}
+        <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
         <div className="incident-line">
           <div>
             <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
             <strong>{incident.complaint}</strong>
           </div>
         </div>
-        <button className="reset-prototype" type="button" onClick={resetPrototype}>Reset prototype data</button>
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /></button>)}
+        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
       </nav>
 
-      {shell.view !== "summary" && <nav className="view-switcher" aria-label="Encounter views">
+      <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
@@ -251,11 +413,11 @@ export default function Home() {
             </span>}
           </button>
         ))}
-      </nav>}
+      </nav>
 
       {(shell.view === "timeline" || shell.view === "checklist") && (
         <div className="sign-action-bar">
-          <button type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
+          <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
         </div>
       )}
 
@@ -351,15 +513,13 @@ export default function Home() {
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
-          onFinding={(id) => dispatch({ type: "review-finding-selected", id })}
+          validationClear={validationClear}
+          signing={signing}
+          signError={signError}
+          onFinding={editValidationFinding}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
-          onContinue={() => dispatch({ type: "summary-editing-continued" })}
-          onFinish={() => dispatch({ type: "review-finished" })}
+          onSign={() => void signRecord()}
         />
-      )}
-
-      {shell.view === "summary" && (
-        <ReadOnlySummary shell={shell} warnings={reviewWarnings} onContinue={() => dispatch({ type: "summary-editing-continued" })} />
       )}
 
       {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
@@ -372,7 +532,7 @@ export default function Home() {
                 <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
                 <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button aria-label={noteDefinition.labels.closeEditor} type="button" onClick={() => dispatch({ type: "note-cancelled" })}>×</button>
+              <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
             </div>
             <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
             <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
@@ -406,7 +566,7 @@ export default function Home() {
           <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
-              <button aria-label={vitalDefinition.labels.closeEditor} type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>×</button>
+              <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
             <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <div className="vital-grid">
@@ -458,32 +618,40 @@ export default function Home() {
   );
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, onFinding, onWarning, onContinue, onFinish }: {
+export default function Home() {
+  return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
+  )}</ClinicianSessionGate>;
+}
+
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, onFinding, onWarning, onSign }: {
   readonly findings: ReadonlyArray<ReviewFinding>;
   readonly errors: ReadonlyArray<ReviewFinding>;
   readonly warnings: ReadonlyArray<ReviewFinding>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
-  readonly onFinding: (id: string) => void;
+  readonly validationClear: boolean;
+  readonly signing: boolean;
+  readonly signError: string | null;
+  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
-  readonly onContinue: () => void;
-  readonly onFinish: () => void;
+  readonly onSign: () => void;
 }) {
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
       <div className="section-heading">
-        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and finish</h1></div>
+        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and sign</h1></div>
         <span>{errors.length} errors · {warnings.length} warnings</span>
       </div>
-      <p className="review-intro">Resolve every blocking error and acknowledge each warning before producing the prototype summary.</p>
+      <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
 
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
 
       <div className="review-actions">
-        <button type="button" onClick={onContinue}>Continue editing</button>
-        <button type="button" disabled={!canFinish} onClick={onFinish}>Finish prototype</button>
+        <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
       </div>
-      {!canFinish && <p className="finish-help" role="status">Completion stays blocked until errors are fixed and every warning is acknowledged.</p>}
+      {!canFinish && <p className="finish-help" role="status">Signing stays blocked until errors are fixed and every warning is acknowledged.</p>}
+      {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
 }
@@ -492,7 +660,7 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
   readonly title: string;
   readonly empty: string;
   readonly findings: ReadonlyArray<ReviewFinding>;
-  readonly onFinding: (id: string) => void;
+  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
   return (
@@ -502,7 +670,7 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
         <ul className="review-findings">
           {findings.map((finding) => (
             <li key={finding.id} className={finding.severity}>
-              <button type="button" onClick={() => onFinding(finding.id)}>
+              <button type="button" onClick={(event) => onFinding(finding, event.currentTarget)}>
                 <span className="finding-category">{finding.category} · {finding.reference}</span>
                 <strong>{finding.title}</strong>
                 <span>{finding.message}</span>
@@ -519,56 +687,5 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
         </ul>
       )}
     </section>
-  );
-}
-
-function ReadOnlySummary({ shell, warnings, onContinue }: {
-  readonly shell: ShellState;
-  readonly warnings: ReadonlyArray<ReviewFinding>;
-  readonly onContinue: () => void;
-}) {
-  const encounter = shell.encounter;
-  const patient = patientSummary(encounter.document);
-  const incident = incidentSummary(encounter.document);
-  const incidentEvents = documentTimeline(encounter.document);
-  return (
-    <article className="content-panel prototype-summary" aria-labelledby="summary-heading">
-      <div className="summary-label" role="note">
-        <strong>Synthetic usability prototype summary</strong>
-        <span>Read-only preview — not a signed or complete legal clinical record</span>
-      </div>
-      <div className="section-heading">
-        <div><p className="eyebrow">Review produced</p><h1 id="summary-heading">Encounter summary</h1></div>
-      </div>
-      <section className="summary-section">
-        <h2>Patient and incident</h2>
-        <dl>
-          <div><dt>Patient</dt><dd>{patient.name} · {patient.age}{typeof patient.age === "number" ? " y" : ""} · {patient.sex}</dd></div>
-          <div><dt>Synthetic ID</dt><dd>{patient.identifier}</dd></div>
-          <div><dt>Incident</dt><dd>{incident.number}</dd></div>
-          <div><dt>Complaint</dt><dd>{incident.complaint}</dd></div>
-          <div><dt>Location</dt><dd>{incident.address}</dd></div>
-          <div><dt>Crew</dt><dd>{incident.crew}</dd></div>
-          <div><dt>Medical history</dt><dd>{patient.medicalHistory.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Current medications</dt><dd>{patient.currentMedications.join(", ") || "Not documented"}</dd></div>
-          <div><dt>Medication allergies</dt><dd>{patient.allergies.join(", ") || "Not documented"}</dd></div>
-        </dl>
-      </section>
-      <section className="summary-section">
-        <h2>Timeline</h2>
-        <ol className="summary-timeline">
-          {incidentEvents.map((event) => <li key={event.id}><time>{event.time}</time><div><strong>{event.title}</strong><span>{event.detail}</span><small>{event.reference}</small></div></li>)}
-          {completedSummaryEvents(encounter.events, bundledEncounterDefinition).map((event) => {
-            const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
-            return <li key={event.id}><time>{event.time}</time><div><strong>{presentation.title}</strong><span>{encounterEventDetail(event, bundledEncounterDefinition)}</span><small>{presentation.reference}</small></div></li>;
-          })}
-        </ol>
-      </section>
-      <section className="summary-section">
-        <h2>Warning acknowledgements</h2>
-        {warnings.length ? <ul className="summary-warnings">{warnings.map((warning) => <li key={warning.id}><strong>Acknowledged</strong><span>{warning.title}: {warning.message}</span></li>)}</ul> : <p>No validation warnings were present at finish.</p>}
-      </section>
-      <button className="continue-editing" type="button" onClick={onContinue}>Continue editing</button>
-    </article>
   );
 }

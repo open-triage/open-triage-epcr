@@ -121,7 +121,7 @@
       "instances": [{
         "instanceId": "response-1",
         "elements": [
-          { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "incident-number-1", "value": "SYN-2026-0418-113" }] },
+          { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "incident-number-1", "value": "SYN-20260418-113" }] },
           { "id": "eResponse.04", "values": [{ "kind": "scalar", "occurrenceId": "response-number-1", "value": "3-9-7-4-0" }] }
         ]
       }]

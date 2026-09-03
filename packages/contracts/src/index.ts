@@ -33,6 +33,98 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export interface CreateClinicianSessionCommand {
+  username: string;
+  password: string;
+}
+
+export interface ClinicianSession {
+  accessToken: string;
+  user: {
+    id: string;
+    displayName: string;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
+  startedAt: string;
+  expiresAt: string;
+}
+
+export interface EndClinicianSessionResponse {
+  ended: true;
+}
+
+export type AssignmentStatus = "assigned";
+
+export interface AssignedCall {
+  id: string;
+  callNumber: string;
+  unit: {
+    id: string;
+    callSign: string;
+  };
+  dispatchedAt: string;
+  dispatchReason: string | null;
+  chiefComplaint: string | null;
+  status: AssignmentStatus;
+}
+
+export interface AssignedCallsResponse {
+  assignedCalls: AssignedCall[];
+  canceledAssignmentIds: string[];
+  refreshedAt: string;
+}
+
+export interface OpenAssignmentResponse {
+  assignmentId: string;
+  report: {
+    id: string;
+    documentingUserId: string;
+    formVersionId: string;
+    catalogReleaseId: string;
+    revision: number;
+    status: "draft";
+  };
+  replacementAssignment: AssignedCall | null;
+}
+
+export type OpenCallSyncStatus = "saved" | "pending";
+
+export interface OpenCall {
+  reportId: string;
+  callNumber: string;
+  dispatchedAt?: string;
+  dispatchReason?: string | null;
+  chiefComplaint?: string | null;
+  unitCallSign?: string;
+  lastSavedAt: string;
+  syncStatus: OpenCallSyncStatus;
+  validationErrorCount: number;
+  revision: number;
+  formVersionId: string;
+  catalogReleaseId: string;
+}
+
+export interface OpenCallsResponse {
+  openCalls: OpenCall[];
+  completedReportIds: string[];
+  refreshedAt: string;
+}
+
+export interface ReopenOpenCallResponse {
+  callNumber: string;
+  dispatchedAt?: string;
+  dispatchReason?: string | null;
+  chiefComplaint?: string | null;
+  unitCallSign?: string;
+  report: OpenAssignmentResponse["report"] & {
+    groups: ReadonlyArray<Record<string, unknown>>;
+    occurrences: ReadonlyArray<Record<string, unknown>>;
+  };
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.

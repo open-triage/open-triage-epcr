@@ -43,18 +43,15 @@ test("review can be opened directly from capture views", () => {
   assert.equal(transitionShell(INITIAL_SHELL_STATE, { type: "review-opened" }).view, "review");
 });
 
-test("errors block finish and valid completion produces a reversible read-only state", () => {
+test("errors and unacknowledged warnings block signing", () => {
   const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
-  assert.notEqual(transitionShell(withEvent(INITIAL_SHELL_STATE, badNote), { type: "review-finished" }).view, "summary");
+  assert.ok(reviewEncounter(withEvent(INITIAL_SHELL_STATE, badNote)).some((finding) => finding.severity === "error"));
   let complete = INITIAL_SHELL_STATE;
+  assert.ok(reviewEncounter(complete).some((finding) => finding.severity === "warning" && !finding.acknowledged));
   for (const warning of reviewEncounter(complete).filter((finding) => finding.severity === "warning")) {
     complete = transitionShell(complete, { type: "review-warning-acknowledged", id: warning.id, acknowledged: true });
   }
-  const summary = transitionShell(complete, { type: "review-finished" });
-  assert.equal(summary.view, "summary");
-  const editing = transitionShell(summary, { type: "summary-editing-continued" });
-  assert.equal(editing.view, "timeline");
-  assert.strictEqual(editing.encounter, complete.encounter);
+  assert.ok(reviewEncounter(complete).every((finding) => finding.severity !== "error" && finding.acknowledged));
 });
 
 test("boundary-valid data can finish while unusual vital warnings require explicit acknowledgement", () => {
@@ -65,10 +62,10 @@ test("boundary-valid data can finish while unusual vital warnings require explic
   state = transitionShell(state, { type: "vitals-saved" });
   const warnings = reviewEncounter(state).filter((finding) => finding.severity === "warning");
   assert.ok(warnings.length >= 1);
-  assert.notEqual(transitionShell(state, { type: "review-finished" }).view, "summary");
+  assert.ok(warnings.some((finding) => !finding.acknowledged));
   for (const warning of warnings) state = transitionShell(state, { type: "review-warning-acknowledged", id: warning.id, acknowledged: true });
   assert.ok(reviewEncounter(state).filter((finding) => finding.severity === "warning").every((finding) => finding.acknowledged));
-  assert.equal(transitionShell(state, { type: "review-finished" }).view, "summary");
+  assert.ok(reviewEncounter(state).every((finding) => finding.severity !== "error" && finding.acknowledged));
 });
 
 test("an empty quick note remains blocking until signing review", () => {

@@ -1,0 +1,18 @@
+{
+  "assignedCalls": [
+    {
+      "id": "32000000-0000-4000-8000-000000000011",
+      "callNumber": "SYN-20260903-001",
+      "unit": {
+        "id": "32000000-0000-4000-8000-000000000010",
+        "callSign": "Medic 32"
+      },
+      "dispatchedAt": "2026-09-03T12:00:00.000Z",
+      "dispatchReason": "Medical assistance requested",
+      "chiefComplaint": null,
+      "status": "assigned"
+    }
+  ],
+  "canceledAssignmentIds": [],
+  "refreshedAt": "2026-09-03T12:00:00.000Z"
+}

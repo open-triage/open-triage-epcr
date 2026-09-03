@@ -6,12 +6,17 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
+import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type {
   CreateDraftReportCommand,
+  DraftGroupMutation,
   DraftOccurrenceMutation,
   DraftReportResult,
   DraftValue,
+  PostSignatureDraftResult,
+  SaveDraftReportResult,
   SaveDraftReportCommand
 } from "./draft-report.types.js";
 import {
@@ -50,16 +55,76 @@ type ElementMetadata = {
   allowed_absence_states: string[];
 };
 
+type OpenCallRow = {
+  report_id: string;
+  status: "draft" | "signed";
+  call_number: string;
+  dispatched_at: Date | string;
+  dispatch_reason: string | null;
+  chief_complaint: string | null;
+  unit_call_sign: string;
+  last_saved_at: Date | string;
+  revision: string | number;
+  form_version_id: string;
+  catalog_release_id: string;
+  validation_error_count: string | number;
+};
+
+type DraftTargetType = "group" | "occurrence";
+
+type DraftTargetStateRow = {
+  target_type: DraftTargetType;
+  target_id: string;
+  revision: string | number;
+  idempotency_key: string;
+  author_id: string;
+  device_id: string | null;
+  client_time: Date | string | null;
+  server_received_time: Date | string;
+  base_revision: string | number;
+  target_value: DraftGroupMutation | DraftOccurrenceMutation;
+};
+
+type IncomingTarget = {
+  targetType: DraftTargetType;
+  targetId: string;
+  value: DraftGroupMutation | DraftOccurrenceMutation;
+  revision: number;
+  commandId: string;
+  authorId: string;
+  deviceId: string | null;
+  clientTime: string | null;
+  serverReceivedTime: Date | string;
+  baseRevision: number;
+};
+
+type ReconciliationAudit = {
+  targetType: DraftTargetType;
+  targetId: string;
+  losing: IncomingTarget;
+  winning: IncomingTarget;
+  resolution: "client-time" | "server-receipt-order";
+};
+
+const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
 @Injectable()
 export class DraftReportService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly sessions: ClinicianSessionService
+  ) {}
 
-  async create(input: unknown): Promise<DraftReportResult> {
+  async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
+    const session = this.sessions.get(accessToken);
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
     } catch (error) {
       this.rethrowValidation(error);
+    }
+    if (command.documentingUserId !== session.user.id || command.organizationId !== session.organization.id) {
+      throw new NotFoundException("The draft is not available to this clinician");
     }
     const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
     const patientPseudonymousKey = derivePatientKey(
@@ -150,7 +215,8 @@ export class DraftReportService {
     }
   }
 
-  async save(reportId: string, input: unknown): Promise<DraftReportResult> {
+  async save(accessToken: string, reportId: string, input: unknown): Promise<SaveDraftReportResult> {
+    const session = this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -159,28 +225,89 @@ export class DraftReportService {
     }
     const digest = commandSha256(command);
     try {
-      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      // The report row lock provides the serialization point while READ COMMITTED lets a
+      // waiter observe the winner that committed before it acquired that lock.
+      return await this.dataSource.transaction("READ COMMITTED", async (manager) => {
         await this.lockCommand(manager, command.commandId);
-        const replay = await this.replay<DraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
-        if (replay) return replay;
-
-        const rows = await manager.query<ReportRow[]>("select * from clinical.report where id = $1 for update", [reportId]);
+        const rows = await manager.query<ReportRow[]>(`
+          select * from clinical.report
+          where id = $1 and organization_id = $2 and documenting_user_id = $3
+          for update
+        `, [reportId, session.organization.id, session.user.id]);
         const report = rows[0];
         if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
-        if (report.status !== "draft") throw new ConflictException("A signed report cannot be autosaved");
-        const revision = Number(report.revision);
-        if (revision !== command.expectedRevision) {
-          throw new ConflictException({ message: "Draft revision is stale", expectedRevision: command.expectedRevision, currentRevision: revision });
+        if (command.authorId !== session.user.id) {
+          throw new NotFoundException("The draft is not available to this clinician");
         }
+        const replay = await this.replay<SaveDraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
+        if (replay) return replay;
         const authors = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.app_user where id = $1 and organization_id = $2 and active
         `, [command.authorId, report.organization_id]);
         if (!authors[0]) throw new UnprocessableEntityException("authorId must be an active user in the report organization");
 
-        await this.applyGroups(manager, report, command);
-        for (const occurrence of command.occurrences ?? []) await this.applyOccurrence(manager, report, command, occurrence);
+        if (report.status === "signed") {
+          return this.retainPostSignatureAttempt(manager, report, command, digest);
+        }
+        const revision = Number(report.revision);
+        if (command.expectedRevision > revision) {
+          throw new ConflictException({ message: "Draft revision is ahead of the server", expectedRevision: command.expectedRevision, currentRevision: revision });
+        }
 
         const nextRevision = revision + 1;
+        const received = await manager.query<Array<{ received_at: Date | string }>>("select clock_timestamp() as received_at");
+        const serverReceivedTime = received[0]!.received_at;
+        const winningGroups: DraftGroupMutation[] = [];
+        const winningOccurrences: DraftOccurrenceMutation[] = [];
+        const winningTargets: IncomingTarget[] = [];
+        const audits: ReconciliationAudit[] = [];
+        const targets: Array<{ type: DraftTargetType; value: DraftGroupMutation | DraftOccurrenceMutation }> = [
+          ...(command.groups ?? []).map((value) => ({ type: "group" as const, value })),
+          ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
+        ];
+        for (const target of targets) {
+          const incoming: IncomingTarget = {
+            targetType: target.type,
+            targetId: target.value.id,
+            value: target.value,
+            revision: nextRevision,
+            commandId: command.commandId,
+            authorId: command.authorId,
+            deviceId: command.deviceId ?? null,
+            clientTime: command.clientTime ?? null,
+            serverReceivedTime,
+            baseRevision: command.expectedRevision
+          };
+          const current = await this.targetState(manager, report.id, target.type, target.value.id);
+          if (current) this.assertStableTarget(current.target_value, target.value, target.type);
+          if (target.type === "occurrence" && !(target.value as DraftOccurrenceMutation).tombstone) {
+            const occurrence = target.value as DraftOccurrenceMutation;
+            const metadata = await this.elementMetadata(manager, report, occurrence);
+            this.validateDatatype(occurrence.value!, metadata, occurrence.elementId);
+          }
+          let incomingWins = true;
+          if (current && Number(current.revision) > command.expectedRevision) {
+            const prior = this.targetFromState(current);
+            const decision = this.selectConcurrentWinner(prior, incoming);
+            incomingWins = decision.winner === incoming;
+            audits.push({
+              targetType: target.type,
+              targetId: target.value.id,
+              losing: decision.winner === incoming ? prior : incoming,
+              winning: decision.winner,
+              resolution: decision.resolution
+            });
+          }
+          if (incomingWins) {
+            winningTargets.push(incoming);
+            if (target.type === "group") winningGroups.push(target.value as DraftGroupMutation);
+            else winningOccurrences.push(target.value as DraftOccurrenceMutation);
+          }
+        }
+
+        await this.applyGroups(manager, report, { ...command, groups: winningGroups });
+        for (const occurrence of winningOccurrences) await this.applyOccurrence(manager, report, command, occurrence);
+
         await manager.query(`
           update clinical.report set revision = $2, updated_at = now() where id = $1
         `, [reportId, nextRevision]);
@@ -190,8 +317,11 @@ export class DraftReportService {
           values ($1, $2, $3, $4, $5, $6, $7::jsonb)
         `, [reportId, nextRevision, command.commandId, command.authorId,
           command.deviceId ?? null, command.clientTime ?? null, JSON.stringify({
+            baseRevision: command.expectedRevision,
             groups: command.groups ?? [], occurrences: command.occurrences ?? []
           })]);
+        for (const target of winningTargets) await this.storeTargetState(manager, report.id, target);
+        for (const audit of audits) await this.storeReconciliationAudit(manager, report.id, audit);
         const result = await this.reportResult(manager, reportId);
         await this.storeReceipt(manager, command.commandId, reportId, "save-draft", digest, result);
         return result;
@@ -201,9 +331,163 @@ export class DraftReportService {
     }
   }
 
-  async get(reportId: string): Promise<Record<string, unknown>> {
+  private async retainPostSignatureAttempt(
+    manager: EntityManager,
+    report: ReportRow,
+    command: SaveDraftReportCommand,
+    digest: string
+  ): Promise<PostSignatureDraftResult> {
+    const snapshots = await manager.query<Array<{
+      id: string;
+      signed_revision: string | number;
+      canonical_sha256: string;
+    }>>(`
+      select id, signed_revision, canonical_sha256
+      from clinical.signed_snapshot where report_id = $1
+    `, [report.id]);
+    const snapshot = snapshots[0];
+    if (!snapshot) throw new ConflictException("The signed report snapshot is unavailable");
+
+    const received = await manager.query<Array<{ received_at: Date | string }>>(
+      "select clock_timestamp() as received_at"
+    );
+    const serverReceivedTime = received[0]!.received_at;
+    const targets: Array<{ type: DraftTargetType; value: DraftGroupMutation | DraftOccurrenceMutation }> = [
+      ...(command.groups ?? []).map((value) => ({ type: "group" as const, value })),
+      ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
+    ];
+    for (const target of targets) {
+      await manager.query(`
+        insert into clinical_audit.post_signature_audit_note
+          (report_id, idempotency_key, target_type, target_id, attempted_change,
+           author_id, device_id, client_edit_time, server_received_time,
+           expected_revision, signed_revision, signed_snapshot_id, signed_canonical_sha256)
+        values ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13)
+      `, [report.id, command.commandId, target.type, target.value.id,
+        JSON.stringify(target.value), command.authorId, command.deviceId ?? null,
+        command.clientTime ?? null, serverReceivedTime, command.expectedRevision,
+        snapshot.signed_revision, snapshot.id, snapshot.canonical_sha256]);
+    }
+    const result: PostSignatureDraftResult = {
+      id: report.id,
+      status: "signed",
+      revision: Number(report.revision),
+      signedRevision: Number(snapshot.signed_revision),
+      signedSnapshotId: snapshot.id,
+      canonicalSha256: snapshot.canonical_sha256,
+      retainedAuditNoteCount: targets.length
+    };
+    await this.storeReceipt(manager, command.commandId, report.id, "save-draft", digest, result);
+    return result;
+  }
+
+  private async targetState(
+    manager: EntityManager,
+    reportId: string,
+    targetType: DraftTargetType,
+    targetId: string
+  ): Promise<DraftTargetStateRow | null> {
+    const rows = await manager.query<DraftTargetStateRow[]>(`
+      select target_type, target_id, revision, idempotency_key, author_id, device_id,
+             client_time, server_received_time, base_revision, target_value
+      from clinical.draft_target_state
+      where report_id = $1 and target_type = $2 and target_id = $3
+      for update
+    `, [reportId, targetType, targetId]);
+    return rows[0] ?? null;
+  }
+
+  private targetFromState(state: DraftTargetStateRow): IncomingTarget {
+    return {
+      targetType: state.target_type,
+      targetId: state.target_id,
+      value: state.target_value,
+      revision: Number(state.revision),
+      commandId: state.idempotency_key,
+      authorId: state.author_id,
+      deviceId: state.device_id,
+      clientTime: state.client_time ? new Date(state.client_time).toISOString() : null,
+      serverReceivedTime: state.server_received_time,
+      baseRevision: Number(state.base_revision)
+    };
+  }
+
+  private assertStableTarget(
+    current: DraftGroupMutation | DraftOccurrenceMutation,
+    incoming: DraftGroupMutation | DraftOccurrenceMutation,
+    targetType: DraftTargetType
+  ): void {
+    const same = targetType === "group"
+      ? (current as DraftGroupMutation).groupId === (incoming as DraftGroupMutation).groupId &&
+        (current as DraftGroupMutation).customGroupDefinitionId === (incoming as DraftGroupMutation).customGroupDefinitionId
+      : (current as DraftOccurrenceMutation).elementId === (incoming as DraftOccurrenceMutation).elementId;
+    if (!same) throw new ConflictException(`Stable ${targetType} identity ${incoming.id} belongs to different data`);
+  }
+
+  private trustworthyClientTime(target: IncomingTarget): number | null {
+    if (!target.clientTime) return null;
+    const clientTime = new Date(target.clientTime).getTime();
+    const receivedTime = new Date(target.serverReceivedTime).getTime();
+    return clientTime <= receivedTime + TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS ? clientTime : null;
+  }
+
+  private selectConcurrentWinner(
+    current: IncomingTarget,
+    incoming: IncomingTarget
+  ): { winner: IncomingTarget; resolution: ReconciliationAudit["resolution"] } {
+    const currentClientTime = this.trustworthyClientTime(current);
+    const incomingClientTime = this.trustworthyClientTime(incoming);
+    if (currentClientTime !== null && incomingClientTime !== null && currentClientTime !== incomingClientTime) {
+      return {
+        winner: incomingClientTime > currentClientTime ? incoming : current,
+        resolution: "client-time"
+      };
+    }
+    // The report row lock serializes receipts. The incoming revision is therefore the
+    // deterministic later receipt even when PostgreSQL timestamps have equal precision.
+    return { winner: incoming, resolution: "server-receipt-order" };
+  }
+
+  private async storeTargetState(manager: EntityManager, reportId: string, target: IncomingTarget): Promise<void> {
+    await manager.query(`
+      insert into clinical.draft_target_state
+        (report_id, target_type, target_id, revision, idempotency_key, author_id, device_id,
+         client_time, server_received_time, base_revision, target_value)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+      on conflict (report_id, target_type, target_id) do update set
+        revision = excluded.revision, idempotency_key = excluded.idempotency_key,
+        author_id = excluded.author_id, device_id = excluded.device_id,
+        client_time = excluded.client_time, server_received_time = excluded.server_received_time,
+        base_revision = excluded.base_revision, target_value = excluded.target_value
+    `, [reportId, target.targetType, target.targetId, target.revision, target.commandId,
+      target.authorId, target.deviceId, target.clientTime, target.serverReceivedTime,
+      target.baseRevision, JSON.stringify(target.value)]);
+  }
+
+  private async storeReconciliationAudit(
+    manager: EntityManager,
+    reportId: string,
+    audit: ReconciliationAudit
+  ): Promise<void> {
+    await manager.query(`
+      insert into clinical_audit.draft_reconciliation
+        (report_id, target_type, target_id, losing_value, losing_author_id, losing_device_id,
+         losing_client_time, losing_server_received_time, losing_base_revision,
+         winning_revision, winning_idempotency_key, winning_author_id, winning_device_id,
+         winning_client_time, winning_server_received_time, winning_base_revision, resolution)
+      values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+    `, [reportId, audit.targetType, audit.targetId, JSON.stringify(audit.losing.value),
+      audit.losing.authorId, audit.losing.deviceId, audit.losing.clientTime,
+      audit.losing.serverReceivedTime, audit.losing.baseRevision, audit.winning.revision,
+      audit.winning.commandId, audit.winning.authorId, audit.winning.deviceId,
+      audit.winning.clientTime, audit.winning.serverReceivedTime,
+      audit.winning.baseRevision, audit.resolution]);
+  }
+
+  async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
+    const session = this.sessions.get(accessToken);
     return this.dataSource.transaction(async (manager) => {
-      const report = await this.reportResult(manager, reportId);
+      const report = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const groups = await manager.query<Array<Record<string, unknown>>>(`
         select id, parent_group_instance_id as "parentGroupInstanceId", group_id as "groupId",
                source_kind as "sourceKind", custom_group_definition_id as "customGroupDefinitionId",
@@ -234,6 +518,82 @@ export class DraftReportService {
     });
   }
 
+  async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
+    const session = this.sessions.get(accessToken, now);
+    const rows = await this.dataSource.query<OpenCallRow[]>(`
+      select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
+             ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
+             r.updated_at as last_saved_at,
+             r.revision, r.form_version_id, r.catalog_release_id,
+             count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
+               as validation_error_count
+      from clinical.report r
+      join clinical.call_assignment ca
+        on ca.organization_id = r.organization_id and ca.report_id = r.id
+      join app_identity.operational_unit ou on ou.id = ca.unit_id
+      left join clinical.validation_finding vf on vf.report_id = r.id
+      where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
+      group by r.id, ca.id, ou.call_sign
+      order by r.updated_at desc, r.id
+    `, [session.organization.id, session.user.id]);
+    return {
+      openCalls: rows.filter((row) => row.status === "draft").map((row) => ({
+        reportId: row.report_id,
+        callNumber: row.call_number,
+        dispatchedAt: new Date(row.dispatched_at).toISOString(),
+        dispatchReason: row.dispatch_reason,
+        chiefComplaint: row.chief_complaint,
+        unitCallSign: row.unit_call_sign,
+        lastSavedAt: new Date(row.last_saved_at).toISOString(),
+        syncStatus: "saved",
+        validationErrorCount: Number(row.validation_error_count),
+        revision: Number(row.revision),
+        formVersionId: row.form_version_id,
+        catalogReleaseId: row.catalog_release_id
+      })),
+      completedReportIds: rows.filter((row) => row.status === "signed").map((row) => row.report_id),
+      refreshedAt: now.toISOString()
+    };
+  }
+
+  async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
+    const session = this.sessions.get(accessToken);
+    const details = await this.get(accessToken, reportId);
+    const calls = await this.dataSource.query<Array<{
+      call_number: string;
+      dispatched_at: Date | string;
+      dispatch_reason: string | null;
+      chief_complaint: string | null;
+      unit_call_sign: string;
+    }>>(`
+      select ca.call_number, ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint,
+             ou.call_sign as unit_call_sign
+      from clinical.call_assignment ca
+      join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
+      join app_identity.operational_unit ou on ou.id = ca.unit_id
+      where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
+        and r.status = 'draft'
+    `, [reportId, session.organization.id, session.user.id]);
+    if (!calls[0]) throw new NotFoundException(`Report ${reportId} was not found`);
+    return {
+      callNumber: calls[0].call_number,
+      dispatchedAt: new Date(calls[0].dispatched_at).toISOString(),
+      dispatchReason: calls[0].dispatch_reason,
+      chiefComplaint: calls[0].chief_complaint,
+      unitCallSign: calls[0].unit_call_sign,
+      report: {
+        id: String(details.id),
+        documentingUserId: String(details.documentingUserId),
+        formVersionId: String(details.formVersionId),
+        catalogReleaseId: String(details.catalogReleaseId),
+        revision: Number(details.revision),
+        status: "draft",
+        groups: details.groups as ReadonlyArray<Record<string, unknown>>,
+        occurrences: details.occurrences as ReadonlyArray<Record<string, unknown>>
+      }
+    };
+  }
+
   private async applyGroups(manager: EntityManager, report: ReportRow, command: SaveDraftReportCommand): Promise<void> {
     const mutations = command.groups ?? [];
     const upserts = mutations.filter((group) => !group.tombstone);
@@ -258,12 +618,12 @@ export class DraftReportService {
           parent_group_instance_id = excluded.parent_group_instance_id,
           ordinal = excluded.ordinal, correlation_id = excluded.correlation_id,
           documented_time = excluded.documented_time,
-          documented_utc_offset_minutes = excluded.documented_utc_offset_minutes
+          documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
+          server_received_time = now(), tombstoned_at = null
         where clinical.group_instance.report_id = excluded.report_id
           and clinical.group_instance.group_id = excluded.group_id
           and clinical.group_instance.source_kind = excluded.source_kind
           and clinical.group_instance.custom_group_definition_id is not distinct from excluded.custom_group_definition_id
-          and clinical.group_instance.tombstoned_at is null
         returning id
       `, [group.id, report.id, report.catalog_release_id, group.parentGroupInstanceId ?? null,
         group.groupId, sourceKind, group.customGroupDefinitionId ?? null, group.ordinal,
@@ -328,11 +688,10 @@ export class DraftReportService {
         provenance_detail = excluded.provenance_detail, documented_time = excluded.documented_time,
         documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
         documented_precision = excluded.documented_precision, author_id = excluded.author_id,
-        server_received_time = now(), updated_at = now()
+        server_received_time = now(), tombstoned_at = null, updated_at = now()
       where clinical.element_occurrence.report_id = excluded.report_id
         and clinical.element_occurrence.element_identity_id = excluded.element_identity_id
         and clinical.element_occurrence.element_id = excluded.element_id
-        and clinical.element_occurrence.tombstoned_at is null
       returning id
     `, [occurrence.id, report.id, report.catalog_release_id, occurrence.groupInstanceId ?? null,
       metadata.element_identity_id, occurrence.elementId, occurrence.formFieldId ?? null,
@@ -440,10 +799,18 @@ export class DraftReportService {
     return result;
   }
 
-  private async reportResult(manager: EntityManager, reportId: string): Promise<DraftReportResult> {
+  private async reportResult(
+    manager: EntityManager,
+    reportId: string,
+    organizationId?: string,
+    documentingUserId?: string
+  ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
       patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id
-      from clinical.report where id = $1`, [reportId]);
+      from clinical.report where id = $1
+        and ($2::uuid is null or organization_id = $2)
+        and ($3::uuid is null or documenting_user_id = $3)`,
+    [reportId, organizationId ?? null, documentingUserId ?? null]);
     const row = rows[0];
     if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
     if (row.status !== "draft") throw new ConflictException("Report is no longer a draft");
@@ -482,7 +849,7 @@ export class DraftReportService {
     reportId: string,
     type: string,
     digest: string,
-    response: DraftReportResult
+    response: SaveDraftReportResult
   ): Promise<void> {
     await manager.query(`insert into clinical.command_receipt
       (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)

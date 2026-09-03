@@ -189,9 +189,12 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.report",
     "create table clinical.group_instance",
     "create table clinical.element_occurrence",
+    "create table clinical.draft_target_state",
     "create table clinical.signed_snapshot",
     "create table clinical.amendment",
     "create table clinical_audit.event",
+    "create table clinical_audit.draft_reconciliation",
+    "create table clinical_audit.post_signature_audit_note",
     "create table integration.outbox_event",
     "create table integration.projection_run",
     "create table integration.projection_backfill_job",
@@ -228,6 +231,9 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.match(migration, /from clinical\.report_change rc[\s\S]*from clinical\.signed_snapshot ss[\s\S]*from clinical\.amendment a/);
   assert.match(migration, /grant select on operations\.unsigned_report_work_queue,[\s\S]*to open_triage_operational/);
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
+  assert.match(migration, /draft_reconciliation_append_only[\s\S]*prevent_update_or_delete/);
+  assert.match(migration, /post_signature_audit_note_append_only[\s\S]*prevent_update_or_delete/);
+  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });
