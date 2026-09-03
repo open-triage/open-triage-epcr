@@ -287,6 +287,8 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toHaveLength(1);
 
   await page.getByRole("button", { name: "Sign in" }).click();
+  const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  await expect(pendingCard).toContainText("Saved", { timeout: 3_000 });
   await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
   await expect(page.getByText("Preserved across API restart", { exact: true })).toBeVisible();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });

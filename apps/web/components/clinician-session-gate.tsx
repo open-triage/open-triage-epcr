@@ -136,7 +136,7 @@ export function ClinicianSessionGate({ children }: {
           const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
           setActiveReport(cached.report);
         }} />
-        <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onCompleted={() => {
+        <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
           setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
         }} onReopened={(opened) => {

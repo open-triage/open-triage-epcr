@@ -3,12 +3,17 @@
 import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
+import { saveDraftReport } from "../app/draft-report";
 import { purgeCompletedReportCaches } from "../app/local-persistence";
 import {
+  acceptDraftChange,
   cacheOpenCallSummary,
   cacheReopenedReport,
   cachedOpenCalls,
+  cachedOpenReports,
   cachedReopenResponse,
+  markDraftChangeAttempted,
+  nextDraftChange,
   purgeCompletedOfflineReports,
 } from "../app/offline-reports";
 
@@ -25,12 +30,14 @@ export function OpenCalls({
   session,
   activeReportId,
   onCompleted,
-  onReopened
+  onReopened,
+  onSessionEnded,
 }: {
   readonly session: ClinicianSession;
   readonly activeReportId?: string;
   readonly onCompleted?: (reportId: string) => void;
   readonly onReopened?: (opened: ReopenOpenCallResponse) => void;
+  readonly onSessionEnded?: () => void;
 }) {
   const [calls, setCalls] = useState<OpenCall[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -39,6 +46,30 @@ export function OpenCalls({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const callsRef = useRef<OpenCall[]>([]);
+  const syncingCachedReports = useRef(false);
+
+  const syncCachedReports = useCallback(async () => {
+    if (activeReportId || syncingCachedReports.current) return;
+    syncingCachedReports.current = true;
+    try {
+      for (const cached of cachedOpenReports(window.localStorage, session.user.id)) {
+        while (true) {
+          const queued = nextDraftChange(window.localStorage, cached.report.id);
+          if (!queued) break;
+          markDraftChangeAttempted(window.localStorage, cached.report.id, queued.command.commandId);
+          try {
+            const saved = await saveDraftReport(session.accessToken, cached.report.id, queued.command);
+            acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
+          } catch (syncError) {
+            if (syncError instanceof Error && syncError.message === "session") onSessionEnded?.();
+            break;
+          }
+        }
+      }
+    } finally {
+      syncingCachedReports.current = false;
+    }
+  }, [activeReportId, onSessionEnded, session.accessToken, session.user.id]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -55,11 +86,20 @@ export function OpenCalls({
       setCalls(visible);
       setLoaded(true);
       setError(null);
+      await syncCachedReports();
+      purgeCompletedOfflineReports(window.localStorage, completedReportIds);
+      const syncedVisible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
+      callsRef.current = syncedVisible;
+      setCalls(syncedVisible);
       if (removed.length > 0) setNotice(removed.length === 1
         ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
         : `${removed.length} calls were completed on the stationary interface.`);
       if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
+      if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
+        onSessionEnded?.();
+        return;
+      }
       const cached = cachedOpenCalls(window.localStorage, session.user.id);
       setCalls(cached);
       setLoaded(true);
@@ -67,7 +107,7 @@ export function OpenCalls({
     } finally {
       setRefreshing(false);
     }
-  }, [activeReportId, onCompleted, session]);
+  }, [activeReportId, onCompleted, onSessionEnded, session, syncCachedReports]);
 
   const reopen = useCallback(async (call: OpenCall) => {
     setReopeningId(call.reportId);
