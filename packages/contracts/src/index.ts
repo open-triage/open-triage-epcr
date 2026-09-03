@@ -56,6 +56,27 @@ export interface EndClinicianSessionResponse {
   ended: true;
 }
 
+export type AssignmentStatus = "assigned";
+
+export interface AssignedCall {
+  id: string;
+  callNumber: string;
+  unit: {
+    id: string;
+    callSign: string;
+  };
+  dispatchedAt: string;
+  dispatchReason: string | null;
+  chiefComplaint: string | null;
+  status: AssignmentStatus;
+}
+
+export interface AssignedCallsResponse {
+  assignedCalls: AssignedCall[];
+  canceledAssignmentIds: string[];
+  refreshedAt: string;
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.

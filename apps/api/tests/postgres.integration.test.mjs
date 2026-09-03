@@ -10,6 +10,10 @@ import { NestFactory } from "@nestjs/core";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
+import {
+  DEMO_CLINICIAN_PASSWORD,
+  DEMO_CLINICIAN_USERNAME
+} from "../dist/sessions/clinician-session.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -247,6 +251,58 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       from forms.form_version where id = $1`, [draft.versionId]);
     assert.deepEqual(state.rows[0], { status: "draft", sections: 0 });
   });
+});
+
+integrationTest("the seeded clinician retrieves the server-authoritative demo unit assignment", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+    env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
+
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix("api");
+  await app.listen(0, "127.0.0.1");
+  t.after(() => app.close());
+  const address = app.getHttpServer().address();
+  const baseUrl = `http://127.0.0.1:${address.port}/api`;
+
+  const signIn = await fetch(`${baseUrl}/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+  });
+  assert.equal(signIn.status, 201);
+  const session = await signIn.json();
+  const response = await fetch(`${baseUrl}/calls/assigned`, {
+    headers: { authorization: `Bearer ${session.accessToken}` }
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload.assignedCalls, [{
+    id: "32000000-0000-4000-8000-000000000011",
+    callNumber: "SYN-2026-0903-001",
+    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
+    dispatchedAt: "2026-09-03T12:00:00.000Z",
+    dispatchReason: "Medical assistance requested",
+    chiefComplaint: null,
+    status: "assigned"
+  }]);
+  assert.deepEqual(payload.canceledAssignmentIds, []);
+
+  try {
+    await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
+    const canceled = await fetch(`${baseUrl}/calls/assigned`, {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+    const canceledPayload = await canceled.json();
+    assert.deepEqual(canceledPayload.assignedCalls, []);
+    assert.deepEqual(canceledPayload.canceledAssignmentIds, [payload.assignedCalls[0].id]);
+  } finally {
+    await client.query("update clinical.call_assignment set status = 'assigned' where id = $1", [payload.assignedCalls[0].id]);
+  }
 });
 
 integrationTest("draft report commands create, incrementally save, retrieve, and replay through the public API", async (t) => {

@@ -41,3 +41,16 @@ test("seeds the demo organization with a fixed fourteen-hour shift session", () 
   assert.match(bootstrap, /OpenTriage Synthetic EMS', 14, 'UTC'/);
   assert.match(migration, /shift_session_duration_hours integer not null default 14/);
 });
+
+test("associates the demo clinician, operational unit, default published form, and assigned call", () => {
+  for (const table of ["app_identity.operational_unit", "app_identity.unit_clinician", "clinical.call_assignment"]) {
+    assert.match(migration, new RegExp(`create table ${table.replace(".", "\\.")}`));
+    assert.ok(bootstrap.includes(`insert into ${table}`));
+  }
+  assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
+  assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
+  assert.match(bootstrap, /SYN-2026-0903-001/);
+  assert.match(bootstrap, /'Medical assistance requested', 'assigned', true/);
+  assert.match(bootstrap, /fv\.status as form_status/);
+  assert.match(bootstrap, /expected\.form_status !== "published"/);
+});
