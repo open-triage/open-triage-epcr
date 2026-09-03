@@ -1,11 +1,12 @@
 "use client";
 
-import type { AssignedCall, ClinicianSession } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   fetchAssignedCalls,
-  canceledAssignedCalls
+  canceledAssignedCalls,
+  openAssignedCall
 } from "../app/assigned-calls";
 
 function dispatchTime(value: string): string {
@@ -17,12 +18,19 @@ function dispatchTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function AssignedCalls({ session }: { readonly session: ClinicianSession }) {
+export function AssignedCalls({
+  session,
+  onOpened
+}: {
+  readonly session: ClinicianSession;
+  readonly onOpened?: (opened: OpenAssignmentResponse) => void;
+}) {
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const callsRef = useRef<AssignedCall[]>([]);
   const noticeTimer = useRef<number | null>(null);
 
@@ -46,6 +54,26 @@ export function AssignedCalls({ session }: { readonly session: ClinicianSession 
       setRefreshing(false);
     }
   }, [session.accessToken]);
+
+  const open = useCallback(async (call: AssignedCall) => {
+    setOpeningId(call.id);
+    setError(null);
+    try {
+      const opened = await openAssignedCall(session.accessToken, call.id);
+      const nextCalls = callsRef.current.filter((candidate) => candidate.id !== call.id);
+      if (opened.replacementAssignment && !nextCalls.some((candidate) => candidate.id === opened.replacementAssignment!.id)) {
+        nextCalls.unshift(opened.replacementAssignment);
+      }
+      callsRef.current = nextCalls;
+      setCalls(nextCalls);
+      onOpened?.(opened);
+      window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : "The call could not be opened.");
+    } finally {
+      setOpeningId(null);
+    }
+  }, [onOpened, session.accessToken]);
 
   useEffect(() => {
     let pollTimer: number | null = null;
@@ -98,6 +126,9 @@ export function AssignedCalls({ session }: { readonly session: ClinicianSession 
                 <div><dt>Unit</dt><dd>{call.unit.callSign}</dd></div>
                 <div><dt>Dispatched</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt)}</time></dd></div>
               </dl>
+              <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
+                {openingId === call.id ? "Opening…" : "Open call"}
+              </button>
             </li>
           ))}
         </ul>

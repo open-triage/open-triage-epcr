@@ -77,6 +77,19 @@ export interface AssignedCallsResponse {
   refreshedAt: string;
 }
 
+export interface OpenAssignmentResponse {
+  assignmentId: string;
+  report: {
+    id: string;
+    documentingUserId: string;
+    formVersionId: string;
+    catalogReleaseId: string;
+    revision: number;
+    status: "draft";
+  };
+  replacementAssignment: AssignedCall | null;
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.
