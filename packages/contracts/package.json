@@ -11,7 +11,9 @@
     "./patient-key": { "types": "./patient-key.d.ts", "default": "./patient-key.mjs" },
     "./quality-rules": { "types": "./quality-rules.d.ts", "default": "./quality-rules.mjs" },
     "./quality-normalization-policy.json": "./quality-normalization-policy.json",
-    "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json"
+    "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json",
+    "./dispatch-message.schema-1.0.0.json": "./dispatch-message.schema-1.0.0.json",
+    "./examples/dispatch/*.json": "./examples/dispatch/*.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
