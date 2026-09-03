@@ -192,6 +192,7 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.draft_target_state",
     "create table clinical.signed_snapshot",
     "create table clinical.amendment",
+    "create table clinical.dispatch_receipt",
     "create table clinical_audit.event",
     "create table clinical_audit.draft_reconciliation",
     "create table clinical_audit.post_signature_audit_note",
@@ -213,6 +214,18 @@ test("defines the transactional invariants and two private analytical base table
   assert.ok(migration.includes("substring(id::text from 15 for 1) = '4'"));
   assert.ok(!migration.includes("auth.users"));
   assert.ok(!migration.includes("patient_care_reports"));
+});
+
+test("stores immutable dispatch delivery evidence under clinical-data controls", () => {
+  assert.match(migration, /create table clinical\.dispatch_receipt \([\s\S]*source_bytes bytea not null/);
+  assert.match(migration, /exact_sha256 text generated always as[\s\S]*digest\(source_bytes, 'sha256'\)/);
+  assert.match(migration, /canonical_sha256 text generated always as[\s\S]*digest\(convert_to\(source_payload::text, 'UTF8'\), 'sha256'\)/);
+  assert.match(migration, /convert_from\(source_bytes, 'UTF8'\)::jsonb = source_payload/);
+  assert.match(migration, /not \(source_payload \?\| array\['organizationId', 'organization_id', 'sourceId', 'source_id'\]\)/);
+  assert.match(migration, /unique \(organization_id, source_id, message_id\)/);
+  assert.match(migration, /unique \(organization_id, source_id, source_record_id, source_revision\)/);
+  assert.match(migration, /dispatch_receipt_append_only[\s\S]*prevent_update_or_delete/);
+  assert.match(migration, /Source payload bytes must never be copied to ordinary logs/);
 });
 
 test("schedules bounded observable projection work inside the freshness target", () => {
