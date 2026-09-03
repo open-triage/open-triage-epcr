@@ -52,8 +52,11 @@ incident, patient, and command identities. Incremental autosaves go to
 `POST /api/reports/:id/draft-changes` with an expected revision, stable group and
 occurrence identities, and sparse typed values. `GET /api/reports/:id` returns the
 pinned versions, current revision, groups, and occurrences. Retrying an identical
-command returns its original result; reusing its identity for different content or
-saving against a stale revision returns HTTP 409.
+command returns its original result, while reusing its identity for different content
+returns HTTP 409. Saves from a stale base revision reconcile per stable target:
+disjoint edits merge, collisions prefer the latest client time within the five-minute
+future-skew guard, and equal or untrustworthy times follow server receipt order. Losing
+values and both commands' lineage remain in append-only reconciliation audit data.
 
 ## Static prototype
 

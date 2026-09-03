@@ -836,6 +836,57 @@ create table clinical.report_change (
 create trigger report_change_append_only before update or delete on clinical.report_change
 for each row execute function public.prevent_update_or_delete();
 
+create table clinical.draft_target_state (
+  report_id uuid not null references clinical.report(id) on delete cascade,
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  revision bigint not null check (revision > 0),
+  idempotency_key uuid not null,
+  author_id uuid not null references app_identity.app_user(id),
+  device_id text,
+  client_time timestamptz,
+  server_received_time timestamptz not null,
+  base_revision bigint not null check (base_revision >= 0),
+  target_value jsonb not null,
+  primary key (report_id, target_type, target_id),
+  foreign key (report_id, revision) references clinical.report_change(report_id, revision),
+  foreign key (report_id, idempotency_key) references clinical.report_change(report_id, idempotency_key)
+);
+
+comment on table clinical.draft_target_state is
+  'Current winning command lineage for each stable draft group or occurrence target.';
+
+create table clinical_audit.draft_reconciliation (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  losing_value jsonb not null,
+  losing_author_id uuid not null references app_identity.app_user(id),
+  losing_device_id text,
+  losing_client_time timestamptz,
+  losing_server_received_time timestamptz not null,
+  losing_base_revision bigint not null check (losing_base_revision >= 0),
+  winning_revision bigint not null,
+  winning_idempotency_key uuid not null,
+  winning_author_id uuid not null references app_identity.app_user(id),
+  winning_device_id text,
+  winning_client_time timestamptz,
+  winning_server_received_time timestamptz not null,
+  winning_base_revision bigint not null check (winning_base_revision >= 0),
+  resolution text not null check (resolution in ('client-time', 'server-receipt-order')),
+  created_at timestamptz not null default now(),
+  foreign key (report_id, winning_revision) references clinical.report_change(report_id, revision),
+  foreign key (report_id, winning_idempotency_key) references clinical.report_change(report_id, idempotency_key)
+);
+
+create index draft_reconciliation_report_target_idx
+on clinical_audit.draft_reconciliation (report_id, target_type, target_id, id);
+
+create trigger draft_reconciliation_append_only
+before update or delete on clinical_audit.draft_reconciliation
+for each row execute function public.prevent_update_or_delete();
+
 create table clinical.validation_finding (
   id uuid primary key default gen_random_uuid(),
   report_id uuid not null references clinical.report(id) on delete cascade,
@@ -2675,6 +2726,8 @@ grant select on operations.unsigned_report_work_queue, operations.projection_hea
   operations.projection_failures to open_triage_operational;
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
+grant usage on schema clinical_audit to open_triage_auditor;
+grant select on clinical_audit.draft_reconciliation to open_triage_auditor;
 
 comment on schema analytics is 'Stable, read-only analyst interfaces. Base projections are private.';
 comment on schema operations is 'Access-controlled live operational interfaces; these rows are never clinical analytics.';
