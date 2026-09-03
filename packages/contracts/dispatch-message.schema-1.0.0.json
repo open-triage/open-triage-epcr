@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.dev/schemas/dispatch-message/1.0.0",
+  "title": "OpenTriage Dispatch Message 1.0.0",
+  "description": "A complete, versioned vendor dispatch snapshot containing partial NEMSIS 3.5.1 EMSDataSet-addressed content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "messageType", "schemaVersion", "messageId", "sourceRecordId", "revision", "eventType", "sentAt", "dataModel", "groups"],
+  "properties": {
+    "$schema": { "const": "https://open-triage.dev/schemas/dispatch-message/1.0.0" },
+    "messageType": { "const": "open-triage.dispatch" },
+    "schemaVersion": { "const": "1.0.0" },
+    "messageId": {
+      "description": "Immutable identity for this delivered message. A UUID may never be reused with different content.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "sourceRecordId": {
+      "description": "Stable, opaque vendor identity for one unit response and patient across all revisions. It is not eResponse.04.",
+      "$ref": "#/$defs/opaqueIdentity"
+    },
+    "revision": { "description": "Positive, monotonically increasing revision of the complete source record snapshot.", "type": "integer", "minimum": 1 },
+    "eventType": { "enum": ["upsert", "cancel"] },
+    "sentAt": {
+      "description": "Offset-aware time at which the source sent this revision.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "dataModel": { "$ref": "#/$defs/dataModel" },
+    "groups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/group" } }
+  },
+  "$defs": {
+    "opaqueIdentity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "nemsisIdentity": { "type": "string", "minLength": 1, "pattern": "^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z0-9]+)*$" },
+    "dataModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["standard", "version", "dataset"],
+      "properties": {
+        "standard": { "const": "NEMSIS" },
+        "version": { "const": "3.5.1" },
+        "dataset": { "const": "EMSDataSet" }
+      }
+    },
+    "attributes": {
+      "description": "NEMSIS XML attributes. Names and values are additionally checked against the pinned NEMSIS 3.5.1 XSD catalog for the containing element.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9]*$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "valueBase": {
+      "type": "object",
+      "required": ["kind", "occurrenceId"],
+      "properties": {
+        "kind": { "type": "string" },
+        "occurrenceId": {
+          "description": "Stable, opaque identity for this value occurrence across revisions, including repeated values.",
+          "$ref": "#/$defs/opaqueIdentity"
+        },
+        "attributes": { "$ref": "#/$defs/attributes" }
+      }
+    },
+    "scalarValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "occurrenceId", "value"],
+          "properties": {
+            "kind": { "const": "scalar" },
+            "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
+            "value": { "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] },
+            "attributes": { "$ref": "#/$defs/attributes" }
+          }
+        }
+      ]
+    },
+    "codedValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "occurrenceId", "code"],
+          "properties": {
+            "kind": { "const": "coded" },
+            "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
+            "code": { "type": "string", "minLength": 1 },
+            "display": { "type": "string", "minLength": 1 },
+            "system": { "type": "string", "minLength": 1 },
+            "attributes": { "$ref": "#/$defs/attributes" }
+          }
+        }
+      ]
+    },
+    "nullValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "occurrenceId", "notValue"],
+          "properties": {
+            "kind": { "const": "null" },
+            "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
+            "notValue": { "$ref": "#/$defs/code" },
+            "attributes": { "$ref": "#/$defs/attributes" }
+          }
+        }
+      ]
+    },
+    "pertinentNegativeValue": {
+      "allOf": [
+        { "$ref": "#/$defs/valueBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "occurrenceId", "code"],
+          "properties": {
+            "kind": { "const": "pertinent-negative" },
+            "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
+            "code": { "type": "string", "minLength": 1 },
+            "display": { "type": "string", "minLength": 1 },
+            "attributes": { "$ref": "#/$defs/attributes" }
+          }
+        }
+      ]
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "display": { "type": "string", "minLength": 1 }
+      }
+    },
+    "value": {
+      "oneOf": [
+        { "$ref": "#/$defs/scalarValue" },
+        { "$ref": "#/$defs/codedValue" },
+        { "$ref": "#/$defs/nullValue" },
+        { "$ref": "#/$defs/pertinentNegativeValue" }
+      ]
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "values"],
+      "properties": {
+        "id": { "description": "Official NEMSIS 3.5.1 element identity.", "$ref": "#/$defs/nemsisIdentity" },
+        "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/value" } }
+      }
+    },
+    "groupInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instanceId", "elements"],
+      "properties": {
+        "instanceId": {
+          "description": "Stable, opaque identity for this group instance across revisions.",
+          "$ref": "#/$defs/opaqueIdentity"
+        },
+        "parentInstanceId": {
+          "description": "Stable identity of the immediate parent group instance. Required by catalog validation for every non-root group and forbidden for the root.",
+          "$ref": "#/$defs/opaqueIdentity"
+        },
+        "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "instances"],
+      "properties": {
+        "id": { "description": "Official NEMSIS 3.5.1 catalog group identity.", "$ref": "#/$defs/nemsisIdentity" },
+        "instances": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/groupInstance" } }
+      }
+    }
+  }
+}
