@@ -227,7 +227,7 @@ test("Sign record requires acknowledged validation and removes the report from O
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
 });
 
-test("draft synchronization exposes Saved, Saving, Pending sync, and Conflict and retries one command identity", async ({ page }) => {
+test("draft synchronization automatically retries a transient outage with one command identity", async ({ page }) => {
   const commandIds: string[] = [];
   let requests = 0;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
@@ -249,12 +249,47 @@ test("draft synchronization exposes Saved, Saving, Pending sync, and Conflict an
   await page.getByLabel("Note summary").fill("Offline draft");
   await page.getByRole("button", { name: "Add to timeline" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect(page.locator(".sync-status")).toHaveText("Conflict", { timeout: 3_000 });
+  await expect(page.locator(".sync-status")).toHaveText("Conflict", { timeout: 5_000 });
   expect(commandIds[1]).toBe(commandIds[2]);
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
+});
+
+test("an ended API session preserves queued work and resumes it after sign-in", async ({ page }) => {
+  let requests = 0;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() }),
+  }));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/reopen`, (route) => route.abort("internetdisconnected"));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, (route) => {
+    requests += 1;
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    if (requests === 2) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Session ended" }) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1,
+    }) });
+  });
+
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect.poll(() => requests).toBe(1);
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Preserved across API restart");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+
+  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByText("Your shift session ended. Sign in again to sync your saved work.")).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
+  await expect(page.getByText("Preserved across API restart", { exact: true })).toBeVisible();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 });
 
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {

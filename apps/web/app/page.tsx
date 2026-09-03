@@ -27,6 +27,7 @@ import { documentTimeline, incidentSummary } from "./incident-document";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
+  DRAFT_SYNC_RETRY_MS,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
@@ -63,10 +64,11 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace({ session, report, onSaveAndClose }: {
+function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly onSaveAndClose: () => void;
+  readonly onSessionEnded: () => void;
 }) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [restored, setRestored] = useState(false);
@@ -164,6 +166,11 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
         } catch (error) {
           const reason = error instanceof Error ? error.message : "offline";
+          if (reason === "session") {
+            setSyncStatus("Pending sync");
+            onSessionEnded();
+            return;
+          }
           setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
         }
       })();
@@ -172,7 +179,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
       activeSave.current = null;
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
-  }, [report, session.accessToken]);
+  }, [onSessionEnded, report, session.accessToken]);
 
   useEffect(() => {
     if (!restored) return;
@@ -218,6 +225,14 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
       window.removeEventListener("online", retry);
     };
   }, [flushSave, report]);
+
+  useEffect(() => {
+    if (!report || syncStatus !== "Pending sync") return;
+    const retryTimer = window.setTimeout(() => {
+      if (navigator.onLine && nextDraftChange(window.localStorage, report.id)) void flushSave();
+    }, DRAFT_SYNC_RETRY_MS);
+    return () => window.clearTimeout(retryTimer);
+  }, [flushSave, report, syncStatus]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -587,8 +602,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, closeReport }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} />
+  return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
   )}</ClinicianSessionGate>;
 }
 

@@ -4,6 +4,7 @@ import { bundledEncounterDefinition } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
+export const DRAFT_SYNC_RETRY_MS = 2_000;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
 export interface ActiveDraftReport {

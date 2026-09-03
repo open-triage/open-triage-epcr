@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
+  DRAFT_SYNC_RETRY_MS,
   draftChangesUrl,
   saveDraftReport,
   signDraftReport,
@@ -20,6 +21,7 @@ test("the draft adapter retains stable report, group, and occurrence identities"
   assert.equal(new Set(first.groups.map(({ id }) => id)).size, first.groups.length);
   assert.equal(new Set(first.occurrences.map(({ id }) => id)).size, first.occurrences.length);
   assert.equal(DRAFT_SAVE_DEBOUNCE_MS, 1_000);
+  assert.equal(DRAFT_SYNC_RETRY_MS, 2_000);
 });
 
 test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {

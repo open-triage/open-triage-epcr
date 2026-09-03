@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession } from "@open-triage/contracts";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   createClinicianSession,
@@ -17,7 +17,12 @@ import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 
 export function ClinicianSessionGate({ children }: {
-  readonly children: ReactNode | ((context: { session: ClinicianSession; report: ActiveDraftReport | null; closeReport: () => void }) => ReactNode);
+  readonly children: ReactNode | ((context: {
+    session: ClinicianSession;
+    report: ActiveDraftReport | null;
+    closeReport: () => void;
+    sessionEnded: () => void;
+  }) => ReactNode);
 }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
@@ -85,6 +90,13 @@ export function ClinicianSessionGate({ children }: {
     if (accessToken) void endClinicianSession(accessToken).catch(() => undefined);
   }
 
+  const sessionEnded = useCallback(() => {
+    clearClinicianSession(window.localStorage);
+    setSession(null);
+    setActiveReport(null);
+    setMessage("Your shift session ended. Sign in again to sync your saved work.");
+  }, []);
+
   if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
   if (!session) {
     return (
@@ -139,7 +151,7 @@ export function ClinicianSessionGate({ children }: {
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {activeReport && !lifecycleNotice && (typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
+      {activeReport && !lifecycleNotice && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, closeReport: () => {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}
