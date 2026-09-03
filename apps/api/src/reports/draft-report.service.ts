@@ -6,6 +6,8 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type {
   CreateDraftReportCommand,
   DraftOccurrenceMutation,
@@ -49,16 +51,33 @@ type ElementMetadata = {
   allowed_absence_states: string[];
 };
 
+type OpenCallRow = {
+  report_id: string;
+  call_number: string;
+  last_saved_at: Date | string;
+  revision: string | number;
+  form_version_id: string;
+  catalog_release_id: string;
+  validation_error_count: string | number;
+};
+
 @Injectable()
 export class DraftReportService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly sessions: ClinicianSessionService
+  ) {}
 
-  async create(input: unknown): Promise<DraftReportResult> {
+  async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
+    const session = this.sessions.get(accessToken);
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
     } catch (error) {
       this.rethrowValidation(error);
+    }
+    if (command.documentingUserId !== session.user.id || command.organizationId !== session.organization.id) {
+      throw new NotFoundException("The draft is not available to this clinician");
     }
     const digest = commandSha256(command);
     try {
@@ -142,7 +161,8 @@ export class DraftReportService {
     }
   }
 
-  async save(reportId: string, input: unknown): Promise<DraftReportResult> {
+  async save(accessToken: string, reportId: string, input: unknown): Promise<DraftReportResult> {
+    const session = this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -153,13 +173,19 @@ export class DraftReportService {
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.lockCommand(manager, command.commandId);
-        const replay = await this.replay<DraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
-        if (replay) return replay;
-
-        const rows = await manager.query<ReportRow[]>("select * from clinical.report where id = $1 for update", [reportId]);
+        const rows = await manager.query<ReportRow[]>(`
+          select * from clinical.report
+          where id = $1 and organization_id = $2 and documenting_user_id = $3
+          for update
+        `, [reportId, session.organization.id, session.user.id]);
         const report = rows[0];
         if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
         if (report.status !== "draft") throw new ConflictException("A signed report cannot be autosaved");
+        if (command.authorId !== session.user.id) {
+          throw new NotFoundException("The draft is not available to this clinician");
+        }
+        const replay = await this.replay<DraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
+        if (replay) return replay;
         const revision = Number(report.revision);
         if (revision !== command.expectedRevision) {
           throw new ConflictException({ message: "Draft revision is stale", expectedRevision: command.expectedRevision, currentRevision: revision });
@@ -193,9 +219,10 @@ export class DraftReportService {
     }
   }
 
-  async get(reportId: string): Promise<Record<string, unknown>> {
+  async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
+    const session = this.sessions.get(accessToken);
     return this.dataSource.transaction(async (manager) => {
-      const report = await this.reportResult(manager, reportId);
+      const report = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const groups = await manager.query<Array<Record<string, unknown>>>(`
         select id, parent_group_instance_id as "parentGroupInstanceId", group_id as "groupId",
                source_kind as "sourceKind", custom_group_definition_id as "customGroupDefinitionId",
@@ -224,6 +251,62 @@ export class DraftReportService {
       `, [reportId]);
       return { ...report, groups, occurrences };
     });
+  }
+
+  async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
+    const session = this.sessions.get(accessToken, now);
+    const rows = await this.dataSource.query<OpenCallRow[]>(`
+      select r.id as report_id, ca.call_number, r.updated_at as last_saved_at,
+             r.revision, r.form_version_id, r.catalog_release_id,
+             count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
+               as validation_error_count
+      from clinical.report r
+      join clinical.call_assignment ca
+        on ca.organization_id = r.organization_id and ca.report_id = r.id
+      left join clinical.validation_finding vf on vf.report_id = r.id
+      where r.organization_id = $1 and r.documenting_user_id = $2 and r.status = 'draft'
+      group by r.id, ca.call_number
+      order by r.updated_at desc, r.id
+    `, [session.organization.id, session.user.id]);
+    return {
+      openCalls: rows.map((row) => ({
+        reportId: row.report_id,
+        callNumber: row.call_number,
+        lastSavedAt: new Date(row.last_saved_at).toISOString(),
+        syncStatus: "saved",
+        validationErrorCount: Number(row.validation_error_count),
+        revision: Number(row.revision),
+        formVersionId: row.form_version_id,
+        catalogReleaseId: row.catalog_release_id
+      })),
+      refreshedAt: now.toISOString()
+    };
+  }
+
+  async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
+    const session = this.sessions.get(accessToken);
+    const details = await this.get(accessToken, reportId);
+    const calls = await this.dataSource.query<Array<{ call_number: string }>>(`
+      select ca.call_number
+      from clinical.call_assignment ca
+      join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
+      where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
+        and r.status = 'draft'
+    `, [reportId, session.organization.id, session.user.id]);
+    if (!calls[0]) throw new NotFoundException(`Report ${reportId} was not found`);
+    return {
+      callNumber: calls[0].call_number,
+      report: {
+        id: String(details.id),
+        documentingUserId: String(details.documentingUserId),
+        formVersionId: String(details.formVersionId),
+        catalogReleaseId: String(details.catalogReleaseId),
+        revision: Number(details.revision),
+        status: "draft",
+        groups: details.groups as ReadonlyArray<Record<string, unknown>>,
+        occurrences: details.occurrences as ReadonlyArray<Record<string, unknown>>
+      }
+    };
   }
 
   private async applyGroups(manager: EntityManager, report: ReportRow, command: SaveDraftReportCommand): Promise<void> {
@@ -432,10 +515,18 @@ export class DraftReportService {
     return result;
   }
 
-  private async reportResult(manager: EntityManager, reportId: string): Promise<DraftReportResult> {
+  private async reportResult(
+    manager: EntityManager,
+    reportId: string,
+    organizationId?: string,
+    documentingUserId?: string
+  ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
       patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id
-      from clinical.report where id = $1`, [reportId]);
+      from clinical.report where id = $1
+        and ($2::uuid is null or organization_id = $2)
+        and ($3::uuid is null or documenting_user_id = $3)`,
+    [reportId, organizationId ?? null, documentingUserId ?? null]);
     const row = rows[0];
     if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
     if (row.status !== "draft") throw new ConflictException("Report is no longer a draft");

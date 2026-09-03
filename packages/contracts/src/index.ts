@@ -90,6 +90,32 @@ export interface OpenAssignmentResponse {
   replacementAssignment: AssignedCall | null;
 }
 
+export type OpenCallSyncStatus = "saved";
+
+export interface OpenCall {
+  reportId: string;
+  callNumber: string;
+  lastSavedAt: string;
+  syncStatus: OpenCallSyncStatus;
+  validationErrorCount: number;
+  revision: number;
+  formVersionId: string;
+  catalogReleaseId: string;
+}
+
+export interface OpenCallsResponse {
+  openCalls: OpenCall[];
+  refreshedAt: string;
+}
+
+export interface ReopenOpenCallResponse {
+  callNumber: string;
+  report: OpenAssignmentResponse["report"] & {
+    groups: ReadonlyArray<Record<string, unknown>>;
+    occurrences: ReadonlyArray<Record<string, unknown>>;
+  };
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.
