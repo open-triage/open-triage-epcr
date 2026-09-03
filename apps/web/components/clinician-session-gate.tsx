@@ -41,6 +41,7 @@ export function ClinicianSessionGate({ children }: {
       clearClinicianSession(window.localStorage);
       queueMicrotask(() => {
         setSession(null);
+        setActiveReport(null);
         setMessage("Your shift session expired. Sign in to continue.");
       });
       return;
@@ -48,6 +49,7 @@ export function ClinicianSessionGate({ children }: {
     const timeout = window.setTimeout(() => {
       clearClinicianSession(window.localStorage);
       setSession(null);
+      setActiveReport(null);
       setMessage("Your shift session expired. Sign in to continue.");
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timeout);
@@ -64,6 +66,8 @@ export function ClinicianSessionGate({ children }: {
         password: String(form.get("password") ?? "")
       });
       storeClinicianSession(window.localStorage, created);
+      setActiveReport(null);
+      setLifecycleNotice(null);
       setSession(created);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in is unavailable.");
