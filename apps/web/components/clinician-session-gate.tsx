@@ -118,7 +118,7 @@ export function ClinicianSessionGate({ children }: {
         <span>Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
-      <>
+      <div hidden={activeReport !== null}>
         <OpenCalls key={openCallsRevision} session={session} activeReportId={activeReport?.id} onCompleted={() => {
           setActiveReport(null);
           setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
@@ -132,14 +132,14 @@ export function ClinicianSessionGate({ children }: {
           const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
           setActiveReport(cached.report);
         }} />
-      </>
+      </div>
       {lifecycleNotice && <p className="assignment-notice active-report-completed" role="status">{lifecycleNotice}</p>}
       {activeReport &&
         <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {!lifecycleNotice && (typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
+      {activeReport && !lifecycleNotice && (typeof children === "function" ? children({ session, report: activeReport, closeReport: () => {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}

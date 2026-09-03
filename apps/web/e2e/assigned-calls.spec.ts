@@ -69,6 +69,9 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, canceled ? [] : [assignedCall], canceled ? [assignedCall.id] : []));
   await signIn(page);
 
+  await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.locator(".encounter-header")).toHaveCount(0);
+
   const section = page.getByRole("region", { name: "Assigned calls" });
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText("SYN-2026-0903-001");
@@ -122,8 +125,9 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await signIn(page);
 
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Assigned calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
-  await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Assigned calls" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
+  await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 
