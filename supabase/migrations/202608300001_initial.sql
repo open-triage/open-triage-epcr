@@ -958,6 +958,35 @@ for each row execute function clinical.require_signed_snapshot();
 create trigger signed_snapshot_append_only before update or delete on clinical.signed_snapshot
 for each row execute function public.prevent_update_or_delete();
 
+create table clinical_audit.post_signature_audit_note (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  idempotency_key uuid not null check (substring(idempotency_key::text from 15 for 1) = '4' and substring(idempotency_key::text from 20 for 1) in ('8', '9', 'a', 'b')),
+  target_type text not null check (target_type in ('group', 'occurrence')),
+  target_id uuid not null,
+  attempted_change jsonb not null,
+  author_id uuid not null references app_identity.app_user(id),
+  device_id text,
+  client_edit_time timestamptz,
+  server_received_time timestamptz not null,
+  expected_revision bigint not null check (expected_revision >= 0),
+  signed_revision bigint not null check (signed_revision >= 0),
+  signed_snapshot_id uuid not null references clinical.signed_snapshot(id),
+  signed_canonical_sha256 text not null check (signed_canonical_sha256 ~ '^[a-f0-9]{64}$'),
+  created_at timestamptz not null default now(),
+  unique (report_id, idempotency_key, target_type, target_id)
+);
+
+comment on table clinical_audit.post_signature_audit_note is
+  'Append-only retention of queued mobile draft changes received after the immutable signature boundary.';
+
+create index post_signature_audit_note_report_target_idx
+on clinical_audit.post_signature_audit_note (report_id, target_type, target_id, id);
+
+create trigger post_signature_audit_note_append_only
+before update or delete on clinical_audit.post_signature_audit_note
+for each row execute function public.prevent_update_or_delete();
+
 create table clinical.amendment (
   id uuid primary key default gen_random_uuid(),
   report_id uuid not null references clinical.report(id),
@@ -2727,7 +2756,7 @@ grant select on operations.unsigned_report_work_queue, operations.projection_hea
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
 grant usage on schema clinical_audit to open_triage_auditor;
-grant select on clinical_audit.draft_reconciliation to open_triage_auditor;
+grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note to open_triage_auditor;
 
 comment on schema analytics is 'Stable, read-only analyst interfaces. Base projections are private.';
 comment on schema operations is 'Access-controlled live operational interfaces; these rows are never clinical analytics.';

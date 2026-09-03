@@ -953,12 +953,76 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);
 
-  const postSignSave = await request(`/reports/${reportId}/draft-changes`, "POST", {
-    commandId: randomUUID(), expectedRevision: 8, authorId: userId,
+  const postSignCommand = {
+    commandId: randomUUID(), expectedRevision: 7, authorId: userId,
+    deviceId: "delayed-mobile-unit-7", clientTime: "2026-08-30T14:29:00-04:00",
+    groups: [{ id: groupInstanceId, groupId: ids.group_id, ordinal: 9 }],
     occurrences: [{ id: requiredOccurrenceId, elementId: requiredElement.element_id,
       value: { kind: "text", value: "forbidden" } }]
+  };
+  const immutableBeforeLateSave = (await client.query(`select r.revision,
+      (select ordinal from clinical.group_instance where id = $2) as group_ordinal,
+      (select value_text from clinical.element_occurrence where id = $3) as occurrence_value,
+      (select count(*)::integer from clinical.report_change where report_id = r.id) as changes,
+      (select count(*)::integer from clinical.draft_target_state where report_id = r.id) as target_states,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = r.id) as snapshots,
+      (select canonical_sha256 from clinical.signed_snapshot where report_id = r.id) as signed_hash,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = r.id) as projection_events
+    from clinical.report r where r.id = $1`, [reportId, groupInstanceId, requiredOccurrenceId])).rows[0];
+  const postSignSave = await request(`/reports/${reportId}/draft-changes`, "POST", postSignCommand);
+  assert.equal(postSignSave.response.status, 201, JSON.stringify(postSignSave.payload));
+  assert.deepEqual({
+    status: postSignSave.payload.status,
+    revision: postSignSave.payload.revision,
+    signedRevision: postSignSave.payload.signedRevision,
+    canonicalSha256: postSignSave.payload.canonicalSha256,
+    retainedAuditNoteCount: postSignSave.payload.retainedAuditNoteCount
+  }, {
+    status: "signed", revision: 8, signedRevision: 8,
+    canonicalSha256: signed.payload.canonicalSha256, retainedAuditNoteCount: 2
   });
-  assert.equal(postSignSave.response.status, 409);
+  assert.match(postSignSave.payload.signedSnapshotId, /^[a-f0-9-]{36}$/);
+  const postSignRetry = await request(`/reports/${reportId}/draft-changes`, "POST", postSignCommand);
+  assert.equal(postSignRetry.response.status, 201);
+  assert.deepEqual(postSignRetry.payload, postSignSave.payload);
+  const conflictingPostSignRetry = await request(`/reports/${reportId}/draft-changes`, "POST", {
+    ...postSignCommand,
+    occurrences: [{ ...postSignCommand.occurrences[0], value: { kind: "text", value: "different retry" } }]
+  });
+  assert.equal(conflictingPostSignRetry.response.status, 409);
+
+  const lateAttempts = await client.query(`select target_type, target_id, attempted_change,
+      author_id, device_id, client_edit_time, server_received_time, expected_revision,
+      signed_revision, signed_snapshot_id, signed_canonical_sha256
+    from clinical_audit.post_signature_audit_note
+    where report_id = $1 order by target_type, target_id`, [reportId]);
+  assert.equal(lateAttempts.rowCount, 2);
+  assert.deepEqual(new Set(lateAttempts.rows.map((row) => row.target_type)), new Set(["group", "occurrence"]));
+  assert.deepEqual(new Set(lateAttempts.rows.map((row) => row.target_id)),
+    new Set([groupInstanceId, requiredOccurrenceId]));
+  assert.ok(lateAttempts.rows.every((row) => row.author_id === userId &&
+    row.device_id === postSignCommand.deviceId && row.client_edit_time instanceof Date &&
+    row.server_received_time instanceof Date && Number(row.expected_revision) === 7 &&
+    Number(row.signed_revision) === 8 && row.signed_snapshot_id === postSignSave.payload.signedSnapshotId &&
+    row.signed_canonical_sha256 === signed.payload.canonicalSha256));
+  assert.deepEqual(lateAttempts.rows.find((row) => row.target_type === "occurrence").attempted_change,
+    postSignCommand.occurrences[0]);
+  assert.deepEqual(lateAttempts.rows.find((row) => row.target_type === "group").attempted_change,
+    postSignCommand.groups[0]);
+  assert.deepEqual((await client.query(`select r.revision,
+      (select ordinal from clinical.group_instance where id = $2) as group_ordinal,
+      (select value_text from clinical.element_occurrence where id = $3) as occurrence_value,
+      (select count(*)::integer from clinical.report_change where report_id = r.id) as changes,
+      (select count(*)::integer from clinical.draft_target_state where report_id = r.id) as target_states,
+      (select count(*)::integer from clinical.signed_snapshot where report_id = r.id) as snapshots,
+      (select canonical_sha256 from clinical.signed_snapshot where report_id = r.id) as signed_hash,
+      (select count(*)::integer from integration.outbox_event where aggregate_id = r.id) as projection_events
+    from clinical.report r where r.id = $1`, [reportId, groupInstanceId, requiredOccurrenceId])).rows[0],
+  immutableBeforeLateSave);
+  await assert.rejects(client.query(`update clinical_audit.post_signature_audit_note
+    set attempted_change = attempted_change where report_id = $1`, [reportId]), /append-only/);
+  await assert.rejects(client.query("delete from clinical_audit.post_signature_audit_note where report_id = $1", [reportId]),
+    /append-only/);
   await assert.rejects(client.query("update clinical.element_occurrence set value_text = 'forbidden' where id = $1", [requiredOccurrenceId]),
     (error) => error.code === "P0001");
   await assert.rejects(client.query("delete from clinical.report where id = $1", [reportId]),
