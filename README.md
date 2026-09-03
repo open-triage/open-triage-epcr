@@ -41,6 +41,12 @@ The fixture uses an unknown patient with a one-way synthetic pseudonym and ficti
 dispatch metadata—no real patient data. It is only loaded by this explicit command;
 production API and migration entry points do not import it.
 
+The mobile entry screen prefills the synthetic clinician credentials and requires
+an explicit **Sign in** action. The seeded organization fixes that session at 14
+hours from login; the API automatically rejects it at that deadline, and **Log out**
+ends it immediately. Deployments can change `shift_session_duration_hours` on the
+organization until the stationary administration interface is available.
+
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. Incremental autosaves go to
 `POST /api/reports/:id/draft-changes` with an expected revision, stable group and

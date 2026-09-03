@@ -33,6 +33,29 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export interface CreateClinicianSessionCommand {
+  username: string;
+  password: string;
+}
+
+export interface ClinicianSession {
+  accessToken: string;
+  user: {
+    id: string;
+    displayName: string;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
+  startedAt: string;
+  expiresAt: string;
+}
+
+export interface EndClinicianSessionResponse {
+  ended: true;
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.

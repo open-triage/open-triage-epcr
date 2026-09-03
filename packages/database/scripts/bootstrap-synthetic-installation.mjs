@@ -98,8 +98,8 @@ try {
     const releaseId = release.rows[0].id;
 
     await client.query(`
-      insert into app_identity.organization (id, name, deployment_timezone)
-      values ($1, 'OpenTriage Synthetic EMS', 'UTC')
+      insert into app_identity.organization (id, name, shift_session_duration_hours, deployment_timezone)
+      values ($1, 'OpenTriage Synthetic EMS', 14, 'UTC')
       on conflict do nothing
     `, [ids.organization]);
 

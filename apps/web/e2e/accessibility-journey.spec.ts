@@ -25,6 +25,30 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await expect(page.getByLabel("Username")).toHaveValue("demo.clinician");
+  await expect(page.getByLabel("Password")).toHaveValue("open-triage-demo");
+  await page.getByRole("button", { name: "Sign in" }).click();
+});
+
+test("demo sign in is explicit and manual logout immediately hides clinical content", async ({ page }) => {
+  await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toHaveText("You have logged out.");
+});
+
+test("the browser hides clinical content at the fixed session deadline", async ({ page }) => {
+  await page.evaluate(() => {
+    const key = "open-triage.clinician-session.v1";
+    const session = JSON.parse(window.localStorage.getItem(key)!);
+    session.expiresAt = new Date(Date.now() + 2_000).toISOString();
+    window.localStorage.setItem(key, JSON.stringify(session));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("shift session expired");
 });
 
 test("canonical incident header and timing entries render in the phone flow", async ({ page }) => {

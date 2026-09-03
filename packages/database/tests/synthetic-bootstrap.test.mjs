@@ -35,3 +35,9 @@ test("uses deterministic synthetic identities and contains no patient identity f
     assert.ok(!bootstrap.toLowerCase().includes(identifyingField));
   }
 });
+
+test("seeds the demo organization with a fixed fourteen-hour shift session", () => {
+  assert.match(bootstrap, /shift_session_duration_hours, deployment_timezone/);
+  assert.match(bootstrap, /OpenTriage Synthetic EMS', 14, 'UTC'/);
+  assert.match(migration, /shift_session_duration_hours integer not null default 14/);
+});
