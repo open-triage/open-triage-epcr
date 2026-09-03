@@ -1,4 +1,4 @@
-import type { AssignedCall, AssignedCallsResponse } from "@open-triage/contracts";
+import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
 
@@ -21,6 +21,32 @@ export async function fetchAssignedCalls(accessToken: string): Promise<AssignedC
   });
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Assigned calls could not be refreshed.");
   return response.json() as Promise<AssignedCallsResponse>;
+}
+
+export function openAssignmentUrl(assignmentId: string): string {
+  const baseUrl = apiBaseUrl();
+  if (baseUrl) return `${baseUrl}/api/calls/${assignmentId}/open`;
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
+  return `${basePath}/api/calls/${assignmentId}/open`;
+}
+
+export async function openAssignedCall(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
+  let response: Response;
+  try {
+    response = await fetch(openAssignmentUrl(assignmentId), {
+      method: "POST",
+      cache: "no-store",
+      headers: { authorization: `Bearer ${accessToken}` }
+    });
+  } catch {
+    throw new Error("The call could not be opened. Check your connection and try again.");
+  }
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Your shift session has ended.");
+    if (response.status === 409) throw new Error("This call can no longer be opened.");
+    throw new Error("The call could not be opened. Check your connection and try again.");
+  }
+  return response.json() as Promise<OpenAssignmentResponse>;
 }
 
 export function canceledAssignedCalls(

@@ -305,6 +305,100 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   }
 });
 
+integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+    env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
+
+  const app = await NestFactory.create(AppModule, { logger: false });
+  app.setGlobalPrefix("api");
+  await app.listen(0, "127.0.0.1");
+  t.after(() => app.close());
+  const address = app.getHttpServer().address();
+  const baseUrl = `http://127.0.0.1:${address.port}/api`;
+  const signIn = await fetch(`${baseUrl}/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+  });
+  const session = await signIn.json();
+  const assignmentId = "32000000-0000-4000-8000-000000000011";
+  const latestBeforeOpen = (await client.query(`
+    select fv.id from forms.form_version fv
+    join app_identity.operational_unit ou on ou.default_form_id = fv.form_id
+    where ou.id = '32000000-0000-4000-8000-000000000010' and fv.status = 'published'
+    order by fv.version desc limit 1
+  `)).rows[0].id;
+  let opened;
+  try {
+    const requestOpen = async () => {
+      const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${session.accessToken}` }
+      });
+      const payload = await response.json();
+      assert.equal(response.status, 200, JSON.stringify(payload));
+      return payload;
+    };
+    opened = await requestOpen();
+    const retry = await requestOpen();
+    assert.equal(retry.report.id, opened.report.id);
+    assert.equal(retry.replacementAssignment, null);
+    assert.equal(opened.report.documentingUserId, session.user.id);
+    assert.equal(opened.report.formVersionId, latestBeforeOpen);
+    assert.equal(opened.replacementAssignment.callNumber, "SYN-2026-0903-002");
+    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
+
+    const state = (await client.query(`
+      select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
+        (select count(*)::integer from clinical.report where incident_id = ca.incident_id) as reports,
+        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients
+      from clinical.call_assignment ca join clinical.report r on r.id = ca.report_id
+      where ca.id = $1
+    `, [assignmentId])).rows[0];
+    assert.deepEqual(state, {
+      status: "opened", report_id: opened.report.id, documenting_user_id: session.user.id,
+      form_version_id: latestBeforeOpen, reports: 1, patients: 1
+    });
+
+    const laterVersionId = randomUUID();
+    await client.query(`
+      insert into forms.form_version
+        (id, form_id, catalog_release_id, version, status, canonical_definition,
+         definition_sha256, change_note, created_by, published_by, published_at,
+         publication_acknowledgements)
+      select $1, fv.form_id, fv.catalog_release_id,
+             (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
+             'published', fv.canonical_definition, fv.definition_sha256,
+             'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
+      from forms.form_version fv where fv.id = $2
+    `, [laterVersionId, latestBeforeOpen]);
+    assert.equal((await client.query("select form_version_id from clinical.report where id = $1", [opened.report.id])).rows[0].form_version_id,
+      latestBeforeOpen);
+  } finally {
+    if (opened) {
+      await client.query("begin");
+      try {
+        const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
+        await client.query("update clinical.call_assignment set status = 'assigned', report_id = null where id = $1", [assignmentId]);
+        await client.query("delete from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
+        const patient = await client.query("select patient_id from clinical.report where id = $1", [opened.report.id]);
+        await client.query("delete from clinical.report where id = $1", [opened.report.id]);
+        if (patient.rows[0]) await client.query("delete from clinical.patient where id = $1", [patient.rows[0].patient_id]);
+        if (replacement.rows[0]) await client.query("delete from clinical.incident where id = $1", [replacement.rows[0].incident_id]);
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+    }
+  }
+});
+
 integrationTest("draft report commands create, incrementally save, retrieve, and replay through the public API", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
