@@ -9,9 +9,9 @@ Build the web image with the public API hostname embedded at build time:
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
   --build-arg NEXT_PUBLIC_API_URL=https://api.example.com \
-  -t ghcr.io/annakopp/open-triage-web:demo .
+  -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
-  -t ghcr.io/annakopp/open-triage-api:demo .
+  -t ghcr.io/open-triage/open-triage-api:demo .
 ```
 
 Create a private `values.demo.yaml` from `values.yaml`, set both hostnames and

@@ -1,6 +1,6 @@
 web:
   image:
-    repository: ghcr.io/annakopp/open-triage-web
+    repository: ghcr.io/open-triage/open-triage-web
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
@@ -11,7 +11,7 @@ web:
 
 api:
   image:
-    repository: ghcr.io/annakopp/open-triage-api
+    repository: ghcr.io/open-triage/open-triage-api
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
