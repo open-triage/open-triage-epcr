@@ -14,6 +14,7 @@ import {
 import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
+import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: { session: ClinicianSession; report: ActiveDraftReport | null; closeReport: () => void }) => ReactNode);
@@ -119,20 +120,13 @@ export function ClinicianSessionGate({ children }: {
           setLifecycleNotice("This report was completed on the stationary interface. Further edits have stopped.");
         }} onReopened={(opened) => {
           setLifecycleNotice(null);
-          setActiveReport({
-            id: opened.report.id,
-            revision: opened.report.revision,
-            formVersionId: opened.report.formVersionId,
-            callNumber: opened.callNumber
-          });
+          const cached = cacheReopenedReport(window.localStorage, session, opened);
+          setActiveReport(cached.report);
         }} />
-        <AssignedCalls session={session} onOpened={(opened) => {
+        <AssignedCalls session={session} onOpened={(opened, call) => {
           setLifecycleNotice(null);
-          setActiveReport({
-            id: opened.report.id,
-            revision: opened.report.revision,
-            formVersionId: opened.report.formVersionId
-          });
+          const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
+          setActiveReport(cached.report);
         }} />
       </>
       {lifecycleNotice && <p className="assignment-notice active-report-completed" role="status">{lifecycleNotice}</p>}

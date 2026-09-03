@@ -4,13 +4,16 @@ import { bundledEncounterDefinition } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
-export type DraftSyncStatus = "Saved" | "Saving" | "Offline" | "Conflict";
+export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
 export interface ActiveDraftReport {
   readonly id: string;
   readonly revision: number;
   readonly formVersionId: string;
   readonly callNumber?: string;
+  readonly documentingUserId?: string;
+  readonly catalogReleaseId?: string;
+  readonly status?: "draft";
 }
 
 export interface DraftGroupMutation {

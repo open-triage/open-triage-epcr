@@ -35,6 +35,13 @@ import {
   type DraftSyncStatus,
 } from "./draft-report";
 import type { ClinicianSession } from "@open-triage/contracts";
+import {
+  acceptDraftChange,
+  expectedRevisionForNextChange,
+  markDraftChangeAttempted,
+  nextDraftChange,
+  queueDraftChange,
+} from "./offline-reports";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -60,9 +67,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
   const revision = useRef(report?.revision ?? 0);
-  const pendingSave = useRef<{ state: ShellState; commandId: string; clientTime: string } | null>(null);
   const activeSave = useRef<Promise<void> | null>(null);
-  const lastSaveFailed = useRef(false);
+  const skipInitialQueue = useRef(false);
   const saveTimer = useRef<number | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
@@ -109,12 +115,18 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
 
   useEffect(() => {
     const result = loadShellStateResult(window.localStorage, bundledEncounterDefinition, report?.id);
-    if (result.status === "restored") dispatch({ type: "state-restored", state: result.state });
+    if (result.status === "restored") {
+      skipInitialQueue.current = true;
+      dispatch({ type: "state-restored", state: result.state });
+    }
     else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
     else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    queueMicrotask(() => setRestored(true));
-  }, [report?.id]);
+    queueMicrotask(() => {
+      if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
+      setRestored(true);
+    });
+  }, [report]);
 
   const flushSave = useCallback(async (): Promise<void> => {
     if (!report) return;
@@ -124,66 +136,72 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
     }
     if (activeSave.current) {
       await activeSave.current;
-      if (lastSaveFailed.current) return;
     }
-    while (pendingSave.current) {
-      const queued = pendingSave.current;
-      pendingSave.current = null;
-      lastSaveFailed.current = false;
+    while (true) {
+      const queued = nextDraftChange(window.localStorage, report.id);
+      if (!queued) {
+        setSyncStatus("Saved");
+        return;
+      }
       setSyncStatus("Saving");
+      markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
       const attempt = (async () => {
         try {
-          const saved = await saveDraftReport(session.accessToken, report.id, {
-            commandId: queued.commandId,
-            expectedRevision: revision.current,
-            authorId: session.user.id,
-            deviceId: `web:${report.id}`,
-            clientTime: queued.clientTime,
-            ...shellStateToDraftMutations(report.id, queued.state),
-          });
+          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
           revision.current = saved.revision;
-          setSyncStatus(pendingSave.current ? "Saving" : "Saved");
+          acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
         } catch (error) {
-          lastSaveFailed.current = true;
           const reason = error instanceof Error ? error.message : "offline";
-          if (reason !== "conflict") pendingSave.current = queued; // preserve command identity for a retry.
-          setSyncStatus(reason === "conflict" ? "Conflict" : "Offline");
+          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
         }
       })();
       activeSave.current = attempt;
       await attempt;
       activeSave.current = null;
-      if (lastSaveFailed.current) return;
+      if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
-  }, [report, session.accessToken, session.user.id]);
+  }, [report, session.accessToken]);
 
   useEffect(() => {
     if (!restored) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
-    saveReportSyncStatus(window.localStorage, report.id, "Saving");
-    pendingSave.current = {
-      state: shell,
-      commandId: pendingSave.current?.commandId ?? crypto.randomUUID(),
-      clientTime: pendingSave.current?.clientTime ?? new Date().toISOString(),
-    };
-    queueMicrotask(() => setSyncStatus("Saving"));
+    if (skipInitialQueue.current) {
+      skipInitialQueue.current = false;
+      if (nextDraftChange(window.localStorage, report.id)) {
+        if (navigator.onLine) queueMicrotask(() => void flushSave());
+        else queueMicrotask(() => setSyncStatus("Pending sync"));
+      }
+      return;
+    }
+    const existing = nextDraftChange(window.localStorage, report.id);
+    const commandId = existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID();
+    const clientTime = existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString();
+    queueDraftChange(window.localStorage, report.id, {
+      commandId,
+      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
+      authorId: session.user.id,
+      deviceId: `web:${report.id}`,
+      clientTime,
+      ...shellStateToDraftMutations(report.id, shell),
+    });
+    queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
-  }, [flushSave, restored, shell, report]);
+    if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
+  }, [flushSave, restored, shell, report, session.user.id]);
 
   useEffect(() => {
     if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);
   }, [report, syncStatus]);
 
   useEffect(() => {
-    const retry = () => { if (pendingSave.current) void flushSave(); };
+    const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
     window.addEventListener("online", retry);
     return () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
       window.removeEventListener("online", retry);
     };
-  }, [flushSave]);
+  }, [flushSave, report]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -291,7 +309,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose }: {
 
       <header className="encounter-header">
         {report && <div className="draft-actions">
-          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase()}`} role="status" aria-live="polite">{syncStatus}</span>
+          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
           <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
         </div>}
         <div className="header-kicker">

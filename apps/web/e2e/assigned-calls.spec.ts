@@ -122,9 +122,9 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await signIn(page);
 
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Assigned calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
-  await expect(page.getByText("Documenting opened call", { exact: true })).toBeVisible();
+  await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 
   const retriedReportId = await page.evaluate(async ({ assignmentId }) => {
@@ -170,7 +170,7 @@ test("encounter edits debounce through the revisioned draft API and Save & close
   expect(JSON.stringify(savedCommands[0])).toContain("Persist this without completing validation");
 });
 
-test("draft synchronization exposes Saved, Saving, Offline, and Conflict and retries one command identity", async ({ page }) => {
+test("draft synchronization exposes Saved, Saving, Pending sync, and Conflict and retries one command identity", async ({ page }) => {
   const commandIds: string[] = [];
   let requests = 0;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
@@ -191,7 +191,7 @@ test("draft synchronization exposes Saved, Saving, Offline, and Conflict and ret
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await page.getByLabel("Note summary").fill("Offline draft");
   await page.getByRole("button", { name: "Add to timeline" }).click();
-  await expect(page.locator(".sync-status")).toHaveText("Offline", { timeout: 3_000 });
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.locator(".sync-status")).toHaveText("Conflict", { timeout: 3_000 });
   expect(commandIds[1]).toBe(commandIds[2]);
@@ -302,4 +302,52 @@ test("completion discovered while a form is active stops editing and returns to 
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
+});
+
+test("an Android-sized browser closes and reopens an edited call offline, then syncs it on reconnect", async ({ page, context }) => {
+  await page.setViewportSize({ width: 393, height: 851 });
+  const commandIds: string[] = [];
+  let offline = false;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, (route) => {
+    if (offline) return route.abort("internetdisconnected");
+    const command = route.request().postDataJSON() as { commandId: string; expectedRevision: number };
+    commandIds.push(command.commandId);
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1
+    }) });
+  });
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saving");
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+
+  offline = true;
+  await context.setOffline(true);
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Care documented beyond the dead zone");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await page.getByRole("button", { name: "Save & close" }).click();
+
+  const cachedCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  await expect(cachedCard).toContainText("Pending sync");
+  await cachedCard.getByRole("button", { name: "Reopen call" }).click();
+  await expect(page.getByText("Care documented beyond the dead zone", { exact: true })).toBeVisible();
+  await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
+  const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0]);
+  expect(cache.ownerUserId).toBe(openedAssignment.report.documentingUserId);
+  expect(cache.report.revision).toBe(1);
+  expect(cache.workflowState).toBe("open");
+  expect(cache.queuedChanges).toHaveLength(1);
+
+  offline = false;
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  expect(commandIds).toHaveLength(2);
+  expect(commandIds[1]).not.toBe(commandIds[0]);
 });
