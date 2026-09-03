@@ -27,6 +27,8 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     return [
       {
         report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
+        dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Breathing problem",
+        chief_complaint: "Shortness of breath", unit_call_sign: "Medic 32",
         status: "draft",
         last_saved_at: "2026-09-03T14:00:00.000Z", revision: "4",
         form_version_id: "52000000-0000-4000-8000-000000000002", catalog_release_id: "62000000-0000-4000-8000-000000000002",
@@ -34,6 +36,8 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
       },
       {
         report_id: "42000000-0000-4000-8000-000000000001", call_number: "CALL-OLD",
+        dispatched_at: "2026-09-03T11:00:00.000Z", dispatch_reason: "Fall",
+        chief_complaint: null, unit_call_sign: "Medic 31",
         status: "draft",
         last_saved_at: new Date("2026-09-03T13:00:00.000Z"), revision: 1,
         form_version_id: "52000000-0000-4000-8000-000000000001", catalog_release_id: "62000000-0000-4000-8000-000000000001",
@@ -49,6 +53,8 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
   assert.deepEqual(result.openCalls.map((call) => call.callNumber), ["CALL-NEW", "CALL-OLD"]);
   assert.deepEqual(result.openCalls[0], {
     reportId: "42000000-0000-4000-8000-000000000002", callNumber: "CALL-NEW",
+    dispatchedAt: "2026-09-03T12:00:00.000Z", dispatchReason: "Breathing problem",
+    chiefComplaint: "Shortness of breath", unitCallSign: "Medic 32",
     lastSavedAt: "2026-09-03T14:00:00.000Z", syncStatus: "saved", validationErrorCount: 2,
     revision: 4, formVersionId: "52000000-0000-4000-8000-000000000002",
     catalogReleaseId: "62000000-0000-4000-8000-000000000002"
@@ -64,6 +70,8 @@ test("stationary-completed reports are returned as reconciliation identities, no
   const completedReportId = "42000000-0000-4000-8000-000000000003";
   const dataSource = { query: async () => [{
     report_id: completedReportId, status: "signed", call_number: "CALL-COMPLETE",
+    dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Transfer",
+    chief_complaint: null, unit_call_sign: "Medic 32",
     last_saved_at: "2026-09-03T14:10:00.000Z", revision: 5,
     form_version_id: "52000000-0000-4000-8000-000000000003",
     catalog_release_id: "62000000-0000-4000-8000-000000000003",
@@ -97,7 +105,11 @@ test("reopening restores the creator's report with its pinned form and saved con
     transaction: (work) => work(manager),
     query: async (sql, parameters) => {
       queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
-      return [{ call_number: "CALL-NEW" }];
+      return [{
+        call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
+        dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
+        unit_call_sign: "Medic 32"
+      }];
     }
   };
   const service = new DraftReportService(dataSource, sessions());
@@ -106,6 +118,9 @@ test("reopening restores the creator's report with its pinned form and saved con
   const reopened = await controller.reopen(reportId, `Bearer ${ownerSession.accessToken}`);
 
   assert.equal(reopened.callNumber, "CALL-NEW");
+  assert.equal(reopened.dispatchedAt, "2026-09-03T12:00:00.000Z");
+  assert.equal(reopened.dispatchReason, "Breathing problem");
+  assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.formVersionId, "pinned-form");
   assert.deepEqual(reopened.report.groups, [{ id: "group-1" }]);
   assert.deepEqual(reopened.report.occurrences, [{ id: "occurrence-1" }]);

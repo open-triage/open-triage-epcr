@@ -88,8 +88,29 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
-  const incidentEvents = useMemo(() => documentTimeline(encounter.document), [encounter.document]);
+  const incident = useMemo(() => {
+    const documented = incidentSummary(encounter.document);
+    return {
+      ...documented,
+      number: report?.callNumber ?? documented.number,
+      complaint: report?.dispatchReason ?? report?.chiefComplaint ?? documented.complaint,
+    };
+  }, [encounter.document, report]);
+  const incidentEvents = useMemo(() => {
+    if (!report?.dispatchedAt) return documentTimeline(encounter.document);
+    const dispatched = new Date(report.dispatchedAt);
+    const date = `${dispatched.getFullYear()}-${String(dispatched.getMonth() + 1).padStart(2, "0")}-${String(dispatched.getDate()).padStart(2, "0")}`;
+    const time = `${String(dispatched.getHours()).padStart(2, "0")}:${String(dispatched.getMinutes()).padStart(2, "0")}`;
+    return [{
+      id: `call-dispatch-${report.id}`,
+      date,
+      time,
+      kind: "document" as const,
+      title: "Unit Notified by Dispatch",
+      detail: report.dispatchReason ?? report.chiefComplaint ?? "",
+      reference: "eTimes.03",
+    }];
+  }, [encounter.document, report]);
   const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
     `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
   ), [incidentEvents, encounter.events]);

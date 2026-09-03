@@ -75,15 +75,16 @@ test("the browser hides clinical content at the fixed session deadline", async (
   await expect(page.getByRole("status")).toContainText("shift session expired");
 });
 
-test("canonical incident header and timing entries render in the phone flow", async ({ page }) => {
+test("the opened call's incident header and dispatch event render in the phone flow", async ({ page }) => {
   await openCall(page);
-  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260418-113 · 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260903-001");
   await expect(page.locator(".encounter-header")).toContainText("Medical assistance requested");
+  await expect(page.locator(".encounter-header")).not.toContainText("SYN-20260418-113 · 3-9-7-4-0");
   await expect(page.locator(".encounter-header")).not.toContainText("Rivera, Jordan");
-  await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toBeVisible();
-  await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toBeVisible();
-  await expect(page.locator(".timeline-list").getByText("eTimes.06", { exact: true })).toBeVisible();
-  await expect(page.locator(".timeline-list").getByText("eTimes.05", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("Unit Notified by Dispatch", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("eTimes.03", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toHaveCount(0);
 });
 
 test("quick capture phone journey remains operable and persists", async ({ page }) => {

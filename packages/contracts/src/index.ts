@@ -95,6 +95,10 @@ export type OpenCallSyncStatus = "saved" | "pending";
 export interface OpenCall {
   reportId: string;
   callNumber: string;
+  dispatchedAt?: string;
+  dispatchReason?: string | null;
+  chiefComplaint?: string | null;
+  unitCallSign?: string;
   lastSavedAt: string;
   syncStatus: OpenCallSyncStatus;
   validationErrorCount: number;
@@ -111,6 +115,10 @@ export interface OpenCallsResponse {
 
 export interface ReopenOpenCallResponse {
   callNumber: string;
+  dispatchedAt?: string;
+  dispatchReason?: string | null;
+  chiefComplaint?: string | null;
+  unitCallSign?: string;
   report: OpenAssignmentResponse["report"] & {
     groups: ReadonlyArray<Record<string, unknown>>;
     occurrences: ReadonlyArray<Record<string, unknown>>;

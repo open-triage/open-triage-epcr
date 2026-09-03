@@ -62,7 +62,13 @@ function command(commandId: string, expectedRevision: number): SaveDraftReportCo
 test("opened report identity, ownership, pinned form, revision, workflow and pending changes survive storage reload", () => {
   const bytes = new Map<string, string>();
   const storage = memoryStorage(bytes);
-  cacheOpenedReport(storage, session, opened, "CALL-51", new Date("2026-09-03T12:01:00.000Z"));
+  cacheOpenedReport(storage, session, opened, {
+    callNumber: "CALL-51",
+    dispatchedAt: "2026-09-03T12:00:00.000Z",
+    dispatchReason: "Breathing problem",
+    chiefComplaint: "Shortness of breath",
+    unit: { callSign: "Medic 32" },
+  }, new Date("2026-09-03T12:01:00.000Z"));
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
   markDraftChangeAttempted(storage, opened.report.id, "command-1");
 
@@ -71,6 +77,9 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.equal(cached.report.documentingUserId, session.user.id);
   assert.equal(cached.report.formVersionId, "pinned-form-version-7");
   assert.equal(cached.report.revision, 4);
+  assert.equal(cached.report.dispatchedAt, "2026-09-03T12:00:00.000Z");
+  assert.equal(cached.report.dispatchReason, "Breathing problem");
+  assert.equal(cached.report.unitCallSign, "Medic 32");
   assert.equal(cached.workflowState, "open");
   assert.equal(cached.syncStatus, "pending");
   assert.equal(nextDraftChange(reloaded, opened.report.id)?.command.commandId, "command-1");

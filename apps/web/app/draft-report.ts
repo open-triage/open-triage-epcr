@@ -12,6 +12,10 @@ export interface ActiveDraftReport {
   readonly revision: number;
   readonly formVersionId: string;
   readonly callNumber?: string;
+  readonly dispatchedAt?: string;
+  readonly dispatchReason?: string | null;
+  readonly chiefComplaint?: string | null;
+  readonly unitCallSign?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
   readonly status?: "draft";

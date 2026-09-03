@@ -77,6 +77,9 @@ test("the demo unit's assigned call shows its operational summary and manual can
   const refresh = page.getByRole("button", { name: "Refresh calls" });
   await expect(refresh).toHaveCount(1);
   await expect(refresh).toHaveText("Refresh");
+  await expect(page.locator(".session-bar > .call-list-refresh")).toHaveCount(1);
+  const identityBox = await page.getByText("Signed in as Synthetic Clinician").boundingBox();
+  expect(Math.abs((identityBox!.x + identityBox!.width / 2) - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(1);
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText("SYN-20260903-001");
@@ -137,6 +140,9 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
+  await expect(page.locator(".encounter-header")).toContainText(`Incident ${assignedCall.callNumber}`);
+  await expect(page.locator(".encounter-header")).toContainText(assignedCall.dispatchReason);
+  await expect(page.locator(".encounter-header")).not.toContainText("SYN-20260418-113 · 3-9-7-4-0");
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit patient information" })).toHaveCount(0);
   await expect(page.getByText("Rivera, Jordan", { exact: true })).toHaveCount(0);

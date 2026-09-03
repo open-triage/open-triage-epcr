@@ -24,14 +24,12 @@ input, select, textarea { touch-action: manipulation; }
 .login-card button { min-height: 52px; margin-top: 6px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }
 .login-card button:disabled { opacity: .65; cursor: wait; }
 .login-message { margin: 0; padding: 10px 12px; border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; font-size: 13px; }
-.session-bar { position: sticky; z-index: 25; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: 12px; }
+.session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: 78px minmax(0, 1fr) 78px; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: 12px; }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
-.session-identity { min-width: 0; }
-.page-banner-row { position: sticky; z-index: 24; top: 48px; display: grid; grid-template-columns: 92px minmax(0, 1fr); min-height: 44px; background: #eef2ee; box-shadow: 0 1px 0 var(--line); }
-.refresh-frame { display: grid; place-items: center; padding: 4px 7px; border-right: 1px solid #c9d0ca; }
-.call-list-refresh { width: 78px; min-height: 36px; padding: 3px 8px; border: 1px solid var(--green); border-radius: 5px; color: var(--green-dark); background: #fff; font-weight: 800; white-space: nowrap; cursor: pointer; }
-.page-banner-row .safety-notice { position: static; min-height: 44px; padding: 5px 8px; }
-.authenticated-shell .quick-actions { top: 92px; }
+.session-identity { min-width: 0; text-align: center; }
+.session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
+.authenticated-shell .safety-notice { top: 48px; }
+.authenticated-shell .quick-actions { top: 86px; }
 .assigned-calls { padding: 18px 16px 20px; border-bottom: 1px solid var(--line); background: #f3f7f4; }
 .assigned-calls-heading { display: flex; align-items: center; gap: 16px; }
 .assigned-calls-heading h1 { margin: 2px 0 0; font-size: 26px; letter-spacing: -.025em; }

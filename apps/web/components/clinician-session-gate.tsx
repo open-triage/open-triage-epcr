@@ -128,22 +128,18 @@ export function ClinicianSessionGate({ children }: {
   return (
     <div className="authenticated-shell">
       <header className="session-bar">
+        <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
-      <div className="page-banner-row">
-        <div className="refresh-frame">
-          <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
-        </div>
-        <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-          <strong>Synthetic data only</strong>
-          <span>Usability prototype — not for clinical use</span>
-        </aside>
-      </div>
+      <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
+        <strong>Synthetic data only</strong>
+        <span>Usability prototype — not for clinical use</span>
+      </aside>
       <div hidden={activeReport !== null}>
         <AssignedCalls session={session} refreshRequest={refreshRequest} onOpened={(opened, call) => {
           setLifecycleNotice(null);
-          const cached = cacheOpenedReport(window.localStorage, session, opened, call.callNumber);
+          const cached = cacheOpenedReport(window.localStorage, session, opened, call);
           setActiveReport(cached.report);
         }} />
         <OpenCalls key={openCallsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {

@@ -24,6 +24,13 @@ export interface CachedOpenReport {
 }
 
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
+type OpenedCallContext = {
+  readonly callNumber: string;
+  readonly dispatchedAt?: string;
+  readonly dispatchReason?: string | null;
+  readonly chiefComplaint?: string | null;
+  readonly unit?: { readonly callSign: string };
+};
 
 function read(storage: StoragePort): CachedOpenReport[] {
   try {
@@ -54,12 +61,23 @@ export function cacheOpenedReport(
   storage: StoragePort,
   session: ClinicianSession,
   opened: OpenAssignmentResponse,
-  callNumber: string,
+  call: string | OpenedCallContext,
   now = new Date(),
 ): CachedOpenReport {
+  const callNumber = typeof call === "string" ? call : call.callNumber;
   const existing = read(storage).find((candidate) => candidate.report.id === opened.report.id);
   return replace(storage, {
-    report: { ...opened.report, callNumber },
+    report: {
+      ...existing?.report,
+      ...opened.report,
+      callNumber,
+      ...(typeof call === "string" ? {} : {
+        ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),
+        ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
+        ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
+        ...(call.unit?.callSign ? { unitCallSign: call.unit.callSign } : {}),
+      }),
+    },
     ownerUserId: session.user.id,
     callNumber,
     workflowState: "open",
@@ -77,13 +95,20 @@ export function cacheReopenedReport(
   opened: ReopenOpenCallResponse,
   now = new Date(),
 ): CachedOpenReport {
-  return cacheOpenedReport(storage, session, { assignmentId: "cached-reopen", report: opened.report, replacementAssignment: null }, opened.callNumber, now);
+  return cacheOpenedReport(storage, session, { assignmentId: "cached-reopen", report: opened.report, replacementAssignment: null }, {
+    callNumber: opened.callNumber,
+    ...(opened.dispatchedAt ? { dispatchedAt: opened.dispatchedAt } : {}),
+    ...(opened.dispatchReason !== undefined ? { dispatchReason: opened.dispatchReason } : {}),
+    ...(opened.chiefComplaint !== undefined ? { chiefComplaint: opened.chiefComplaint } : {}),
+    ...(opened.unitCallSign ? { unit: { callSign: opened.unitCallSign } } : {}),
+  }, now);
 }
 
 export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSession, call: OpenCall): CachedOpenReport {
   const existing = read(storage).find((candidate) => candidate.report.id === call.reportId);
   return replace(storage, {
     report: {
+      ...existing?.report,
       id: call.reportId,
       revision: existing?.queuedChanges.length ? existing.report.revision : call.revision,
       formVersionId: call.formVersionId,
@@ -91,6 +116,10 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
       documentingUserId: session.user.id,
       catalogReleaseId: call.catalogReleaseId,
       status: "draft",
+      ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),
+      ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
+      ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
+      ...(call.unitCallSign ? { unitCallSign: call.unitCallSign } : {}),
     },
     ownerUserId: session.user.id,
     callNumber: call.callNumber,
@@ -138,6 +167,10 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     revision: cached.report.revision,
     formVersionId: cached.report.formVersionId,
     catalogReleaseId: cached.report.catalogReleaseId,
+    ...(cached.report.dispatchedAt ? { dispatchedAt: cached.report.dispatchedAt } : {}),
+    ...(cached.report.dispatchReason !== undefined ? { dispatchReason: cached.report.dispatchReason } : {}),
+    ...(cached.report.chiefComplaint !== undefined ? { chiefComplaint: cached.report.chiefComplaint } : {}),
+    ...(cached.report.unitCallSign ? { unitCallSign: cached.report.unitCallSign } : {}),
   }));
 }
 
