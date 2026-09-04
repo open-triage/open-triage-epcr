@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClinicianSession } from "@open-triage/contracts";
+import type { ClinicianSession, EncounterDocument } from "@open-triage/contracts";
+import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,
   cacheOpenCallSummary,
@@ -43,6 +44,7 @@ const opened = {
     catalogReleaseId: "catalog-1",
     revision: 4,
     status: "draft" as const,
+    document: syntheticEncounter as EncounterDocument,
   },
   replacementAssignment: null,
 };
@@ -80,6 +82,7 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.equal(cached.report.dispatchedAt, "2026-09-03T12:00:00.000Z");
   assert.equal(cached.report.dispatchReason, "Breathing problem");
   assert.equal(cached.report.unitCallSign, "Medic 32");
+  assert.equal(cached.report.document?.groups.length, syntheticEncounter.groups.length);
   assert.equal(cached.workflowState, "open");
   assert.equal(cached.syncStatus, "pending");
   assert.equal(nextDraftChange(reloaded, opened.report.id)?.command.commandId, "command-1");

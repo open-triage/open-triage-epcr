@@ -86,6 +86,8 @@ export interface OpenAssignmentResponse {
     catalogReleaseId: string;
     revision: number;
     status: "draft";
+    /** Complete server-authoritative encounter content, including fields hidden by the active form. */
+    document: EncounterDocument;
   };
   replacementAssignment: AssignedCall | null;
 }
@@ -119,10 +121,7 @@ export interface ReopenOpenCallResponse {
   dispatchReason?: string | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
-  report: OpenAssignmentResponse["report"] & {
-    groups: ReadonlyArray<Record<string, unknown>>;
-    occurrences: ReadonlyArray<Record<string, unknown>>;
-  };
+  report: OpenAssignmentResponse["report"];
 }
 
 /**
@@ -131,7 +130,7 @@ export interface ReopenOpenCallResponse {
  */
 export const ENCOUNTER_DOCUMENT_SCHEMA = "./encounter-document.schema-1.0.0.json" as const;
 export const ENCOUNTER_DOCUMENT_TYPE = "open-triage.encounter" as const;
-export const ENCOUNTER_MODEL_VERSION = "1.0.0" as const;
+export const ENCOUNTER_MODEL_VERSION = "1.1.0" as const;
 
 export type EncounterIdentity = string;
 export type EncounterAttributeValue = string | number | boolean | null;
@@ -190,6 +189,8 @@ export type EncounterElement = {
 export type EncounterGroupInstance = {
   /** Stable identity for this occurrence when the group repeats. */
   readonly instanceId: string;
+  /** Stable identity of the containing group occurrence for nested NEMSIS groups. */
+  readonly parentInstanceId?: string;
   readonly attributes?: EncounterAttributes;
   readonly elements: ReadonlyArray<EncounterElement>;
   readonly [extension: string]: unknown;

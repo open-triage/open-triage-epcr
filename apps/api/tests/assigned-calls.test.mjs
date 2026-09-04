@@ -80,6 +80,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     status: "assigned",
     report_id: null,
     synthetic: true,
+    dispatch_receipt_id: null,
     default_form_id: "32000000-0000-4000-8000-000000000007"
   };
   const reports = new Map();
@@ -100,6 +101,11 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
       });
       return [];
     }
+    if (normalized.includes("insert into clinical.group_instance")) return [];
+    if (normalized.includes("from catalog.element_definition")) return [{
+      element_id: "eRecord.01", element_identity_id: "record-identity", base_datatype: "string", analytical_repeatable: false, identifying: false
+    }];
+    if (normalized.includes("insert into clinical.element_occurrence")) return [];
     if (normalized.includes("insert into clinical.patient")) { writes.push("patient"); return []; }
     if (normalized.includes("update clinical.call_assignment")) {
       assignment.status = "opened";
@@ -109,6 +115,12 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     if (normalized.includes("insert into clinical.incident")) { writes.push("replacement-incident"); return []; }
     if (normalized.includes("insert into clinical.call_assignment")) { writes.push("replacement-assignment"); return []; }
     if (normalized.includes("from clinical.report where")) return [reports.get(parameters[0])];
+    if (normalized.includes("join forms.form_version")) return [{
+      id: parameters[0], created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:00:00.000Z",
+      form_id: "form", form_version: 1, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+    }];
+    if (normalized.includes("from clinical.group_instance")) return [];
+    if (normalized.includes("from clinical.element_occurrence")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { transaction: (work) => work(manager) };
@@ -124,6 +136,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.id, retried.report.id);
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
+  assert.equal(opened.report.document.encounter.id, opened.report.id);
   assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
   assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
   assert.equal(retried.replacementAssignment, null);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
-import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls } from "../app/assigned-calls";
+import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall } from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
 
 const call = (id: string, callNumber: string): AssignedCall => ({
@@ -16,6 +16,16 @@ const call = (id: string, callNumber: string): AssignedCall => ({
 
 test("assignment polling uses the agreed ten-second cadence", () => {
   assert.equal(ASSIGNED_CALL_POLL_INTERVAL_MS, 10_000);
+});
+
+test("first-open has no offline fallback and requires the server to create authoritative identities", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
+  try {
+    await assert.rejects(openAssignedCall("token", "assignment"), /connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("refresh identifies only canceled unopened assignments that disappeared", () => {

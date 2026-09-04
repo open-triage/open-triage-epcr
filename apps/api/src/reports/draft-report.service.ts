@@ -25,6 +25,7 @@ import {
   validateCreateDraftReportCommand,
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
+import { encounterDocument } from "./encounter-document.persistence.js";
 
 type ReceiptRow = {
   report_id: string | null;
@@ -559,6 +560,7 @@ export class DraftReportService {
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
     const session = this.sessions.get(accessToken);
     const details = await this.get(accessToken, reportId);
+    const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
     const calls = await this.dataSource.query<Array<{
       call_number: string;
       dispatched_at: Date | string;
@@ -588,8 +590,7 @@ export class DraftReportService {
         catalogReleaseId: String(details.catalogReleaseId),
         revision: Number(details.revision),
         status: "draft",
-        groups: details.groups as ReadonlyArray<Record<string, unknown>>,
-        occurrences: details.occurrences as ReadonlyArray<Record<string, unknown>>
+        document
       }
     };
   }

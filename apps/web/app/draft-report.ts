@@ -19,6 +19,7 @@ export interface ActiveDraftReport {
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
   readonly status?: "draft";
+  readonly document?: EncounterDocument;
 }
 
 export interface DraftGroupMutation {
