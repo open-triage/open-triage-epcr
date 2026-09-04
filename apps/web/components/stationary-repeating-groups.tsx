@@ -15,12 +15,35 @@ import {
   type RepeatingGroupFinding,
 } from "../app/stationary-repeating-group";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
-import { editScalarOccurrence, scalarControlPresentation } from "../app/stationary-scalar";
+import { editScalarOccurrence, editScalarSelection, scalarControlPresentation, type ScalarControlPresentation, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { editStationaryCodedValue, stationaryCodedField } from "../app/stationary-coded-value";
 import type { CompiledStationaryGroup, StationaryElementPlacement } from "../app/stationary-layout";
 import { StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
+import { StationaryNumericPicker } from "./stationary-numeric-picker";
+
+function NumericGroupField({ document, instance, placement, presentation, value, initialFocus, onDocumentChange }: {
+  readonly document: EncounterDocument;
+  readonly instance: EncounterGroupInstance;
+  readonly placement: StationaryElementPlacement;
+  readonly presentation: ScalarControlPresentation;
+  readonly value?: EncounterValue;
+  readonly initialFocus: boolean;
+  readonly onDocumentChange: (document: EncounterDocument) => void;
+}) {
+  const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
+  const catalog = requireNemsisDataElement(placement.id);
+  return <StationaryNumericPicker presentation={presentation} catalog={catalog} value={value} findings={findings} initialFocus={initialFocus} onChange={(selection) => {
+    const result = editScalarSelection(document, {
+      groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,
+      ...(value ? { occurrenceId: value.occurrenceId } : {}), ...(selection ? { selection } : {}),
+    });
+    if (!result.ok) return setFindings(result.findings);
+    setFindings([]);
+    onDocumentChange(result.document);
+  }} />;
+}
 
 function GroupField({ document, instance, placement, initialFocus = false, onDocumentChange }: {
   readonly document: EncounterDocument;
@@ -50,7 +73,10 @@ function GroupField({ document, instance, placement, initialFocus = false, onDoc
   }
   const presentation = scalarControlPresentation(catalogElement, placement.label ?? catalogElement.name, placement.help ?? catalogElement.definition);
   if (presentation.repeatable) return <div data-element-id={placement.id}><StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} /></div>;
-  const value = element?.values.find((candidate) => candidate.kind === "scalar");
+  const value = element?.values[0];
+  if (presentation.family === "numeric" || presentation.family === "integer") return <div data-element-id={placement.id}><NumericGroupField
+    document={document} instance={instance} placement={placement} presentation={presentation} value={value} initialFocus={initialFocus} onDocumentChange={onDocumentChange}
+  /></div>;
   return <div data-element-id={placement.id}><StationaryScalarControl presentation={presentation} value={value?.kind === "scalar" ? value : undefined} initialFocus={initialFocus} onInput={(input) => {
     const result = editScalarOccurrence(document, {
       groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,

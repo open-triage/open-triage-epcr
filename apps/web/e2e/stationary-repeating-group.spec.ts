@@ -100,3 +100,43 @@ test("nested repeating rows remain scoped to their originating parent workflow",
   await reopened.getByRole("button", { name: "Close" }).click();
   await expect(firstEdit).toBeFocused();
 });
+
+test("common numeric pickers edit inline and repeating-dialog values with visible exceptional state", async ({ page }) => {
+  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(demoOpenAssignment),
+  }));
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+
+  const weight = page.locator('[data-element-id="eExam.01"] .stationary-value-picker');
+  await weight.getByLabel("Decimal number").fill("82.5");
+  await expect(weight).toHaveAttribute("data-value-state", "ordinary");
+  await expect(weight.locator(".stationary-value-picker-state strong")).toHaveText("82.5");
+  await weight.getByLabel("Exceptional value").selectOption({ label: "Unable to Complete" });
+  await expect(weight).toHaveAttribute("data-value-state", "exceptional");
+  await expect(weight.locator(".stationary-value-picker-state strong")).toHaveText("Unable to Complete");
+
+  const vitals = page.locator('[data-group-id="eVitals.VitalGroup"]');
+  await vitals.getByRole("button", { name: "Add eVitals.VitalGroup" }).click();
+  const vitalDialog = page.getByRole("dialog", { name: "Add eVitals.VitalGroup" });
+  await vitalDialog.locator('[data-group-id="eVitals.BloodPressureGroup"]').getByRole("button", { name: "Add eVitals.BloodPressureGroup" }).click();
+  const systolic = vitalDialog.locator('[data-element-id="eVitals.06"] .stationary-value-picker');
+  await systolic.getByLabel("Whole number").fill("118");
+  await expect(systolic).toHaveAttribute("data-value-state", "ordinary");
+  const occurrenceId = await systolic.getAttribute("data-occurrence-id");
+  await systolic.getByLabel("Exceptional value").selectOption({ label: "Refused" });
+  await expect(systolic.locator(".stationary-value-picker-state strong")).toHaveText("Refused");
+  expect(await systolic.getAttribute("data-occurrence-id")).toBe(occurrenceId);
+  await vitalDialog.getByRole("button", { name: "Add row", exact: true }).click();
+
+  await vitals.locator("tbody > tr").getByRole("button", { name: "Edit" }).click();
+  const reopened = page.getByRole("dialog", { name: "Edit eVitals.VitalGroup" });
+  const reopenedSystolic = reopened.locator('[data-element-id="eVitals.06"] .stationary-value-picker');
+  await expect(reopenedSystolic.locator(".stationary-value-picker-state strong")).toHaveText("Refused");
+  expect(await reopenedSystolic.getAttribute("data-occurrence-id")).toBe(occurrenceId);
+});

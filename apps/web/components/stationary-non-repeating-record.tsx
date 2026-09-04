@@ -15,6 +15,7 @@ import { scalarOccurrences, type ScalarValidationFinding } from "../app/stationa
 import { stationaryCodedField } from "../app/stationary-coded-value";
 import { StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryDatePicker } from "./stationary-date-picker";
+import { StationaryNumericPicker } from "./stationary-numeric-picker";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 
@@ -58,6 +59,24 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
 }) {
   const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
   if (!field.scalar) return null;
+  const numeric = field.scalar.family === "numeric" || field.scalar.family === "integer";
+  if (numeric && !field.scalar.repeatable) {
+    const value = instance?.elements.find(({ id }) => id === field.id)?.values[0];
+    return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+      <StationaryNumericPicker presentation={field.scalar} catalog={field.catalog} value={value} findings={findings} disabled={disabled} onChange={(selection) => {
+        if (disabled) return;
+        const result = editNonRepeatingScalarSelection(document, {
+          groupId: group.id, elementId: field.id,
+          ...(instance ? { groupInstanceId: instance.instanceId } : {}),
+          ...(parentInstanceId ? { parentInstanceId } : {}),
+          ...(value ? { occurrenceId: value.occurrenceId } : {}),
+        }, selection);
+        if (!result.ok) return setFindings(result.findings);
+        setFindings([]);
+        onDocumentChange(result.document);
+      }} />
+    </div>;
+  }
   if (field.id === "ePatient.17") {
     const value = instance?.elements.find(({ id }) => id === field.id)?.values[0];
     return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
