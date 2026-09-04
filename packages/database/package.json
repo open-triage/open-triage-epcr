@@ -18,7 +18,7 @@
     "scale:test:ci": "node scripts/run-scale-tests.mjs --profile ci --output artifacts/scale-test-ci.json",
     "scale:test:production": "node scripts/run-scale-tests.mjs --profile production --output artifacts/scale-test-production.json",
     "test": "node --test tests/*.test.mjs",
-    "test:integration": "REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
+    "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
   },
   "dependencies": {
     "@open-triage/contracts": "0.1.0",

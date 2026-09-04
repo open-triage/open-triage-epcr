@@ -58,6 +58,8 @@ test("the draft adapter preserves identities rehydrated from PostgreSQL", () => 
 
 test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {
   const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
   let headers: HeadersInit | undefined;
   globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
     headers = init?.headers;
@@ -68,6 +70,8 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
     assert.equal((headers as Record<string, string>)["if-none-match"], '"report-4-dispatch-2"');
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
   }
 });
 

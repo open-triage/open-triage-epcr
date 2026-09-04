@@ -56,6 +56,8 @@ test("refresh identifies only canceled unopened assignments that disappeared", (
 
 test("dispatch conflict dispositions are posted to the report server", async () => {
   const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
   let request: { url: string; init?: RequestInit } | undefined;
   globalThis.fetch = async (url, init) => {
     request = { url: String(url), init };
@@ -71,6 +73,8 @@ test("dispatch conflict dispositions are posted to the report server", async () 
     assert.equal(JSON.parse(String(request?.init?.body)).disposition, "acknowledge");
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
   }
 });
 
