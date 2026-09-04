@@ -126,8 +126,9 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-value-picker legend small { margin-left: 5px; color: var(--muted); font-weight: 600; }
 .stationary-value-picker > small { color: var(--muted); font-weight: 500; line-height: 1.35; }
 .stationary-value-picker-editor label, .stationary-value-picker-exceptional { display: grid; gap: 7px; color: #454944; font-size: 13px; font-weight: 700; }
-.stationary-value-picker input, .stationary-value-picker select { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
-.stationary-value-picker input[aria-invalid="true"] { border-color: #b13b32; }
+.stationary-value-picker input, .stationary-value-picker select, .stationary-value-picker textarea { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
+.stationary-value-picker textarea { min-height: 130px; padding-block: 12px; resize: vertical; }
+.stationary-value-picker :is(input, textarea)[aria-invalid="true"] { border-color: #b13b32; }
 .stationary-value-picker-state { display: grid; gap: 2px; min-height: 48px; align-content: center; padding: 7px 10px; border-left: 3px solid #aeb5ad; border-radius: 4px; color: #454944; background: #f5f7f5; }
 .stationary-value-picker-state span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
 .stationary-value-picker-state strong { overflow-wrap: anywhere; font-size: 14px; }

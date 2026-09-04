@@ -21,9 +21,13 @@ test("stationary repeating rows retain focus, identity, and narrow-layout access
   await expect(add).toBeEnabled();
   await add.click();
   const dialog = page.getByRole("dialog", { name: "Add eScene.ResponderGroup" });
+  const agencyPicker = dialog.locator('[data-element-id="eScene.02"] .stationary-value-picker');
+  await expect(agencyPicker).toBeVisible();
+  await expect(agencyPicker).toHaveAttribute("data-value-state", "unset");
   const agency = dialog.getByLabel(/Other EMS or Public Safety Agencies at Scene/);
   await expect(agency).toBeFocused();
   await agency.fill("Mutual Aid 7");
+  await expect(agencyPicker).toHaveAttribute("data-value-state", "ordinary");
   await dialog.getByRole("button", { name: "Add row" }).click();
 
   const row = responder.locator("tbody tr");

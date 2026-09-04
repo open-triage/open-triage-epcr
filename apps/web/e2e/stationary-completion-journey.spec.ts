@@ -34,9 +34,20 @@ test("mobile capture reconciles into a complete stationary record that alone can
   const presentation = page.getByRole("group", { name: "Documentation presentation" });
   await presentation.getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Reopen call" }).click();
-  await expect(page.getByText("Captured on the mobile presentation", { exact: true })).toBeVisible();
+  await expect(page.locator(".event-detail").getByText("Captured on the mobile presentation", { exact: true })).toBeVisible();
 
+  const firstName = page.locator('[data-element-id="ePatient.03"] .stationary-value-picker');
+  await expect(firstName).toHaveAttribute("data-value-state", "ordinary");
+  await firstName.getByLabel("Exceptional value").selectOption({ label: "Refused" });
+  await expect(firstName.locator(".stationary-value-picker-state strong")).toHaveText("Refused");
   await page.getByLabel(/^First Name ePatient\.03/).fill("STATIONARY");
+  await expect(firstName).toHaveAttribute("data-value-state", "ordinary");
+  const narrative = page.locator('[data-element-id="eNarrative.01"] .stationary-value-picker');
+  await expect(narrative.locator("textarea")).toBeVisible();
+  await narrative.getByLabel("Exceptional value").selectOption({ label: "Not Recorded" });
+  await expect(narrative).toHaveAttribute("data-value-state", "exceptional");
+  await narrative.locator("textarea").fill("Stationary narrative text");
+  await expect(narrative).toHaveAttribute("data-value-state", "ordinary");
   const sex = page.locator('[data-element-id="ePatient.25"]').first();
   await sex.locator("select").nth(0).selectOption({ index: 1 });
   await sex.locator("select").nth(1).selectOption({ label: "Not Reporting" });
@@ -50,6 +61,7 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await page.getByLabel(/^Last Name ePatient\.02/).fill("OFFLINE");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 4_000 });
   await page.getByRole("button", { name: "Review & sign" }).click();
+  await expect(page.locator(".review-findings").getByText("eNarrative.01", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
   await expect(page.getByText("Signing is unavailable while offline. Reconnect and finish synchronization.")).toBeVisible();
   await context.setOffline(false);

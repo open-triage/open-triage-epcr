@@ -211,7 +211,7 @@ function replaceElementValues(document: EncounterDocument, groupId: string, grou
 }
 
 export function scalarOccurrences(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string): ReadonlyArray<ScalarEncounterValue> {
-  return elementValues(document, groupId, groupInstanceId, elementId)
+  return scalarSelectionOccurrences(document, groupId, groupInstanceId, elementId)
     .filter((value): value is ScalarEncounterValue => value.kind === "scalar");
 }
 
@@ -225,6 +225,8 @@ function elementValues(document: EncounterDocument, groupId: string, groupInstan
     .find((instance) => instance.instanceId === groupInstanceId)?.elements
     .find((element) => element.id === elementId)?.values ?? [];
 }
+
+export const scalarElementValues = scalarSelectionOccurrences;
 
 export function editScalarOccurrence(document: EncounterDocument, options: {
   readonly groupId: string; readonly groupInstanceId: string; readonly elementId: string;
@@ -276,7 +278,7 @@ export function editScalarSelection(document: EncounterDocument, options: {
   const existing = elementValues(document, options.groupId, options.groupInstanceId, options.elementId);
   const index = options.occurrenceId
     ? existing.findIndex(({ occurrenceId }) => occurrenceId === options.occurrenceId)
-    : existing.length ? 0 : -1;
+    : element.occurrence.max === 1 && existing.length ? 0 : -1;
   const previous = index >= 0 ? existing[index] : undefined;
   const occurrenceId = previous?.occurrenceId ?? options.occurrenceId ?? createId();
   if (!options.selection) {
