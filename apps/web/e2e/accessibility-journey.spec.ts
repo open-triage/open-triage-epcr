@@ -95,11 +95,8 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
   await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
   await expectNoBlockingAccessibilityViolations(page);
-  await page.getByRole("button", { name: "Review & sign" }).click();
-  await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
-  await page.getByLabel("I reviewed and acknowledge this warning").check();
-  await expect(page.getByRole("button", { name: "Sign record" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Review & sign" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign record" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
   await page.getByRole("button", { name: /Timeline/ }).click();
   const addNote = page.getByRole("button", { name: "Add clinical note" });
@@ -160,6 +157,7 @@ test("all four documentation dialogs share a slightly portrait, near-square size
 });
 
 test("review and sign actions stay at the viewport bottom and turn green when validation is clear", async ({ page }) => {
+  await page.getByRole("button", { name: "Stationary" }).click();
   await openCall(page);
   await page.getByRole("button", { name: "Add vital signs" }).click();
   const dialog = page.getByRole("dialog", { name: "Vital signs" });
