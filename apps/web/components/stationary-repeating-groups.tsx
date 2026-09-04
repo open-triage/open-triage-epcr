@@ -180,7 +180,7 @@ function NestedGroupContents({ document, placement, parentInstanceId, onDocument
   </div>;
 }
 
-function RepeatingGroupTable({ document, placement, parentInstanceId, onDocumentChange }: {
+export function RepeatingGroupTable({ document, placement, parentInstanceId, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly placement: CompiledStationaryGroup;
   readonly parentInstanceId?: string;
@@ -230,10 +230,12 @@ function RepeatingGroupTable({ document, placement, parentInstanceId, onDocument
 }
 
 /** Renders every catalogue-configured repeating group through canonical instance identities. */
-export function StationaryRepeatingGroups({ document, onDocumentChange }: {
+export function StationaryRepeatingGroups({ document, groups: configuredGroups, onDocumentChange }: {
   readonly document: EncounterDocument;
+  readonly groups?: ReadonlyArray<CompiledStationaryGroup>;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const groups = useMemo(() => configuredRepeatingGroupRoots(), []);
+  const defaultGroups = useMemo(() => configuredRepeatingGroupRoots(), []);
+  const groups = configuredGroups ?? defaultGroups;
   return <div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} onDocumentChange={onDocumentChange} />)}</div>;
 }

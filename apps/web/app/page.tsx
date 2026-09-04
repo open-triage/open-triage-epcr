@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
-import { StationaryRepeatingGroups } from "../components/stationary-repeating-groups";
-import { StationaryNonRepeatingRecord } from "../components/stationary-non-repeating-record";
+import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
@@ -301,16 +300,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       )}
 
       {presentationMode === "stationary" && shell.view === "timeline" && (
-        <>
-        <StationaryNonRepeatingRecord
+        <StationaryRecord
           document={encounter.document}
+          findings={reviewFindings}
           onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
         />
-        <StationaryRepeatingGroups
-          document={encounter.document}
-          onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
-        />
-        </>
       )}
 
       {shell.view === "timeline" && (
