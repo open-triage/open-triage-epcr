@@ -1,18 +1,23 @@
 {
   "assignedCalls": [
     {
-      "id": "32000000-0000-4000-8000-000000000011",
-      "callNumber": "SYN-20260903-001",
+      "id": "cd99f745-e09c-48db-a314-29ef2f8a514d",
+      "callNumber": "SYNTHETIC-INCIDENT-0001",
       "unit": {
-        "id": "32000000-0000-4000-8000-000000000010",
-        "callSign": "Medic 32"
+        "id": "fa6b3570-882c-4c59-ba63-bae62de5830e",
+        "callSign": "SYNTHETIC-MEDIC-7"
       },
-      "dispatchedAt": "2026-09-03T12:00:00.000Z",
-      "dispatchReason": "Medical assistance requested",
+      "dispatchedAt": "2026-08-15T09:14:00-04:00",
+      "dispatchReason": "Chest Pain (Non-Traumatic)",
       "chiefComplaint": null,
+      "agencyTimeZone": "America/New_York",
       "status": "assigned"
     }
   ],
   "canceledAssignmentIds": [],
-  "refreshedAt": "2026-09-03T12:00:00.000Z"
+  "refreshedAt": "2026-08-15T09:14:05-04:00",
+  "generatedFrom": {
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
+    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+  }
 }

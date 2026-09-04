@@ -1,5 +1,9 @@
 {
   "openCalls": [],
   "completedReportIds": [],
-  "refreshedAt": "2026-09-03T12:00:00.000Z"
+  "refreshedAt": "2026-08-15T09:14:05-04:00",
+  "generatedFrom": {
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
+    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+  }
 }

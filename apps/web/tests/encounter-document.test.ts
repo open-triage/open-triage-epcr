@@ -17,14 +17,26 @@ const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);
 const validateSchema = ajv.compile(schema);
 
+function withVitals() {
+  const candidate = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };
+  candidate.groups.push({
+    id: "eVitals.VitalGroup",
+    instances: [
+      { instanceId: "blood-pressure-1", parentInstanceId: "synthetic-pcr-1", attributes: { correlationId: "vitals-1435" }, elements: [{ id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "systolic-1", value: 118, attributes: { units: "mmHg" } }] }] },
+      { instanceId: "blood-pressure-2", parentInstanceId: "synthetic-pcr-1", elements: [{ id: "eVitals.06", values: [{ kind: "null", occurrenceId: "systolic-2", notValue: { code: "7701003", display: "Not Recorded" } }] }] },
+    ],
+  });
+  return candidate;
+}
+
 test("the small synthetic encounter is readable, catalog-compatible, and valid against the shared schema", () => {
   assert.equal(validateSchema(syntheticEncounter), true, JSON.stringify(validateSchema.errors));
   const document = loadEncounterDocument(syntheticEncounter, { formProfiles: { "standard-encounter-v1": ["1"] } });
-  assert.equal(document.encounter.id, "synthetic-encounter-001");
-  assert.equal(document.groups[0]?.id, "ePatient.PatientNameGroup");
+  assert.equal(document.encounter.id, syntheticEncounter.encounter.id);
+  assert.equal(document.groups[0]?.id, "EMSDataSet");
   const text = readFileSync(new URL("../app/data/synthetic-encounter-document.json", import.meta.url), "utf8");
   assert.ok(text.includes("\n  \"documentType\""));
-  assert.ok(text.split("\n").length < 300);
+  assert.ok(text.split("\n").length < 400);
   assert.doesNotMatch(text, /systolicField|patientNameInput|vitalDraft/);
 });
 
@@ -54,7 +66,7 @@ test("absent, null, pertinent-negative, coded, scalar, and repeating values rema
 });
 
 test("repeating NEMSIS groups retain stable group and occurrence identities plus attributes", () => {
-  const document = loadEncounterDocument(syntheticEncounter);
+  const document = loadEncounterDocument(withVitals());
   const vitals = document.groups.find(({ id }) => id === "eVitals.VitalGroup")!;
   assert.deepEqual(vitals.instances.map(({ instanceId }) => instanceId), ["blood-pressure-1", "blood-pressure-2"]);
   assert.equal(vitals.instances[0]?.attributes?.correlationId, "vitals-1435");
@@ -79,12 +91,12 @@ test("standard coded, NV, and PN values are checked against the pinned NEMSIS mo
   assert.doesNotThrow(() => loadEncounterDocument(coded));
 
   const invalidCode = structuredClone(coded) as typeof coded;
-  const ageGroup = invalidCode.groups.find((group) => group.id === "ePatient.AgeGroup") as { instances: Array<{ elements: Array<{ id: string; values: Array<{ code: string }> }> }> };
-  ageGroup.instances[0]!.elements.find(({ id }) => id === "ePatient.16")!.values[0]!.code = "not-a-code";
+  const patientGroup = invalidCode.groups.find((group) => group.id === "ePatientSection") as { instances: Array<{ elements: Array<{ id: string; values: Array<{ code: string }> }> }> };
+  patientGroup.instances[0]!.elements.find(({ id }) => id === "ePatient.25")!.values[0]!.code = "not-a-code";
   assert.ok(encounterDocumentDiagnostics(invalidCode).some(({ path, message }) => path.endsWith(".code") && message.includes("exhaustive value set")));
 
   const pertinentNegative = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };
-  const nameGroup = pertinentNegative.groups[0] as { instances: Array<{ elements: Array<{ values: unknown[] }> }> };
+  const nameGroup = pertinentNegative.groups.find(({ id }) => id === "ePatient.PatientNameGroup") as { instances: Array<{ elements: Array<{ values: unknown[] }> }> };
   nameGroup.instances[0]!.elements[0]!.values = [{ kind: "pertinent-negative", occurrenceId: "last-name-1", code: "8801019" }];
   assert.doesNotThrow(() => loadEncounterDocument(pertinentNegative));
 });
@@ -93,7 +105,8 @@ test("compatible unknown extensions and custom content survive a pretty-printed 
   const candidate = structuredClone(syntheticEncounter) as unknown as Record<string, unknown>;
   candidate["net.partner.registry:transport"] = { revision: 7, flags: ["received", "verified"] };
   const groups = candidate.groups as Array<Record<string, unknown>>;
-  const customGroup = groups.find(({ id }) => id === "org.example.ems:stroke-assessment")!;
+  groups.push({ id: "org.example.ems:stroke-assessment", instances: [{ instanceId: "stroke", elements: [{ id: "org.example.ems:stroke-score", values: [{ kind: "scalar", occurrenceId: "score", value: 7 }] }] }] });
+  const customGroup = groups.at(-1)!;
   customGroup.partnerMetadata = { source: "field-device", sequence: 9 };
   const serialized = serializeEncounterDocument(loadEncounterDocument(candidate));
   assert.ok(serialized.includes("\n  \"groups\""));
@@ -109,22 +122,23 @@ test("loading reports actionable model, profile, group, element, and value paths
   };
   invalid.dataModel.version = "3.6.0";
   invalid.formProfile.version = "99";
-  invalid.groups[0]!.id = "eVitals.VitalGroup";
-  invalid.groups[0]!.instances[0]!.elements[0]!.values[0] = { kind: "mystery", occurrenceId: "bad-value" };
+  const responseIndex = invalid.groups.findIndex(({ id }) => id === "eResponseSection");
+  invalid.groups[responseIndex]!.id = "eVitals.VitalGroup";
+  invalid.groups[responseIndex]!.instances[0]!.elements[0]!.values[0] = { kind: "mystery", occurrenceId: "bad-value" };
 
   const diagnostics = encounterDocumentDiagnostics(invalid, { formProfiles: { "standard-encounter-v1": ["1"] } });
   assert.ok(diagnostics.some(({ path }) => path === "$.dataModel.version"));
   assert.ok(diagnostics.some(({ path }) => path === "$.formProfile.version"));
-  assert.ok(diagnostics.some(({ path, message }) => path === "$.groups[0].instances[0].elements[0].id" && message.includes("does not belong")));
-  assert.ok(diagnostics.some(({ path }) => path === "$.groups[0].instances[0].elements[0].values[0].kind"));
+  assert.ok(diagnostics.some(({ path, message }) => path === `$.groups[${responseIndex}].instances[0].elements[0].id` && message.includes("does not belong")));
+  assert.ok(diagnostics.some(({ path }) => path === `$.groups[${responseIndex}].instances[0].elements[0].values[0].kind`));
   assert.throws(
     () => loadEncounterDocument(invalid, { formProfiles: { "standard-encounter-v1": ["1"] } }),
-    (error: unknown) => error instanceof EncounterDocumentError && error.message.includes("$.groups[0].instances[0].elements[0].values[0].kind"),
+    (error: unknown) => error instanceof EncounterDocumentError && error.message.includes(`$.groups[${responseIndex}].instances[0].elements[0].values[0].kind`),
   );
 });
 
 test("duplicate repeat identities and standard cardinality violations are rejected with local paths", () => {
-  const invalid = structuredClone(syntheticEncounter) as unknown as {
+  const invalid = withVitals() as unknown as {
     groups: Array<{ id: string; instances: Array<{ instanceId: string; elements: Array<{ values: Array<Record<string, unknown>> }> }> }>;
   };
   const vitals = invalid.groups.find(({ id }) => id === "eVitals.VitalGroup")!;

@@ -22,8 +22,11 @@ third-party terms, as noted by the repository licensing policy.
 
 The shared `@open-triage/contracts` package owns
 `encounter-document.schema-1.0.0.json` and its matching TypeScript contract.
-`synthetic-encounter-document.json` is a small, pretty-printed example that
-validates against that schema and the pinned NEMSIS 3.5.1 catalog.
+`synthetic-encounter-document.json` and the public `demo-*.json` resources are
+generated from the committed initial dispatch sample by
+`scripts/generate-demo-fixtures.ts`. The generator runs the production dispatch
+validator and projector; `npm run check:demo-fixtures` rejects stale or manually
+duplicated artifacts.
 
 Documents identify their own model version, NEMSIS data-model version, form
 profile version, and encounter metadata. Patient data is grouped only by stable

@@ -1,12 +1,13 @@
 import type { ClinicianSession, CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 
 export const DEMO_CLINICIAN_USERNAME = "demo.clinician";
 export const DEMO_CLINICIAN_PASSWORD = "open-triage-demo";
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 
 const localDemoIdentity = {
-  user: { id: "32000000-0000-4000-8000-000000000003", displayName: "Synthetic Clinician" },
-  organization: { id: "32000000-0000-4000-8000-000000000001", name: "OpenTriage Synthetic EMS" }
+  user: { id: DEMO_CLINICIAN_ID, displayName: "Synthetic Clinician" },
+  organization: { id: DEMO_ORGANIZATION_ID, name: "OpenTriage Synthetic EMS" }
 } as const;
 
 export function sessionIsActive(session: ClinicianSession, now = new Date()): boolean {

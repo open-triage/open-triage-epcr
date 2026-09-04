@@ -4,14 +4,16 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
-    "predev": "tsx scripts/build-service-worker.ts",
+    "predev": "tsx scripts/generate-demo-fixtures.ts && tsx scripts/build-service-worker.ts",
     "dev": "next dev",
-    "prebuild": "tsx scripts/build-service-worker.ts",
+    "prebuild": "tsx scripts/generate-demo-fixtures.ts --check && tsx scripts/build-service-worker.ts",
     "build": "next build",
     "serve:static": "node scripts/serve-static.mjs",
     "start": "next start",
     "lint": "eslint .",
     "test": "node --import tsx --test tests/*.test.ts",
+    "generate:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts",
+    "check:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts --check",
     "test:a11y": "playwright test --config ../../playwright.config.ts",
     "test:deployment": "playwright test --config ../../playwright.static.config.ts",
     "typecheck": "tsc --noEmit"
