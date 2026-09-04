@@ -616,13 +616,24 @@ create table clinical.call_assignment (
   dispatched_at timestamptz not null,
   dispatch_reason text,
   chief_complaint text,
+  dispatch_source_id text check (length(btrim(dispatch_source_id)) between 1 and 200),
+  dispatch_source_record_id text check (length(btrim(dispatch_source_record_id)) between 1 and 200),
+  dispatch_revision bigint check (dispatch_revision > 0),
+  response_number text,
+  vehicle_number text,
+  dispatch_receipt_id uuid,
   status text not null default 'assigned' check (status in ('assigned', 'opened', 'canceled')),
   report_id uuid,
   synthetic boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (organization_id, call_number),
-  check (dispatch_reason is not null or chief_complaint is not null),
+  check (
+    synthetic or
+    (dispatch_source_id is not null and dispatch_source_record_id is not null and
+     dispatch_revision is not null and response_number is not null and
+     vehicle_number is not null and dispatch_receipt_id is not null)
+  ),
+  unique (organization_id, dispatch_source_id, dispatch_source_record_id),
   check ((status = 'opened' and report_id is not null) or (status <> 'opened' and report_id is null)),
   foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
   foreign key (organization_id, incident_id) references clinical.incident(organization_id, id),
@@ -1195,7 +1206,8 @@ create table clinical.dispatch_receipt (
   check ((source_payload->>'revision')::bigint = source_revision),
   check (not (source_payload ?| array['organizationId', 'organization_id', 'sourceId', 'source_id'])),
   unique (organization_id, source_id, message_id),
-  unique (organization_id, source_id, source_record_id, source_revision)
+  unique (organization_id, source_id, source_record_id, source_revision),
+  unique (organization_id, id)
 );
 
 create index dispatch_receipt_source_history_idx
@@ -1208,6 +1220,11 @@ for each row execute function public.prevent_update_or_delete();
 
 comment on table clinical.dispatch_receipt is
   'Append-only dispatch delivery evidence under clinical-data controls. Source payload bytes must never be copied to ordinary logs.';
+
+alter table clinical.call_assignment
+  add constraint call_assignment_dispatch_receipt_fk
+  foreign key (organization_id, dispatch_receipt_id)
+  references clinical.dispatch_receipt(organization_id, id);
 
 create table integration.outbox_event (
   id uuid primary key default gen_random_uuid(),

@@ -10,6 +10,7 @@ import { NestFactory } from "@nestjs/core";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
+import { routeDispatchAssignment } from "../dist/dispatch/dispatch-assignment.projection.js";
 import {
   DEMO_CLINICIAN_PASSWORD,
   DEMO_CLINICIAN_USERNAME,
@@ -43,6 +44,105 @@ async function ensureFoundation(client) {
     });
   }
 }
+
+integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  await ensureFoundation(client);
+  await client.query("begin");
+  t.after(async () => {
+    try { await client.query("rollback"); } finally { await client.end(); }
+  });
+
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const formId = randomUUID();
+  const unitId = randomUUID();
+  const otherUnitId = randomUUID();
+  const [source, cancellationSource] = await Promise.all([
+    readFile(path.join(repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8").then(JSON.parse),
+    readFile(path.join(repoRoot, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8").then(JSON.parse)
+  ]);
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Dispatch routing', 'UTC')", [organizationId]);
+  await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Dispatcher')", [userId, organizationId]);
+  await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, $3, 'Dispatch form')",
+    [formId, organizationId, `dispatch-${organizationId}`]);
+  await client.query(`insert into app_identity.operational_unit
+    (id, organization_id, call_sign, name, default_form_id)
+    values ($1, $2, 'SYNTHETIC-MEDIC-7', 'Medic 7', $3),
+           ($4, $2, 'SYNTHETIC-MEDIC-8', 'Medic 8', $3)`,
+  [unitId, organizationId, formId, otherUnitId]);
+
+  const route = (canonical) => routeDispatchAssignment(client, {
+    organizationId,
+    sourceId: "vendor-a",
+    sourceBytes: Buffer.from(JSON.stringify(canonical)),
+    canonical,
+    validationStatus: "applied",
+    findings: []
+  });
+  const routed = await route(source);
+  const assignment = (await client.query(`
+    select ca.unit_id, ca.dispatch_source_record_id, ca.response_number, ca.vehicle_number,
+           ca.dispatch_revision, dr.status as receipt_status, ou.call_sign
+    from clinical.call_assignment ca
+    join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
+    join app_identity.operational_unit ou on ou.id = ca.unit_id
+    where ca.id = $1
+  `, [routed.assignmentId])).rows[0];
+  assert.deepEqual(assignment, {
+    unit_id: unitId,
+    dispatch_source_record_id: source.sourceRecordId,
+    response_number: "SYNTHETIC-RESPONSE-0001",
+    vehicle_number: "SYNTHETIC-VEHICLE-7",
+    dispatch_revision: "1",
+    receipt_status: "applied",
+    call_sign: "SYNTHETIC-MEDIC-7"
+  });
+
+  const unknown = structuredClone(source);
+  unknown.messageId = randomUUID();
+  unknown.sourceRecordId = "SYNTHETIC-UNKNOWN-RESPONSE";
+  const callSign = unknown.groups.flatMap((group) => group.instances)
+    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.14");
+  callSign.values[0].value = "SYNTHETIC-UNKNOWN-UNIT";
+  const quarantined = await route(unknown);
+  assert.equal(quarantined.status, "quarantined");
+  assert.equal((await client.query("select count(*)::integer as count from clinical.call_assignment where dispatch_source_record_id = $1",
+    [unknown.sourceRecordId])).rows[0].count, 0);
+  assert.equal((await client.query("select status from clinical.dispatch_receipt where id = $1",
+    [quarantined.receipt.id])).rows[0].status, "quarantined");
+
+  const invalidReassignment = structuredClone(source);
+  invalidReassignment.messageId = randomUUID();
+  invalidReassignment.revision = 2;
+  invalidReassignment.groups.flatMap((group) => group.instances)
+    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.14").values[0].value = "SYNTHETIC-MEDIC-8";
+  await assert.rejects(route(invalidReassignment), /cancellation and a new sourceRecordId/);
+
+  const cancellation = structuredClone(cancellationSource);
+  cancellation.messageId = randomUUID();
+  cancellation.revision = 2;
+  await route(cancellation);
+  const reassigned = structuredClone(source);
+  reassigned.messageId = randomUUID();
+  reassigned.sourceRecordId = "SYNTHETIC-SOURCE-RECORD-0002";
+  reassigned.groups.flatMap((group) => group.instances)
+    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.04").values[0].value = "SYNTHETIC-RESPONSE-0002";
+  reassigned.groups.flatMap((group) => group.instances)
+    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.14").values[0].value = "SYNTHETIC-MEDIC-8";
+  await route(reassigned);
+  const responseHistory = await client.query(`
+    select status, incident_id, response_number, unit_id
+    from clinical.call_assignment where call_number = 'SYNTHETIC-INCIDENT-0001'
+    order by response_number
+  `);
+  assert.equal(responseHistory.rows.length, 2);
+  assert.equal(responseHistory.rows[0].status, "canceled");
+  assert.equal(responseHistory.rows[1].status, "assigned");
+  assert.equal(responseHistory.rows[0].incident_id, responseHistory.rows[1].incident_id);
+  assert.equal(responseHistory.rows[1].unit_id, otherUnitId);
+});
 
 async function seedDraft(client, organizationId, userId, definition) {
   const formId = randomUUID();
