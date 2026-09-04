@@ -4,7 +4,7 @@ web:
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
-  host: demo.example.com
+  host: demo.opentriage.org
   resources:
     requests: { cpu: 25m, memory: 32Mi }
     limits: { cpu: 250m, memory: 128Mi }
@@ -15,7 +15,7 @@ api:
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
-  host: api.example.com
+  host: api.opentriage.org
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
