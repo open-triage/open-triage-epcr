@@ -64,6 +64,7 @@ type OpenCallRow = {
   dispatch_reason: string | null;
   chief_complaint: string | null;
   unit_call_sign: string;
+  agency_time_zone: string;
   last_saved_at: Date | string;
   revision: string | number;
   form_version_id: string;
@@ -542,6 +543,7 @@ export class DraftReportService {
     const rows = await this.dataSource.query<OpenCallRow[]>(`
       select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
              ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
+             organization.deployment_timezone as agency_time_zone,
              r.updated_at as last_saved_at,
              r.revision, r.form_version_id, r.catalog_release_id,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
@@ -550,9 +552,10 @@ export class DraftReportService {
       join clinical.call_assignment ca
         on ca.organization_id = r.organization_id and ca.report_id = r.id
       join app_identity.operational_unit ou on ou.id = ca.unit_id
+      join app_identity.organization organization on organization.id = r.organization_id
       left join clinical.validation_finding vf on vf.report_id = r.id
       where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
-      group by r.id, ca.id, ou.call_sign
+      group by r.id, ca.id, ou.call_sign, organization.deployment_timezone
       order by r.updated_at desc, r.id
     `, [session.organization.id, session.user.id]);
     return {
@@ -563,6 +566,7 @@ export class DraftReportService {
         dispatchReason: row.dispatch_reason,
         chiefComplaint: row.chief_complaint,
         unitCallSign: row.unit_call_sign,
+        ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
         lastSavedAt: new Date(row.last_saved_at).toISOString(),
         syncStatus: "saved",
         validationErrorCount: Number(row.validation_error_count),
@@ -586,16 +590,19 @@ export class DraftReportService {
       dispatch_reason: string | null;
       chief_complaint: string | null;
       unit_call_sign: string;
+      agency_time_zone: string;
       dispatch_canceled_at: Date | string | null;
       dispatch_cancellation_revision: string | number | null;
       dispatch_cancellation_receipt_id: string | null;
     }>>(`
       select ca.call_number, ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint,
-             ou.call_sign as unit_call_sign, r.dispatch_canceled_at,
+             ou.call_sign as unit_call_sign, organization.deployment_timezone as agency_time_zone,
+             r.dispatch_canceled_at,
              r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
       from clinical.call_assignment ca
       join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
       join app_identity.operational_unit ou on ou.id = ca.unit_id
+      join app_identity.organization organization on organization.id = r.organization_id
       where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
         and r.status = 'draft'
     `, [reportId, session.organization.id, session.user.id]);
@@ -614,6 +621,7 @@ export class DraftReportService {
         revision: Number(details.revision),
         status: "draft",
         document,
+        ...(calls[0].agency_time_zone ? { agencyTimeZone: calls[0].agency_time_zone } : {}),
         dispatchConflicts: conflicts,
         ...(calls[0].dispatch_canceled_at && calls[0].dispatch_cancellation_revision && calls[0].dispatch_cancellation_receipt_id ? {
           dispatchCancellation: {

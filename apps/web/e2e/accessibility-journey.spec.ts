@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import syntheticEncounterDocument from "../app/data/synthetic-encounter-document.json";
 
 const assignmentId = "32000000-0000-4000-8000-000000000011";
 const reportId = "42000000-0000-4000-8000-000000000013";
@@ -41,6 +42,7 @@ test.beforeEach(async ({ page }) => {
         catalogReleaseId: "42000000-0000-4000-8000-000000000014",
         revision: 0,
         status: "draft",
+        document: syntheticEncounterDocument,
       },
       replacementAssignment: null,
     }),
@@ -77,14 +79,19 @@ test("the browser hides clinical content at the fixed session deadline", async (
 
 test("the opened call's incident header and dispatch event render in the phone flow", async ({ page }) => {
   await openCall(page);
-  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260903-001");
-  await expect(page.locator(".encounter-header")).toContainText("Medical assistance requested");
-  await expect(page.locator(".encounter-header")).not.toContainText("SYN-20260418-113 · 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260418-113");
+  await expect(page.locator(".encounter-header")).toContainText("Response 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Unit AN");
+  await expect(page.locator(".encounter-header")).toContainText("100 Example Avenue (fictional), Suite 3");
+  await expect(page.locator(".encounter-header")).not.toContainText("Medical assistance requested");
   await expect(page.locator(".encounter-header")).not.toContainText("Rivera, Jordan");
+  await expect(page.getByText("Rivera", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Jordan", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add patient information" })).toHaveCount(0);
   await expect(page.locator(".timeline-list").getByText("Unit Notified by Dispatch", { exact: true })).toBeVisible();
   await expect(page.locator(".timeline-list").getByText("eTimes.03", { exact: true })).toBeVisible();
-  await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".timeline-list").getByText("Unit Arrived on Scene", { exact: true })).toBeVisible();
+  await expect(page.locator(".timeline-list").getByText("Unit En Route", { exact: true })).toBeVisible();
 });
 
 test("quick capture phone journey remains operable and persists", async ({ page }) => {

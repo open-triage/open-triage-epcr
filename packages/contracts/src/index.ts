@@ -68,6 +68,8 @@ export interface AssignedCall {
   dispatchedAt: string;
   dispatchReason: string | null;
   chiefComplaint: string | null;
+  /** IANA zone used for operational-time presentation. */
+  agencyTimeZone?: string;
   status: AssignmentStatus;
 }
 
@@ -88,6 +90,8 @@ export interface OpenAssignmentResponse {
     status: "draft";
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
+    /** IANA zone used for operational-time presentation. */
+    agencyTimeZone?: string;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
     dispatchCancellation?: DispatchCancellation | null;
   };
@@ -129,6 +133,7 @@ export interface OpenCall {
   dispatchReason?: string | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
+  agencyTimeZone?: string;
   lastSavedAt: string;
   syncStatus: OpenCallSyncStatus;
   validationErrorCount: number;
