@@ -14,10 +14,11 @@ function currentExceptionalKey(value: EncounterValue | undefined): string {
   return value?.kind === "pertinent-negative" ? `pertinent-negative:${value.code}` : "";
 }
 
-function TerminologySearch({ id, field, coded, onChange }: {
+function TerminologySearch({ id, field, coded, disabled, onChange }: {
   readonly id: string;
   readonly field: StationaryCodedField;
   readonly coded?: Extract<EncounterValue, { kind: "coded" }>;
+  readonly disabled: boolean;
   readonly onChange: (selection: StationaryCodedSelection | undefined) => void;
 }) {
   const [code, setCode] = useState(coded?.code ?? "");
@@ -42,7 +43,7 @@ function TerminologySearch({ id, field, coded, onChange }: {
     <div className="stationary-terminology-search" role="group" aria-label={`${field.label} terminology search`}>
       <label>
         <span>Search or enter code</span>
-        <input type="search" list={`${id}-options`} value={code} aria-autocomplete="list" onChange={(event) => selectOption(event.target.value)} />
+        <input type="search" list={`${id}-options`} value={code} aria-autocomplete="list" disabled={disabled} onChange={(event) => selectOption(event.target.value)} />
         <datalist id={`${id}-options`}>
           {field.options.map((option) => <option key={`${option.system ?? ""}:${option.code}`} value={option.code}>{option.label}</option>)}
         </datalist>
@@ -50,25 +51,26 @@ function TerminologySearch({ id, field, coded, onChange }: {
       {field.controlKind === "external-search" && (
         <label>
           <span>Code system</span>
-          <select value={system} onChange={(event) => setSystem(event.target.value)} required>
+          <select value={system} disabled={disabled} onChange={(event) => setSystem(event.target.value)} required>
             {field.systems.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
           </select>
         </label>
       )}
       <label>
         <span>Display</span>
-        <input type="text" value={display} onChange={(event) => setDisplay(event.target.value)} />
+        <input type="text" value={display} disabled={disabled} onChange={(event) => setDisplay(event.target.value)} />
       </label>
-      <button type="button" onClick={commit}>Apply coded value</button>
+      <button type="button" disabled={disabled} onClick={commit}>Apply coded value</button>
       {field.options.length > 0 && <small>Suggestions are not exhaustive; another valid terminology code may be entered.</small>}
     </div>
   );
 }
 
 /** Accessible catalog-driven editor shared by inline, bundled, and external coded fields. */
-export function StationaryCodedValueField({ field, value, onChange }: {
+export function StationaryCodedValueField({ field, value, disabled = false, onChange }: {
   readonly field: StationaryCodedField;
   readonly value?: EncounterValue;
+  readonly disabled?: boolean;
   readonly onChange: (selection: StationaryCodedSelection | undefined) => void;
 }) {
   const id = useId();
@@ -81,7 +83,7 @@ export function StationaryCodedValueField({ field, value, onChange }: {
       {field.controlKind === "select" ? (
         <label>
           <span>Value</span>
-          <select value={coded?.code ?? ""} onChange={(event) => {
+          <select value={coded?.code ?? ""} disabled={disabled} onChange={(event) => {
             const option = field.options.find(({ code }) => code === event.target.value);
             onChange(option ? codedSelectionFromOption(option) : undefined);
           }}>
@@ -90,13 +92,14 @@ export function StationaryCodedValueField({ field, value, onChange }: {
           </select>
         </label>
       ) : (
-        <TerminologySearch key={`${coded?.code ?? ""}:${coded?.system ?? ""}:${coded?.display ?? ""}`} id={id} field={field} coded={coded} onChange={onChange} />
+        <TerminologySearch key={`${coded?.code ?? ""}:${coded?.system ?? ""}:${coded?.display ?? ""}`} id={id} field={field} coded={coded} disabled={disabled} onChange={onChange} />
       )}
       {field.exceptionalChoices.length > 0 && (
         <label>
           <span>Exceptional value</span>
           <select
             value={currentExceptionalKey(value)}
+            disabled={disabled}
             onChange={(event) => onChange(exceptionalSelection(field, event.target.value))}
           >
             <option value="">No exceptional value</option>
