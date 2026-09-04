@@ -11,6 +11,7 @@
     "generate:database": "npm run generate -w @open-triage/database",
     "check:nemsis-data-model": "node apps/web/scripts/generate-nemsis-data-model.mjs --check",
     "check:database": "npm run check -w @open-triage/database",
+    "check:demo-fixtures": "npm run check:demo-fixtures -w @open-triage/web",
     "audit:nemsis-catalog": "node apps/web/scripts/audit-nemsis-catalog.mjs",
     "check:nemsis-catalog-guardrails": "node apps/web/scripts/check-nemsis-catalog-guardrails.mjs",
     "lint": "npm run lint --workspaces --if-present",

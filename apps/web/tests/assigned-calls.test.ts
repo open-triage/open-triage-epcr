@@ -3,6 +3,7 @@ import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall, resolveDispatchConflict } from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
+import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 const call = (id: string, callNumber: string): AssignedCall => ({
   id,
@@ -25,6 +26,26 @@ test("first-open has no offline fallback and requires the server to create autho
     await assert.rejects(openAssignedCall("token", "assignment"), /connection/i);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("the static export opens the generated sample fixture with a cacheable GET", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  let request: { url: string; method?: string } | undefined;
+  process.env.NEXT_PUBLIC_BASE_PATH = "/demo";
+  globalThis.fetch = async (input, init) => {
+    request = { url: String(input), method: init?.method };
+    return new Response(JSON.stringify(demoOpenAssignment), { status: 200 });
+  };
+  try {
+    const opened = await openAssignedCall("token", demoOpenAssignment.assignmentId);
+    assert.equal(opened.report.document.encounter.id, demoOpenAssignment.report.document.encounter.id);
+    assert.deepEqual(request, { url: "/demo/demo-open-assignment.json", method: "GET" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
   }
 });
 

@@ -1,0 +1,365 @@
+{
+  "assignmentId": "cd99f745-e09c-48db-a314-29ef2f8a514d",
+  "report": {
+    "id": "455d8423-412f-4c96-9ad5-b485c6a9506b",
+    "documentingUserId": "32000000-0000-4000-8000-000000000003",
+    "formVersionId": "2daa2db2-5974-4265-a100-c993363c9f35",
+    "catalogReleaseId": "a4a91882-42a1-40cf-a67b-0ac100ad7354",
+    "revision": 0,
+    "status": "draft",
+    "document": {
+      "$schema": "./encounter-document.schema-1.0.0.json",
+      "documentType": "open-triage.encounter",
+      "modelVersion": "1.1.0",
+      "dataModel": {
+        "standard": "NEMSIS",
+        "version": "3.5.1",
+        "dataset": "EMSDataSet"
+      },
+      "formProfile": {
+        "id": "standard-encounter-v1",
+        "version": "1"
+      },
+      "encounter": {
+        "id": "455d8423-412f-4c96-9ad5-b485c6a9506b",
+        "createdAt": "2026-08-15T09:14:05-04:00",
+        "updatedAt": "2026-08-15T09:14:05-04:00",
+        "synthetic": true
+      },
+      "groups": [
+        {
+          "id": "EMSDataSet",
+          "instances": [
+            {
+              "instanceId": "synthetic-dataset-1",
+              "elements": []
+            }
+          ]
+        },
+        {
+          "id": "HeaderGroup",
+          "instances": [
+            {
+              "instanceId": "synthetic-header-1",
+              "parentInstanceId": "synthetic-dataset-1",
+              "elements": []
+            }
+          ]
+        },
+        {
+          "id": "PatientCareReportGroup",
+          "instances": [
+            {
+              "instanceId": "synthetic-pcr-1",
+              "parentInstanceId": "synthetic-header-1",
+              "elements": []
+            }
+          ]
+        },
+        {
+          "id": "eResponseSection",
+          "instances": [
+            {
+              "instanceId": "synthetic-response-1",
+              "parentInstanceId": "synthetic-pcr-1",
+              "elements": [
+                {
+                  "id": "eResponse.03",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-incident-number",
+                      "value": "SYNTHETIC-INCIDENT-0001"
+                    }
+                  ]
+                },
+                {
+                  "id": "eResponse.04",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-response-number",
+                      "value": "SYNTHETIC-RESPONSE-0001"
+                    }
+                  ]
+                },
+                {
+                  "id": "eResponse.13",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-vehicle-number",
+                      "value": "SYNTHETIC-VEHICLE-7"
+                    }
+                  ]
+                },
+                {
+                  "id": "eResponse.14",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-call-sign",
+                      "value": "SYNTHETIC-MEDIC-7"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "eDispatchSection",
+          "instances": [
+            {
+              "instanceId": "synthetic-dispatch-1",
+              "parentInstanceId": "synthetic-pcr-1",
+              "elements": [
+                {
+                  "id": "eDispatch.01",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-dispatch-reason",
+                      "code": "2301021",
+                      "display": "Chest Pain (Non-Traumatic)"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "eTimesSection",
+          "instances": [
+            {
+              "instanceId": "synthetic-times-1",
+              "parentInstanceId": "synthetic-pcr-1",
+              "elements": [
+                {
+                  "id": "eTimes.02",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-time-dispatch-notified",
+                      "value": "2026-08-15T09:13:52-04:00"
+                    }
+                  ]
+                },
+                {
+                  "id": "eTimes.03",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-time-unit-notified",
+                      "value": "2026-08-15T09:14:00-04:00"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ePatientSection",
+          "instances": [
+            {
+              "instanceId": "synthetic-patient-1",
+              "parentInstanceId": "synthetic-pcr-1",
+              "elements": [
+                {
+                  "id": "ePatient.01",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-patient-id",
+                      "value": "SYNTHETIC-PATIENT-0001"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.17",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-patient-dob",
+                      "value": "1980-01-01"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.18",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-phone-home",
+                      "value": "212-555-0101",
+                      "attributes": {
+                        "PhoneNumberType": "9913003"
+                      }
+                    },
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-phone-mobile",
+                      "value": "212-555-0102",
+                      "attributes": {
+                        "PhoneNumberType": "9913005"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.25",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-patient-sex",
+                      "code": "9919005",
+                      "display": "Unknown"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "ePatient.PatientNameGroup",
+          "instances": [
+            {
+              "instanceId": "synthetic-patient-name-1",
+              "parentInstanceId": "synthetic-patient-1",
+              "elements": [
+                {
+                  "id": "ePatient.02",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-patient-last-name",
+                      "value": "SYNTHETIC"
+                    }
+                  ]
+                },
+                {
+                  "id": "ePatient.03",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-patient-first-name",
+                      "value": "PATIENT"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "eSceneSection",
+          "instances": [
+            {
+              "instanceId": "synthetic-scene-1",
+              "parentInstanceId": "synthetic-pcr-1",
+              "elements": [
+                {
+                  "id": "eScene.09",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-location-type",
+                      "code": "Y92.03",
+                      "system": "ICD-10-CM",
+                      "display": "Apartment/condo"
+                    }
+                  ]
+                },
+                {
+                  "id": "eScene.15",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-scene-street",
+                      "value": "123 SYNTHETIC EXAMPLE AVENUE"
+                    }
+                  ]
+                },
+                {
+                  "id": "eScene.16",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-scene-apartment",
+                      "value": "APT 4S"
+                    }
+                  ]
+                },
+                {
+                  "id": "eScene.18",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-scene-state",
+                      "code": "36",
+                      "system": "ANSI-STATE",
+                      "display": "New York"
+                    }
+                  ]
+                },
+                {
+                  "id": "eScene.19",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-scene-zip",
+                      "value": "10001"
+                    }
+                  ]
+                },
+                {
+                  "id": "eScene.21",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-scene-county",
+                      "code": "36061",
+                      "system": "ANSI-COUNTY",
+                      "display": "New York County"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "eCrew.CrewGroup",
+          "instances": [
+            {
+              "instanceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew",
+              "elements": [
+                {
+                  "id": "eCrew.01",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew-member",
+                      "value": "SYNTHETIC-MEDIC-7"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "agencyTimeZone": "America/New_York",
+    "dispatchConflicts": [],
+    "dispatchCancellation": null
+  },
+  "replacementAssignment": null,
+  "generatedFrom": {
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
+    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+  }
+}

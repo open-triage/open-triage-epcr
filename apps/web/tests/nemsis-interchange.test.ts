@@ -15,10 +15,13 @@ test("canonical JSON is deterministic, human-readable, valid, and lossless", () 
 
 test("NEMSIS XML maps values, PN, repeats, custom results, and round trips losslessly", () => {
   const candidate = structuredClone(synthetic) as any;
+  candidate.groups.push({ id: "eHistorySection", instances: [{ instanceId: "history-1", parentInstanceId: "synthetic-pcr-1", elements: [{ id: "eHistory.08", values: [{ kind: "pertinent-negative", occurrenceId: "history-none", code: "8801015", display: "None Reported" }] }] }] });
   candidate.groups.push({ id: "org.example.ems:assessment", instances: [{ instanceId: "custom-1", attributes: { source: "device" }, elements: [{ id: "org.example.ems:score", values: [{ kind: "scalar", occurrenceId: "score-1", value: 7 }] }] }] });
   const document = loadEncounterDocument(candidate);
   const xml = exportNemsisXml(document);
-  assert.match(xml, /<ePatient\.02>Rivera<\/ePatient\.02>/);
+  const lastName = document.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements.find(({ id }) => id === "ePatient.02")!.values[0]!;
+  assert.equal(lastName.kind, "scalar");
+  assert.ok(lastName.kind === "scalar" && xml.includes(`<ePatient.02>${lastName.value}</ePatient.02>`));
   assert.match(xml, /<eHistory\.08 PN="8801015">8801015<\/eHistory\.08>/);
   assert.match(xml, /<eCustomResults\.02>org\.example\.ems:score<\/eCustomResults\.02>/);
   assert.deepEqual(validateNemsisXml(xml), []);

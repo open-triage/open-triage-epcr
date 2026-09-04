@@ -8,12 +8,15 @@ import { loadEncounterDocument, serializeEncounterDocument } from "../app/encoun
 import { compileEncounterFormProfile, standardEncounterFormProfile } from "../app/encounter-form-profile";
 import { loadShellState, saveShellState } from "../app/local-persistence";
 import { exportNemsisXml, importNemsisXml } from "../app/nemsis-interchange";
-import { INITIAL_SHELL_STATE, type ShellState } from "../app/standard-encounter";
+import { INITIAL_SHELL_STATE, transitionShell, type ShellState } from "../app/standard-encounter";
 
 test("a standard field traces from profile through catalog, canonical JSON, and XML", () => {
   const profileField = standardEncounterFormProfile.sections.find(({ id }) => id === "vitals")!.elements[0]!;
   assert.equal(createElementCatalog().require(profileField).element.id, profileField);
-  const document = loadEncounterDocument(synthetic);
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "model-vitals", date: "2026-08-15", time: "09:20" });
+  state = transitionShell(state, { type: "vitals-value-changed", field: "systolic", value: "118" });
+  state = transitionShell(state, { type: "vitals-saved" });
+  const document = loadEncounterDocument(state.encounter.document);
   const occurrence = document.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements).find(({ id }) => id === profileField);
   assert.equal(occurrence?.id, profileField);
   assert.ok(serializeEncounterDocument(document).includes(`"id": "${profileField}"`));
@@ -27,7 +30,7 @@ test("a configuration-only custom field completes the canonical and interchange 
   if (!configured || configured.provenance !== "custom") throw new Error("custom configuration did not resolve");
   const captured = validateCustomDataSet(catalog, { results: [{ elementId: configured!.element.id, correlationId: "stroke-1", values: [{ value: "7" }] }] });
   const candidate = structuredClone(synthetic) as any;
-  candidate.groups.find(({ id }: { id: string }) => id === "org.example.ems:stroke-assessment").instances = [{ instanceId: "stroke-1", elements: [{ id: configured.element.id, values: [{ kind: "scalar", occurrenceId: "score-1", value: 7 }] }] }];
+  candidate.groups.push({ id: "org.example.ems:stroke-assessment", instances: [{ instanceId: "stroke-1", elements: [{ id: configured.element.id, values: [{ kind: "scalar", occurrenceId: "score-1", value: 7 }] }] }] });
   const document = loadEncounterDocument(candidate);
   const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document, customData: captured } } as ShellState;
   const values = new Map<string, string>();

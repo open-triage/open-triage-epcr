@@ -1,16 +1,11 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import type { AssignedCall } from "@open-triage/contracts";
-import syntheticEncounterDocument from "../app/data/synthetic-encounter-document.json";
+import type { AssignedCall, EncounterDocument, OpenAssignmentResponse } from "@open-triage/contracts";
+import demoAssignedCalls from "../public/demo-assigned-calls.json";
+import demoOpenAssignment from "../public/demo-open-assignment.json";
+import { incidentSummary } from "../app/incident-document";
 
-const assignedCall = {
-  id: "32000000-0000-4000-8000-000000000011",
-  callNumber: "SYN-20260903-001",
-  unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
-  dispatchedAt: "2026-09-03T12:00:00.000Z",
-  dispatchReason: "Medical assistance requested",
-  chiefComplaint: null,
-  status: "assigned"
-} as const;
+const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
+const generatedSummary = incidentSummary(demoOpenAssignment.report.document as EncounterDocument);
 
 const replacementCall = {
   ...assignedCall,
@@ -20,18 +15,9 @@ const replacementCall = {
 } as const;
 
 const openedAssignment = {
-  assignmentId: assignedCall.id,
-  report: {
-    id: "42000000-0000-4000-8000-000000000013",
-    documentingUserId: "32000000-0000-4000-8000-000000000003",
-    formVersionId: "32000000-0000-4000-8000-000000000008",
-    catalogReleaseId: "42000000-0000-4000-8000-000000000014",
-    revision: 0,
-    status: "draft",
-    document: syntheticEncounterDocument,
-  },
+  ...demoOpenAssignment,
   replacementAssignment: replacementCall
-} as const;
+} as OpenAssignmentResponse;
 
 const openCalls = [{
   reportId: openedAssignment.report.id,
@@ -85,18 +71,25 @@ test("the demo unit's assigned call shows its operational summary and manual can
   expect(Math.abs((identityBox!.x + identityBox!.width / 2) - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(1);
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
   const card = section.locator(".assigned-call-card");
-  await expect(card).toContainText("SYN-20260903-001");
-  await expect(card).toContainText("Medic 32");
-  await expect(card).toContainText("Medical assistance requested");
+  await expect(card).toContainText(assignedCall.callNumber);
+  await expect(card).toContainText(assignedCall.unit.callSign);
+  await expect(card).toContainText(assignedCall.dispatchReason!);
   await expect(card).toContainText("Assigned", { ignoreCase: true });
-  await expect(card.getByText("Sep 3", { exact: false })).toBeVisible();
+  const dispatchedAt = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: assignedCall.agencyTimeZone,
+  }).format(new Date(assignedCall.dispatchedAt));
+  await expect(card.getByText(dispatchedAt)).toBeVisible();
 
   canceled = true;
   const refreshSize = await refresh.boundingBox();
   await refresh.click();
   await expect(card).toHaveCount(0);
   expect(await refresh.boundingBox()).toEqual(refreshSize);
-  await expect(section.getByRole("status")).toHaveText("Call SYN-20260903-001 assignment canceled.");
+  await expect(section.getByRole("status")).toHaveText(`Call ${assignedCall.callNumber} assignment canceled.`);
 });
 
 test("an absent dispatch reason has a neutral label and never falls back to chief complaint", async ({ page }) => {
@@ -116,7 +109,7 @@ test("assignment polling runs every ten seconds only while visible and refreshes
     await fulfill(route);
   });
   await signIn(page);
-  await expect(page.getByText("SYN-20260903-001", { exact: true })).toBeVisible();
+  await expect(page.getByText(assignedCall.callNumber, { exact: true })).toBeVisible();
   const launchRequests = requests;
 
   await page.clock.fastForward(10_000);
@@ -152,15 +145,14 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
-  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260418-113");
-  await expect(page.locator(".encounter-header")).toContainText("Response 3-9-7-4-0");
-  await expect(page.locator(".encounter-header")).toContainText("Unit AN");
-  await expect(page.locator(".encounter-header")).toContainText("100 Example Avenue (fictional), Suite 3");
-  await expect(page.locator(".encounter-header")).not.toContainText(assignedCall.dispatchReason);
-  await expect(page.locator(".encounter-header")).not.toContainText("SYN-20260418-113 · 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText(`Incident ${generatedSummary.incidentNumber}`);
+  await expect(page.locator(".encounter-header")).toContainText(`Response ${generatedSummary.responseNumber}`);
+  await expect(page.locator(".encounter-header")).toContainText(`Unit ${generatedSummary.callSign}`);
+  await expect(page.locator(".encounter-header")).toContainText(generatedSummary.location);
+  await expect(page.locator(".encounter-header")).not.toContainText(assignedCall.dispatchReason!);
+  await expect(page.locator(".encounter-header")).not.toContainText(`${generatedSummary.incidentNumber} · ${generatedSummary.responseNumber}`);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit patient information" })).toHaveCount(0);
-  await expect(page.getByText("Rivera, Jordan", { exact: true })).toHaveCount(0);
 
   const retriedReportId = await page.evaluate(async ({ assignmentId }) => {
     const stored = JSON.parse(localStorage.getItem("open-triage.clinician-session.v1")!);

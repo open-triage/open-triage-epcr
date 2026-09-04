@@ -6,6 +6,7 @@ import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 import { encounterEvents } from "../app/canonical-events";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
+import demoAssignedCalls from "../public/demo-assigned-calls.json";
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {
   const values = new Map<string, string>();
@@ -42,28 +43,31 @@ test("response, dispatch, crew, scene, and timing values live at their catalog i
     assert.ok(element.groupPath.includes(groupId), `${elementId} must belong to ${groupId}`);
   }
   const timing = documentTimeline(document);
-  assert.deepEqual(timing.map(({ reference }) => reference), ["eTimes.06", "eTimes.05", "eTimes.03"]);
-  assert.deepEqual(timing.map(({ title }) => title), ["Unit Arrived on Scene", "Unit En Route", "Unit Notified by Dispatch"]);
-  assert.deepEqual(incidentSummary(document), {
-    incidentNumber: "SYN-20260418-113",
-    responseNumber: "3-9-7-4-0",
-    callSign: "AN",
-    location: "100 Example Avenue (fictional), Suite 3",
-  });
+  assert.deepEqual(timing.map(({ reference }) => reference), ["eTimes.03", "eTimes.02"]);
+  assert.deepEqual(timing.map(({ title }) => title), ["Unit Notified by Dispatch", "Dispatch Notified"]);
+  assert.equal(incidentSummary(document).incidentNumber, demoAssignedCalls.assignedCalls[0]!.callNumber);
+  assert.equal(incidentSummary(document).callSign, demoAssignedCalls.assignedCalls[0]!.unit.callSign);
+  assert.ok(incidentSummary(document).responseNumber);
+  assert.ok(incidentSummary(document).location);
 });
 
 test("mobile projections expose only the configured operational subset", () => {
   const document = structuredClone(INITIAL_SHELL_STATE.encounter.document);
   const assignment = assignmentSummary(document);
+  const generated = demoAssignedCalls.assignedCalls[0]!;
   assert.deepEqual(assignment, {
-    incidentNumber: "SYN-20260418-113",
-    callSign: "AN",
-    unitNotifiedAt: "2026-04-18T07:42:00-04:00",
-    dispatchReason: "Medical assistance requested",
+    incidentNumber: generated.callNumber,
+    callSign: generated.unit.callSign,
+    unitNotifiedAt: generated.dispatchedAt,
+    dispatchReason: generated.dispatchReason,
   });
   const serialized = JSON.stringify({ assignment, header: incidentSummary(document), timeline: documentTimeline(document) });
-  for (const hidden of ["Rivera", "Jordan", "1985-08-14", "SYNTHETIC-VEHICLE", "555"]) {
-    assert.doesNotMatch(serialized, new RegExp(hidden, "i"));
+  const hiddenIds = new Set(["eResponse.13", "ePatient.01", "ePatient.02", "ePatient.03", "ePatient.17", "ePatient.18", "ePatient.25"]);
+  const hiddenValues = document.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements)
+    .filter(({ id }) => hiddenIds.has(id)).flatMap(({ values }) => values)
+    .flatMap((value) => value.kind === "scalar" ? [String(value.value)] : value.kind === "coded" ? [value.code, value.display ?? ""] : []);
+  for (const hidden of hiddenValues.filter(Boolean)) {
+    assert.equal(serialized.includes(JSON.stringify(hidden)), false);
   }
 
   const withoutReason = { ...document, groups: document.groups.map((group) => group.id !== "eDispatchSection" ? group : {

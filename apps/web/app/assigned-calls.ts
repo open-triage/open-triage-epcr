@@ -55,11 +55,17 @@ export function openAssignmentUrl(assignmentId: string): string {
   return `${basePath}/api/calls/${assignmentId}/open`;
 }
 
+export function staticOpenAssignmentUrl(): string {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
+  return `${basePath}/demo-open-assignment.json`;
+}
+
 export async function openAssignedCall(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
   let response: Response;
   try {
-    response = await fetch(openAssignmentUrl(assignmentId), {
-      method: "POST",
+    const staticExport = Boolean(process.env.NEXT_PUBLIC_BASE_PATH);
+    response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), {
+      method: staticExport ? "GET" : "POST",
       cache: "no-store",
       headers: { authorization: `Bearer ${accessToken}` }
     });
@@ -71,7 +77,9 @@ export async function openAssignedCall(accessToken: string, assignmentId: string
     if (response.status === 409) throw new Error("This call can no longer be opened.");
     throw new Error("The call could not be opened. Check your connection and try again.");
   }
-  return response.json() as Promise<OpenAssignmentResponse>;
+  const opened = await response.json() as OpenAssignmentResponse;
+  if (opened.assignmentId !== assignmentId) throw new Error("The static demo fixture does not match the selected assignment.");
+  return opened;
 }
 
 export function openCallsUrl(): string {
