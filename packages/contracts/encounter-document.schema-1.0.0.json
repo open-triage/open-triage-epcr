@@ -116,7 +116,10 @@
           "required": ["value"],
           "properties": {
             "kind": { "const": "scalar" },
-            "value": { "type": ["string", "number", "boolean"] }
+            "value": { "type": ["string", "number", "boolean"] },
+            "lexical": { "type": "string" },
+            "precision": { "type": "string" },
+            "utcOffsetMinutes": { "type": "integer", "minimum": -840, "maximum": 840 }
           }
         }
       ]

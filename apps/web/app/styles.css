@@ -88,6 +88,9 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-scalar-fields label > span small { margin-left: 5px; color: var(--muted); font-weight: 600; }
 .stationary-scalar-fields input { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
 .stationary-scalar-fields label > small { color: var(--muted); font-weight: 500; line-height: 1.35; }
+.stationary-scalar-occurrences, .stationary-scalar-occurrence { display: grid; gap: 8px; }
+.stationary-occurrence-actions { display: flex; gap: 8px; }
+.stationary-occurrence-actions button, .stationary-scalar-addition > button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; }
 .stationary-coded-field { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 7px; }
 .stationary-coded-field legend { padding: 0 5px; color: #454944; font-size: 13px; font-weight: 750; }
 .stationary-coded-field legend small { margin-left: 5px; color: var(--muted); font-weight: 600; }

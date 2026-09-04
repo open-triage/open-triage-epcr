@@ -41,6 +41,9 @@ type StoredOccurrenceRow = {
   value_time: string | null;
   value_duration: string | null;
   value_binary: string | null;
+  value_lexical: string | null;
+  value_utc_offset_minutes: string | number | null;
+  value_precision: string | null;
   code: string | null;
   code_system: string | null;
   code_display: string | null;
@@ -206,7 +209,12 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   if (row.value_kind === "absent") return { ...common, kind: "absent" } as EncounterValue;
   const raw = row.value_text ?? row.value_integer ?? row.value_numeric ?? row.value_boolean ?? row.value_date ?? row.value_datetime ?? row.value_time ?? row.value_duration ?? row.value_binary ?? "";
   const value = row.value_datetime instanceof Date ? row.value_datetime.toISOString() : raw;
-  return { ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean } as EncounterValue;
+  return {
+    ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean,
+    ...(row.value_lexical != null ? { lexical: row.value_lexical } : {}),
+    ...(row.value_utc_offset_minutes != null ? { utcOffsetMinutes: Number(row.value_utc_offset_minutes) } : {}),
+    ...(row.value_precision != null ? { precision: row.value_precision } : {}),
+  } as EncounterValue;
 }
 
 /** Rehydrates the portable encounter document from normalized canonical storage. */
@@ -227,7 +235,8 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
     select id, group_instance_id, element_id, ordinal, value_kind, value_text, value_integer,
            value_numeric, value_boolean, value_date, value_datetime, value_time, value_duration,
-           encode(value_binary, 'base64') as value_binary, code, code_system, code_display, terminology_version,
+           encode(value_binary, 'base64') as value_binary, value_lexical, value_utc_offset_minutes,
+           value_precision, code, code_system, code_display, terminology_version,
            absence_code, absence_display, source_attributes, provenance_kind, provenance_detail
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
