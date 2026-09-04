@@ -95,13 +95,15 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-scalar-occurrences, .stationary-scalar-occurrence { display: grid; gap: 8px; }
 .stationary-occurrence-actions { display: flex; gap: 8px; }
 .stationary-occurrence-actions button, .stationary-scalar-addition > button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; }
-.stationary-coded-field { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 7px; }
-.stationary-coded-field legend { padding: 0 5px; color: #454944; font-size: 13px; font-weight: 750; }
-.stationary-coded-field legend small { margin-left: 5px; color: var(--muted); font-weight: 600; }
-.stationary-coded-field > small, .stationary-terminology-search > small { color: var(--muted); line-height: 1.35; }
-.stationary-coded-field label, .stationary-terminology-search { display: grid; gap: 7px; }
-.stationary-coded-field input, .stationary-coded-field select { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
-.stationary-terminology-search button { justify-self: start; }
+.stationary-terminology-combobox { position: relative; display: grid; gap: 8px; }
+.stationary-terminology-results { position: absolute; z-index: 25; top: 72px; right: 0; left: 0; max-height: 250px; overflow-y: auto; margin: 0; padding: 4px; border: 1px solid #aeb5ad; border-radius: 6px; background: #fff; box-shadow: 0 8px 22px rgb(20 39 27 / 18%); list-style: none; }
+.stationary-terminology-results button { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 0; border-radius: 4px; color: #20231f; background: transparent; text-align: left; cursor: pointer; }
+.stationary-terminology-results button:hover, .stationary-terminology-results [aria-selected="true"] { background: #edf6f0; }
+.stationary-terminology-results code { color: var(--muted); white-space: nowrap; }
+.stationary-terminology-advanced summary { width: fit-content; color: var(--green-dark); font-size: 13px; font-weight: 750; cursor: pointer; }
+.stationary-terminology-advanced > div { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border-radius: 6px; background: #f5f7f5; }
+.stationary-terminology-advanced button { justify-self: start; min-height: 36px; padding: 0 12px; border: 1px solid var(--green); border-radius: 6px; color: var(--green-dark); background: #fff; font-weight: 700; }
+.stationary-terminology-advanced small { color: var(--muted); line-height: 1.35; }
 .stationary-non-repeating-record { display: grid; gap: 14px; margin: 18px; }
 .stationary-inline-group { margin-left: min(calc(var(--stationary-depth) * 4px), 36px); border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 3px 14px rgb(20 39 27 / 7%); }
 .stationary-inline-group > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px 8px; }
