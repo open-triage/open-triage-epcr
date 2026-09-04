@@ -29,6 +29,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
         report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
         dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Breathing problem",
         chief_complaint: "Shortness of breath", unit_call_sign: "Medic 32",
+        agency_time_zone: "America/New_York",
         status: "draft",
         last_saved_at: "2026-09-03T14:00:00.000Z", revision: "4",
         form_version_id: "52000000-0000-4000-8000-000000000002", catalog_release_id: "62000000-0000-4000-8000-000000000002",
@@ -38,6 +39,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
         report_id: "42000000-0000-4000-8000-000000000001", call_number: "CALL-OLD",
         dispatched_at: "2026-09-03T11:00:00.000Z", dispatch_reason: "Fall",
         chief_complaint: null, unit_call_sign: "Medic 31",
+        agency_time_zone: "America/New_York",
         status: "draft",
         last_saved_at: new Date("2026-09-03T13:00:00.000Z"), revision: 1,
         form_version_id: "52000000-0000-4000-8000-000000000001", catalog_release_id: "62000000-0000-4000-8000-000000000001",
@@ -55,6 +57,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     reportId: "42000000-0000-4000-8000-000000000002", callNumber: "CALL-NEW",
     dispatchedAt: "2026-09-03T12:00:00.000Z", dispatchReason: "Breathing problem",
     chiefComplaint: "Shortness of breath", unitCallSign: "Medic 32",
+    agencyTimeZone: "America/New_York",
     lastSavedAt: "2026-09-03T14:00:00.000Z", syncStatus: "saved", validationErrorCount: 2,
     revision: 4, formVersionId: "52000000-0000-4000-8000-000000000002",
     catalogReleaseId: "62000000-0000-4000-8000-000000000002"
@@ -121,7 +124,7 @@ test("reopening restores the creator's report with its pinned form and saved con
       return [{
         call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
         dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
-        unit_call_sign: "Medic 32"
+        unit_call_sign: "Medic 32", agency_time_zone: "America/New_York"
       }];
     }
   };
@@ -134,6 +137,7 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.dispatchedAt, "2026-09-03T12:00:00.000Z");
   assert.equal(reopened.dispatchReason, "Breathing problem");
   assert.equal(reopened.unitCallSign, "Medic 32");
+  assert.equal(reopened.report.agencyTimeZone, "America/New_York");
   assert.equal(reopened.report.formVersionId, "pinned-form");
   const patient = reopened.report.document.groups.find(({ id }) => id === "ePatientSection").instances[0];
   assert.equal(patient.parentInstanceId, "parent-group");

@@ -15,6 +15,7 @@ export interface ActiveDraftReport {
   readonly dispatchReason?: string | null;
   readonly chiefComplaint?: string | null;
   readonly unitCallSign?: string;
+  readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
   readonly status?: "draft";

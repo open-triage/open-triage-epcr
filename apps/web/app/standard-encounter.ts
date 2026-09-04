@@ -16,6 +16,8 @@ export type EncounterEvent = {
   readonly id: string;
   readonly date?: string;
   readonly time: string;
+  /** Original offset-aware lexical timestamp when projected from the canonical document. */
+  readonly dateTime?: string;
   readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication" | "document";
   readonly title: string;
   readonly detail: string;
@@ -84,6 +86,7 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
+  | { readonly type: "document-opened"; readonly document: EncounterDocument }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -359,6 +362,8 @@ export function vitalSummary(values: VitalValues, definition: EncounterDefinitio
 export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
   const events = encounterEvents(state.encounter.document, definition);
   switch (action.type) {
+    case "document-opened":
+      return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "view-selected":
       return { ...state, view: action.view };
     case "review-opened":

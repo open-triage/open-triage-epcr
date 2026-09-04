@@ -12,15 +12,14 @@ test("opens directly into the fictional neutral standard encounter", () => {
   const patientNames = syntheticEncounter.document.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements
     .flatMap(({ values }) => values.flatMap((value) => value.kind === "scalar" ? [String(value.value)] : []));
   assert.deepEqual(patientNames, ["Rivera", "Jordan"]);
-  assert.equal(incidentSummary(syntheticEncounter.document).complaint, "Medical assistance requested");
-  assert.match(incidentSummary(syntheticEncounter.document).address, /fictional/i);
+  assert.equal(incidentSummary(syntheticEncounter.document).callSign, "AN");
+  assert.match(incidentSummary(syntheticEncounter.document).location, /fictional/i);
   assert.equal(encounterEvents(INITIAL_SHELL_STATE.encounter.document, standardEncounterDefinition).length, 0);
   assert.equal(syntheticEncounter.document.formProfile.id, bundledEncounterDefinition.id);
   assert.deepEqual(documentTimeline(syntheticEncounter.document).map((event) => event.reference), [
     "eTimes.06",
     "eTimes.05",
     "eTimes.03",
-    "eTimes.01",
   ]);
 });
 

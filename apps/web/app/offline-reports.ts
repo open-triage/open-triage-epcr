@@ -120,6 +120,7 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
       ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
       ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
       ...(call.unitCallSign ? { unitCallSign: call.unitCallSign } : {}),
+      ...(call.agencyTimeZone ? { agencyTimeZone: call.agencyTimeZone } : {}),
     },
     ownerUserId: session.user.id,
     callNumber: call.callNumber,
@@ -171,6 +172,7 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     ...(cached.report.dispatchReason !== undefined ? { dispatchReason: cached.report.dispatchReason } : {}),
     ...(cached.report.chiefComplaint !== undefined ? { chiefComplaint: cached.report.chiefComplaint } : {}),
     ...(cached.report.unitCallSign ? { unitCallSign: cached.report.unitCallSign } : {}),
+    ...(cached.report.agencyTimeZone ? { agencyTimeZone: cached.report.agencyTimeZone } : {}),
   }));
 }
 

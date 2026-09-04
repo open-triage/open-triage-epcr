@@ -1,4 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { AssignedCall } from "@open-triage/contracts";
+import syntheticEncounterDocument from "../app/data/synthetic-encounter-document.json";
 
 const assignedCall = {
   id: "32000000-0000-4000-8000-000000000011",
@@ -25,7 +27,8 @@ const openedAssignment = {
     formVersionId: "32000000-0000-4000-8000-000000000008",
     catalogReleaseId: "42000000-0000-4000-8000-000000000014",
     revision: 0,
-    status: "draft"
+    status: "draft",
+    document: syntheticEncounterDocument,
   },
   replacementAssignment: replacementCall
 } as const;
@@ -57,7 +60,7 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-function fulfill(route: Route, assignedCalls = [assignedCall], canceledAssignmentIds: string[] = []) {
+function fulfill(route: Route, assignedCalls: ReadonlyArray<AssignedCall> = [assignedCall], canceledAssignmentIds: string[] = []) {
   return route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ assignedCalls, canceledAssignmentIds, refreshedAt: new Date().toISOString() })
@@ -94,6 +97,15 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(card).toHaveCount(0);
   expect(await refresh.boundingBox()).toEqual(refreshSize);
   await expect(section.getByRole("status")).toHaveText("Call SYN-20260903-001 assignment canceled.");
+});
+
+test("an absent dispatch reason has a neutral label and never falls back to chief complaint", async ({ page }) => {
+  const privacyLimitedCall = { ...assignedCall, dispatchReason: null, chiefComplaint: "PRIVATE CHIEF COMPLAINT" };
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, [privacyLimitedCall]));
+  await signIn(page);
+  const card = page.getByRole("region", { name: "Assigned calls" }).locator(".assigned-call-card");
+  await expect(card).toContainText("Dispatch reason not provided");
+  await expect(card).not.toContainText("PRIVATE CHIEF COMPLAINT");
 });
 
 test("assignment polling runs every ten seconds only while visible and refreshes on foreground return", async ({ page }) => {
@@ -140,8 +152,11 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
-  await expect(page.locator(".encounter-header")).toContainText(`Incident ${assignedCall.callNumber}`);
-  await expect(page.locator(".encounter-header")).toContainText(assignedCall.dispatchReason);
+  await expect(page.locator(".encounter-header")).toContainText("Incident SYN-20260418-113");
+  await expect(page.locator(".encounter-header")).toContainText("Response 3-9-7-4-0");
+  await expect(page.locator(".encounter-header")).toContainText("Unit AN");
+  await expect(page.locator(".encounter-header")).toContainText("100 Example Avenue (fictional), Suite 3");
+  await expect(page.locator(".encounter-header")).not.toContainText(assignedCall.dispatchReason);
   await expect(page.locator(".encounter-header")).not.toContainText("SYN-20260418-113 · 3-9-7-4-0");
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit patient information" })).toHaveCount(0);
