@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.dev/schemas/stationary-layout/1.0.0",
+  "title": "Open Triage canonical stationary renderer layout 1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "profileId", "catalog", "customNamespaces", "groups", "elements"],
+  "properties": {
+    "$schema": { "const": "./stationary-layout.schema-1.0.0.json" },
+    "schemaVersion": { "const": "1.0.0" },
+    "profileId": { "$ref": "#/$defs/nonEmpty" },
+    "catalog": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release", "dataset", "elementCount", "groupCount"],
+      "properties": {
+        "release": { "const": "3.5.1" }, "dataset": { "const": "EMSDataSet" },
+        "elementCount": { "type": "integer", "minimum": 1 }, "groupCount": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "customNamespaces": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/namespace" } },
+    "groups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/group" } },
+    "elements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/element" } }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "namespace": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$" },
+    "identity": { "type": "string", "pattern": "^(?:(?:dAgency|e[A-Za-z]+)\\.[0-9]{2}|[A-Za-z][A-Za-z0-9._-]*|[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+:[A-Za-z][A-Za-z0-9._-]*)$" },
+    "mode": { "enum": ["editable", "enhanced", "read-only"] },
+    "column": {
+      "type": "object", "additionalProperties": false, "required": ["elementId"],
+      "properties": { "elementId": { "$ref": "#/$defs/identity" }, "label": { "$ref": "#/$defs/nonEmpty" }, "width": { "type": "string", "pattern": "^[1-9][0-9]*(?:px|rem|%)$" } }
+    },
+    "presentation": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["inline", "table"] }, "label": { "$ref": "#/$defs/nonEmpty" }, "help": { "$ref": "#/$defs/nonEmpty" },
+        "dialog": { "type": "object", "additionalProperties": false, "required": ["addLabel", "editLabel"], "properties": { "addLabel": { "$ref": "#/$defs/nonEmpty" }, "editLabel": { "$ref": "#/$defs/nonEmpty" } } },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/column" } }
+      }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false, "required": ["id", "parentId", "mode", "presentation"],
+      "properties": { "id": { "$ref": "#/$defs/identity" }, "parentId": { "oneOf": [{ "$ref": "#/$defs/identity" }, { "type": "null" }] }, "mode": { "$ref": "#/$defs/mode" }, "presentation": { "$ref": "#/$defs/presentation" } }
+    },
+    "element": {
+      "type": "object", "additionalProperties": false, "required": ["id", "groupId", "mode"],
+      "properties": { "id": { "$ref": "#/$defs/identity" }, "groupId": { "$ref": "#/$defs/identity" }, "mode": { "$ref": "#/$defs/mode" }, "label": { "$ref": "#/$defs/nonEmpty" }, "help": { "$ref": "#/$defs/nonEmpty" } }
+    }
+  }
+}
