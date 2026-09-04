@@ -238,6 +238,12 @@ export function draftChangesUrl(reportId: string): string {
 }
 
 export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
+  // The static prototype's durable browser cache is its only backing store. A
+  // successful local write is therefore synchronized; no nonexistent HTTP API
+  // should leave the browser-only workflow permanently pending.
+  if (apiBaseUrl() === null && process.env.NEXT_PUBLIC_BASE_PATH) {
+    return { id: reportId, status: "draft", revision: command.expectedRevision + 1 };
+  }
   let response: Response;
   try {
     response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(command) });

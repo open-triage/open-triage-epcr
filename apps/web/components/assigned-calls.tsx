@@ -22,10 +22,12 @@ export function AssignedCalls({
   session,
   onOpened,
   refreshRequest = 0,
+  suppressedCallNumbers = [],
 }: {
   readonly session: ClinicianSession;
   readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void;
   readonly refreshRequest?: number;
+  readonly suppressedCallNumbers?: ReadonlyArray<string>;
 }) {
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -37,14 +39,15 @@ export function AssignedCalls({
   const refresh = useCallback(async () => {
     try {
       const response = await fetchAssignedCalls(session.accessToken);
-      callsRef.current = response.assignedCalls;
-      setCalls(response.assignedCalls);
+      const visible = response.assignedCalls.filter((call) => !suppressedCallNumbers.includes(call.callNumber));
+      callsRef.current = visible;
+      setCalls(visible);
       setLoaded(true);
       setError(null);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Assigned calls could not be refreshed.");
     }
-  }, [session.accessToken]);
+  }, [session.accessToken, suppressedCallNumbers]);
 
   const open = useCallback(async (call: AssignedCall) => {
     setOpeningId(call.id);

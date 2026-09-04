@@ -35,7 +35,7 @@ function GroupField({ document, instance, placement, initialFocus = false, onDoc
     const field = stationaryCodedField(catalogElement);
     const values = element?.values ?? [];
     const repeatable = catalogElement.occurrence.max === "unbounded" || catalogElement.occurrence.max > 1;
-    return <div className="stationary-group-coded-occurrences">
+    return <div className="stationary-group-coded-occurrences" data-element-id={placement.id}>
       {(repeatable ? values : [values[0]]).filter((value): value is EncounterValue => Boolean(value)).map((value) => (
         <StationaryCodedValueField key={value.occurrenceId} field={{ ...field, label: placement.label ?? field.label, help: placement.help ?? field.help }} value={value}
           onChange={(selection) => onDocumentChange(editStationaryCodedValue(document, {
@@ -49,15 +49,15 @@ function GroupField({ document, instance, placement, initialFocus = false, onDoc
     </div>;
   }
   const presentation = scalarControlPresentation(catalogElement, placement.label ?? catalogElement.name, placement.help ?? catalogElement.definition);
-  if (presentation.repeatable) return <StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} />;
+  if (presentation.repeatable) return <div data-element-id={placement.id}><StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} /></div>;
   const value = element?.values.find((candidate) => candidate.kind === "scalar");
-  return <StationaryScalarControl presentation={presentation} value={value?.kind === "scalar" ? value : undefined} initialFocus={initialFocus} onInput={(input) => {
+  return <div data-element-id={placement.id}><StationaryScalarControl presentation={presentation} value={value?.kind === "scalar" ? value : undefined} initialFocus={initialFocus} onInput={(input) => {
     const result = editScalarOccurrence(document, {
       groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,
       ...(value ? { occurrenceId: value.occurrenceId } : {}), input,
     });
     if (result.ok) onDocumentChange(result.document);
-  }} />;
+  }} /></div>;
 }
 
 function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus, onDraftChange, onCancel, onSave }: {

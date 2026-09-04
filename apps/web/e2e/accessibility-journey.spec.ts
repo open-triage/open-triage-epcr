@@ -172,6 +172,7 @@ test("review and sign actions stay at the viewport bottom and turn green when va
   ] as const;
   for (const [label, value] of values) await dialog.getByRole("textbox", { name: label }).fill(value);
   await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await page.getByRole("button", { name: "Populate" }).click();
 
   const reviewButton = page.getByRole("button", { name: "Review & sign" });
   await expect(reviewButton).toHaveClass(/validation-clear/);

@@ -24,7 +24,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, findi
     reader.readAsDataURL(file);
   };
   return (
-    <label>
+    <label data-element-id={presentation.elementId} {...(value ? { "data-occurrence-id": value.occurrenceId } : {})}>
       <span>{presentation.label} <small>{presentation.elementId}</small></span>
       <input
         autoFocus={initialFocus}
