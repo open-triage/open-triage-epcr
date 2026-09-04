@@ -215,6 +215,11 @@ export function scalarOccurrences(document: EncounterDocument, groupId: string, 
     .filter((value): value is ScalarEncounterValue => value.kind === "scalar");
 }
 
+/** All ordinary and exceptional occurrences owned by a scalar element. */
+export function scalarSelectionOccurrences(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string): ReadonlyArray<EncounterValue> {
+  return elementValues(document, groupId, groupInstanceId, elementId);
+}
+
 function elementValues(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string): ReadonlyArray<EncounterValue> {
   return document.groups.find((group) => group.id === groupId)?.instances
     .find((instance) => instance.instanceId === groupInstanceId)?.elements
@@ -305,15 +310,9 @@ export function removeScalarOccurrence(document: EncounterDocument, groupId: str
 export function moveScalarOccurrence(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string, occurrenceId: string, toIndex: number, now = new Date()): ScalarEditResult {
   const element = requireNemsisDataElement(elementId);
   const values = [...elementValues(document, groupId, groupInstanceId, elementId)];
-  const scalars = values.filter((value) => value.kind === "scalar");
-  const fromScalarIndex = scalars.findIndex((value) => value.occurrenceId === occurrenceId);
-  if (fromScalarIndex < 0 || toIndex < 0 || toIndex >= scalars.length) return { ok: false, document, findings: [finding(element, "cardinality", `The requested ${element.name} occurrence order is unavailable.`, occurrenceId)] };
   const fromIndex = values.findIndex((value) => value.occurrenceId === occurrenceId);
+  if (fromIndex < 0 || toIndex < 0 || toIndex >= values.length) return { ok: false, document, findings: [finding(element, "cardinality", `The requested ${element.name} occurrence order is unavailable.`, occurrenceId)] };
   const [moved] = values.splice(fromIndex, 1);
-  const remainingScalars = values.filter((value) => value.kind === "scalar");
-  const anchor = remainingScalars[toIndex];
-  const targetIndex = anchor ? values.findIndex((value) => value.occurrenceId === anchor.occurrenceId)
-    : values.findLastIndex((value) => value.kind === "scalar") + 1;
-  values.splice(targetIndex, 0, moved!);
+  values.splice(toIndex, 0, moved!);
   return { ok: true, document: replaceElementValues(document, groupId, groupInstanceId, elementId, values, now), occurrenceId };
 }
