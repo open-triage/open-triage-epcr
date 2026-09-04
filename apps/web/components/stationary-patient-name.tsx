@@ -10,6 +10,10 @@ import {
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
 import { validateScalarInput, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { StationaryScalarControl } from "./stationary-scalar-control";
+import { editStationaryCodedValue, stationaryCodedField } from "../app/stationary-coded-value";
+import { StationaryCodedValueField } from "./stationary-coded-field";
+
+const sexField = stationaryCodedField("ePatient.25");
 
 export function StationaryPatientName({ document, onDocumentChange }: {
   readonly document: EncounterDocument;
@@ -17,6 +21,8 @@ export function StationaryPatientName({ document, onDocumentChange }: {
 }) {
   const values = stationaryScalarValues(document);
   const [findings, setFindings] = useState<Readonly<Record<string, ReadonlyArray<ScalarValidationFinding>>>>({});
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")?.instances[0];
+  const sex = patient?.elements.find(({ id }) => id === sexField.elementId)?.values[0];
   return (
     <section className="stationary-scalar-group" aria-labelledby="stationary-patient-name-heading">
       <div className="section-heading">
@@ -42,6 +48,16 @@ export function StationaryPatientName({ document, onDocumentChange }: {
             }}
           />
         ))}
+        {patient && <StationaryCodedValueField
+          field={sexField}
+          value={sex}
+          onChange={(selection) => onDocumentChange(editStationaryCodedValue(document, {
+            groupId: "ePatientSection",
+            instanceId: patient.instanceId,
+            elementId: sexField.elementId,
+            ...(sex ? { occurrenceId: sex.occurrenceId } : {}),
+          }, selection))}
+        />}
       </div>
     </section>
   );

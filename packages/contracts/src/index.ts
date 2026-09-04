@@ -217,6 +217,8 @@ export type CodedEncounterValue = EncounterValueBase & {
   readonly code: string;
   readonly system?: string;
   readonly display?: string;
+  /** Version of the terminology or bundled suggestion set used to choose the code. */
+  readonly terminologyVersion?: string;
 };
 
 export type ScalarEncounterValue = EncounterValueBase & {

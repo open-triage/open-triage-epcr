@@ -91,6 +91,13 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-scalar-occurrences, .stationary-scalar-occurrence { display: grid; gap: 8px; }
 .stationary-occurrence-actions { display: flex; gap: 8px; }
 .stationary-occurrence-actions button, .stationary-scalar-addition > button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; }
+.stationary-coded-field { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 7px; }
+.stationary-coded-field legend { padding: 0 5px; color: #454944; font-size: 13px; font-weight: 750; }
+.stationary-coded-field legend small { margin-left: 5px; color: var(--muted); font-weight: 600; }
+.stationary-coded-field > small, .stationary-terminology-search > small { color: var(--muted); line-height: 1.35; }
+.stationary-coded-field label, .stationary-terminology-search { display: grid; gap: 7px; }
+.stationary-coded-field input, .stationary-coded-field select { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: 16px; }
+.stationary-terminology-search button { justify-self: start; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; padding: 18px 20px 12px; }
 .section-heading h1 { margin: 2px 0 0; font-size: 28px; line-height: 1; letter-spacing: -.025em; }
 .section-heading > span { color: var(--muted); font-size: 13px; }

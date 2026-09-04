@@ -103,7 +103,8 @@
             "kind": { "const": "coded" },
             "code": { "$ref": "#/$defs/nonEmptyString" },
             "system": { "type": "string" },
-            "display": { "type": "string" }
+            "display": { "type": "string" },
+            "terminologyVersion": { "type": "string" }
           }
         }
       ]
