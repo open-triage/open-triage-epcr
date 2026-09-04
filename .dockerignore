@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.git
+.env
+.env.*
+!.env.example
+artifacts
+coverage

@@ -1,0 +1,47 @@
+{{- if .Values.analytics.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "open-triage.fullname" . }}-analytics-projector
+  labels: {{- include "open-triage.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.analytics.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 12
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 110
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: projector
+              image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+              command: ["npm", "run", "project", "-w", "@open-triage/database"]
+              envFrom: [{ secretRef: { name: {{ include "open-triage.fullname" . }}-database } }]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "open-triage.fullname" . }}-analytics-health
+  labels: {{- include "open-triage.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.analytics.healthSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 12
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 50
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: health
+              image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+              command: ["npm", "run", "project:health", "-w", "@open-triage/database"]
+              envFrom: [{ secretRef: { name: {{ include "open-triage.fullname" . }}-database } }]
+{{- end }}

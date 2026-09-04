@@ -1,0 +1,39 @@
+web:
+  image:
+    repository: ghcr.io/open-triage/open-triage-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  host: demo.opentriage.org
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+
+api:
+  image:
+    repository: ghcr.io/open-triage/open-triage-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  host: api.opentriage.org
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+analytics:
+  enabled: true
+  schedule: "*/2 * * * *"
+  healthSchedule: "* * * * *"
+
+imagePullSecrets: []
+ingress:
+  className: nginx
+  tls: []
+
+secrets:
+  databaseUrl: ""
+  supabaseUrl: ""
+  supabaseServiceRoleKey: ""
+  patientKeyInstallationId: ""
+  patientKeyVersion: "1"
+  patientKeySecretBase64: ""
