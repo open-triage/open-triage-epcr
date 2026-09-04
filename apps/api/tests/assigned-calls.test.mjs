@@ -25,6 +25,7 @@ test("the authenticated call-list integration returns only the clinician's assig
         dispatched_at: new Date("2026-09-03T12:00:00.000Z"),
         dispatch_reason: "Medical assistance requested",
         chief_complaint: null,
+        agency_time_zone: "America/New_York",
         status: "assigned"
       }, {
         id: "32000000-0000-4000-8000-000000000012",
@@ -34,6 +35,7 @@ test("the authenticated call-list integration returns only the clinician's assig
         dispatched_at: new Date("2026-09-03T12:15:00.000Z"),
         dispatch_reason: "Canceled before opening",
         chief_complaint: null,
+        agency_time_zone: "America/New_York",
         status: "canceled"
       }];
     }
@@ -53,6 +55,7 @@ test("the authenticated call-list integration returns only the clinician's assig
     dispatchedAt: "2026-09-03T12:00:00.000Z",
     dispatchReason: "Medical assistance requested",
     chiefComplaint: null,
+    agencyTimeZone: "America/New_York",
     status: "assigned"
   }]);
   assert.deepEqual(result.canceledAssignmentIds, ["32000000-0000-4000-8000-000000000012"]);
@@ -77,6 +80,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     dispatched_at: new Date("2026-09-03T12:00:00.000Z"),
     dispatch_reason: "Medical assistance requested",
     chief_complaint: null,
+    agency_time_zone: "America/New_York",
     status: "assigned",
     report_id: null,
     synthetic: true,
@@ -137,8 +141,10 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
   assert.equal(opened.report.document.encounter.id, opened.report.id);
+  assert.equal(opened.report.agencyTimeZone, "America/New_York");
   assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
   assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
+  assert.equal(opened.replacementAssignment.agencyTimeZone, "America/New_York");
   assert.equal(retried.replacementAssignment, null);
   assert.deepEqual(writes, ["patient", "report", "replacement-incident", "replacement-assignment"]);
 });

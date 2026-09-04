@@ -14,6 +14,7 @@ type AssignedCallRow = {
   dispatched_at: Date | string;
   dispatch_reason: string | null;
   chief_complaint: string | null;
+  agency_time_zone: string;
   status: "assigned" | "opened" | "canceled";
 };
 
@@ -49,6 +50,7 @@ function assignedCall(row: AssignedCallRow): AssignedCall {
     dispatchedAt: new Date(row.dispatched_at).toISOString(),
     dispatchReason: row.dispatch_reason,
     chiefComplaint: row.chief_complaint,
+    ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
     status: "assigned"
   };
 }
@@ -64,10 +66,12 @@ export class AssignedCallsService {
     const session = this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<AssignedCallRow[]>(`
       select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
+             organization.deployment_timezone as agency_time_zone,
              ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status
       from app_identity.unit_clinician uc
       join app_identity.operational_unit ou
         on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
+      join app_identity.organization organization on organization.id = ou.organization_id
       join clinical.call_assignment ca
         on ca.organization_id = ou.organization_id and ca.unit_id = ou.id
       where uc.user_id = $1 and uc.organization_id = $2 and ou.active
@@ -83,6 +87,7 @@ export class AssignedCallsService {
         dispatchedAt: new Date(row.dispatched_at).toISOString(),
         dispatchReason: row.dispatch_reason,
         chiefComplaint: row.chief_complaint,
+        ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
         status: "assigned"
       })),
       canceledAssignmentIds: rows.filter((row) => row.status === "canceled").map((row) => row.id),
@@ -95,11 +100,13 @@ export class AssignedCallsService {
     return this.dataSource.transaction(async (manager) => {
       const assignments = await manager.query<OpenableAssignmentRow[]>(`
         select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
+               organization.deployment_timezone as agency_time_zone,
                ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
                ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
         from clinical.call_assignment ca
         join app_identity.operational_unit ou
           on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
+        join app_identity.organization organization on organization.id = ca.organization_id
         where ca.id = $1 and ca.organization_id = $2 and ou.active
           and exists (
             select 1 from app_identity.unit_clinician uc
@@ -201,6 +208,7 @@ export class AssignedCallsService {
       dispatched_at: dispatchedAt,
       dispatch_reason: source.dispatch_reason,
       chief_complaint: source.chief_complaint,
+      agency_time_zone: source.agency_time_zone,
       status: "assigned"
     });
   }
@@ -229,7 +237,8 @@ export class AssignedCallsService {
         catalogReleaseId: report.catalog_release_id,
         revision: Number(report.revision),
         status: "draft",
-        document
+        document,
+        ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
       },
       replacementAssignment
     };

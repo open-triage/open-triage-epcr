@@ -88,29 +88,11 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const incident = useMemo(() => {
-    const documented = incidentSummary(encounter.document);
-    return {
-      ...documented,
-      number: report?.callNumber ?? documented.number,
-      complaint: report?.dispatchReason ?? report?.chiefComplaint ?? documented.complaint,
-    };
-  }, [encounter.document, report]);
-  const incidentEvents = useMemo(() => {
-    if (!report?.dispatchedAt) return documentTimeline(encounter.document);
-    const dispatched = new Date(report.dispatchedAt);
-    const date = `${dispatched.getFullYear()}-${String(dispatched.getMonth() + 1).padStart(2, "0")}-${String(dispatched.getDate()).padStart(2, "0")}`;
-    const time = `${String(dispatched.getHours()).padStart(2, "0")}:${String(dispatched.getMinutes()).padStart(2, "0")}`;
-    return [{
-      id: `call-dispatch-${report.id}`,
-      date,
-      time,
-      kind: "document" as const,
-      title: "Unit Notified by Dispatch",
-      detail: report.dispatchReason ?? report.chiefComplaint ?? "",
-      reference: "eTimes.03",
-    }];
-  }, [encounter.document, report]);
+  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
+  const incidentEvents = useMemo(
+    () => documentTimeline(encounter.document, report?.agencyTimeZone),
+    [encounter.document, report?.agencyTimeZone],
+  );
   const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
     `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
   ), [incidentEvents, encounter.events]);
@@ -156,6 +138,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }
     else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
     else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
+    else if (report?.document) dispatch({ type: "document-opened", document: report.document });
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
     queueMicrotask(() => {
       if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
@@ -384,14 +367,16 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
         <div className="incident-line">
           <div>
-            <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
-            <strong>{incident.complaint}</strong>
+            <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
+            <span>Response {incident.responseNumber}</span>
+            <span>Unit {incident.callSign}</span>
+            <strong>{incident.location}</strong>
           </div>
         </div>
       </header>
 
       <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
+        {configuredQuickActions(bundledEncounterDefinition).filter((action) => action.id !== "patient").map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
       </nav>
 
       <nav className="view-switcher" aria-label="Encounter views">
@@ -436,7 +421,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
               const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
+                <time dateTime={event.dateTime ?? `${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button

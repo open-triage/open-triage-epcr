@@ -9,12 +9,13 @@ import {
   openAssignedCall
 } from "../app/assigned-calls";
 
-function dispatchTime(value: string): string {
+function dispatchTime(value: string, timeZone?: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: timeZone ?? "America/New_York",
   }).format(new Date(value));
 }
 
@@ -123,10 +124,10 @@ export function AssignedCalls({
                 <strong>{call.callNumber}</strong>
                 <span>{call.status}</span>
               </div>
-              <p>{call.dispatchReason ?? call.chiefComplaint}</p>
+              <p>{call.dispatchReason || "Dispatch reason not provided"}</p>
               <dl>
                 <div><dt>Unit</dt><dd>{call.unit.callSign}</dd></div>
-                <div><dt>Dispatched</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt)}</time></dd></div>
+                <div><dt>Unit notified</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, call.agencyTimeZone)}</time></dd></div>
               </dl>
               <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
                 {openingId === call.id ? "Opening…" : "Open call"}

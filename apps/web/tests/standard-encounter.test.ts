@@ -9,15 +9,14 @@ test("opens directly into the fictional neutral standard encounter", () => {
   assert.equal(syntheticEncounter.synthetic, true);
   assert.equal(syntheticEncounter.definitionId, "standard-encounter-v1");
   assert.equal(patientSummary(syntheticEncounter.document).name, "Rivera, Jordan");
-  assert.equal(incidentSummary(syntheticEncounter.document).complaint, "Medical assistance requested");
-  assert.match(incidentSummary(syntheticEncounter.document).address, /fictional/i);
+  assert.equal(incidentSummary(syntheticEncounter.document).callSign, "AN");
+  assert.match(incidentSummary(syntheticEncounter.document).location, /fictional/i);
   assert.equal(syntheticEncounter.events.length, 0);
   assert.equal(syntheticEncounter.document.formProfile.id, bundledEncounterDefinition.id);
   assert.deepEqual(documentTimeline(syntheticEncounter.document).map((event) => event.reference), [
     "eTimes.06",
     "eTimes.05",
     "eTimes.03",
-    "eTimes.01",
   ]);
 });
 

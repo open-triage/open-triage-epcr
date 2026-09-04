@@ -15,6 +15,8 @@ export type EncounterEvent = {
   readonly id: string;
   readonly date?: string;
   readonly time: string;
+  /** Original offset-aware lexical timestamp when projected from the canonical document. */
+  readonly dateTime?: string;
   readonly kind: "care" | "transport" | "alert" | "note" | "procedure" | "medication" | "document";
   readonly title: string;
   readonly detail: string;
@@ -85,6 +87,7 @@ export type ShellState = {
 };
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
+  | { readonly type: "document-opened"; readonly document: EncounterDocument }
   | { readonly type: "patient-updated"; readonly document: EncounterDocument }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
@@ -365,6 +368,8 @@ function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<Encou
 
 export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
   switch (action.type) {
+    case "document-opened":
+      return { ...state, encounter: { ...state.encounter, document: action.document, events: [] } };
     case "view-selected":
       return { ...state, view: action.view };
     case "patient-updated":
