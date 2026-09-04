@@ -70,6 +70,7 @@ export interface SaveDraftReportCommand {
 }
 
 export interface SavedDraftReport { readonly id: string; readonly revision: number; readonly status: "draft" }
+export interface RetainedSignedDraftAttempt { readonly id: string; readonly revision: number; readonly status: "signed" }
 
 /** Produces an RFC-4122-shaped, deterministic identity for a local report entity. */
 export function stableDraftId(reportId: string, localId: string): string {
@@ -182,6 +183,37 @@ export function shellStateToDraftMutations(
   return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
 }
 
+/** Reduces a canonical document projection to only targets changed from its last accepted projection. */
+export function draftMutationDelta(
+  current: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  const baselineGroups = new Map(baseline.groups.map((group) => [group.id, group]));
+  const baselineOccurrences = new Map(baseline.occurrences.map((occurrence) => [occurrence.id, occurrence]));
+  return {
+    groups: current.groups.filter((group) => JSON.stringify(group) !== JSON.stringify(baselineGroups.get(group.id))),
+    occurrences: current.occurrences.filter((occurrence) => JSON.stringify(occurrence) !== JSON.stringify(baselineOccurrences.get(occurrence.id))),
+  };
+}
+
+/** Advances an accepted full baseline by one target-level mutation set. */
+export function applyDraftMutationDelta(
+  baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  delta: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  const groups = new Map(baseline.groups.map((group) => [group.id, group]));
+  const occurrences = new Map(baseline.occurrences.map((occurrence) => [occurrence.id, occurrence]));
+  for (const group of delta.groups) {
+    if (group.tombstone) groups.delete(group.id);
+    else groups.set(group.id, group);
+  }
+  for (const occurrence of delta.occurrences) {
+    if (occurrence.tombstone) occurrences.delete(occurrence.id);
+    else occurrences.set(occurrence.id, occurrence);
+  }
+  return { groups: [...groups.values()], occurrences: [...occurrences.values()] };
+}
+
 function apiBaseUrl(): string | null {
   if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
@@ -197,7 +229,7 @@ export function draftChangesUrl(reportId: string): string {
   return base ? `${base}${path}` : `${process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? ""}${path}`;
 }
 
-export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport> {
+export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
   let response: Response;
   try {
     response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(command) });
@@ -206,7 +238,7 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   }
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
-  return response.json() as Promise<SavedDraftReport>;
+  return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
 }
 
 export async function fetchActiveReport(
@@ -226,6 +258,7 @@ export async function fetchActiveReport(
     throw new Error("offline");
   }
   if (response.status === 304) return null;
+  if (response.status === 404 || response.status === 410) throw new Error("completed");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }

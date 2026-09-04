@@ -5,6 +5,7 @@ import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,
   cacheOpenCallSummary,
+  cacheLocalReportDocument,
   cacheOpenedReport,
   cachedOpenCalls,
   cachedOpenReports,
@@ -95,6 +96,16 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.equal(cachedReopenResponse(reloaded, session.user.id, opened.report.id)?.callNumber, "CALL-51");
   assert.equal(cachedReopenResponse(reloaded, "different-clinician", opened.report.id), null);
   assert.ok(bytes.has(OFFLINE_REPORTS_STORAGE_KEY));
+});
+
+test("a locally edited canonical document makes an opened report self-contained for offline reopen", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  const edited = { ...opened.report.document, encounter: { ...opened.report.document.encounter, updatedAt: "2026-09-04T12:00:00.000Z" } };
+
+  cacheLocalReportDocument(storage, opened.report.id, edited);
+
+  assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.document.encounter.updatedAt, "2026-09-04T12:00:00.000Z");
 });
 
 test("cached work is listable and reopenable only when both ownership fields match the clinician", () => {

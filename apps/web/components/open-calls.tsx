@@ -4,7 +4,7 @@ import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-t
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
 import { saveDraftReport } from "../app/draft-report";
-import { purgeCompletedReportCaches } from "../app/local-persistence";
+import { clearShellState, purgeCompletedReportCaches } from "../app/local-persistence";
 import {
   acceptDraftChange,
   cacheOpenCallSummary,
@@ -16,6 +16,7 @@ import {
   markDraftChangeAttempted,
   nextDraftChange,
   purgeCompletedOfflineReports,
+  removeSignedOfflineReport,
 } from "../app/offline-reports";
 
 const CLEARED_PENDING_REPORT_ID = "568e1a08-ed1e-4eb9-8dbf-3d5cbb56c386";
@@ -62,6 +63,7 @@ export function OpenCalls({
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const callsRef = useRef<OpenCall[]>([]);
   const syncingCachedReports = useRef(false);
   const handledRefreshRequest = useRef(refreshRequest);
@@ -77,6 +79,13 @@ export function OpenCalls({
           markDraftChangeAttempted(window.localStorage, cached.report.id, queued.command.commandId);
           try {
             const saved = await saveDraftReport(session.accessToken, cached.report.id, queued.command);
+            if (saved.status === "signed") {
+              clearShellState(window.localStorage, cached.report.id);
+              removeSignedOfflineReport(window.localStorage, cached.report.id);
+              callsRef.current = callsRef.current.filter((call) => call.reportId !== cached.report.id);
+              setCalls(callsRef.current);
+              break;
+            }
             acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
           } catch (syncError) {
             if (syncError instanceof Error && syncError.message === "session") onSessionEnded?.();
@@ -94,6 +103,7 @@ export function OpenCalls({
       const response = await fetchOpenCalls(session.accessToken);
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
+      const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       response.openCalls.forEach((call) => cacheOpenCallSummary(window.localStorage, session, call));
@@ -107,6 +117,9 @@ export function OpenCalls({
       const syncedVisible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
       callsRef.current = syncedVisible;
       setCalls(syncedVisible);
+      if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
+        ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
+        : `${removed.length} calls were completed on the stationary interface.`);
       if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
       if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
@@ -186,6 +199,7 @@ export function OpenCalls({
           <h1 id="open-calls-title">Open calls</h1>
         </div>
       </div>
+      {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="assignment-empty">Loading open calls…</p>}
       {loaded && calls.length === 0 && <p className="assignment-empty">You have no open calls.</p>}

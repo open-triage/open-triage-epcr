@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { EncounterDocument } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
-import { reconcileActiveReportDocument } from "../app/active-report-reconciliation";
+import { pendingDraftTargets, reconcileActiveReportDocument } from "../app/active-report-reconciliation";
 import { encounterEvents } from "../app/canonical-events";
-import { stableDraftId } from "../app/draft-report";
+import { encounterDocumentToDraftMutations, stableDraftId } from "../app/draft-report";
+import { editStationaryScalarValue } from "../app/stationary-scalar-group";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
@@ -43,4 +44,22 @@ test("pending clinician removals stay removed while a clean report accepts the s
   const pending = reconcileActiveReportDocument(reportId, local.encounter.document, server, true);
   assert.equal(encounterEvents(pending, bundledEncounterDefinition).some(({ id }) => id === "removed-note"), false);
   assert.equal(reconcileActiveReportDocument(reportId, local.encounter.document, server, false), server);
+});
+
+test("target-aware reconciliation keeps a stationary field edit and a disjoint server field edit", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const local = editStationaryScalarValue(baseline, "ePatient.03", "Local first name", () => "unused");
+  const server = editStationaryScalarValue(baseline, "ePatient.02", "Server last name", () => "unused");
+  const persisted = encounterDocumentToDraftMutations(reportId, baseline);
+  const command = encounterDocumentToDraftMutations(reportId, local, persisted);
+  const targets = pendingDraftTargets(command, persisted);
+
+  const merged = reconcileActiveReportDocument(reportId, local, server, true, targets);
+  const values = merged.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  const scalar = (id: string) => {
+    const value = values.find((element) => element.id === id)!.values[0]!;
+    return value.kind === "scalar" ? value.value : null;
+  };
+  assert.equal(scalar("ePatient.02"), "Server last name");
+  assert.equal(scalar("ePatient.03"), "Local first name");
 });
