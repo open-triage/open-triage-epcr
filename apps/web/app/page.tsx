@@ -36,6 +36,7 @@ import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, E
 import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -116,6 +117,17 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   useEffect(() => {
     if (presentationMode === "mobile" && shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
   }, [presentationMode, shell.view]);
+
+  useEffect(() => {
+    const populate = () => dispatch({ type: "demo-populated" });
+    const clear = () => dispatch({ type: "demo-cleared" });
+    window.addEventListener(DEMO_POPULATE_EVENT, populate);
+    window.addEventListener(DEMO_CLEAR_EVENT, clear);
+    return () => {
+      window.removeEventListener(DEMO_POPULATE_EVENT, populate);
+      window.removeEventListener(DEMO_CLEAR_EVENT, clear);
+    };
+  }, []);
 
   const closeActiveDialog = useCallback(() => {
     if (activeDialog === "note") dispatch({ type: "note-cancelled" });

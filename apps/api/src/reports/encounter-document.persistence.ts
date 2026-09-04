@@ -24,6 +24,7 @@ type StoredGroupRow = {
   group_id: string;
   ordinal: string | number;
   documented_time: Date | string | null;
+  correlation_id: string | null;
 };
 
 type StoredOccurrenceRow = {
@@ -229,7 +230,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   const report = reports[0];
   if (!report) throw new TypeError(`Report ${reportId} is unavailable`);
   const groups = await manager.query<StoredGroupRow[]>(`
-    select id, parent_group_instance_id, group_id, ordinal, documented_time from clinical.group_instance
+    select id, parent_group_instance_id, group_id, ordinal, documented_time, correlation_id from clinical.group_instance
     where report_id = $1 and tombstoned_at is null order by group_id, ordinal, id
   `, [reportId]);
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
@@ -248,6 +249,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
     const clinicianOwned = groupOccurrences.some((item) => item.provenance_kind === "clinician");
     const attributes = {
       ...(clinicianOwned ? { "x-open-triage-owner": "clinician" } : {}),
+      ...(group.correlation_id?.startsWith("demo:stationary-populate-v1:") ? { "x-open-triage-demo": "stationary-populate-v1" } : {}),
       ...(group.documented_time ? { documentedTime: new Date(group.documented_time).toISOString() } : {}),
     };
     const instance = {

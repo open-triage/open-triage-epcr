@@ -63,6 +63,8 @@ input, select, textarea { touch-action: manipulation; }
 .safety-notice { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 7px 12px; color: #fff; background: #2d332e; text-align: center; font-size: 12px; line-height: 1.2; }
 .safety-notice strong { text-transform: uppercase; letter-spacing: .045em; }
 .safety-notice span { color: #e7e9e5; }
+.safety-notice .demo-data-controls { display: inline-flex; gap: 6px; margin-left: 6px; }
+.safety-notice .demo-data-controls button { min-height: 28px; padding: 2px 9px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-size: 12px; font-weight: 750; cursor: pointer; }
 .encounter-header { padding: 18px 20px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .header-kicker, .incident-line { display: flex; align-items: center; justify-content: space-between; }
 .header-kicker { color: var(--muted); font-size: 14px; font-weight: 650; }

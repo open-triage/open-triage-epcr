@@ -1,6 +1,7 @@
 import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
+import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
@@ -36,6 +37,7 @@ export interface DraftGroupMutation {
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
+  readonly correlationId?: string;
   readonly tombstone?: boolean;
 }
 
@@ -57,6 +59,8 @@ export interface DraftOccurrenceMutation {
   readonly groupInstanceId: string;
   readonly ordinal: number;
   readonly sourceAttributes?: Record<string, unknown>;
+  readonly provenanceKind?: string;
+  readonly provenanceDetail?: Record<string, unknown>;
   readonly tombstone?: boolean;
   readonly value?: DraftValue;
 }
@@ -149,11 +153,13 @@ export function encounterDocumentToDraftMutations(
         ?? parentCandidates[0];
       const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}) });
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
+        ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
+          ...(hasDemoProvenance(value.attributes) ? { provenanceKind: "demo", provenanceDetail: { generator: DEMO_PROVENANCE_VALUE } } : {}),
           value: draftValue(element.id, value),
         });
       }));
