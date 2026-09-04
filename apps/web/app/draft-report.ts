@@ -1,7 +1,6 @@
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
-import { bundledEncounterDefinition } from "./standard-encounter";
-import { getNemsisGroup, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
+import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
@@ -92,71 +91,8 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
   return { kind: "text", value: String(value.value) };
 }
 
-function eventDocument(shell: ShellState): EncounterDocument {
-  const groups = shell.encounter.document.groups.filter(({ id }) => !["eNarrativeSection", "eVitals.VitalGroup", "eMedications.MedicationGroup", "eMedications.DosageGroup", "eProcedures.ProcedureGroup"].includes(id));
-  const eventGroups: Array<EncounterDocument["groups"][number]> = [];
-  const coded = (elementId: string, label: string) => {
-    const option = resolveNemsisElementValues(requireNemsisDataElement(elementId)).permissibleValues.find((item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
-    return option ? { kind: "coded" as const, code: option.code, display: option.label } : null;
-  };
-  const timestamp = (date: string | undefined, time: string) => `${date ?? "2026-04-18"}T${time}:00Z`;
-  for (const event of shell.encounter.events) {
-    if (event.kind === "note") eventGroups.push({ id: "eNarrativeSection", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [{ id: "eNarrative.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:narrative`, value: event.detail }] }] }] });
-    if (event.vitals) {
-      const elements: Array<{ id: string; value: EncounterValue }> = [
-        { id: "eVitals.01", value: { kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) } },
-      ];
-      bundledEncounterDefinition.events.vitals.fields.forEach((field) => {
-          const raw = event.vitals![field.id];
-          const absence = event.vitals!.nullValues[field.id];
-          if (raw) {
-            elements.push({ id: field.reference, value: { kind: "scalar", occurrenceId: `${event.id}:${field.reference}`, value: Number(raw) } });
-            return;
-          }
-          if (!absence) return;
-          const pertinent = field.absenceStates.find((item) => item.code === absence)?.kind === "PN";
-          elements.push({ id: field.reference, value: pertinent
-            ? { kind: "pertinent-negative", occurrenceId: `${event.id}:${field.reference}`, code: absence }
-            : { kind: "null", occurrenceId: `${event.id}:${field.reference}`, notValue: { code: absence } } });
-        });
-      eventGroups.push({ id: "eVitals.VitalGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: elements.map(({ id, value }) => ({ id, values: [value] })) }] });
-    }
-    if (event.procedure) {
-      const procedure = event.procedure;
-      const success = coded("eProcedures.06", procedure.success);
-      const outcome = coded("eProcedures.08", procedure.outcome);
-      const complications = procedure.complications.map((code, index) => ({ kind: "coded" as const, occurrenceId: `${event.id}:complication:${index}`, code }));
-      eventGroups.push({ id: "eProcedures.ProcedureGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eProcedures.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) }] },
-        { id: "eProcedures.03", values: [{ kind: "coded", occurrenceId: `${event.id}:procedure`, code: procedure.code, system: "SNOMED-CT", display: procedure.label, attributes: { warningAcknowledged: procedure.warningAcknowledged } }] },
-        { id: "eProcedures.05", values: [{ kind: "scalar", occurrenceId: `${event.id}:attempts`, value: procedure.attempts }] },
-        ...(success ? [{ id: "eProcedures.06", values: [{ ...success, occurrenceId: `${event.id}:success` }] }] : []),
-        ...(outcome ? [{ id: "eProcedures.08", values: [{ ...outcome, occurrenceId: `${event.id}:outcome` }] }] : []),
-        ...(complications.length ? [{ id: "eProcedures.07", values: complications }] : []),
-      ] }] });
-    }
-    if (event.medication) {
-      const medication = event.medication;
-      const route = coded("eMedications.04", medication.route.replace(/^.*?—\s*/, "")) ?? coded("eMedications.04", medication.route);
-      const unit = coded("eMedications.06", medication.unit);
-      const response = coded("eMedications.07", medication.response);
-      eventGroups.push({ id: "eMedications.MedicationGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eMedications.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) }] },
-        { id: "eMedications.03", values: [{ kind: "coded", occurrenceId: `${event.id}:medication`, code: medication.medicationCode, system: medication.codeType, display: medication.label, attributes: { response: medication.response, warningAcknowledged: medication.warningAcknowledged } }] },
-        ...(route ? [{ id: "eMedications.04", values: [{ ...route, occurrenceId: `${event.id}:route` }] }] : []),
-        ...(response ? [{ id: "eMedications.07", values: [{ ...response, occurrenceId: `${event.id}:response` }] }] : []),
-      ] }] });
-      eventGroups.push({ id: "eMedications.DosageGroup", instances: [{ instanceId: `${event.id}:dosage`, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eMedications.05", values: [{ kind: "scalar", occurrenceId: `${event.id}:dose`, value: Number(medication.dose) }] },
-        ...(unit ? [{ id: "eMedications.06", values: [{ ...unit, occurrenceId: `${event.id}:unit` }] }] : []),
-      ] }] });
-    }
-  }
-  return { ...shell.encounter.document, groups: [...groups, ...eventGroups] };
-}
-
 export function shellStateToDraftMutations(reportId: string, shell: ShellState): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  const document = eventDocument(shell);
+  const document = shell.encounter.document;
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
   const groups: DraftGroupMutation[] = [];
   const occurrences: DraftOccurrenceMutation[] = [];

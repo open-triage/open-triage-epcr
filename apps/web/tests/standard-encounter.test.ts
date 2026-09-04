@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { INITIAL_SHELL_STATE, syntheticEncounter, bundledEncounterDefinition, transitionShell } from "../app/standard-encounter";
-import { patientSummary } from "../app/patient-document";
 import { documentTimeline, incidentSummary } from "../app/incident-document";
+import { encounterEvents } from "../app/canonical-events";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 
 test("opens directly into the fictional neutral standard encounter", () => {
   assert.equal(INITIAL_SHELL_STATE.view, "timeline");
   assert.equal(syntheticEncounter.synthetic, true);
   assert.equal(syntheticEncounter.definitionId, "standard-encounter-v1");
-  assert.equal(patientSummary(syntheticEncounter.document).name, "Rivera, Jordan");
+  const patientNames = syntheticEncounter.document.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements
+    .flatMap(({ values }) => values.flatMap((value) => value.kind === "scalar" ? [String(value.value)] : []));
+  assert.deepEqual(patientNames, ["Rivera", "Jordan"]);
   assert.equal(incidentSummary(syntheticEncounter.document).complaint, "Medical assistance requested");
   assert.match(incidentSummary(syntheticEncounter.document).address, /fictional/i);
-  assert.equal(syntheticEncounter.events.length, 0);
+  assert.equal(encounterEvents(INITIAL_SHELL_STATE.encounter.document, standardEncounterDefinition).length, 0);
   assert.equal(syntheticEncounter.document.formProfile.id, bundledEncounterDefinition.id);
   assert.deepEqual(documentTimeline(syntheticEncounter.document).map((event) => event.reference), [
     "eTimes.06",
