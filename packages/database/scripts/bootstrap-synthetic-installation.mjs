@@ -6,6 +6,9 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
+import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.validation.js";
+import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
+import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -14,6 +17,17 @@ const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to bootstrap the synthetic installation");
 const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
+const dispatchSamplePath = path.join(
+  repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json"
+);
+const dispatchSourceBytes = await readFile(dispatchSamplePath);
+const dispatchPayload = JSON.parse(dispatchSourceBytes.toString("utf8"));
+const dispatchCatalog = JSON.parse(await readFile(
+  path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"
+));
+const validatedDispatch = validateDispatchAssignment(dispatchPayload, dispatchCatalog);
+if (!validatedDispatch.canonical) throw new Error("The committed initial dispatch sample is invalid");
+const dispatchProjection = projectDispatchAssignment(validatedDispatch.canonical);
 
 // Stable UUIDs make this fixture an idempotent installation baseline. Every clinical
 // UUID is v4-shaped so the same constraints used for offline-created records apply.
@@ -32,9 +46,7 @@ const ids = Object.freeze({
   incident: "32000000-0000-4000-8000-00000000000c",
   patient: "32000000-0000-4000-8000-00000000000d",
   report: "32000000-0000-4000-8000-00000000000e",
-  assignmentIncident: "32000000-0000-4000-8000-00000000000f",
-  unit: "32000000-0000-4000-8000-000000000010",
-  assignment: "32000000-0000-4000-8000-000000000011"
+  unit: "32000000-0000-4000-8000-000000000010"
 });
 
 function stableValue(value) {
@@ -207,34 +219,38 @@ try {
     await client.query(`
       insert into app_identity.operational_unit
         (id, organization_id, call_sign, name, default_form_id, synthetic)
-      values ($1, $2, 'Medic 32', 'Demo Medic Unit 32', $3, true)
+      values ($1, $2, $3, 'Demo dispatch unit', $4, true)
       on conflict do nothing
-    `, [ids.unit, ids.organization, ids.form]);
+    `, [ids.unit, ids.organization, dispatchProjection.callSign, ids.form]);
     await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
       values ($3, $1, $2)
       on conflict do nothing
     `, [ids.unit, ids.clinician, ids.organization]);
 
+    const dispatchIngestion = await ingestDispatchDelivery(client, {
+      organizationId: ids.organization,
+      sourceId: "synthetic-bootstrap",
+      sourceBytes: dispatchSourceBytes
+    }, dispatchCatalog);
+    if (!["applied", "replayed", "applied_with_findings"].includes(dispatchIngestion.status)) {
+      throw new Error(`Initial dispatch sample was not applied: ${dispatchIngestion.status}`);
+    }
     await client.query(`
-      insert into clinical.incident
-        (id, organization_id, operational_state, dispatch_provenance, synthetic, baseline)
-      values ($1, $2, 'assigned', $3::jsonb, true, true)
-      on conflict do nothing
-    `, [ids.assignmentIncident, ids.organization, JSON.stringify({
-      fixture: "open-triage-synthetic-assignment-v1",
-      synthetic: true,
-      callNumber: "SYN-20260903-001",
-      dispatchedAt: "2026-09-03T12:00:00Z"
-    })]);
+      update clinical.call_assignment ca
+      set synthetic = true
+      where ca.organization_id = $1 and ca.dispatch_source_id = 'synthetic-bootstrap'
+        and ca.dispatch_source_record_id = $2
+    `, [ids.organization, dispatchProjection.sourceRecordId]);
     await client.query(`
-      insert into clinical.call_assignment
-        (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
-         dispatch_reason, status, synthetic)
-      values ($1, $2, $3, $4, 'SYN-20260903-001', '2026-09-03T12:00:00Z',
-              'Medical assistance requested', 'assigned', true)
-      on conflict do nothing
-    `, [ids.assignment, ids.organization, ids.unit, ids.assignmentIncident]);
+      update clinical.incident i
+      set synthetic = true, baseline = true
+      where i.id = (
+        select ca.incident_id from clinical.call_assignment ca
+        where ca.organization_id = $1 and ca.dispatch_source_id = 'synthetic-bootstrap'
+          and ca.dispatch_source_record_id = $2
+      )
+    `, [ids.organization, dispatchProjection.sourceRecordId]);
 
     await client.query(`
       insert into clinical.incident
@@ -269,7 +285,9 @@ try {
              adv.definition_sha256 as agency_sha256,
              u.organization_id as user_organization_id, u.synthetic as user_is_synthetic,
              ou.id as unit_id, ou.default_form_id, ca.id as assignment_id,
-             ca.status as assignment_status, ca.synthetic as assignment_is_synthetic
+             ca.status as assignment_status, ca.synthetic as assignment_is_synthetic,
+             ca.call_number, ca.response_number, ca.vehicle_number,
+             ca.dispatch_source_record_id
       from clinical.report r
       join forms.form_version fv on fv.id = r.form_version_id
       join app_identity.agency_demographic_version adv on adv.id = r.agency_demographic_version_id
@@ -277,8 +295,10 @@ try {
       join app_identity.unit_clinician uc on uc.user_id = u.id
       join app_identity.operational_unit ou on ou.id = uc.unit_id
       join clinical.call_assignment ca on ca.unit_id = ou.id
+        and ca.dispatch_source_id = 'synthetic-bootstrap'
+        and ca.dispatch_source_record_id = $3
       where r.id = $1 and r.organization_id = $2
-    `, [ids.report, ids.organization]);
+    `, [ids.report, ids.organization, dispatchProjection.sourceRecordId]);
     const expected = installation.rows[0];
     if (!expected || expected.agency_demographic_version_id !== ids.agencyVersion ||
         expected.form_version_id !== ids.formVersion || expected.catalog_release_id !== releaseId ||
@@ -286,8 +306,11 @@ try {
         expected.agency_sha256 !== sha256(agencyDefinition) ||
         expected.user_organization_id !== ids.organization || !expected.synthetic || !expected.baseline ||
         !expected.user_is_synthetic || expected.unit_id !== ids.unit ||
-        expected.default_form_id !== ids.form || expected.assignment_id !== ids.assignment ||
-        expected.assignment_status !== "assigned" || !expected.assignment_is_synthetic) {
+        expected.default_form_id !== ids.form || expected.assignment_status !== "assigned" ||
+        !expected.assignment_is_synthetic || expected.call_number !== dispatchProjection.incidentNumber ||
+        expected.response_number !== dispatchProjection.responseNumber ||
+        expected.vehicle_number !== dispatchProjection.vehicleNumber ||
+        expected.dispatch_source_record_id !== dispatchProjection.sourceRecordId) {
       throw new Error("Existing data conflicts with the deterministic synthetic installation");
     }
 
@@ -300,7 +323,9 @@ try {
       agencyDemographicVersionId: ids.agencyVersion,
       publishedFormVersionId: ids.formVersion,
       catalogReleaseId: releaseId,
-      baselineReportId: ids.report
+      baselineReportId: ids.report,
+      assignmentId: expected.assignment_id,
+      dispatchStatus: dispatchIngestion.status
     }, null, 2));
   } catch (error) {
     await client.query("rollback");

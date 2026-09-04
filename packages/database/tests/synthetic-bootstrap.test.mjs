@@ -17,7 +17,7 @@ const [databasePackage, bootstrap, apiMain, apiModule, migration] = await Promis
 test("exposes the synthetic installation only through an explicit command", () => {
   assert.equal(
     databasePackage.scripts["bootstrap:synthetic"],
-    "node scripts/bootstrap-synthetic-installation.mjs"
+    "npm run build -w @open-triage/api && node scripts/bootstrap-synthetic-installation.mjs"
   );
   for (const productionEntryPoint of [apiMain, apiModule, migration]) {
     assert.ok(!productionEntryPoint.includes("bootstrap-synthetic-installation"));
@@ -43,15 +43,28 @@ test("seeds the demo organization with a fixed fourteen-hour shift session", () 
   assert.match(migration, /shift_session_duration_hours integer not null default 14/);
 });
 
-test("associates the demo clinician, operational unit, default published form, and assigned call", () => {
+test("associates the demo clinician and unit, then ingests only the committed initial dispatch sample", () => {
   for (const table of ["app_identity.operational_unit", "app_identity.unit_clinician", "clinical.call_assignment"]) {
     assert.match(migration, new RegExp(`create table ${table.replace(".", "\\.")}`));
-    assert.ok(bootstrap.includes(`insert into ${table}`));
   }
+  assert.ok(bootstrap.includes("insert into app_identity.operational_unit"));
+  assert.ok(bootstrap.includes("insert into app_identity.unit_clinician"));
+  assert.ok(!bootstrap.includes("insert into clinical.call_assignment"));
+  assert.match(bootstrap, /synthetic-assignment\.json/);
+  assert.ok(!bootstrap.includes("synthetic-update.json"));
+  assert.ok(!bootstrap.includes("synthetic-cancellation.json"));
+  assert.match(bootstrap, /ingestDispatchDelivery\(client/);
+  assert.match(bootstrap, /projectDispatchAssignment\(validatedDispatch\.canonical\)/);
   assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
   assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
-  assert.match(bootstrap, /SYN-20260903-001/);
-  assert.match(bootstrap, /'Medical assistance requested', 'assigned', true/);
+  assert.ok(!bootstrap.includes("SYN-20260903-001"));
+  assert.ok(!bootstrap.includes("Medical assistance requested"));
   assert.match(bootstrap, /fv\.status as form_status/);
   assert.match(bootstrap, /expected\.form_status !== "published"/);
+});
+
+test("normal application startup and bootstrap never delete existing data", () => {
+  for (const source of [apiMain, apiModule, bootstrap]) {
+    assert.doesNotMatch(source, /\b(?:truncate|drop table|delete from)\b/i);
+  }
 });

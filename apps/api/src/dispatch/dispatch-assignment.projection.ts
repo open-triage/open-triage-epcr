@@ -27,6 +27,7 @@ export type RouteDispatchAssignmentInput = {
   readonly canonical: JsonRecord;
   readonly validationStatus: "applied" | "applied_with_findings";
   readonly findings: ReadonlyArray<DispatchValidationFinding>;
+  readonly revisionMetadata?: Readonly<JsonRecord>;
 };
 
 export type RoutedDispatchAssignment = {
@@ -162,7 +163,8 @@ export async function routeDispatchAssignment(
     callSign: projection.callSign,
     responseNumber: projection.responseNumber,
     vehicleNumber: projection.vehicleNumber,
-    revision: projection.revision
+    revision: projection.revision,
+    ...input.revisionMetadata
   };
   const receipt = await persistDispatchReceipt(writer, {
     organizationId: input.organizationId,

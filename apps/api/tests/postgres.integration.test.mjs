@@ -385,15 +385,17 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.deepEqual(payload.assignedCalls, [{
-    id: "32000000-0000-4000-8000-000000000011",
-    callNumber: "SYN-20260903-001",
-    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "Medic 32" },
-    dispatchedAt: "2026-09-03T12:00:00.000Z",
-    dispatchReason: "Medical assistance requested",
+  assert.equal(payload.assignedCalls.length, 1);
+  assert.match(payload.assignedCalls[0].id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual({ ...payload.assignedCalls[0], id: undefined }, {
+    id: undefined,
+    callNumber: "SYNTHETIC-INCIDENT-0001",
+    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "SYNTHETIC-MEDIC-7" },
+    dispatchedAt: "2026-08-15T13:14:00.000Z",
+    dispatchReason: "Chest Pain (Non-Traumatic)",
     chiefComplaint: null,
     status: "assigned"
-  }]);
+  });
   assert.deepEqual(payload.canceledAssignmentIds, []);
 
   try {
