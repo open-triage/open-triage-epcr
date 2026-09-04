@@ -143,6 +143,13 @@ export function saveCachedValidationErrorCount(storage: StoragePort, reportId: s
   replace(storage, { ...existing, validationErrorCount: count, localValidationErrorCount: count });
 }
 
+/** Keeps the actionable offline report self-contained as the canonical document changes locally. */
+export function cacheLocalReportDocument(storage: StoragePort, reportId: string, document: EncounterDocument): void {
+  const existing = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!existing) return;
+  replace(storage, { ...existing, report: { ...existing.report, document } });
+}
+
 export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
   return read(storage)
     .filter((candidate) => candidate.ownerUserId === ownerUserId

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
+import { StationaryPatientName } from "../components/stationary-patient-name";
 import { TimePicker } from "../components/time-picker";
-import { loadShellStateResult, purgeCompletedReportCaches, saveReportSyncStatus, saveShellState } from "./local-persistence";
+import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -26,36 +27,15 @@ import { documentTimeline, incidentSummary } from "./incident-document";
 import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
-  DRAFT_SAVE_DEBOUNCE_MS,
-  DRAFT_SYNC_RETRY_MS,
-  ACTIVE_REPORT_POLL_INTERVAL_MS,
-  encounterDocumentToDraftMutations,
-  fetchActiveReport,
-  draftCommandUsesLegacyDerivedIds,
-  saveDraftReport,
   signDraftReport,
-  shellStateToDraftMutations,
   usesLocalDemoDrafts,
   type ActiveDraftReport,
-  type DraftSyncStatus,
   dispatchCancellationNotice,
 } from "./draft-report";
-import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
-import { resolveDispatchConflict } from "./assigned-calls";
-import {
-  acceptDraftChange,
-  expectedRevisionForNextChange,
-  markDraftChangeAttempted,
-  nextDraftChange,
-  rebaseQueuedDraftChanges,
-  reconcileCachedActiveReport,
-  removeSignedOfflineReport,
-  replaceQueuedDraftChanges,
-  queueDraftChange,
-  saveCachedValidationErrorCount,
-} from "./offline-reports";
-import { reconcileActiveReportDocument } from "./active-report-reconciliation";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
+import { useReportWorkspace } from "./report-workspace";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -82,25 +62,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   readonly onSessionEnded: () => void;
 }) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
-  const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
-  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
-  const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
-  const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
-  const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
-  const [conflictError, setConflictError] = useState<string | null>(null);
-  const revision = useRef(report?.revision ?? 0);
-  const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
-  const activeEtag = useRef<string | undefined>(undefined);
-  const shellRef = useRef(shell);
-  const skipReconciledQueue = useRef(false);
-  const activeSave = useRef<Promise<void> | null>(null);
-  const skipInitialQueue = useRef(false);
-  const saveTimer = useRef<number | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -121,6 +87,15 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
+  const {
+    recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
+    conflictError, flushSave, resolveConflict,
+  } = useReportWorkspace({
+    session, report, presentationMode, shell, dispatch,
+    validationErrorCount: reviewErrors.length,
+    onSessionEnded,
+    onReportCompleted: onSaveAndClose,
+  });
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -138,8 +113,6 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
-  useEffect(() => { shellRef.current = shell; }, [shell]);
-
   useEffect(() => {
     if (presentationMode === "mobile" && shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
   }, [presentationMode, shell.view]);
@@ -153,189 +126,6 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       dispatch({ type: "vitals-cancelled" });
     }
   }, [activeDialog]);
-
-  useEffect(() => {
-    persistedDraft.current = report?.document
-      ? encounterDocumentToDraftMutations(report.id, report.document)
-      : { groups: [], occurrences: [] };
-    const result = loadShellStateResult(
-      window.localStorage,
-      bundledEncounterDefinition,
-      report?.id,
-      report?.document?.formProfile,
-    );
-    if (result.status === "restored") {
-      skipInitialQueue.current = true;
-      dispatch({ type: "state-restored", state: result.state });
-    }
-    else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
-    else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
-    else if (report?.document) dispatch({ type: "document-opened", document: report.document });
-    // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    queueMicrotask(() => {
-      if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
-      setRestored(true);
-    });
-  }, [report]);
-
-  const flushSave = useCallback(async (): Promise<void> => {
-    if (!report) return;
-    if (saveTimer.current !== null) {
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    if (activeSave.current) {
-      await activeSave.current;
-    }
-    while (true) {
-      const queued = nextDraftChange(window.localStorage, report.id);
-      if (!queued) {
-        setSyncStatus("Saved");
-        return;
-      }
-      setSyncStatus("Saving");
-      markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
-      const attempt = (async () => {
-        try {
-          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
-          revision.current = saved.revision;
-          acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
-          persistedDraft.current = {
-            groups: queued.command.groups.filter(({ tombstone }) => !tombstone),
-            occurrences: queued.command.occurrences.filter(({ tombstone }) => !tombstone),
-          };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "offline";
-          if (reason === "session") {
-            setSyncStatus("Pending sync");
-            onSessionEnded();
-            return;
-          }
-          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
-        }
-      })();
-      activeSave.current = attempt;
-      await attempt;
-      activeSave.current = null;
-      if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
-    }
-  }, [onSessionEnded, report, session.accessToken]);
-
-  useEffect(() => {
-    if (!restored) return;
-    saveShellState(window.localStorage, shell, report?.id);
-    if (!report) return;
-    const queuedBeforeSave = nextDraftChange(window.localStorage, report.id);
-    if (queuedBeforeSave && draftCommandUsesLegacyDerivedIds(report.id, shell, queuedBeforeSave.command)) {
-      replaceQueuedDraftChanges(window.localStorage, report.id, {
-        commandId: crypto.randomUUID(),
-        expectedRevision: revision.current,
-        authorId: session.user.id,
-        deviceId: `web:${report.id}`,
-        clientTime: new Date().toISOString(),
-        ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
-      });
-    }
-    if (skipReconciledQueue.current) {
-      skipReconciledQueue.current = false;
-      return;
-    }
-    if (skipInitialQueue.current) {
-      skipInitialQueue.current = false;
-      if (nextDraftChange(window.localStorage, report.id)) {
-        if (navigator.onLine) queueMicrotask(() => void flushSave());
-        else queueMicrotask(() => setSyncStatus("Pending sync"));
-      }
-      return;
-    }
-    const existing = nextDraftChange(window.localStorage, report.id);
-    const commandId = existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID();
-    const clientTime = existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString();
-    queueDraftChange(window.localStorage, report.id, {
-      commandId,
-      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
-      authorId: session.user.id,
-      deviceId: `web:${report.id}`,
-      clientTime,
-      ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
-    });
-    queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
-  }, [flushSave, restored, shell, report, session.user.id]);
-
-  useEffect(() => {
-    if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);
-  }, [report, syncStatus]);
-
-  useEffect(() => {
-    if (report) saveCachedValidationErrorCount(window.localStorage, report.id, reviewErrors.length);
-  }, [report, reviewErrors.length]);
-
-  useEffect(() => {
-    const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
-    window.addEventListener("online", retry);
-    return () => {
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-      window.removeEventListener("online", retry);
-    };
-  }, [flushSave, report]);
-
-  useEffect(() => {
-    if (!report || syncStatus !== "Pending sync") return;
-    const retryTimer = window.setTimeout(() => {
-      if (navigator.onLine && nextDraftChange(window.localStorage, report.id)) void flushSave();
-    }, DRAFT_SYNC_RETRY_MS);
-    return () => window.clearTimeout(retryTimer);
-  }, [flushSave, report, syncStatus]);
-
-  useEffect(() => {
-    if (!report || !restored) return;
-    let pollTimer: number | null = null;
-    let stopped = false;
-    const poll = async () => {
-      if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
-      const previousEtag = activeEtag.current;
-      try {
-        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
-        if (!response || stopped) return;
-        activeEtag.current = response.etag || previousEtag;
-        const local = shellRef.current.encounter.document;
-        const hasPending = nextDraftChange(window.localStorage, report.id) !== null;
-        const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending);
-        revision.current = response.resource.reportRevision;
-        if (hasPending) rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
-        else {
-          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
-          skipReconciledQueue.current = true;
-        }
-        reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
-        setDispatchConflicts(response.resource.dispatchConflicts);
-        setDispatchCancellation(response.resource.dispatchCancellation);
-        dispatch({ type: "document-opened", document: merged });
-      } catch (error) {
-        if (error instanceof Error && error.message === "session") onSessionEnded();
-      }
-    };
-    const startOrPause = () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      pollTimer = document.visibilityState === "visible"
-        ? window.setInterval(() => void poll(), ACTIVE_REPORT_POLL_INTERVAL_MS)
-        : null;
-    };
-    const visibilityChanged = () => {
-      if (document.visibilityState === "visible") void poll();
-      startOrPause();
-    };
-    void poll();
-    startOrPause();
-    document.addEventListener("visibilitychange", visibilityChanged);
-    return () => {
-      stopped = true;
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      document.removeEventListener("visibilitychange", visibilityChanged);
-    };
-  }, [onSessionEnded, report, restored, session.accessToken]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -450,15 +240,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }
 
   async function disposeConflict(conflict: DispatchConflict, disposition: DispatchConflictDisposition) {
-    if (!report) return;
-    setConflictError(null);
-    try {
-      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
-      setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
-      revision.current += 1;
-    } catch (error) {
-      setConflictError(error instanceof Error ? error.message : "The dispatch difference could not be resolved.");
-    }
+    await resolveConflict(conflict, disposition);
   }
 
   return (
@@ -515,6 +297,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <div className="sign-action-bar">
           <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
         </div>
+      )}
+
+      {presentationMode === "stationary" && shell.view === "timeline" && (
+        <StationaryPatientName
+          document={encounter.document}
+          onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
+        />
       )}
 
       {shell.view === "timeline" && (
