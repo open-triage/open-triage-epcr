@@ -48,3 +48,20 @@ test("stationary rail supports section jumps, direct hashes, focus, scroll track
   await expect(rail).toBeVisible();
   await expect(page.locator("#stationary-section-eDispositionSection")).toBeVisible();
 });
+
+test("complete-record findings open and focus their stable editable target", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await openStationaryRecord(page);
+  await page.getByRole("button", { name: "Review & sign" }).click();
+
+  const finding = page.locator(".review-findings li").filter({ hasText: "ePatient.07" }).first();
+  await expect(finding).toContainText("Complete record");
+  await finding.getByRole("button").click();
+
+  await expect(page).toHaveURL(/#stationary-section-ePatientSection$/);
+  await expect(page.locator('[data-element-id="ePatient.07"] input').first()).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "Opened ePatient.07 for correction." })).toHaveCount(1);
+  const accessibility = await new AxeBuilder({ page }).include("#stationary-section-ePatientSection")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+});

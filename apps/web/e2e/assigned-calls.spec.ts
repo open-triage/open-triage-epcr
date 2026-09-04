@@ -236,6 +236,8 @@ test("Sign record requires acknowledged validation and removes the report from O
   await page.getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  await page.getByRole("button", { name: "Populate" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();

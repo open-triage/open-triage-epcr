@@ -80,6 +80,10 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await expect(safetyNotice).toContainText("Synthetic data only");
 
   await page.getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Populate" }).click();
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();

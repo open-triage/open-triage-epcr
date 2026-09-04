@@ -77,7 +77,7 @@ export function StationaryCodedValueField({ field, value, disabled = false, onCh
   const coded = value?.kind === "coded" ? value : undefined;
 
   return (
-    <fieldset className="stationary-coded-field" aria-describedby={`${id}-help`}>
+    <fieldset className="stationary-coded-field" aria-describedby={`${id}-help`} data-element-id={field.elementId} {...(value ? { "data-occurrence-id": value.occurrenceId } : {})}>
       <legend>{field.label} <small>{field.elementId}</small></legend>
       <small id={`${id}-help`}>{field.help}</small>
       {field.controlKind === "select" ? (

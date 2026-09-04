@@ -72,7 +72,7 @@ export function stationarySectionBlocks(section: StationarySection): ReadonlyArr
   return blocks;
 }
 
-function sectionForGroup(groupId: string, sections: ReadonlyArray<StationarySection>): StationarySection | undefined {
+export function stationarySectionForGroup(groupId: string, sections: ReadonlyArray<StationarySection> = configuredStationarySections()): StationarySection | undefined {
   const sectionRoots = new Set(sections.map(({ id }) => id));
   let current: string | null = groupId;
   while (current) {
@@ -94,13 +94,13 @@ export function stationarySectionStatuses(
   )));
   for (const element of NEMSIS_DATA_MODEL.elements) {
     if (element.occurrence.min === 0 || supplied.has(element.id)) continue;
-    const section = sectionForGroup(element.groupPath.at(-1)!, sections);
+    const section = stationarySectionForGroup(element.groupPath.at(-1)!, sections);
     if (!section) continue;
     const status = statuses.get(section.id)!;
     statuses.set(section.id, { ...status, incomplete: status.incomplete + 1 });
   }
   for (const finding of findings) {
-    const section = sectionForGroup(finding.target.groupId, sections);
+    const section = stationarySectionForGroup(finding.target.groupId, sections);
     if (!section) continue;
     const status = statuses.get(section.id)!;
     statuses.set(section.id, {

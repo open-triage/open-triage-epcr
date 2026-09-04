@@ -57,12 +57,12 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
   const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
   if (!field.scalar) return null;
   if (instance && (scalarOccurrences(document, group.id, instance.instanceId, field.id).length > 0 || field.scalar.repeatable)) {
-    return <div aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+    return <div data-element-id={field.id} data-group-instance-id={instance.instanceId} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
       <StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={field.scalar}
         disabled={disabled} onDocumentChange={disabled ? () => undefined : onDocumentChange} />
     </div>;
   }
-  return <div aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+  return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
     <StationaryScalarControl presentation={field.scalar} findings={findings} disabled={disabled} onInput={(input) => {
       if (disabled) return;
       const result = editNonRepeatingScalarValue(document, {
@@ -88,7 +88,7 @@ function EditableCodedField({ document, group, field, instance, parentInstanceId
 }) {
   const values = instance?.elements.find(({ id }) => id === field.id)?.values ?? [];
   const presentations = values.length ? values : [undefined];
-  return <div aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+  return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
     {presentations.map((value) => <StationaryCodedValueField
       key={value?.occurrenceId ?? "new"}
       field={stationaryCodedField(field.catalog)}

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession } from "@open-triage/contracts";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   createClinicianSession,
@@ -23,6 +23,7 @@ export function ClinicianSessionGate({ children }: {
     session: ClinicianSession;
     report: ActiveDraftReport | null;
     closeReport: () => void;
+    completeReport: () => void;
     sessionEnded: () => void;
     presentationMode: PresentationMode;
   }) => ReactNode);
@@ -35,6 +36,13 @@ export function ClinicianSessionGate({ children }: {
   const [openCallsRevision, setOpenCallsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
+  const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
+  const [completionNotice, setCompletionNotice] = useState<string | null>(null);
+  const completionNoticeRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (completionNotice) completionNoticeRef.current?.focus();
+  }, [completionNotice]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -153,7 +161,9 @@ export function ClinicianSessionGate({ children }: {
         </span>}
       </aside>
       <div hidden={activeReport !== null}>
-        <AssignedCalls session={session} refreshRequest={refreshRequest} onOpened={(opened, call) => {
+        {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
+        <AssignedCalls session={session} refreshRequest={refreshRequest} suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
+          setCompletionNotice(null);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
           setActiveReport(cached.report);
         }} />
@@ -170,6 +180,11 @@ export function ClinicianSessionGate({ children }: {
         </p>
       }
       {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, closeReport: () => {
+        setActiveReport(null);
+        setOpenCallsRevision((value) => value + 1);
+      }, completeReport: () => {
+        if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
+        setCompletionNotice(activeReport.callNumber ? `Call ${activeReport.callNumber} was signed and removed from active calls.` : "The report was signed and removed from active calls.");
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}
