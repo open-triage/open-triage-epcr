@@ -97,6 +97,18 @@ test("reopening restores the creator's report with its pinned form and saved con
     const normalized = sql.replace(/\s+/g, " ");
     queries.push({ sql: normalized, parameters });
     if (normalized.includes("from clinical.report where id")) return [report];
+    if (normalized.includes("join forms.form_version")) return [{
+      id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:05:00.000Z",
+      form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+    }];
+    if (normalized.includes("select id, parent_group_instance_id, group_id, ordinal")) return [
+      { id: "parent-group", parent_group_instance_id: null, group_id: "PatientCareReportGroup", ordinal: 0 },
+      { id: "child-group", parent_group_instance_id: "parent-group", group_id: "ePatientSection", ordinal: 0 }
+    ];
+    if (normalized.includes("select id, group_instance_id, element_id, ordinal")) return [{
+      id: "hidden-occurrence", group_instance_id: "child-group", element_id: "ePatient.17", ordinal: 0,
+      value_kind: "date", value_date: "1980-01-01", provenance_detail: null, source_attributes: null
+    }];
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
     throw new Error(`Unexpected SQL: ${normalized}`);
@@ -122,8 +134,9 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.dispatchReason, "Breathing problem");
   assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.formVersionId, "pinned-form");
-  assert.deepEqual(reopened.report.groups, [{ id: "group-1" }]);
-  assert.deepEqual(reopened.report.occurrences, [{ id: "occurrence-1" }]);
+  const patient = reopened.report.document.groups.find(({ id }) => id === "ePatientSection").instances[0];
+  assert.equal(patient.parentInstanceId, "parent-group");
+  assert.equal(patient.elements[0].values[0].value, "1980-01-01");
   assert.ok(queries.every(({ parameters }) => !parameters || !parameters.includes("another-user")));
   assert.deepEqual(queries[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
 });

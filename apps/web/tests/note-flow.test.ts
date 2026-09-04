@@ -98,7 +98,7 @@ test("browser persistence stores one versioned canonical document and preserves 
   const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
   assert.equal(envelope.persistenceVersion, PERSISTENCE_VERSION);
   assert.equal(envelope.state, undefined);
-  assert.equal(envelope.document.modelVersion, "1.0.0");
+  assert.equal(envelope.document.modelVersion, "1.1.0");
   assert.equal(envelope.document.dataModel.version, "3.5.1");
   assert.deepEqual(envelope.document.formProfile, { id: "standard-encounter-v1", version: "1" });
   assert.equal(envelope.document[ENCOUNTER_EXTENSION_KEY].version, ENCOUNTER_EXTENSION_VERSION);

@@ -4,6 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 
 type AssignedCallRow = {
   id: string;
@@ -22,6 +23,7 @@ type OpenableAssignmentRow = AssignedCallRow & {
   report_id: string | null;
   synthetic: boolean;
   default_form_id: string;
+  dispatch_receipt_id: string | null;
 };
 
 type ReportRow = {
@@ -94,7 +96,7 @@ export class AssignedCallsService {
       const assignments = await manager.query<OpenableAssignmentRow[]>(`
         select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-               ca.report_id, ca.synthetic, ou.call_sign, ou.default_form_id
+               ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
         from clinical.call_assignment ca
         join app_identity.operational_unit ou
           on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
@@ -148,6 +150,14 @@ export class AssignedCallsService {
         values ($1, $2, $3, $4, $5, $6, $7, $8, true)
       `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
         version.id, version.catalog_release_id, session.user.id]);
+      const receipts = assignment.dispatch_receipt_id
+        ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
+            select source_payload from clinical.dispatch_receipt
+            where id = $1 and organization_id = $2
+          `, [assignment.dispatch_receipt_id, session.organization.id])
+        : [];
+      await seedDispatchEncounter(manager, reportId, version.catalog_release_id, session.user.id,
+        receipts[0]?.source_payload ?? null, `PCR-${reportId}`);
       await manager.query(`
         update clinical.call_assignment
         set status = 'opened', report_id = $2, updated_at = now()
@@ -209,6 +219,7 @@ export class AssignedCallsService {
     const report = reports[0];
     if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
     if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
+    const document = await encounterDocument(manager, report.id);
     return {
       assignmentId: assignment.id,
       report: {
@@ -217,7 +228,8 @@ export class AssignedCallsService {
         formVersionId: report.form_version_id,
         catalogReleaseId: report.catalog_release_id,
         revision: Number(report.revision),
-        status: "draft"
+        status: "draft",
+        document
       },
       replacementAssignment
     };

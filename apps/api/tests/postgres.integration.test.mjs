@@ -451,23 +451,38 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     opened = await requestOpen();
     const retry = await requestOpen();
     assert.equal(retry.report.id, opened.report.id);
+    assert.deepEqual(retry.report.document, opened.report.document);
     assert.equal(retry.replacementAssignment, null);
     assert.equal(opened.report.documentingUserId, session.user.id);
     assert.equal(opened.report.formVersionId, latestBeforeOpen);
+    assert.equal(opened.report.document.modelVersion, "1.1.0");
+    assert.equal(opened.report.document.encounter.id, opened.report.id);
+    assert.equal(opened.report.document.groups.find(({ id }) => id === "eRecordSection")
+      .instances[0].elements.find(({ id }) => id === "eRecord.01").values[0].value,
+      `PCR-${opened.report.id}`);
     assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
     assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
 
     const state = (await client.query(`
       select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
         (select count(*)::integer from clinical.report where incident_id = ca.incident_id) as reports,
-        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients
+        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients,
+        (select count(*)::integer from clinical.element_occurrence
+         where report_id = r.id and element_id = 'eRecord.01') as pcr_numbers
       from clinical.call_assignment ca join clinical.report r on r.id = ca.report_id
       where ca.id = $1
     `, [assignmentId])).rows[0];
     assert.deepEqual(state, {
       status: "opened", report_id: opened.report.id, documenting_user_id: session.user.id,
-      form_version_id: latestBeforeOpen, reports: 1, patients: 1
+      form_version_id: latestBeforeOpen, reports: 1, patients: 1, pcr_numbers: 1
     });
+
+    const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
+      method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+    assert.equal(reopenedResponse.status, 200);
+    const reopened = await reopenedResponse.json();
+    assert.deepEqual(reopened.report.document, opened.report.document);
 
     const laterVersionId = randomUUID();
     await client.query(`

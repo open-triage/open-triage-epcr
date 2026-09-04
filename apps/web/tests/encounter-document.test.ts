@@ -62,6 +62,18 @@ test("repeating NEMSIS groups retain stable group and occurrence identities plus
   assert.equal(vitals.instances[1]?.elements[0]?.values[0]?.kind, "null");
 });
 
+test("model 1.1 retains nested parent identities and rejects missing or cyclic parents", () => {
+  const candidate = structuredClone(syntheticEncounter) as unknown as { modelVersion: string; groups: Array<{ instances: Array<{ instanceId: string; parentInstanceId?: string }> }> };
+  candidate.groups[1]!.instances[0]!.parentInstanceId = candidate.groups[0]!.instances[0]!.instanceId;
+  assert.equal(loadEncounterDocument(candidate).groups[1]!.instances[0]!.parentInstanceId, candidate.groups[0]!.instances[0]!.instanceId);
+  candidate.groups[1]!.instances[0]!.parentInstanceId = "missing-parent";
+  assert.ok(encounterDocumentDiagnostics(candidate).some(({ path, message }) => path.endsWith(".parentInstanceId") && message.includes("missing")));
+  candidate.groups[1]!.instances[0]!.parentInstanceId = candidate.groups[1]!.instances[0]!.instanceId;
+  assert.ok(encounterDocumentDiagnostics(candidate).some(({ path, message }) => path.endsWith(".parentInstanceId") && message.includes("itself")));
+  candidate.modelVersion = "1.0.0";
+  assert.ok(encounterDocumentDiagnostics(candidate).some(({ path }) => path === "$.modelVersion"));
+});
+
 test("standard coded, NV, and PN values are checked against the pinned NEMSIS model", () => {
   const coded = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };
   assert.doesNotThrow(() => loadEncounterDocument(coded));

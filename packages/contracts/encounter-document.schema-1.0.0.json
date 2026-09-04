@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://open-triage.dev/schemas/encounter-document/1.0.0",
-  "title": "Open Triage Encounter Document 1.0.0",
+  "title": "Open Triage Encounter Document model 1.1.0",
   "description": "Canonical, portable patient encounter data addressed only by NEMSIS or namespaced custom identities.",
   "type": "object",
   "required": ["$schema", "documentType", "modelVersion", "dataModel", "formProfile", "encounter", "groups"],
   "properties": {
     "$schema": { "const": "./encounter-document.schema-1.0.0.json" },
     "documentType": { "const": "open-triage.encounter" },
-    "modelVersion": { "const": "1.0.0" },
+    "modelVersion": { "const": "1.1.0" },
     "dataModel": {
       "type": "object",
       "required": ["standard", "version", "dataset"],
@@ -142,6 +142,7 @@
       "required": ["instanceId", "elements"],
       "properties": {
         "instanceId": { "$ref": "#/$defs/nonEmptyString" },
+        "parentInstanceId": { "$ref": "#/$defs/nonEmptyString" },
         "attributes": { "$ref": "#/$defs/attributes" },
         "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
       }

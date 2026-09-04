@@ -1,7 +1,7 @@
 {
   "$schema": "./encounter-document.schema-1.0.0.json",
   "documentType": "open-triage.encounter",
-  "modelVersion": "1.0.0",
+  "modelVersion": "1.1.0",
   "dataModel": {
     "standard": "NEMSIS",
     "version": "3.5.1",
