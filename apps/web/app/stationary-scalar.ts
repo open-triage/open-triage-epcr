@@ -229,7 +229,13 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
     return { ok: false, document, findings: [finding(element, "cardinality", `${element.name} allows ${element.occurrence.max} occurrence${element.occurrence.max === 1 ? "" : "s"}.`, occurrenceId)] };
   }
   const previous = existing[index];
-  const next = scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? previous?.attributes);
+  const previousRecord: Record<string, unknown> = previous ?? {};
+  const { kind: _kind, occurrenceId: _occurrenceId, value: _value, lexical: _lexical, precision: _precision,
+    utcOffsetMinutes: _utcOffsetMinutes, attributes: _attributes, ...compatibleExtensions } = previousRecord;
+  const next = {
+    ...compatibleExtensions,
+    ...scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? previous?.attributes),
+  };
   const values = [...existing];
   if (index < 0) values.push(next); else values[index] = next;
   return { ok: true, document: replaceElementValues(document, options.groupId, options.groupInstanceId, options.elementId, values, now), occurrenceId };
