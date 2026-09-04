@@ -85,6 +85,18 @@ type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[]
 
 const RULE_VERSION = "signing-1.0.0";
 
+export function unresolvedDispatchConflictFindings(
+  conflicts: ReadonlyArray<{ id: string; element_id: string }>
+): SigningFinding[] {
+  return conflicts.map((conflict) => ({
+    severity: "error",
+    code: "dispatch.unresolved-conflict",
+    path: `dispatchConflicts.${conflict.id}`,
+    message: `${conflict.element_id} has an unresolved dispatch difference`,
+    ruleVersion: RULE_VERSION
+  }));
+}
+
 @Injectable()
 export class SignReportService {
   constructor(
@@ -139,6 +151,11 @@ export class SignReportService {
         }
 
         const findings = await this.validateSemantics(manager, report);
+        const unresolvedDispatch = await manager.query<Array<{ id: string; element_id: string }>>(`
+          select id, element_id from clinical.dispatch_conflict
+          where report_id = $1 and disposition is null order by created_at, id
+        `, [report.id]);
+        findings.push(...unresolvedDispatchConflictFindings(unresolvedDispatch));
         await manager.query("delete from clinical.validation_finding where report_id = $1", [report.id]);
         for (const finding of findings) {
           await manager.query(`insert into clinical.validation_finding

@@ -229,6 +229,9 @@ input, select, textarea { touch-action: manipulation; }
 .warning .finding-category { color: #765707; }
 .review-acknowledgement { display: flex; gap: 9px; align-items: center; min-height: 48px; padding: 10px 12px; border-top: 1px solid #e1c66f; color: #58460d; background: #fff5c9; font-size: 12px; font-weight: 750; }
 .review-acknowledgement input { flex: none; width: 19px; height: 19px; }
+.dispatch-conflicts { margin-top: 16px; }
+.dispatch-conflict-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+.dispatch-conflict-actions button { min-height: 44px; }
 .review-actions button:disabled { border-color: #b8bbb5; color: #666a64; background: #e2e4df; cursor: not-allowed; }
 .finish-help { margin: 9px 18px 0; color: var(--muted); font-size: 12px; text-align: right; }
 @media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }

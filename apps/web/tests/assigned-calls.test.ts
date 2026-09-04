@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
-import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall } from "../app/assigned-calls";
+import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall, resolveDispatchConflict } from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
 
 const call = (id: string, callNumber: string): AssignedCall => ({
@@ -30,6 +30,26 @@ test("first-open has no offline fallback and requires the server to create autho
 
 test("refresh identifies only canceled unopened assignments that disappeared", () => {
   assert.deepEqual(canceledAssignedCalls([call("a", "CALL-A"), call("b", "CALL-B")], [], ["a"]), [call("a", "CALL-A")]);
+});
+
+test("dispatch conflict dispositions are posted to the report server", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: { url: string; init?: RequestInit } | undefined;
+  globalThis.fetch = async (url, init) => {
+    request = { url: String(url), init };
+    return new Response(JSON.stringify({ id: "conflict", disposition: "acknowledge" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  };
+  try {
+    const result = await resolveDispatchConflict("token", "report", "conflict", "acknowledge");
+    assert.equal(result.disposition, "acknowledge");
+    assert.equal(request?.url, "http://localhost:3001/api/reports/report/dispatch-conflicts/conflict");
+    assert.equal(request?.init?.method, "POST");
+    assert.equal(JSON.parse(String(request?.init?.body)).disposition, "acknowledge");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("completion cleanup removes only the server-confirmed report caches", () => {

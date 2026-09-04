@@ -782,6 +782,30 @@ create table clinical.element_occurrence (
 create index element_occurrence_report_idx on clinical.element_occurrence (report_id, group_instance_id, element_identity_id) where tombstoned_at is null;
 create index element_occurrence_element_idx on clinical.element_occurrence (element_identity_id, report_id) where tombstoned_at is null;
 
+create table clinical.dispatch_conflict (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references clinical.report(id) on delete cascade,
+  occurrence_id uuid not null,
+  element_id text not null,
+  clinician_value jsonb,
+  dispatch_value jsonb,
+  clinician_lineage jsonb not null,
+  dispatch_receipt_id uuid not null,
+  dispatch_revision bigint not null check (dispatch_revision > 0),
+  disposition text check (disposition in ('keep', 'accept', 'acknowledge')),
+  resolved_by uuid references app_identity.app_user(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (report_id, occurrence_id, dispatch_revision),
+  foreign key (report_id, occurrence_id) references clinical.element_occurrence(report_id, id),
+  check ((disposition is null and resolved_by is null and resolved_at is null)
+      or (disposition is not null and resolved_by is not null and resolved_at is not null)),
+  check (dispatch_value is not null or clinician_value is not null)
+);
+
+create index dispatch_conflict_report_unresolved_idx
+on clinical.dispatch_conflict (report_id, created_at, id) where disposition is null;
+
 create function clinical.validate_element_occurrence_mapping()
 returns trigger
 language plpgsql
@@ -1225,6 +1249,10 @@ alter table clinical.call_assignment
   add constraint call_assignment_dispatch_receipt_fk
   foreign key (organization_id, dispatch_receipt_id)
   references clinical.dispatch_receipt(organization_id, id);
+
+alter table clinical.dispatch_conflict
+  add constraint dispatch_conflict_receipt_fk
+  foreign key (dispatch_receipt_id) references clinical.dispatch_receipt(id);
 
 create table integration.outbox_event (
   id uuid primary key default gen_random_uuid(),

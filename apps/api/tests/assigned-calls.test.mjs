@@ -121,6 +121,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     }];
     if (normalized.includes("from clinical.group_instance")) return [];
     if (normalized.includes("from clinical.element_occurrence")) return [];
+    if (normalized.includes("from clinical.dispatch_conflict")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { transaction: (work) => work(manager) };
@@ -137,6 +138,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
   assert.equal(opened.report.document.encounter.id, opened.report.id);
+  assert.deepEqual(opened.report.dispatchConflicts, []);
   assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
   assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
   assert.equal(retried.replacementAssignment, null);

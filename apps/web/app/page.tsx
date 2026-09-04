@@ -35,7 +35,8 @@ import {
   type ActiveDraftReport,
   type DraftSyncStatus,
 } from "./draft-report";
-import type { ClinicianSession } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { resolveDispatchConflict } from "./assigned-calls";
 import {
   acceptDraftChange,
   expectedRevisionForNextChange,
@@ -80,6 +81,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
+  const [conflictError, setConflictError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
   const activeSave = useRef<Promise<void> | null>(null);
   const skipInitialQueue = useRef(false);
@@ -129,7 +132,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }
     return statuses;
   }, [reviewFindings]);
-  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
+  const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
+  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged) && unresolvedDispatchConflicts.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
@@ -372,6 +376,18 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }
   }
 
+  async function disposeConflict(conflict: DispatchConflict, disposition: DispatchConflictDisposition) {
+    if (!report) return;
+    setConflictError(null);
+    try {
+      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
+      setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
+      revision.current += 1;
+    } catch (error) {
+      setConflictError(error instanceof Error ? error.message : "The dispatch difference could not be resolved.");
+    }
+  }
+
   return (
     <main className="app-shell">
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
@@ -487,9 +503,9 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               <p className="eyebrow">Warnings and errors</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
-            <span aria-live="polite">{reviewFindings.length} open</span>
+            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length} open</span>
           </div>
-          {!reviewFindings.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : (
+          {!reviewFindings.length && !unresolvedDispatchConflicts.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
@@ -502,11 +518,14 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
+          <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+          {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </section>
       )}
 
       {shell.view === "review" && (
+        <>
         <ReviewPanel
           findings={reviewFindings}
           errors={reviewErrors}
@@ -520,6 +539,9 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onSign={() => void signRecord()}
         />
+        <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+        {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
+        </>
       )}
 
       {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
@@ -622,6 +644,41 @@ export default function Home() {
   return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
     <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
   )}</ClinicianSessionGate>;
+}
+
+function conflictValue(value: EncounterValue | null): string {
+  if (value === null) return "Retracted by dispatch";
+  if (value.kind === "coded") return value.display ?? value.code;
+  if (value.kind === "pertinent-negative") return value.display ?? value.code;
+  if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "Null";
+  if (value.kind === "absent") return "Not documented";
+  return String(value.value);
+}
+
+function DispatchConflictList({ conflicts, onDispose }: {
+  readonly conflicts: ReadonlyArray<DispatchConflict>;
+  readonly onDispose: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => void;
+}) {
+  const unresolved = conflicts.filter(({ disposition }) => disposition === null);
+  return (
+    <section className="review-group dispatch-conflicts" aria-labelledby="dispatch-conflicts-heading">
+      <h2 id="dispatch-conflicts-heading">Dispatch differences <span>{unresolved.length}</span></h2>
+      {!unresolved.length ? <p className="review-empty">✓ No unresolved dispatch differences.</p> : (
+        <ul className="review-findings">
+          {unresolved.map((conflict) => <li key={conflict.id} className="warning">
+            <span className="finding-category">Dispatch revision {conflict.dispatchRevision} · {conflict.elementId}</span>
+            <strong>Clinician value: {conflictValue(conflict.clinicianValue)}</strong>
+            <span>Dispatch proposes: {conflictValue(conflict.dispatchValue)}</span>
+            <div className="dispatch-conflict-actions">
+              <button type="button" onClick={() => onDispose(conflict, "keep")}>Keep my value</button>
+              <button type="button" onClick={() => onDispose(conflict, "accept")}>Accept dispatch value</button>
+              <button type="button" onClick={() => onDispose(conflict, "acknowledge")}>Acknowledge difference</button>
+            </div>
+          </li>)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, onFinding, onWarning, onSign }: {
