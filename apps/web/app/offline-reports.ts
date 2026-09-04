@@ -1,4 +1,4 @@
-import type { ClinicianSession, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicianSession, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
@@ -212,6 +212,37 @@ export function acceptDraftChange(storage: StoragePort, reportId: string, comman
     syncStatus: queuedChanges.length ? "pending" : "saved",
     lastSavedAt: now.toISOString(),
     queuedChanges,
+  });
+}
+
+export function rebaseQueuedDraftChanges(storage: StoragePort, reportId: string, serverRevision: number): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  const latest = cached?.queuedChanges.at(-1);
+  if (!cached || !latest || latest.attempted) return;
+  replace(storage, {
+    ...cached,
+    report: { ...cached.report, revision: serverRevision },
+    queuedChanges: [{ command: { ...latest.command, expectedRevision: serverRevision }, attempted: false }],
+  });
+}
+
+export function reconcileCachedActiveReport(
+  storage: StoragePort,
+  reportId: string,
+  resource: ActiveReportResource,
+  document: EncounterDocument,
+): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return;
+  replace(storage, {
+    ...cached,
+    report: {
+      ...cached.report,
+      revision: resource.reportRevision,
+      document,
+      dispatchConflicts: resource.dispatchConflicts,
+      dispatchCancellation: resource.dispatchCancellation,
+    },
   });
 }
 

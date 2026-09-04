@@ -28,6 +28,8 @@ import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
+  ACTIVE_REPORT_POLL_INTERVAL_MS,
+  fetchActiveReport,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
@@ -36,17 +38,20 @@ import {
   type DraftSyncStatus,
   dispatchCancellationNotice,
 } from "./draft-report";
-import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
 import { resolveDispatchConflict } from "./assigned-calls";
 import {
   acceptDraftChange,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
+  rebaseQueuedDraftChanges,
+  reconcileCachedActiveReport,
   removeSignedOfflineReport,
   queueDraftChange,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
+import { reconcileActiveReportDocument } from "./active-report-reconciliation";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -81,8 +86,13 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
+  const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
+  const [dispatchUpdateNotice, setDispatchUpdateNotice] = useState<string | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
+  const activeEtag = useRef<string | undefined>(undefined);
+  const shellRef = useRef(shell);
+  const skipReconciledQueue = useRef(false);
   const activeSave = useRef<Promise<void> | null>(null);
   const skipInitialQueue = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -122,6 +132,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+
+  useEffect(() => { shellRef.current = shell; }, [shell]);
 
   const closeActiveDialog = useCallback(() => {
     if (activeDialog === "note") dispatch({ type: "note-cancelled" });
@@ -192,6 +204,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     if (!restored) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
+    if (skipReconciledQueue.current) {
+      skipReconciledQueue.current = false;
+      return;
+    }
     if (skipInitialQueue.current) {
       skipInitialQueue.current = false;
       if (nextDraftChange(window.localStorage, report.id)) {
@@ -240,6 +256,58 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }, DRAFT_SYNC_RETRY_MS);
     return () => window.clearTimeout(retryTimer);
   }, [flushSave, report, syncStatus]);
+
+  useEffect(() => {
+    if (!report || !restored) return;
+    let pollTimer: number | null = null;
+    let noticeTimer: number | null = null;
+    let stopped = false;
+    const poll = async () => {
+      if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
+      const previousEtag = activeEtag.current;
+      try {
+        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
+        if (!response || stopped) return;
+        activeEtag.current = response.etag || previousEtag;
+        const local = shellRef.current.encounter.document;
+        const hasPending = nextDraftChange(window.localStorage, report.id) !== null;
+        const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending);
+        revision.current = response.resource.reportRevision;
+        if (hasPending) rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+        else skipReconciledQueue.current = true;
+        reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
+        setDispatchConflicts(response.resource.dispatchConflicts);
+        setDispatchCancellation(response.resource.dispatchCancellation);
+        dispatch({ type: "document-opened", document: merged });
+        if (previousEtag && previousEtag !== response.etag) {
+          setDispatchUpdateNotice(`Dispatch update ${response.resource.dispatchRevision} applied to report revision ${response.resource.reportRevision}.`);
+          if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+          noticeTimer = window.setTimeout(() => setDispatchUpdateNotice(null), 4_000);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === "session") onSessionEnded();
+      }
+    };
+    const startOrPause = () => {
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      pollTimer = document.visibilityState === "visible"
+        ? window.setInterval(() => void poll(), ACTIVE_REPORT_POLL_INTERVAL_MS)
+        : null;
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "visible") void poll();
+      startOrPause();
+    };
+    void poll();
+    startOrPause();
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      stopped = true;
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
+  }, [onSessionEnded, report, restored, session.accessToken]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -368,9 +436,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   return (
     <main className="app-shell">
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
-      {report?.dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
+      {dispatchUpdateNotice && <p className="assignment-notice dispatch-update-notice" role="status">{dispatchUpdateNotice}</p>}
+      {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
-        <span>{dispatchCancellationNotice(report.dispatchCancellation)}</span>
+        <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
       </aside>}
 
       <header className="encounter-header">

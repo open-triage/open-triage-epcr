@@ -151,6 +151,72 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.deepEqual(queries[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
 });
 
+test("active report polling returns separate revisions and omits the document for a matching ETag", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000002";
+  let transactions = 0;
+  const dataSource = {
+    query: async (sql, parameters) => {
+      assert.match(sql, /ca\.dispatch_revision/);
+      assert.deepEqual(parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
+      return [{ revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
+        dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }];
+    },
+    transaction: async () => { transactions += 1; throw new Error("unchanged polling must not load a document"); },
+  };
+  const service = new DraftReportService(dataSource, sessions());
+  const result = await service.active(ownerSession.accessToken, reportId, '"report-9-dispatch-4"');
+  assert.deepEqual(result, { etag: '"report-9-dispatch-4"', resource: null });
+  assert.equal(transactions, 0);
+});
+
+test("the conditional controller emits a bodyless 304 with the current ETag", async () => {
+  const response = {
+    headers: new Map(), statusCode: 200,
+    setHeader(name, value) { this.headers.set(name, value); },
+    status(code) { this.statusCode = code; return this; },
+  };
+  const reports = { active: async (token, reportId, etag) => {
+    assert.equal(token, ownerSession.accessToken);
+    assert.equal(reportId, "42000000-0000-4000-8000-000000000002");
+    assert.equal(etag, '"report-9-dispatch-4"');
+    return { etag, resource: null };
+  } };
+  const controller = new DraftReportController(reports, {}, {});
+  const body = await controller.active("42000000-0000-4000-8000-000000000002",
+    `Bearer ${ownerSession.accessToken}`, '"report-9-dispatch-4"', response);
+  assert.equal(body, undefined);
+  assert.equal(response.statusCode, 304);
+  assert.equal(response.headers.get("ETag"), '"report-9-dispatch-4"');
+});
+
+test("changed active report polling returns the provenance-merged canonical document", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000002";
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("join forms.form_version")) return [{
+      id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:09:00.000Z",
+      form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+    }];
+    if (normalized.includes("select id, parent_group_instance_id")) return [{ id: "dispatch-group", parent_group_instance_id: null, group_id: "eDispatchSection", ordinal: 0 }];
+    if (normalized.includes("select id, group_instance_id")) return [{
+      id: "dispatch-occurrence", group_instance_id: "dispatch-group", element_id: "eDispatch.06", ordinal: 0,
+      value_kind: "text", value_text: "CAD-UPDATED", provenance_kind: "dispatch", provenance_detail: { sourceValue: { kind: "scalar", occurrenceId: "source-cad", value: "CAD-UPDATED" } }, source_attributes: null
+    }];
+    if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const dataSource = {
+    query: async () => [{ revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
+      dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }],
+    transaction: (work) => work(manager),
+  };
+  const service = new DraftReportService(dataSource, sessions());
+  const result = await service.active(ownerSession.accessToken, reportId, '"report-8-dispatch-3"');
+  assert.equal(result.resource.reportRevision, 9);
+  assert.equal(result.resource.dispatchRevision, 4);
+  assert.equal(result.resource.document.groups[0].instances[0].elements[0].values[0].value, "CAD-UPDATED");
+});
+
 test("another clinician cannot read, write, reopen, or replay a queued draft command", async () => {
   const reportId = "42000000-0000-4000-8000-000000000002";
   const queried = [];
