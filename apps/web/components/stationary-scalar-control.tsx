@@ -5,12 +5,13 @@ import React from "react";
 import type { ChangeEvent } from "react";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
 
-export function StationaryScalarControl({ presentation, value, inputValue, findings = [], disabled = false, onInput }: {
+export function StationaryScalarControl({ presentation, value, inputValue, findings = [], disabled = false, initialFocus = false, onInput }: {
   readonly presentation: ScalarControlPresentation;
   readonly value?: ScalarEncounterValue;
   readonly inputValue?: string | boolean;
   readonly findings?: ReadonlyArray<ScalarValidationFinding>;
   readonly disabled?: boolean;
+  readonly initialFocus?: boolean;
   readonly onInput: (input: string | boolean) => void;
 }) {
   const errorId = `${presentation.elementId}-${value?.occurrenceId ?? "new"}-error`;
@@ -26,6 +27,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, findi
     <label>
       <span>{presentation.label} <small>{presentation.elementId}</small></span>
       <input
+        autoFocus={initialFocus}
         type={presentation.inputType}
         checked={presentation.family === "boolean" ? Boolean(inputValue ?? value?.value) : undefined}
         value={presentation.inputType === "file" || presentation.family === "boolean" ? undefined : String(inputValue ?? value?.lexical ?? value?.value ?? "")}

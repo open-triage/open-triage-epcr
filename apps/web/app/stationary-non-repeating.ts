@@ -110,7 +110,7 @@ function instanceForParent(document: EncounterDocument, groupId: string, parentI
     : instances.find((instance) => instance.parentInstanceId === parentInstanceId);
 }
 
-function ensureNonRepeatingInstance(
+export function ensureNonRepeatingInstance(
   document: EncounterDocument,
   groupId: string,
   requestedParentInstanceId: string | undefined,
