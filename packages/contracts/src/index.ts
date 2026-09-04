@@ -93,8 +93,15 @@ export interface OpenAssignmentResponse {
     /** IANA zone used for operational-time presentation. */
     agencyTimeZone?: string;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
+    dispatchCancellation?: DispatchCancellation | null;
   };
   replacementAssignment: AssignedCall | null;
+}
+
+export interface DispatchCancellation {
+  canceledAt: string;
+  dispatchRevision: number;
+  receiptId: string;
 }
 
 export type DispatchConflictDisposition = "keep" | "accept" | "acknowledge";

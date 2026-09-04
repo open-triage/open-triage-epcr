@@ -4,6 +4,7 @@ import { routeDispatchAssignment } from "./dispatch-assignment.projection.js";
 import { persistDispatchReceipt, type DispatchReceiptWriter } from "./dispatch-receipt.persistence.js";
 import { dispatchCanonicalDigest, dispatchSnapshotDigest } from "./dispatch-snapshot-revision.js";
 import { mergeDispatchEncounter } from "./dispatch-encounter-merge.js";
+import { retainPostSignatureDispatch } from "./dispatch-post-signature.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -152,8 +153,12 @@ export async function ingestDispatchDelivery(
   if (reports[0]?.status === "signed") {
     const receipt = await persistDispatchReceipt(writer, {
       ...input, status: "post_signature", findings: validation.findings,
-      result: { sourceRecordId: sourceIdentity.sourceRecordId, revision: sourceIdentity.revision }
+      result: { sourceRecordId: sourceIdentity.sourceRecordId, revision: sourceIdentity.revision,
+        reportId: reports[0].id, signedSnapshotImmutable: true, acceptanceRequiresAmendment: true }
     });
+    await retainPostSignatureDispatch(writer, { reportId: reports[0].id, receiptId: receipt.id,
+      dispatchRevision: sourceIdentity.revision, eventType: String(validation.canonical.eventType) as "upsert" | "cancel",
+      canonical: validation.canonical });
     return { status: "post_signature", sourceRecordId: sourceIdentity.sourceRecordId,
       revision: sourceIdentity.revision, receiptId: receipt.id, findings: validation.findings };
   }
@@ -177,6 +182,14 @@ export async function ingestDispatchDelivery(
       receiptId: routed.receipt.id,
       dispatchRevision: sourceIdentity.revision
     });
+    if (routed.projection.eventType === "cancel") {
+      await writer.query(`update clinical.report set dispatch_canceled_at = $2,
+        dispatch_cancellation_revision = $3, dispatch_cancellation_receipt_id = $4, updated_at = now()
+        where id = $1 and status = 'draft'`, [reports[0].id, routed.projection.canceledAt,
+        sourceIdentity.revision, routed.receipt.id]);
+      await writer.query(`update clinical.incident set operational_state = 'canceled', updated_at = now()
+        where id = (select incident_id from clinical.report where id = $1)`, [reports[0].id]);
+    }
   }
   return {
     status: routed.status,

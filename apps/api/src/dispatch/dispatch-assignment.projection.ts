@@ -17,6 +17,7 @@ export type DispatchAssignmentProjection = {
   readonly vehicleNumber: string;
   readonly callSign: string;
   readonly unitNotifiedAt: string;
+  readonly canceledAt: string | null;
   readonly dispatchReason: string | null;
 };
 
@@ -54,7 +55,15 @@ type ExistingAssignment = {
   unit_id: string;
   call_sign: string;
   response_number: string;
+  status: "assigned" | "opened" | "canceled";
 };
+
+export function assignmentStatusAfterDispatch(
+  current: "assigned" | "opened" | "canceled",
+  eventType: "upsert" | "cancel"
+): "assigned" | "opened" | "canceled" {
+  return eventType === "cancel" && current === "assigned" ? "canceled" : current;
+}
 
 function record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -108,6 +117,7 @@ export function projectDispatchAssignment(canonical: JsonRecord): DispatchAssign
     vehicleNumber: required(canonical, "eResponse.13"),
     callSign: required(canonical, "eResponse.14"),
     unitNotifiedAt: required(canonical, "eTimes.03"),
+    canceledAt: eventType === "cancel" ? required(canonical, "eTimes.14") : null,
     dispatchReason
   };
 }
@@ -146,7 +156,7 @@ export async function routeDispatchAssignment(
   }
 
   const existingRows = await writer.query<ExistingAssignment[]>(`
-    select ca.id, ca.incident_id, ca.unit_id, ou.call_sign, ca.response_number
+    select ca.id, ca.incident_id, ca.unit_id, ou.call_sign, ca.response_number, ca.status
     from clinical.call_assignment ca
     join app_identity.operational_unit ou
       on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
@@ -199,11 +209,12 @@ export async function routeDispatchAssignment(
       update clinical.call_assignment
       set dispatch_receipt_id = $2, dispatch_revision = $3, vehicle_number = $4,
           dispatched_at = $5, dispatch_reason = $6,
-          status = case when $7 = 'cancel' and status = 'assigned' then 'canceled' else status end,
+          status = $7,
           updated_at = now()
       where id = $1
     `, [assignmentId, receipt.id, projection.revision, projection.vehicleNumber,
-      projection.unitNotifiedAt, projection.dispatchReason, projection.eventType]);
+      projection.unitNotifiedAt, projection.dispatchReason,
+      assignmentStatusAfterDispatch(existing.status, projection.eventType)]);
   } else {
     await writer.query(`
       insert into clinical.call_assignment

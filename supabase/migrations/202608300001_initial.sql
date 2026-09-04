@@ -591,12 +591,17 @@ create table clinical.report (
   revision bigint not null default 0 check (revision >= 0),
   reporting_date date,
   reporting_date_source text check (reporting_date_source in ('service-date', 'earliest-clinical-time', 'earliest-server-time', 'signing-time')),
+  dispatch_canceled_at timestamptz,
+  dispatch_cancellation_revision bigint check (dispatch_cancellation_revision > 0),
+  dispatch_cancellation_receipt_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   expires_at timestamptz,
   synthetic boolean not null default false,
   baseline boolean not null default false,
   check ((status = 'draft') or (reporting_date is not null and reporting_date_source is not null)),
+  check ((dispatch_canceled_at is null and dispatch_cancellation_revision is null and dispatch_cancellation_receipt_id is null)
+      or (dispatch_canceled_at is not null and dispatch_cancellation_revision is not null and dispatch_cancellation_receipt_id is not null)),
   unique (id, catalog_release_id),
   unique (organization_id, id),
   foreign key (organization_id, agency_demographic_version_id, catalog_release_id)
@@ -1253,6 +1258,30 @@ alter table clinical.call_assignment
 alter table clinical.dispatch_conflict
   add constraint dispatch_conflict_receipt_fk
   foreign key (dispatch_receipt_id) references clinical.dispatch_receipt(id);
+
+alter table clinical.report
+  add constraint report_dispatch_cancellation_receipt_fk
+  foreign key (dispatch_cancellation_receipt_id) references clinical.dispatch_receipt(id);
+
+create table clinical_audit.post_signature_dispatch_delivery (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  dispatch_receipt_id uuid not null unique references clinical.dispatch_receipt(id),
+  dispatch_revision bigint not null check (dispatch_revision > 0),
+  event_type text not null check (event_type in ('upsert', 'cancel')),
+  proposed_snapshot jsonb not null check (jsonb_typeof(proposed_snapshot) = 'object'),
+  differences jsonb not null check (jsonb_typeof(differences) = 'array'),
+  acceptance_requires_amendment boolean not null default true check (acceptance_requires_amendment),
+  created_at timestamptz not null default now(),
+  unique (report_id, dispatch_revision)
+);
+
+create index post_signature_dispatch_report_idx
+on clinical_audit.post_signature_dispatch_delivery (report_id, dispatch_revision desc);
+
+create trigger post_signature_dispatch_delivery_append_only
+before update or delete on clinical_audit.post_signature_dispatch_delivery
+for each row execute function public.prevent_update_or_delete();
 
 create table integration.outbox_event (
   id uuid primary key default gen_random_uuid(),
@@ -3173,6 +3202,8 @@ begin
     get diagnostics affected = row_count; wide_rows := wide_rows + affected;
     delete from integration.projection_backfill_job where report_id = selected_report.report_id;
     delete from integration.outbox_event where aggregate_type = 'report' and aggregate_id = selected_report.report_id;
+    delete from clinical_audit.post_signature_dispatch_delivery where report_id = selected_report.report_id;
+    delete from clinical_audit.post_signature_audit_note where report_id = selected_report.report_id;
     delete from clinical_audit.event where report_id = selected_report.report_id;
     delete from clinical.amendment_change where amendment_id in
       (select id from clinical.amendment where report_id = selected_report.report_id);
@@ -3453,7 +3484,8 @@ grant execute on function operations.record_query_audit(
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
 grant usage on schema clinical_audit to open_triage_auditor;
-grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note to open_triage_auditor;
+grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note,
+  clinical_audit.post_signature_dispatch_delivery to open_triage_auditor;
 grant usage on schema retention to open_triage_retention_executor, open_triage_auditor;
 grant select on retention.policy, retention.legal_hold, retention.archive_batch,
   retention.archive_batch_report, retention.evidence to open_triage_auditor;
