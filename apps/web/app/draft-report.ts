@@ -1,9 +1,10 @@
-import type { DispatchCancellation, DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, DispatchCancellation, DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
+export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
 export interface ActiveDraftReport {
@@ -149,6 +150,27 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport>;
+}
+
+export async function fetchActiveReport(
+  accessToken: string,
+  reportId: string,
+  etag?: string,
+): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
+  const base = apiBaseUrl();
+  if (!base) return null;
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/reports/${reportId}/active`, {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${accessToken}`, ...(etag ? { "if-none-match": etag } : {}) },
+    });
+  } catch {
+    throw new Error("offline");
+  }
+  if (response.status === 304) return null;
+  if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
+  return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }
 
 export async function signDraftReport(

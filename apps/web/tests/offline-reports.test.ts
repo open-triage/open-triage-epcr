@@ -16,6 +16,8 @@ import {
   OFFLINE_REPORTS_STORAGE_KEY,
   purgeCompletedOfflineReports,
   queueDraftChange,
+  rebaseQueuedDraftChanges,
+  reconcileCachedActiveReport,
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
@@ -126,6 +128,35 @@ test("reconnect replay keeps attempted command identities and advances queued re
   assert.equal(cached.report.revision, 6);
   assert.equal(cached.syncStatus, "saved");
   assert.equal(nextDraftChange(storage, opened.report.id), null);
+});
+
+test("dispatch reconciliation rebases pending work and updates the offline report snapshot", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+  queueDraftChange(storage, opened.report.id, command("command-2", 5));
+  rebaseQueuedDraftChanges(storage, opened.report.id, 7);
+  reconcileCachedActiveReport(storage, opened.report.id, {
+    reportId: opened.report.id, reportRevision: 7, dispatchRevision: 3,
+    document: opened.report.document, dispatchConflicts: [], dispatchCancellation: null,
+  }, opened.report.document);
+
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.expectedRevision, 7);
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-2");
+  assert.equal(nextDraftChange(storage, opened.report.id)?.attempted, false);
+  assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.revision, 7);
+});
+
+test("reconciliation retains an attempted command byte-for-byte for an exact retry", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+
+  const before = nextDraftChange(storage, opened.report.id);
+  rebaseQueuedDraftChanges(storage, opened.report.id, 7);
+  assert.deepEqual(nextDraftChange(storage, opened.report.id), before);
 });
 
 test("an explicitly discarded stale queue resets only that report to the server snapshot", () => {

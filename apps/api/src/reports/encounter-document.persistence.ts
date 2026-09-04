@@ -23,6 +23,7 @@ type StoredGroupRow = {
   parent_group_instance_id: string | null;
   group_id: string;
   ordinal: string | number;
+  documented_time: Date | string | null;
 };
 
 type StoredOccurrenceRow = {
@@ -46,6 +47,7 @@ type StoredOccurrenceRow = {
   absence_code: string | null;
   absence_display: string | null;
   source_attributes: JsonRecord | null;
+  provenance_kind: string;
   provenance_detail: JsonRecord | null;
 };
 
@@ -218,22 +220,33 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   const report = reports[0];
   if (!report) throw new TypeError(`Report ${reportId} is unavailable`);
   const groups = await manager.query<StoredGroupRow[]>(`
-    select id, parent_group_instance_id, group_id, ordinal from clinical.group_instance
+    select id, parent_group_instance_id, group_id, ordinal, documented_time from clinical.group_instance
     where report_id = $1 and tombstoned_at is null order by group_id, ordinal, id
   `, [reportId]);
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
     select id, group_instance_id, element_id, ordinal, value_kind, value_text, value_integer,
            value_numeric, value_boolean, value_date, value_datetime, value_time, value_duration,
            encode(value_binary, 'base64') as value_binary, code, code_system, code_display,
-           absence_code, absence_display, source_attributes, provenance_detail
+           absence_code, absence_display, source_attributes, provenance_kind, provenance_detail
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
   `, [reportId]);
-  const byGroup = new Map<string, { id: string; instances: Array<{ instanceId: string; parentInstanceId?: string; elements: Array<{ id: string; values: EncounterValue[] }> }> }>();
+  const byGroup = new Map<string, { id: string; instances: Array<{ instanceId: string; parentInstanceId?: string; attributes?: Record<string, string>; elements: Array<{ id: string; values: EncounterValue[] }> }> }>();
   for (const group of groups) {
     const target = byGroup.get(group.group_id) ?? { id: group.group_id, instances: [] };
-    const instance = { instanceId: group.id, ...(group.parent_group_instance_id ? { parentInstanceId: group.parent_group_instance_id } : {}), elements: [] as Array<{ id: string; values: EncounterValue[] }> };
-    for (const occurrence of occurrences.filter((item) => item.group_instance_id === group.id)) {
+    const groupOccurrences = occurrences.filter((item) => item.group_instance_id === group.id);
+    const clinicianOwned = groupOccurrences.some((item) => item.provenance_kind === "clinician");
+    const attributes = {
+      ...(clinicianOwned ? { "x-open-triage-owner": "clinician" } : {}),
+      ...(group.documented_time ? { documentedTime: new Date(group.documented_time).toISOString() } : {}),
+    };
+    const instance = {
+      instanceId: group.id,
+      ...(group.parent_group_instance_id ? { parentInstanceId: group.parent_group_instance_id } : {}),
+      ...(Object.keys(attributes).length ? { attributes } : {}),
+      elements: [] as Array<{ id: string; values: EncounterValue[] }>,
+    };
+    for (const occurrence of groupOccurrences) {
       let element = instance.elements.find((item) => item.id === occurrence.element_id);
       if (!element) { element = { id: occurrence.element_id, values: [] }; instance.elements.push(element); }
       element.values.push(storedEncounterValue(occurrence));

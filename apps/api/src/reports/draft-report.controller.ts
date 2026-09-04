@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post } from "@nestjs/common";
-import type { DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
+import type { ActiveReportResource, DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -9,6 +9,7 @@ import { AmendReportService } from "./amend-report.service.js";
 import type { AmendedReportResult } from "./amend-report.types.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
+type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
 
 @Controller("reports")
 export class DraftReportController {
@@ -44,6 +45,22 @@ export class DraftReportController {
     @Headers("authorization") authorization?: string
   ): Promise<ReopenOpenCallResponse> {
     return this.reports.reopen(bearerToken(authorization), id);
+  }
+
+  @Get(":id/active")
+  async active(
+    @Param("id", uuidV4) id: string,
+    @Headers("authorization") authorization: string | undefined,
+    @Headers("if-none-match") ifNoneMatch: string | undefined,
+    @Res({ passthrough: true }) response: ConditionalResponse,
+  ): Promise<ActiveReportResource | undefined> {
+    const result = await this.reports.active(bearerToken(authorization), id, ifNoneMatch);
+    response.setHeader("ETag", result.etag);
+    if (!result.resource) {
+      response.status(304);
+      return undefined;
+    }
+    return result.resource;
   }
 
   @Post(":id/dispatch-conflicts/:conflictId")

@@ -157,6 +157,18 @@ export interface ReopenOpenCallResponse {
   report: OpenAssignmentResponse["report"];
 }
 
+/** Conditional representation used while a clinician has a draft open. */
+export interface ActiveReportResource {
+  reportId: string;
+  /** Clinical report revision, advanced by clinician saves and dispatch merges. */
+  reportRevision: number;
+  /** Latest complete dispatch snapshot revision applied to the assignment. */
+  dispatchRevision: number;
+  document: EncounterDocument;
+  dispatchConflicts: ReadonlyArray<DispatchConflict>;
+  dispatchCancellation: DispatchCancellation | null;
+}
+
 /**
  * Portable encounter data, deliberately independent of form and UI state.
  * Standard identities come from NEMSIS; custom identities are namespaced.

@@ -4,7 +4,9 @@ import {
   dispatchCancellationNotice,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
+  ACTIVE_REPORT_POLL_INTERVAL_MS,
   draftChangesUrl,
+  fetchActiveReport,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
@@ -31,6 +33,22 @@ test("the draft adapter retains stable report, group, and occurrence identities"
   assert.equal(new Set(first.occurrences.map(({ id }) => id)).size, first.occurrences.length);
   assert.equal(DRAFT_SAVE_DEBOUNCE_MS, 1_000);
   assert.equal(DRAFT_SYNC_RETRY_MS, 2_000);
+  assert.equal(ACTIVE_REPORT_POLL_INTERVAL_MS, 10_000);
+});
+
+test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {
+  const originalFetch = globalThis.fetch;
+  let headers: HeadersInit | undefined;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    headers = init?.headers;
+    return new Response(null, { status: 304, headers: { etag: '"report-4-dispatch-2"' } });
+  }) as typeof fetch;
+  try {
+    assert.equal(await fetchActiveReport("token", reportId, '"report-4-dispatch-2"'), null);
+    assert.equal((headers as Record<string, string>)["if-none-match"], '"report-4-dispatch-2"');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {

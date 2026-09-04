@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
-import type { DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
+import type { ActiveReportResource, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type {
@@ -631,6 +631,50 @@ export class DraftReportService {
           }
         } : {})
       }
+    };
+  }
+
+  async active(accessToken: string, reportId: string, ifNoneMatch?: string): Promise<{
+    readonly etag: string;
+    readonly resource: ActiveReportResource | null;
+  }> {
+    const session = this.sessions.get(accessToken);
+    const rows = await this.dataSource.query<Array<{
+      revision: string | number;
+      dispatch_revision: string | number | null;
+      dispatch_canceled_at: Date | string | null;
+      dispatch_cancellation_revision: string | number | null;
+      dispatch_cancellation_receipt_id: string | null;
+    }>>(`
+      select r.revision, ca.dispatch_revision, r.dispatch_canceled_at,
+             r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
+      from clinical.report r join clinical.call_assignment ca
+        on ca.report_id = r.id and ca.organization_id = r.organization_id
+      where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
+        and r.status = 'draft'
+    `, [reportId, session.organization.id, session.user.id]);
+    const row = rows[0];
+    if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
+    const reportRevision = Number(row.revision);
+    const dispatchRevision = Number(row.dispatch_revision ?? 0);
+    const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}"`;
+    if (ifNoneMatch === etag) return { etag, resource: null };
+    const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
+    const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
+    return {
+      etag,
+      resource: {
+        reportId,
+        reportRevision,
+        dispatchRevision,
+        document,
+        dispatchConflicts: conflicts,
+        dispatchCancellation: row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
+          canceledAt: new Date(row.dispatch_canceled_at).toISOString(),
+          dispatchRevision: Number(row.dispatch_cancellation_revision),
+          receiptId: row.dispatch_cancellation_receipt_id,
+        } : null,
+      },
     };
   }
 
