@@ -47,3 +47,56 @@ test("stationary repeating rows retain focus, identity, and narrow-layout access
   expect(await row.getAttribute("data-group-instance-id")).toBe(instanceId);
   expect(await row.locator('[data-element-id="eScene.02"] span').getAttribute("data-occurrence-id")).toBe(occurrenceId);
 });
+
+test("nested repeating rows remain scoped to their originating parent workflow", async ({ page }) => {
+  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(demoOpenAssignment),
+  }));
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+
+  const labs = page.locator('[data-group-id="eLabs.LabGroup"]');
+  await expect(labs).toHaveCount(1);
+  await expect(page.locator('[data-group-id="eLabs.LabResultGroup"]')).toHaveCount(0);
+
+  await labs.getByRole("button", { name: "Add eLabs.LabGroup" }).click();
+  let parentDialog = page.getByRole("dialog", { name: "Add eLabs.LabGroup" });
+  const firstNested = parentDialog.locator('[data-group-id="eLabs.LabResultGroup"]');
+  const firstChildAdd = firstNested.getByRole("button", { name: "Add eLabs.LabResultGroup" });
+  await firstChildAdd.click();
+  const childDialog = page.getByRole("dialog", { name: "Add eLabs.LabResultGroup" });
+  await childDialog.getByRole("button", { name: "Add row" }).click();
+  await expect(firstChildAdd).toBeFocused();
+  await expect(firstNested.locator("tbody tr")).toHaveCount(1);
+  await parentDialog.getByRole("button", { name: "Add row", exact: true }).click();
+
+  await labs.getByRole("button", { name: "Add eLabs.LabGroup" }).click();
+  parentDialog = page.getByRole("dialog", { name: "Add eLabs.LabGroup" });
+  const secondNested = parentDialog.locator('[data-group-id="eLabs.LabResultGroup"]');
+  await expect(secondNested.locator("tbody tr")).toHaveCount(0);
+  await secondNested.getByRole("button", { name: "Add eLabs.LabResultGroup" }).click();
+  await page.getByRole("dialog", { name: "Add eLabs.LabResultGroup" }).getByRole("button", { name: "Add row" }).click();
+  await parentDialog.getByRole("button", { name: "Add row", exact: true }).click();
+
+  const parentRows = labs.locator("tbody > tr");
+  await expect(parentRows).toHaveCount(2);
+  const firstParentId = await parentRows.nth(0).getAttribute("data-group-instance-id");
+  const secondParentId = await parentRows.nth(1).getAttribute("data-group-instance-id");
+  expect(firstParentId).toBeTruthy();
+  expect(secondParentId).toBeTruthy();
+  expect(firstParentId).not.toBe(secondParentId);
+
+  const firstEdit = parentRows.nth(0).getByRole("button", { name: "Edit" });
+  await firstEdit.click();
+  const reopened = page.getByRole("dialog", { name: "Edit eLabs.LabGroup" });
+  const reopenedNested = reopened.locator('[data-group-id="eLabs.LabResultGroup"]');
+  await expect(reopenedNested).toHaveAttribute("data-parent-instance-id", firstParentId!);
+  await expect(reopenedNested.locator("tbody tr")).toHaveCount(1);
+  await reopened.getByRole("button", { name: "Close" }).click();
+  await expect(firstEdit).toBeFocused();
+});

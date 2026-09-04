@@ -28,6 +28,20 @@ export function configuredRepeatingGroups(): ReadonlyArray<CompiledStationaryGro
   return groups;
 }
 
+/** Tables that are not owned by another repeating occurrence remain on the main record. */
+export function configuredRepeatingGroupRoots(): ReadonlyArray<CompiledStationaryGroup> {
+  const groups: CompiledStationaryGroup[] = [];
+  const recordBoundaries = new Set(["HeaderGroup", "PatientCareReportGroup"]);
+  const visit = (group: CompiledStationaryGroup, repeatingAncestor: boolean) => {
+    const catalog = getNemsisGroup(group.id);
+    if (group.presentation.kind === "table" && !repeatingAncestor) groups.push(group);
+    const ownsRowWorkflow = catalog?.repeating && group.presentation.kind === "table" && !recordBoundaries.has(group.id);
+    group.children.forEach((child) => visit(child, repeatingAncestor || Boolean(ownsRowWorkflow)));
+  };
+  COMPILED_STATIONARY_LAYOUT.hierarchy.forEach((group) => visit(group, false));
+  return groups;
+}
+
 export function repeatingGroupInstances(
   document: EncounterDocument,
   groupId: string,
@@ -50,6 +64,29 @@ function changed(document: EncounterDocument, groups: EncounterDocument["groups"
 
 function failure(document: EncounterDocument, code: RepeatingGroupFinding["code"], message: string): RepeatingGroupEditResult {
   return { ok: false, document, findings: [{ code, message }] };
+}
+
+/** Creates (or returns) the one configured single child owned by a specific parent row. */
+export function ensureNestedSingleGroupOccurrence(
+  document: EncounterDocument,
+  groupId: string,
+  parentInstanceId: string,
+  createId: () => string = () => crypto.randomUUID(),
+  now = new Date(),
+): RepeatingGroupEditResult {
+  const catalogGroup = getNemsisGroup(groupId);
+  if (!catalogGroup || catalogGroup.repeating) throw new Error(`${groupId} is not a catalog single group`);
+  if (!catalogGroup.parentId) return failure(document, "parent", `${catalogGroup.name} is a root group and cannot be nested.`);
+  const parentExists = document.groups.find(({ id }) => id === catalogGroup.parentId)?.instances.some(({ instanceId }) => instanceId === parentInstanceId);
+  if (!parentExists) return failure(document, "parent", `${catalogGroup.name} requires an existing ${catalogGroup.parentId} parent.`);
+  const existing = document.groups.find(({ id }) => id === groupId)?.instances.find((instance) => instance.parentInstanceId === parentInstanceId);
+  if (existing) return { ok: true, document, instanceId: existing.instanceId };
+  try {
+    const ensured = ensureNonRepeatingInstance(document, groupId, parentInstanceId, createId);
+    return { ok: true, document: changed(document, ensured.document.groups, now), instanceId: ensured.instance.instanceId };
+  } catch (error) {
+    return failure(document, "parent", error instanceof Error ? error.message : `${catalogGroup.name} could not be added.`);
+  }
 }
 
 /** Adds a canonical group occurrence beneath an existing canonical parent occurrence. */
@@ -112,19 +149,19 @@ function descendantInstanceIds(document: EncounterDocument, instanceId: string):
   return descendants;
 }
 
-/** Removes a row and any nested group rows owned by it, retaining catalog minimums. */
-export function removeRepeatingGroupOccurrence(
+/** Removes a configured child occurrence and only the descendants owned by that identity. */
+export function removeNestedGroupOccurrence(
   document: EncounterDocument,
   groupId: string,
   instanceId: string,
   now = new Date(),
 ): RepeatingGroupEditResult {
   const catalogGroup = getNemsisGroup(groupId);
-  if (!catalogGroup?.repeating) throw new Error(`${groupId} is not a catalog repeating group`);
+  if (!catalogGroup) throw new Error(`${groupId} is not a catalog group`);
   const group = document.groups.find(({ id }) => id === groupId);
   const instance = group?.instances.find((candidate) => candidate.instanceId === instanceId);
   if (!group || !instance) return failure(document, "identity", `${catalogGroup.name} occurrence ${instanceId} does not exist.`);
-  const siblings = repeatingGroupInstances(document, groupId, instance.parentInstanceId);
+  const siblings = group.instances.filter(({ parentInstanceId }) => parentInstanceId === instance.parentInstanceId);
   if (siblings.length <= catalogGroup.occurrence.min) {
     return failure(document, "cardinality", `${catalogGroup.name} requires ${catalogGroup.occurrence.min} occurrence${catalogGroup.occurrence.min === 1 ? "" : "s"} per parent.`);
   }
@@ -134,6 +171,18 @@ export function removeRepeatingGroupOccurrence(
     return instances.length ? [{ ...candidate, instances }] : [];
   });
   return { ok: true, document: changed(document, groups, now), instanceId };
+}
+
+/** Removes a row and any nested group rows owned by it, retaining catalog minimums. */
+export function removeRepeatingGroupOccurrence(
+  document: EncounterDocument,
+  groupId: string,
+  instanceId: string,
+  now = new Date(),
+): RepeatingGroupEditResult {
+  const catalogGroup = getNemsisGroup(groupId);
+  if (!catalogGroup?.repeating) throw new Error(`${groupId} is not a catalog repeating group`);
+  return removeNestedGroupOccurrence(document, groupId, instanceId, now);
 }
 
 /** Reorders rows only within their canonical parent occurrence. */
