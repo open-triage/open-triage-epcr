@@ -153,6 +153,11 @@ function validateValue(
     if (notValue.display !== undefined && typeof notValue.display !== "string") diagnostic(list, `${path}.notValue.display`, "must be a string");
   }
   if (value.kind === "pertinent-negative" || value.kind === "coded") requireString(list, value.code, `${path}.code`);
+  if (value.kind === "coded") {
+    if (value.system !== undefined) requireString(list, value.system, `${path}.system`);
+    if (value.display !== undefined) requireString(list, value.display, `${path}.display`);
+    if (value.terminologyVersion !== undefined) requireString(list, value.terminologyVersion, `${path}.terminologyVersion`);
+  }
   if (value.kind === "scalar" && !["string", "number", "boolean"].includes(typeof value.value)) {
     diagnostic(list, `${path}.value`, "must be a string, number, or boolean");
   }

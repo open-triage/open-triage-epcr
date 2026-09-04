@@ -206,9 +206,10 @@ function valueError(element: DispatchCatalogElement, value: unknown, catalog: Di
     const error = datatypeError(element, value);
     if (error) return error;
   } else if (value.kind === "coded") {
-    allowedBase.add("code"); allowedBase.add("display"); allowedBase.add("system");
+    allowedBase.add("code"); allowedBase.add("display"); allowedBase.add("system"); allowedBase.add("terminologyVersion");
     if (element.valueSource.kind === "scalar") return "scalar NEMSIS content must use kind scalar";
     if (typeof value.code !== "string" || value.code.length === 0) return "coded value requires a code";
+    if (value.terminologyVersion !== undefined && (typeof value.terminologyVersion !== "string" || value.terminologyVersion.length === 0)) return "terminologyVersion must be a non-empty string";
     const error = datatypeError(element, value);
     if (error) return error;
     const listIds = "bundledListIds" in element.valueSource ? element.valueSource.bundledListIds : [];

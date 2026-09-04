@@ -6,12 +6,18 @@ import {
   STATIONARY_SCALAR_FIELDS,
   stationaryScalarValues,
 } from "../app/stationary-scalar-group";
+import { editStationaryCodedValue, stationaryCodedField } from "../app/stationary-coded-value";
+import { StationaryCodedValueField } from "./stationary-coded-field";
+
+const sexField = stationaryCodedField("ePatient.25");
 
 export function StationaryPatientName({ document, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const values = stationaryScalarValues(document);
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")?.instances[0];
+  const sex = patient?.elements.find(({ id }) => id === sexField.elementId)?.values[0];
   return (
     <section className="stationary-scalar-group" aria-labelledby="stationary-patient-name-heading">
       <div className="section-heading">
@@ -36,6 +42,16 @@ export function StationaryPatientName({ document, onDocumentChange }: {
             <small id={`${field.id}-help`}>{field.help}</small>
           </label>
         ))}
+        {patient && <StationaryCodedValueField
+          field={sexField}
+          value={sex}
+          onChange={(selection) => onDocumentChange(editStationaryCodedValue(document, {
+            groupId: "ePatientSection",
+            instanceId: patient.instanceId,
+            elementId: sexField.elementId,
+            ...(sex ? { occurrenceId: sex.occurrenceId } : {}),
+          }, selection))}
+        />}
       </div>
     </section>
   );

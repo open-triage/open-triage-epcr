@@ -44,6 +44,7 @@ type StoredOccurrenceRow = {
   code: string | null;
   code_system: string | null;
   code_display: string | null;
+  terminology_version: string | null;
   absence_code: string | null;
   absence_display: string | null;
   source_attributes: JsonRecord | null;
@@ -72,7 +73,7 @@ function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
     return empty;
   };
   if (value.kind === "coded") {
-    empty[0] = "coded"; empty[13] = value.code; empty[14] = value.system ?? null; empty[15] = value.display ?? null;
+    empty[0] = "coded"; empty[13] = value.code; empty[14] = value.system ?? null; empty[15] = value.display ?? null; empty[16] = value.terminologyVersion ?? null;
     return empty;
   }
   if (value.kind === "null") {
@@ -199,7 +200,7 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const source = row.provenance_detail?.sourceValue;
   if (record(source)) return { ...source, occurrenceId: row.id } as EncounterValue;
   const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}) };
-  if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}) } as EncounterValue;
+  if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}), ...(row.terminology_version ? { terminologyVersion: row.terminology_version } : {}) } as EncounterValue;
   if (row.value_kind === "null") return { ...common, kind: "null", ...(row.absence_code ? { notValue: { code: row.absence_code, ...(row.absence_display ? { display: row.absence_display } : {}) } } : {}) } as EncounterValue;
   if (row.value_kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: row.absence_code!, ...(row.absence_display ? { display: row.absence_display } : {}) } as EncounterValue;
   if (row.value_kind === "absent") return { ...common, kind: "absent" } as EncounterValue;
@@ -226,7 +227,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
     select id, group_instance_id, element_id, ordinal, value_kind, value_text, value_integer,
            value_numeric, value_boolean, value_date, value_datetime, value_time, value_duration,
-           encode(value_binary, 'base64') as value_binary, code, code_system, code_display,
+           encode(value_binary, 'base64') as value_binary, code, code_system, code_display, terminology_version,
            absence_code, absence_display, source_attributes, provenance_kind, provenance_detail
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
