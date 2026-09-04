@@ -586,9 +586,13 @@ export class DraftReportService {
       dispatch_reason: string | null;
       chief_complaint: string | null;
       unit_call_sign: string;
+      dispatch_canceled_at: Date | string | null;
+      dispatch_cancellation_revision: string | number | null;
+      dispatch_cancellation_receipt_id: string | null;
     }>>(`
       select ca.call_number, ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint,
-             ou.call_sign as unit_call_sign
+             ou.call_sign as unit_call_sign, r.dispatch_canceled_at,
+             r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
       from clinical.call_assignment ca
       join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
       join app_identity.operational_unit ou on ou.id = ca.unit_id
@@ -610,7 +614,14 @@ export class DraftReportService {
         revision: Number(details.revision),
         status: "draft",
         document,
-        dispatchConflicts: conflicts
+        dispatchConflicts: conflicts,
+        ...(calls[0].dispatch_canceled_at && calls[0].dispatch_cancellation_revision && calls[0].dispatch_cancellation_receipt_id ? {
+          dispatchCancellation: {
+            canceledAt: new Date(calls[0].dispatch_canceled_at).toISOString(),
+            dispatchRevision: Number(calls[0].dispatch_cancellation_revision),
+            receiptId: calls[0].dispatch_cancellation_receipt_id
+          }
+        } : {})
       }
     };
   }

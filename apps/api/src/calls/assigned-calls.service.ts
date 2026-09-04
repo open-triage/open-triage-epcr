@@ -33,7 +33,17 @@ type ReportRow = {
   catalog_release_id: string;
   revision: string | number;
   status: "draft" | "signed";
+  dispatch_canceled_at: Date | string | null;
+  dispatch_cancellation_revision: string | number | null;
+  dispatch_cancellation_receipt_id: string | null;
 };
+
+function cancellation(row: ReportRow) {
+  return row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
+    canceledAt: new Date(row.dispatch_canceled_at).toISOString(),
+    dispatchRevision: Number(row.dispatch_cancellation_revision), receiptId: row.dispatch_cancellation_receipt_id
+  } : null;
+}
 
 function nextCallNumber(callNumber: string): string {
   const match = /^(.*?)(\d+)$/.exec(callNumber);
@@ -213,7 +223,8 @@ export class AssignedCallsService {
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
     const reports = await manager.query<ReportRow[]>(`
-      select id, documenting_user_id, form_version_id, catalog_release_id, revision, status
+      select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
+             dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
       from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
     `, [reportId, assignment.organization_id, documentingUserId]);
     const report = reports[0];
@@ -231,7 +242,8 @@ export class AssignedCallsService {
         revision: Number(report.revision),
         status: "draft",
         document,
-        dispatchConflicts: conflicts
+        dispatchConflicts: conflicts,
+        ...(cancellation(report) ? { dispatchCancellation: cancellation(report) } : {})
       },
       replacementAssignment
     };

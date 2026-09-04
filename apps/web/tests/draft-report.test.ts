@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  dispatchCancellationNotice,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   draftChangesUrl,
@@ -12,6 +13,14 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
+  const notice = dispatchCancellationNotice({
+    canceledAt: "2026-08-15T13:18:31.000Z", dispatchRevision: 3, receiptId: "receipt"
+  });
+  assert.match(notice, /report is preserved/i);
+  assert.match(notice, /continue documentation/i);
+});
 
 test("the draft adapter retains stable report, group, and occurrence identities", () => {
   const first = shellStateToDraftMutations(reportId, INITIAL_SHELL_STATE);

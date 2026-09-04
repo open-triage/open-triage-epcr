@@ -93,3 +93,32 @@ test("invalid required content is rejected with a durable receipt when identity 
   assert.equal(result.receiptId, "30000000-0000-4000-8000-000000000020");
   assert.ok(result.findings.some(({ code, elementId }) => code === "dispatch.required" && elementId === "eResponse.14"));
 });
+
+test("post-signature revisions retain proposed differences without routing or mutating the signed report", async () => {
+  const later = structuredClone(source);
+  later.messageId = "10000000-0000-4000-8000-000000000009";
+  later.revision = 9;
+  const sqlSeen = [];
+  const writer = { query: async (sql, parameters = []) => {
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    sqlSeen.push(normalized);
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from clinical.dispatch_receipt")) return [];
+    if (normalized.includes("join clinical.report r")) return [{ id: "report-signed", status: "signed" }];
+    if (normalized.includes("insert into clinical.dispatch_receipt")) {
+      const result = JSON.parse(parameters[9]);
+      assert.equal(parameters[8], "post_signature");
+      assert.equal(result.acceptanceRequiresAmendment, true);
+      return [{ ...receipt(later, "post_signature"), organization_id: context.organizationId,
+        source_id: context.sourceId, received_at: "2026-09-04T00:00:00Z",
+        exact_sha256: "a".repeat(64), canonical_sha256: "b".repeat(64), result }];
+    }
+    if (normalized.includes("from clinical.element_occurrence")) return [];
+    if (normalized.includes("insert into clinical_audit.post_signature_dispatch_delivery")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const result = await ingestDispatchDelivery(writer, input(later), catalog);
+  assert.equal(result.status, "post_signature");
+  assert.ok(sqlSeen.some((sql) => sql.includes("post_signature_dispatch_delivery")));
+  assert.ok(!sqlSeen.some((sql) => /update clinical\.(report|element_occurrence|signed_snapshot)/.test(sql)));
+});

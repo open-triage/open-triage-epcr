@@ -34,6 +34,7 @@ import {
   usesLocalDemoDrafts,
   type ActiveDraftReport,
   type DraftSyncStatus,
+  dispatchCancellationNotice,
 } from "./draft-report";
 import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
 import { resolveDispatchConflict } from "./assigned-calls";
@@ -384,6 +385,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   return (
     <main className="app-shell">
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
+      {report?.dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
+        <strong>Dispatch canceled this response</strong>
+        <span>{dispatchCancellationNotice(report.dispatchCancellation)}</span>
+      </aside>}
 
       <header className="encounter-header">
         {report && <div className="draft-actions">

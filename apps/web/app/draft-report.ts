@@ -1,4 +1,4 @@
-import type { DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { DispatchCancellation, DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 
@@ -20,6 +20,11 @@ export interface ActiveDraftReport {
   readonly status?: "draft";
   readonly document?: EncounterDocument;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
+  readonly dispatchCancellation?: DispatchCancellation | null;
+}
+
+export function dispatchCancellationNotice(cancellation: DispatchCancellation): string {
+  return `Your report is preserved. Continue documentation as needed; cancellation received ${new Date(cancellation.canceledAt).toLocaleString()}.`;
 }
 
 export interface DraftGroupMutation {

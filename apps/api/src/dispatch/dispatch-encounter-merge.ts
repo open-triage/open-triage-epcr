@@ -4,8 +4,8 @@ import type { DispatchReceiptWriter } from "./dispatch-receipt.persistence.js";
 import { dispatchEntityId } from "../reports/encounter-document.persistence.js";
 
 type JsonRecord = Record<string, unknown>;
-type IncomingTarget = { occurrenceId: string; elementId: string; groupInstanceId: string; ordinal: number; value: JsonRecord };
-type CurrentTarget = { id: string; elementId: string; provenanceKind: string; clinicianValue?: unknown; tombstoned: boolean };
+export type IncomingTarget = { occurrenceId: string; elementId: string; groupInstanceId: string; ordinal: number; value: JsonRecord };
+export type CurrentTarget = { id: string; elementId: string; provenanceKind: string; clinicianValue?: unknown; tombstoned: boolean };
 
 export type DispatchMergeAction =
   | { kind: "apply"; target: IncomingTarget }
@@ -63,7 +63,7 @@ export function planDispatchMerge(current: ReadonlyArray<CurrentTarget>, incomin
   const actions: DispatchMergeAction[] = [];
   for (const target of incoming) {
     const prior = existing.get(target.occurrenceId);
-    if (!prior || prior.provenanceKind === "dispatch") actions.push({ kind: "apply", target });
+    if (!prior || (prior.provenanceKind === "dispatch" && (prior.tombstoned || !equalValue(prior.clinicianValue, target.value)))) actions.push({ kind: "apply", target });
     else if (!equalValue(prior.clinicianValue, target.value)) actions.push({
       kind: "conflict", occurrenceId: target.occurrenceId, elementId: target.elementId,
       clinicianValue: prior.clinicianValue ?? null, dispatchValue: target.value
@@ -78,7 +78,7 @@ export function planDispatchMerge(current: ReadonlyArray<CurrentTarget>, incomin
   return actions;
 }
 
-function incomingTargets(reportId: string, canonical: JsonRecord): IncomingTarget[] {
+export function dispatchIncomingTargets(reportId: string, canonical: JsonRecord): IncomingTarget[] {
   const targets: IncomingTarget[] = [];
   for (const group of Array.isArray(canonical.groups) ? canonical.groups : []) {
     if (!record(group) || !Array.isArray(group.instances)) continue;
@@ -134,7 +134,7 @@ export async function mergeDispatchEncounter(writer: DispatchReceiptWriter, inpu
   );
   const report = reports[0];
   if (!report) return { applied: 0, conflicts: 0, revision: 0 };
-  const incoming = incomingTargets(input.reportId, input.canonical);
+  const incoming = dispatchIncomingTargets(input.reportId, input.canonical);
   const rows = await writer.query<Array<{ id: string; element_id: string; provenance_kind: string; provenance_detail: JsonRecord | null; tombstoned_at: unknown }>>(`
     select id, element_id, provenance_kind, provenance_detail, tombstoned_at
     from clinical.element_occurrence where report_id = $1
@@ -142,7 +142,8 @@ export async function mergeDispatchEncounter(writer: DispatchReceiptWriter, inpu
       and id <> $2 for update
   `, [input.reportId, dispatchEntityId(input.reportId, "occurrence:server-pcr-number")]);
   const current: CurrentTarget[] = rows.map((row) => ({ id: row.id, elementId: row.element_id,
-    provenanceKind: row.provenance_kind, clinicianValue: row.provenance_detail?.clinicianValue,
+    provenanceKind: row.provenance_kind,
+    clinicianValue: row.provenance_detail?.clinicianValue ?? row.provenance_detail?.sourceValue,
     tombstoned: row.tombstoned_at !== null }));
   const actions = planDispatchMerge(current, incoming);
   const elementIds = [...new Set(incoming.map((target) => target.elementId))];

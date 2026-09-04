@@ -121,7 +121,8 @@ test("reopening restores the creator's report with its pinned form and saved con
       return [{
         call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
         dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
-        unit_call_sign: "Medic 32"
+        unit_call_sign: "Medic 32", dispatch_canceled_at: "2026-09-03T12:18:31.000Z",
+        dispatch_cancellation_revision: "3", dispatch_cancellation_receipt_id: "dispatch-receipt"
       }];
     }
   };
@@ -135,6 +136,9 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.dispatchReason, "Breathing problem");
   assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.formVersionId, "pinned-form");
+  assert.deepEqual(reopened.report.dispatchCancellation, {
+    canceledAt: "2026-09-03T12:18:31.000Z", dispatchRevision: 3, receiptId: "dispatch-receipt"
+  });
   const patient = reopened.report.document.groups.find(({ id }) => id === "ePatientSection").instances[0];
   assert.equal(patient.parentInstanceId, "parent-group");
   assert.equal(patient.elements[0].values[0].value, "1980-01-01");

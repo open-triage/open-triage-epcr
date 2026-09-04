@@ -245,6 +245,12 @@ test("retains dispatch conflicts with both values, lineage, and explicit disposi
   assert.match(migration, /dispatch_conflict_report_unresolved_idx[\s\S]*where disposition is null/);
 });
 
+test("dispatch cancellation and post-signature proposals remain durable without rewriting signed records", () => {
+  assert.match(migration, /dispatch_canceled_at timestamptz[\s\S]*dispatch_cancellation_revision bigint[\s\S]*dispatch_cancellation_receipt_id uuid/);
+  assert.match(migration, /create table clinical_audit\.post_signature_dispatch_delivery[\s\S]*proposed_snapshot jsonb not null[\s\S]*differences jsonb not null[\s\S]*acceptance_requires_amendment boolean not null default true/);
+  assert.match(migration, /post_signature_dispatch_delivery_append_only[\s\S]*prevent_update_or_delete/);
+});
+
 test("schedules bounded observable projection work inside the freshness target", () => {
   assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
   assert.match(scheduler, /concurrencyPolicy: Forbid/);
@@ -263,7 +269,7 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
   assert.match(migration, /draft_reconciliation_append_only[\s\S]*prevent_update_or_delete/);
   assert.match(migration, /post_signature_audit_note_append_only[\s\S]*prevent_update_or_delete/);
-  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note to open_triage_auditor/);
+  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note,[\s\S]*post_signature_dispatch_delivery to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });

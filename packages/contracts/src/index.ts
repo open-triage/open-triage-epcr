@@ -89,8 +89,15 @@ export interface OpenAssignmentResponse {
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
+    dispatchCancellation?: DispatchCancellation | null;
   };
   replacementAssignment: AssignedCall | null;
+}
+
+export interface DispatchCancellation {
+  canceledAt: string;
+  dispatchRevision: number;
+  receiptId: string;
 }
 
 export type DispatchConflictDisposition = "keep" | "accept" | "acknowledge";

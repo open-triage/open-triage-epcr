@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
+  assignmentStatusAfterDispatch,
   projectDispatchAssignment,
   routeDispatchAssignment
 } from "../dist/dispatch/dispatch-assignment.projection.js";
@@ -80,6 +81,12 @@ test("routes by agency-scoped eResponse.14 and retains distinct physical vehicle
   assert.equal(assignment.parameters[9], source.sourceRecordId);
   assert.equal(assignment.parameters[11], "SYNTHETIC-RESPONSE-0001");
   assert.equal(assignment.parameters[12], "SYNTHETIC-VEHICLE-7");
+});
+
+test("cancellation removes unopened work but preserves an opened report assignment", () => {
+  assert.equal(assignmentStatusAfterDispatch("assigned", "cancel"), "canceled");
+  assert.equal(assignmentStatusAfterDispatch("opened", "cancel"), "opened");
+  assert.equal(assignmentStatusAfterDispatch("canceled", "upsert"), "canceled");
 });
 
 test("unknown call signs retain a quarantined receipt and create no clinician-visible assignment", async () => {
