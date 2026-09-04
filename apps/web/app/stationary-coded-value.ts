@@ -96,6 +96,33 @@ export function codedSelectionFromOption(option: StationaryCodedOption): Station
   return { kind: "coded", code: option.code, display: option.label, ...(option.system ? { system: option.system } : {}), ...(option.terminologyVersion ? { terminologyVersion: option.terminologyVersion } : {}) };
 }
 
+/** Label-first terminology matching keeps clinical language ahead of opaque codes. */
+export function searchStationaryCodedOptions(
+  options: ReadonlyArray<StationaryCodedOption>,
+  query: string,
+  limit = 8,
+): ReadonlyArray<StationaryCodedOption> {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return options.slice(0, limit);
+  return options
+    .map((option, index) => {
+      const label = option.label.toLocaleLowerCase();
+      const code = option.code.toLocaleLowerCase();
+      const wordMatch = label.split(/\s+/).some((word) => word.startsWith(needle));
+      const score = label.startsWith(needle) ? 0
+        : wordMatch ? 1
+          : label.includes(needle) ? 2
+            : code.startsWith(needle) ? 3
+              : code.includes(needle) ? 4
+                : -1;
+      return { option, index, score };
+    })
+    .filter(({ score }) => score >= 0)
+    .sort((left, right) => left.score - right.score || left.option.label.localeCompare(right.option.label) || left.index - right.index)
+    .slice(0, limit)
+    .map(({ option }) => option);
+}
+
 export function exceptionalSelection(field: StationaryCodedField, key: string): StationaryCodedSelection | undefined {
   return stationaryExceptionalSelection(field.elementId, key);
 }

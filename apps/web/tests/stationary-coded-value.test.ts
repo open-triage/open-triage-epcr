@@ -13,6 +13,7 @@ import {
   codedSelectionFromOption,
   editStationaryCodedValue,
   exceptionalSelection,
+  searchStationaryCodedOptions,
   stationaryCodedField,
   validateStationaryCodedSelection,
 } from "../app/stationary-coded-value";
@@ -59,6 +60,22 @@ test("bundled suggestions remain searchable and explicitly non-exhaustive", () =
   assert.match(html, /type="search"/);
   assert.match(html, /aria-autocomplete="list"/);
   assert.match(html, /Suggestions are not exhaustive/);
+  assert.match(html, /stationary-value-picker/);
+  assert.match(html, /Search by label or code/);
+  assert.match(html, /<summary>Advanced<\/summary>/);
+});
+
+test("terminology search prioritizes human-readable label matches before code matches", () => {
+  const options = [
+    { code: "HOUSE-2", label: "Clinic", suggested: true },
+    { code: "C100", label: "Private house", suggested: true },
+    { code: "HOSP-1", label: "Hospital emergency department", suggested: true },
+    { code: "X-HOUSE", label: "Residence", suggested: true },
+  ];
+  assert.deepEqual(searchStationaryCodedOptions(options, "house").map(({ label }) => label), [
+    "Private house", "Clinic", "Residence",
+  ]);
+  assert.deepEqual(searchStationaryCodedOptions(options, "hosp").map(({ code }) => code), ["HOSP-1"]);
 });
 
 test("external suggestions retain code system, display, and terminology version", () => {
@@ -87,6 +104,20 @@ test("only catalog-permitted NV and PN choices are offered, including nillabilit
   const nonNillable = stationaryCodedField("eAirway.09");
   assert.deepEqual(nonNillable.exceptionalChoices, []);
   assert.throws(() => exceptionalSelection(patient, "pertinent-negative:invented"), /not permitted/);
+});
+
+test("terminology exceptional values are explicit in both primary and common picker state", () => {
+  const field = stationaryCodedField("eScene.09");
+  const value: EncounterValue = {
+    kind: "null", occurrenceId: sceneTarget.occurrenceId,
+    notValue: { code: "7701003", display: "Not Recorded" },
+  };
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, value, onChange() {} }));
+  assert.match(html, /data-value-state="exceptional"/);
+  assert.match(html, /<strong>Not Recorded<\/strong>/);
+  assert.match(html, /role="combobox"[^>]*readOnly=""/);
+  assert.match(html, /role="combobox"[^>]*value="Not Recorded"/);
+  assert.match(html, /Clear selection/);
 });
 
 test("ordinary and exceptional selections replace one another without changing occurrence identity", () => {
