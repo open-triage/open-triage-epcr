@@ -1,4 +1,4 @@
-import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { bundledEncounterDefinition } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
@@ -20,6 +20,7 @@ export interface ActiveDraftReport {
   readonly catalogReleaseId?: string;
   readonly status?: "draft";
   readonly document?: EncounterDocument;
+  readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
 }
 
 export interface DraftGroupMutation {

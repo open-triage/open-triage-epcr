@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type JsonRecord = Record<string, unknown>;
@@ -193,7 +193,7 @@ export async function seedDispatchEncounter(
   }
 }
 
-function storedValue(row: StoredOccurrenceRow): EncounterValue {
+export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const source = row.provenance_detail?.sourceValue;
   if (record(source)) return { ...source, occurrenceId: row.id } as EncounterValue;
   const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}) };
@@ -236,7 +236,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
     for (const occurrence of occurrences.filter((item) => item.group_instance_id === group.id)) {
       let element = instance.elements.find((item) => item.id === occurrence.element_id);
       if (!element) { element = { id: occurrence.element_id, values: [] }; instance.elements.push(element); }
-      element.values.push(storedValue(occurrence));
+      element.values.push(storedEncounterValue(occurrence));
     }
     target.instances.push(instance); byGroup.set(group.group_id, target);
   }
@@ -249,4 +249,23 @@ export async function encounterDocument(manager: EntityManager, reportId: string
     encounter: { id: report.id, createdAt: new Date(report.created_at).toISOString(), updatedAt: new Date(report.updated_at).toISOString() },
     groups: [...byGroup.values()]
   };
+}
+
+export async function dispatchConflicts(manager: EntityManager, reportId: string): Promise<DispatchConflict[]> {
+  const rows = await manager.query<Array<{
+    id: string; occurrence_id: string; element_id: string; clinician_value: EncounterValue | null;
+    dispatch_value: EncounterValue | null; dispatch_revision: string | number; dispatch_receipt_id: string;
+    disposition: DispatchConflict["disposition"]; created_at: Date | string; resolved_at: Date | string | null;
+  }>>(`
+    select id, occurrence_id, element_id, clinician_value, dispatch_value, dispatch_revision,
+           dispatch_receipt_id, disposition, created_at, resolved_at
+    from clinical.dispatch_conflict where report_id = $1 order by created_at, id
+  `, [reportId]);
+  return rows.map((row) => ({
+    id: row.id, occurrenceId: row.occurrence_id, elementId: row.element_id,
+    clinicianValue: row.clinician_value, dispatchValue: row.dispatch_value,
+    dispatchRevision: Number(row.dispatch_revision), receiptId: row.dispatch_receipt_id,
+    disposition: row.disposition, createdAt: new Date(row.created_at).toISOString(),
+    resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null
+  }));
 }

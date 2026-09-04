@@ -111,6 +111,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     }];
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
+    if (normalized.includes("from clinical.dispatch_conflict")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = {

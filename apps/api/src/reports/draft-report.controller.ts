@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post } from "@nestjs/common";
-import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -44,6 +44,16 @@ export class DraftReportController {
     @Headers("authorization") authorization?: string
   ): Promise<ReopenOpenCallResponse> {
     return this.reports.reopen(bearerToken(authorization), id);
+  }
+
+  @Post(":id/dispatch-conflicts/:conflictId")
+  resolveDispatchConflict(
+    @Param("id", uuidV4) id: string,
+    @Param("conflictId", uuidV4) conflictId: string,
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string
+  ): Promise<DispatchConflict> {
+    return this.reports.resolveDispatchConflict(bearerToken(authorization), id, conflictId, body);
   }
 
   @Post(":id/sign")

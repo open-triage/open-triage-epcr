@@ -3,6 +3,7 @@ import { validateDispatchAssignment } from "./dispatch-assignment.validation.js"
 import { routeDispatchAssignment } from "./dispatch-assignment.projection.js";
 import { persistDispatchReceipt, type DispatchReceiptWriter } from "./dispatch-receipt.persistence.js";
 import { dispatchCanonicalDigest, dispatchSnapshotDigest } from "./dispatch-snapshot-revision.js";
+import { mergeDispatchEncounter } from "./dispatch-encounter-merge.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -142,8 +143,8 @@ export async function ingestDispatchDelivery(
       revision: sourceIdentity.revision, receiptId: receipt.id, findings: validation.findings };
   }
 
-  const reports = await writer.query<Array<{ status: string }>>(`
-    select r.status from clinical.call_assignment ca
+  const reports = await writer.query<Array<{ id: string; status: string }>>(`
+    select r.id, r.status from clinical.call_assignment ca
     join clinical.report r on r.id = ca.report_id
     where ca.organization_id = $1 and ca.dispatch_source_id = $2
       and ca.dispatch_source_record_id = $3
@@ -169,6 +170,14 @@ export async function ingestDispatchDelivery(
         : null
     }
   });
+  if (reports[0]?.status === "draft") {
+    await mergeDispatchEncounter(writer, {
+      reportId: reports[0].id,
+      canonical: validation.canonical,
+      receiptId: routed.receipt.id,
+      dispatchRevision: sourceIdentity.revision
+    });
+  }
   return {
     status: routed.status,
     sourceRecordId: sourceIdentity.sourceRecordId,

@@ -238,6 +238,13 @@ test("stores a rebuildable agency-scoped dispatch assignment projection", () => 
   assert.doesNotMatch(migration, /unique \(organization_id, call_number\)/);
 });
 
+test("retains dispatch conflicts with both values, lineage, and explicit dispositions", () => {
+  assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_value jsonb[\s\S]*dispatch_value jsonb/);
+  assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_lineage jsonb not null[\s\S]*dispatch_receipt_id uuid not null[\s\S]*dispatch_revision bigint not null/);
+  assert.match(migration, /disposition text check \(disposition in \('keep', 'accept', 'acknowledge'\)\)/);
+  assert.match(migration, /dispatch_conflict_report_unresolved_idx[\s\S]*where disposition is null/);
+});
+
 test("schedules bounded observable projection work inside the freshness target", () => {
   assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
   assert.match(scheduler, /concurrencyPolicy: Forbid/);
