@@ -8,6 +8,7 @@ import type { CustomDataSet } from "./custom-data-elements";
 import type { EncounterDocument } from "@open-triage/contracts";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
+import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
 
 export type ShellView = "timeline" | "checklist" | "review";
 
@@ -37,7 +38,6 @@ export type Encounter = {
   readonly definitionVersion: number;
   readonly synthetic: true;
   readonly document: EncounterDocument;
-  readonly events: ReadonlyArray<EncounterEvent>;
   /** Namespaced NEMSIS custom results. Unknown compatible entries are deliberately retained by persistence. */
   readonly customData?: CustomDataSet;
 };
@@ -57,7 +57,6 @@ export function createSyntheticEncounter(definition: EncounterDefinition): Encou
     definitionVersion: definition.version,
     synthetic: true,
     document,
-    events: [],
   };
 }
 
@@ -88,7 +87,6 @@ export type ShellState = {
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
-  | { readonly type: "patient-updated"; readonly document: EncounterDocument }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -260,7 +258,8 @@ function definitionGroup(eventType: ConfiguredEventType): string {
 
 /** Consolidates validation for timeline entries before signing. */
 export function reviewEncounter(state: ShellState, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<ReviewFinding> {
-  const events = state.encounter.events.flatMap((event): ReadonlyArray<ReviewFinding> => {
+  const canonicalEvents = encounterEvents(state.encounter.document, definition);
+  const events = canonicalEvents.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
       const vitalDefinition = definition.events.vitals;
       const validation = validateVitals(event.time, event.vitals, definition);
@@ -305,7 +304,7 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
     return [];
   });
 
-  const missingVitals: ReadonlyArray<ReviewFinding> = state.encounter.events.some((event) => event.vitals)
+  const missingVitals: ReadonlyArray<ReviewFinding> = canonicalEvents.some((event) => event.vitals)
     ? []
     : [{
         id: MISSING_VITALS_FINDING_ID,
@@ -360,27 +359,20 @@ export function vitalSummary(values: VitalValues, definition: EncounterDefinitio
   }).filter(Boolean).join(" · ");
 }
 
-function newestFirst(events: ReadonlyArray<EncounterEvent>): ReadonlyArray<EncounterEvent> {
-  return events.map((event, index) => ({ event, index })).sort((a, b) =>
-    `${b.event.date ?? "2026-04-18"}T${b.event.time}`.localeCompare(`${a.event.date ?? "2026-04-18"}T${a.event.time}`) || a.index - b.index,
-  ).map(({ event }) => event);
-}
-
 export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
+  const events = encounterEvents(state.encounter.document, definition);
   switch (action.type) {
     case "document-opened":
-      return { ...state, encounter: { ...state.encounter, document: action.document, events: [] } };
+      return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "view-selected":
       return { ...state, view: action.view };
-    case "patient-updated":
-      return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "review-opened":
       return { ...state, view: "review", noteDraft: null, procedureDraft: null, medicationDraft: null, vitalDraft: null };
     case "review-finding-selected": {
       const finding = reviewEncounter(state, definition).find((candidate) => candidate.id === action.id);
       if (!finding) return state;
       const eventId = finding.target.eventId;
-      const event = state.encounter.events.find((candidate) => candidate.id === eventId);
+      const event = events.find((candidate) => candidate.id === eventId);
       if (!event) return state;
       const opened = event.vitals
         ? transitionShell(state, { type: "vitals-opened", id: event.id }, definition)
@@ -401,7 +393,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "note-started":
       return { ...state, noteDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, summary: "", isNew: true } };
     case "note-opened": {
-      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "note");
+      const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "note");
       return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, summary: event.detail, isNew: false } } : state;
     }
     case "note-draft-changed":
@@ -409,7 +401,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "note-cancelled":
       return { ...state, noteDraft: null };
     case "note-removed":
-      return state.noteDraft ? { ...state, noteDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.noteDraft!.id) } } : state;
+      return state.noteDraft ? { ...state, noteDraft: null, encounter: { ...state.encounter, document: removeCanonicalEvent(state.encounter.document, state.noteDraft.id) } } : state;
     case "note-saved": {
       const draft = state.noteDraft;
       if (!draft) return state;
@@ -423,12 +415,11 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         reference: definition.events.note.references.summary,
         visitorEntered: true,
       };
-      const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
       return {
         ...state,
         view: "timeline",
         noteDraft: null,
-        encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, note]) },
+        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, note, definition) },
       };
     }
     case "procedure-started":
@@ -449,7 +440,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         },
       };
     case "procedure-opened": {
-      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "procedure");
+      const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "procedure");
       if (!event?.procedure) return state;
       return {
         ...state,
@@ -506,7 +497,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "procedure-cancelled":
       return { ...state, procedureDraft: null };
     case "procedure-removed":
-      return state.procedureDraft ? { ...state, procedureDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.procedureDraft!.id) } } : state;
+      return state.procedureDraft ? { ...state, procedureDraft: null, encounter: { ...state.encounter, document: removeCanonicalEvent(state.encounter.document, state.procedureDraft.id) } } : state;
     case "procedure-saved": {
       const draft = state.procedureDraft;
       if (!draft) return state;
@@ -530,12 +521,11 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         visitorEntered: true,
         procedure,
       };
-      const withoutCurrent = state.encounter.events.filter((candidate) => candidate.id !== draft.id);
       return {
         ...state,
         view: "timeline",
         procedureDraft: null,
-        encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, event]) },
+        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition) },
       };
     }
     case "medication-started":
@@ -544,7 +534,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         medicationDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
       };
     case "medication-opened": {
-      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
+      const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
       return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false } } : state;
     }
     case "medication-selected":
@@ -556,7 +546,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "medication-cancelled":
       return { ...state, medicationDraft: null };
     case "medication-removed":
-      return state.medicationDraft ? { ...state, medicationDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.medicationDraft!.id) } } : state;
+      return state.medicationDraft ? { ...state, medicationDraft: null, encounter: { ...state.encounter, document: removeCanonicalEvent(state.encounter.document, state.medicationDraft.id) } } : state;
     case "medication-saved": {
       const draft = state.medicationDraft;
       if (!draft) return state;
@@ -582,13 +572,12 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         medication: administration,
       };
       const presentedMedicationEvent = { ...medicationEvent, ...encounterEventPresentation(medicationEvent, definition), detail: encounterEventDetail(medicationEvent, definition) };
-      const withoutCurrent = state.encounter.events.filter((event) => event.id !== draft.id);
-      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, events: newestFirst([...withoutCurrent, presentedMedicationEvent]) } };
+      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, presentedMedicationEvent, definition) } };
     }
     case "vitals-started":
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
-      const event = state.encounter.events.find((candidate) => candidate.id === action.id && candidate.vitals);
+      const event = events.find((candidate) => candidate.id === action.id && candidate.vitals);
       return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
     }
     case "vitals-time-changed":
@@ -602,13 +591,13 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "vitals-cancelled":
       return { ...state, vitalDraft: null };
     case "vitals-removed":
-      return state.vitalDraft ? { ...state, vitalDraft: null, encounter: { ...state.encounter, events: state.encounter.events.filter((event) => event.id !== state.vitalDraft!.id) } } : state;
+      return state.vitalDraft ? { ...state, vitalDraft: null, encounter: { ...state.encounter, document: removeCanonicalEvent(state.encounter.document, state.vitalDraft.id) } } : state;
     case "vitals-saved": {
       const draft = state.vitalDraft;
       if (!draft) return state;
       const vitalDefinition = definition.events.vitals;
       const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
-      return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, events: newestFirst([...state.encounter.events.filter((candidate) => candidate.id !== draft.id), event]) } };
+      return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition) } };
     }
     case "state-restored":
       return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version

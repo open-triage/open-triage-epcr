@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary } from "../app/incident-document";
 import { RECOVERY_STORAGE_KEY, STORAGE_KEY, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { patientDraftFromDocument, updatePatientDocument } from "../app/patient-document";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
+import { encounterEvents } from "../app/canonical-events";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {
   const values = new Map<string, string>();
@@ -95,12 +96,15 @@ test("operational timeline uses agency time and retains original offset lexicals
   assert.equal(timeline.every(({ detail }) => detail === ""), true);
 });
 
-test("editing, refresh recovery, and reset keep incident display on the canonical document", () => {
+test("retained patient data, refresh recovery, and reset keep incident display on the canonical document", () => {
   const baselineDocument = INITIAL_SHELL_STATE.encounter.document;
   const before = { incident: incidentSummary(baselineDocument), timeline: documentTimeline(baselineDocument) };
-  const patient = patientDraftFromDocument(baselineDocument);
-  const editedDocument = updatePatientDocument(baselineDocument, { ...patient, lastName: "Edited" }, "2026-04-18T15:00:00-04:00");
-  let state = transitionShell(INITIAL_SHELL_STATE, { type: "patient-updated", document: editedDocument });
+  const editedDocument = { ...baselineDocument, groups: baselineDocument.groups.map((group) => group.id === "ePatient.PatientNameGroup" ? {
+    ...group, instances: group.instances.map((instance) => ({ ...instance, elements: instance.elements.map((element) => element.id === "ePatient.02" ? {
+      ...element, values: element.values.map((value) => value.kind === "scalar" ? { ...value, value: "Edited" } : value),
+    } : element) })),
+  } : group) };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: editedDocument } };
   assert.deepEqual(incidentSummary(state.encounter.document), before.incident);
   assert.deepEqual(documentTimeline(state.encounter.document), before.timeline);
 
@@ -141,11 +145,11 @@ test("version two browser state upgrades deterministically and removes the paral
     { reference: "eTimes.03", time: "07:52" },
     { reference: "eTimes.02", time: "07:50" },
   ]);
-  assert.deepEqual(first.result.state.encounter.events.map(({ id }) => id), ["visitor-note"]);
+  assert.deepEqual(encounterEvents(first.result.state.encounter.document, standardEncounterDefinition).map(({ id }) => id), ["visitor-note"]);
   assert.equal("incident" in first.result.state.encounter, false);
   assert.equal("crew" in first.result.state.encounter, false);
   saveShellState(first.storage, first.result.state);
-  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":4/);
+  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":5/);
   assert.doesNotMatch(first.storage.getItem(STORAGE_KEY)!, /"state":/);
 });
 

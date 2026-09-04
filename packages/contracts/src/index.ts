@@ -92,8 +92,29 @@ export interface OpenAssignmentResponse {
     document: EncounterDocument;
     /** IANA zone used for operational-time presentation. */
     agencyTimeZone?: string;
+    dispatchConflicts?: ReadonlyArray<DispatchConflict>;
   };
   replacementAssignment: AssignedCall | null;
+}
+
+export type DispatchConflictDisposition = "keep" | "accept" | "acknowledge";
+
+export interface DispatchConflict {
+  id: string;
+  occurrenceId: string;
+  elementId: string;
+  clinicianValue: EncounterValue | null;
+  dispatchValue: EncounterValue | null;
+  dispatchRevision: number;
+  receiptId: string;
+  disposition: DispatchConflictDisposition | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
+
+export interface ResolveDispatchConflictCommand {
+  commandId: string;
+  disposition: DispatchConflictDisposition;
 }
 
 export type OpenCallSyncStatus = "saved" | "pending";

@@ -179,7 +179,7 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
 export function cachedReopenResponse(storage: StoragePort, ownerUserId: string, reportId: string): ReopenOpenCallResponse | null {
   const cached = cachedOpenReports(storage, ownerUserId).find((candidate) => candidate.report.id === reportId);
   if (!cached?.report.document) return null;
-  return { callNumber: cached.callNumber, report: { ...cached.report, document: cached.report.document, status: "draft" } };
+  return { callNumber: cached.callNumber, report: { ...cached.report, document: cached.report.document, dispatchConflicts: cached.report.dispatchConflicts ?? [], status: "draft" } };
 }
 
 export function queueDraftChange(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {

@@ -3,6 +3,7 @@ import test from "node:test";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
+import { encounterEvents } from "../app/canonical-events";
 import {
   PROCEDURES,
   PROCEDURE_MANIFEST,
@@ -82,13 +83,13 @@ test("multiple procedures persist as distinct events and reopen for canonical ed
   state = transitionShell(state, { type: "procedure-draft-changed", field: "outcome", value: "improved" });
   state = transitionShell(state, { type: "procedure-complication-toggled", code: "3907033" });
   state = transitionShell(state, { type: "procedure-saved" });
-  assert.equal(state.encounter.events.filter((event) => event.kind === "procedure").length, 2);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.kind === "procedure").length, 2);
 
   state = transitionShell(state, { type: "procedure-opened", id: "procedure-1" });
   state = transitionShell(state, { type: "procedure-draft-changed", field: "time", value: "08:38" });
   state = transitionShell(state, { type: "procedure-saved" });
-  assert.equal(state.encounter.events.filter((event) => event.id === "procedure-1").length, 1);
-  assert.equal(state.encounter.events.find((event) => event.id === "procedure-1")?.time, "08:38");
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.id === "procedure-1").length, 1);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).find((event) => event.id === "procedure-1")?.time, "08:38");
 });
 
 test("remove deletes the opened procedure group", () => {
@@ -96,7 +97,7 @@ test("remove deletes the opened procedure group", () => {
   state = transitionShell(state, { type: "procedure-opened", id: "procedure-remove" });
   state = transitionShell(state, { type: "procedure-removed" });
   assert.equal(state.procedureDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "procedure-remove"), false);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "procedure-remove"), false);
 });
 
 test("drafts, coded records, and warning acknowledgements survive refresh", () => {
@@ -109,7 +110,8 @@ test("drafts, coded records, and warning acknowledgements survive refresh", () =
   assert.equal(restored.procedureDraft?.warningAcknowledged, true);
   restored = transitionShell(restored, { type: "procedure-saved" });
   saveShellState(storage, restored);
-  const record = loadShellState(storage)!.encounter.events.find((event) => event.id === "procedure-warning")?.procedure;
+  const loaded = loadShellState(storage)!;
+  const record = encounterEvents(loaded.encounter.document, standardEncounterDefinition).find((event) => event.id === "procedure-warning")?.procedure;
   assert.equal(record?.code, "268400002");
   assert.equal(record?.warningAcknowledged, true);
 });
@@ -137,7 +139,7 @@ test("configured procedure metadata drives capture, validation, warnings, review
   state = transitionShell(state, { type: "procedure-complication-toggled", code: "3907033" }, definition);
   state = transitionShell(state, { type: "procedure-saved" }, definition);
 
-  const event = state.encounter.events.find((candidate) => candidate.id === "configured-procedure")!;
+  const event = encounterEvents(state.encounter.document, definition).find((candidate) => candidate.id === "configured-procedure")!;
   assert.equal(encounterEventDetail(event, definition), "2 tries, unsuccessful · Unchanged · Adverse event: None");
   assert.equal(encounterEventPresentation(event, definition).reference, "eProcedures.03 · SNOMED CT 268400002");
   const warning = reviewEncounter(state, definition).find((finding) => finding.target.eventId === event.id)!;
@@ -168,7 +170,7 @@ test("saved procedure records remain readable with current configured presentati
   let state = transitionShell(completedProcedure("legacy-procedure", "09:16"), { type: "procedure-saved" });
   saveShellState(storage, state);
   state = loadShellState(storage)!;
-  const event = state.encounter.events.find((candidate) => candidate.id === "legacy-procedure")!;
+  const event = encounterEvents(state.encounter.document, standardEncounterDefinition).find((candidate) => candidate.id === "legacy-procedure")!;
   const base = standardEncounterDefinition.events.procedure;
   const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, procedure: { ...base, timeline: { ...base.timeline, attemptSingular: "configured attempt" } } } };
   assert.match(encounterEventDetail(event, definition), /^1 configured attempt,/);

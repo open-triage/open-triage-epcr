@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import type { AssignedCall } from "@open-triage/contracts";
 import syntheticEncounterDocument from "../app/data/synthetic-encounter-document.json";
 
 const assignedCall = {
@@ -59,7 +60,7 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-function fulfill(route: Route, assignedCalls = [assignedCall], canceledAssignmentIds: string[] = []) {
+function fulfill(route: Route, assignedCalls: ReadonlyArray<AssignedCall> = [assignedCall], canceledAssignmentIds: string[] = []) {
   return route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ assignedCalls, canceledAssignmentIds, refreshedAt: new Date().toISOString() })

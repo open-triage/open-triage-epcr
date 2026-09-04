@@ -18,7 +18,7 @@ function sourceFiles(root: URL): ReadonlyArray<string> {
 test("the active standard encounter has one neutral identity and fixed composition", () => {
   assert.equal(standardEncounterDefinition.id, "standard-encounter-v1");
   assert.equal(STORAGE_KEY, "open-triage:standard-encounter-v1");
-  assert.deepEqual(configuredQuickActions(standardEncounterDefinition).map(({ id }) => id), ["vitals", "medication", "procedure", "note", "patient"]);
+  assert.deepEqual(configuredQuickActions(standardEncounterDefinition).map(({ id }) => id), ["vitals", "medication", "procedure", "note"]);
   assert.ok(Object.values(standardEncounterDefinition.events).every((event) => event.quickAction.visible));
   assert.deepEqual(standardEncounterDefinition.composition.review.eventTypeOrder, ["vitals", "medication", "procedure", "note"]);
   assert.deepEqual(standardEncounterDefinition.composition.summary.eventTypeOrder, ["vitals", "medication", "procedure", "note"]);

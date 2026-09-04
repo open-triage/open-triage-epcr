@@ -4,7 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
-import { encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
+import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 
 type AssignedCallRow = {
   id: string;
@@ -228,6 +228,7 @@ export class AssignedCallsService {
     if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
     if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
     const document = await encounterDocument(manager, report.id);
+    const conflicts = await dispatchConflicts(manager, report.id);
     return {
       assignmentId: assignment.id,
       report: {
@@ -239,6 +240,7 @@ export class AssignedCallsService {
         status: "draft",
         document,
         ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
+        dispatchConflicts: conflicts,
       },
       replacementAssignment
     };
