@@ -16,6 +16,7 @@ import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 import { loadPresentationMode, storePresentationMode, type PresentationMode } from "../app/presentation-mode";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -146,6 +147,10 @@ export function ClinicianSessionGate({ children }: {
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
         <strong>Synthetic data only</strong>
         <span>Usability prototype — not for clinical use</span>
+        {activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
+          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}>Populate</button>
+          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
+        </span>}
       </aside>
       <div hidden={activeReport !== null}>
         <AssignedCalls session={session} refreshRequest={refreshRequest} onOpened={(opened, call) => {

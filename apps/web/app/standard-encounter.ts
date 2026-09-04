@@ -9,6 +9,7 @@ import type { EncounterDocument } from "@open-triage/contracts";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
+import { clearStationaryDemoData, populateStationaryDemoData } from "./stationary-demo-data";
 
 export type ShellView = "timeline" | "checklist" | "review";
 
@@ -87,6 +88,8 @@ export type ShellState = {
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
+  | { readonly type: "demo-populated" }
+  | { readonly type: "demo-cleared" }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -364,6 +367,10 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
   switch (action.type) {
     case "document-opened":
       return { ...state, encounter: { ...state.encounter, document: action.document } };
+    case "demo-populated":
+      return { ...state, encounter: { ...state.encounter, document: populateStationaryDemoData(state.encounter.document) } };
+    case "demo-cleared":
+      return { ...state, encounter: { ...state.encounter, document: clearStationaryDemoData(state.encounter.document) } };
     case "view-selected":
       return { ...state, view: action.view };
     case "review-opened":

@@ -7,6 +7,7 @@ import {
   type NemsisCodeValue,
   type NemsisDataElement,
 } from "./nemsis-data-model";
+import { withoutDemoProvenance } from "./demo-provenance";
 
 export type StationaryCodedControlKind = "select" | "combobox" | "external-search";
 export type StationaryCodedOption = NemsisCodeValue & {
@@ -154,7 +155,7 @@ export function editStationaryCodedValue(
   if (selection) {
     const value = {
       ...compatibleValueExtensions(existingValue),
-      ...canonicalValue(selection, existingValue?.occurrenceId ?? createId(), existingValue?.attributes),
+      ...canonicalValue(selection, existingValue?.occurrenceId ?? createId(), withoutDemoProvenance(existingValue?.attributes)),
     } as EncounterValue;
     if (existingValue) values[valueIndex] = value;
     else values.push(value);
@@ -163,7 +164,7 @@ export function editStationaryCodedValue(
   if (existingElement) elements[elementIndex] = { ...existingElement, values };
   else if (selection) elements.push({ id: target.elementId, values });
   const instances = [...group.instances];
-  instances[instanceIndex] = { ...instance, elements };
+  instances[instanceIndex] = { ...instance, attributes: withoutDemoProvenance(instance.attributes), elements };
   const groups = [...document.groups];
   groups[groupIndex] = { ...group, instances };
   return { ...document, encounter: { ...document.encounter, updatedAt: now.toISOString() }, groups };

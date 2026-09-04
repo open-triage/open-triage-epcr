@@ -1,6 +1,7 @@
 import type { EncounterAttributes, EncounterDocument, EncounterValue, ScalarEncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } from "./nemsis-data-model";
+import { withoutDemoProvenance } from "./demo-provenance";
 
 export type ScalarDatatypeFamily = "text" | "numeric" | "integer" | "boolean" | "date" | "datetime" | "time" | "uri" | "duration" | "binary";
 
@@ -195,7 +196,7 @@ function replaceElementValues(document: EncounterDocument, groupId: string, grou
   if (elementIndex < 0) elements.push({ id: elementId, values });
   else elements[elementIndex] = { ...elements[elementIndex]!, values };
   const instances = [...group.instances];
-  instances[instanceIndex] = { ...instance, elements };
+  instances[instanceIndex] = { ...instance, attributes: withoutDemoProvenance(instance.attributes), elements };
   const groups = [...document.groups];
   groups[groupIndex] = { ...group, instances };
   return { ...document, encounter: { ...document.encounter, updatedAt: now.toISOString() }, groups };
@@ -234,7 +235,7 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
     utcOffsetMinutes: _utcOffsetMinutes, attributes: _attributes, ...compatibleExtensions } = previousRecord;
   const next = {
     ...compatibleExtensions,
-    ...scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? previous?.attributes),
+    ...scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? withoutDemoProvenance(previous?.attributes)),
   };
   const values = [...existing];
   if (index < 0) values.push(next); else values[index] = next;
