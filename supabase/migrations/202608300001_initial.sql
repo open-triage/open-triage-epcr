@@ -1169,6 +1169,46 @@ for each row execute function clinical_audit.validate_report_chain();
 create trigger audit_event_append_only before update or delete on clinical_audit.event
 for each row execute function public.prevent_update_or_delete();
 
+create table clinical.dispatch_receipt (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references app_identity.organization(id),
+  source_id text not null check (length(btrim(source_id)) between 1 and 200),
+  message_id uuid not null,
+  source_record_id text not null check (length(btrim(source_record_id)) between 1 and 200),
+  source_revision bigint not null check (source_revision > 0),
+  received_at timestamptz not null default clock_timestamp(),
+  source_bytes bytea not null,
+  exact_sha256 text generated always as
+    (encode(digest(source_bytes, 'sha256'), 'hex')) stored,
+  source_payload jsonb not null check (jsonb_typeof(source_payload) = 'object'),
+  canonical_sha256 text generated always as
+    (encode(digest(convert_to(source_payload::text, 'UTF8'), 'sha256'), 'hex')) stored,
+  findings jsonb not null default '[]'::jsonb check (jsonb_typeof(findings) = 'array'),
+  status text not null check (status in (
+    'applied', 'applied_with_findings', 'rejected', 'quarantined', 'stale',
+    'conflicting', 'post_signature'
+  )),
+  result jsonb not null default '{}'::jsonb check (jsonb_typeof(result) = 'object'),
+  check (convert_from(source_bytes, 'UTF8')::jsonb = source_payload),
+  check ((source_payload->>'messageId')::uuid = message_id),
+  check (source_payload->>'sourceRecordId' = source_record_id),
+  check ((source_payload->>'revision')::bigint = source_revision),
+  check (not (source_payload ?| array['organizationId', 'organization_id', 'sourceId', 'source_id'])),
+  unique (organization_id, source_id, message_id),
+  unique (organization_id, source_id, source_record_id, source_revision)
+);
+
+create index dispatch_receipt_source_history_idx
+on clinical.dispatch_receipt
+  (organization_id, source_id, source_record_id, source_revision desc);
+
+create trigger dispatch_receipt_append_only
+before update or delete on clinical.dispatch_receipt
+for each row execute function public.prevent_update_or_delete();
+
+comment on table clinical.dispatch_receipt is
+  'Append-only dispatch delivery evidence under clinical-data controls. Source payload bytes must never be copied to ordinary logs.';
+
 create table integration.outbox_event (
   id uuid primary key default gen_random_uuid(),
   aggregate_type text not null,
