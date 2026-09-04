@@ -317,6 +317,9 @@ input, select, textarea { touch-action: manipulation; }
 .stationary-group-dialog { max-height: min(88vh, 58rem); max-width: 54rem; overflow-y: auto; width: min(92vw, 54rem); }
 .stationary-group-dialog-fields { display: grid; gap: 1rem; }
 .stationary-group-coded-occurrences { display: grid; gap: 0.75rem; }
+.stationary-nested-groups { display: grid; gap: 1rem; margin-top: 1rem; }
+.stationary-nested-groups .stationary-repeating-group, .stationary-nested-single { background: var(--surface, #fff); border: 1px solid var(--border, #d9dee7); border-radius: 0.65rem; padding: 0.75rem; }
+.stationary-nested-single .section-heading { align-items: center; }
 
 @media (max-width: 640px) {
   .stationary-repeating-groups { padding: 0 0.5rem; }

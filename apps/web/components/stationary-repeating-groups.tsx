@@ -1,13 +1,15 @@
 "use client";
 
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
-import React, { useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
   addRepeatingGroupOccurrence,
-  configuredRepeatingGroups,
+  configuredRepeatingGroupRoots,
+  ensureNestedSingleGroupOccurrence,
   eligibleRepeatingGroupParents,
   moveRepeatingGroupOccurrence,
   removeRepeatingGroupOccurrence,
+  removeNestedGroupOccurrence,
   repeatingGroupInstances,
   repeatingGroupSummary,
   type RepeatingGroupFinding,
@@ -70,6 +72,8 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
 }) {
   const titleId = useId();
   const frame = useRef<HTMLElement>(null);
+  const [focusTarget] = useState(returnFocus);
+  const cancelDialog = useEffectEvent(onCancel);
   const instance = repeatingGroupInstances(draft, placement.id).find((candidate) => candidate.instanceId === instanceId);
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
@@ -79,7 +83,9 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       initial?.focus();
     });
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onCancel(); return; }
+      const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"]');
+      if (dialogs.item(dialogs.length - 1) !== frame.current) return;
+      if (event.key === "Escape") { event.preventDefault(); cancelDialog(); return; }
       if (event.key !== "Tab" || !frame.current) return;
       const controls = [...frame.current.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)")];
       if (!controls.length) return;
@@ -88,8 +94,17 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener("keydown", keydown);
-    return () => { window.cancelAnimationFrame(animationFrame); document.removeEventListener("keydown", keydown); returnFocus?.focus(); };
-  }, [onCancel, returnFocus]);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      document.removeEventListener("keydown", keydown);
+      const target = focusTarget;
+      const focusKey = target?.dataset.dialogReturnFocus;
+      const currentTarget = focusKey
+        ? [...document.querySelectorAll<HTMLElement>("[data-dialog-return-focus]")].find((candidate) => candidate.dataset.dialogReturnFocus === focusKey)
+        : undefined;
+      window.requestAnimationFrame(() => (target?.isConnected ? target : currentTarget)?.focus());
+    };
+  }, [focusTarget]);
   if (!instance) return null;
   const editable = placement.mode !== "read-only";
   return <div className="dialog-backdrop" role="presentation">
@@ -105,6 +120,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
           : <div key={element.id}><strong>{element.label ?? requireNemsisDataElement(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : "Exceptional value").join(", ") || "Not recorded"}</p></div>)}
         {!placement.elements.length && <p>No fields are stored directly on this structural group.</p>}
       </div>
+      <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} onDocumentChange={onDraftChange} />
       <div className="note-dialog-actions">
         <button type="button" onClick={onCancel}>{editable ? "Cancel" : "Close"}</button>
         {editable && <button type="button" onClick={onSave}>{isNew ? "Add row" : "Save changes"}</button>}
@@ -113,30 +129,82 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   </div>;
 }
 
-function RepeatingGroupTable({ document, placement, onDocumentChange }: {
+function NestedSingleGroup({ document, placement, parentInstanceId, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly placement: CompiledStationaryGroup;
+  readonly parentInstanceId: string;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const headingId = useId();
-  const instances = repeatingGroupInstances(document, placement.id);
-  const parents = eligibleRepeatingGroupParents(document, placement.id);
-  const [parentId, setParentId] = useState(parents[0]?.instanceId ?? "");
+  const catalog = requireNemsisDataElement;
+  const instance = document.groups.find(({ id }) => id === placement.id)?.instances.find((candidate) => candidate.parentInstanceId === parentInstanceId);
+  const [finding, setFinding] = useState<RepeatingGroupFinding>();
+  const editable = placement.mode !== "read-only";
+  if (!instance) return <section className="stationary-nested-single" aria-labelledby={headingId} data-group-id={placement.id} data-parent-instance-id={parentInstanceId}>
+    <div className="section-heading"><h3 id={headingId}>{placement.presentation.label ?? placement.id}</h3>
+      {editable && <button type="button" onClick={() => {
+        const result = ensureNestedSingleGroupOccurrence(document, placement.id, parentInstanceId);
+        if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]);
+      }}>Add {placement.presentation.label ?? placement.id}</button>}
+    </div>
+    {finding && <p role="alert">{finding.message}</p>}
+  </section>;
+  return <section className="stationary-nested-single" aria-labelledby={headingId} data-group-id={placement.id} data-group-instance-id={instance.instanceId} data-parent-instance-id={parentInstanceId}>
+    <div className="section-heading"><h3 id={headingId}>{placement.presentation.label ?? placement.id}</h3>
+      {editable && <button type="button" onClick={() => {
+        const result = removeNestedGroupOccurrence(document, placement.id, instance.instanceId);
+        if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]);
+      }}>Remove {placement.presentation.label ?? placement.id}</button>}
+    </div>
+    <div className="stationary-group-dialog-fields">
+      {placement.elements.map((element) => editable
+        ? <GroupField key={element.id} document={document} instance={instance} placement={element} onDocumentChange={onDocumentChange} />
+        : <div key={element.id}><strong>{element.label ?? catalog(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : "Exceptional value").join(", ") || "Not recorded"}</p></div>)}
+    </div>
+    <NestedGroupContents document={document} placement={placement} parentInstanceId={instance.instanceId} onDocumentChange={onDocumentChange} />
+    {finding && <p role="alert">{finding.message}</p>}
+  </section>;
+}
+
+function NestedGroupContents({ document, placement, parentInstanceId, onDocumentChange }: {
+  readonly document: EncounterDocument;
+  readonly placement: CompiledStationaryGroup;
+  readonly parentInstanceId: string;
+  readonly onDocumentChange: (document: EncounterDocument) => void;
+}) {
+  if (!placement.children.length) return null;
+  return <div className="stationary-nested-groups">
+    {placement.children.map((child) => child.presentation.kind === "table"
+      ? <RepeatingGroupTable key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} onDocumentChange={onDocumentChange} />
+      : <NestedSingleGroup key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} onDocumentChange={onDocumentChange} />)}
+  </div>;
+}
+
+function RepeatingGroupTable({ document, placement, parentInstanceId, onDocumentChange }: {
+  readonly document: EncounterDocument;
+  readonly placement: CompiledStationaryGroup;
+  readonly parentInstanceId?: string;
+  readonly onDocumentChange: (document: EncounterDocument) => void;
+}) {
+  const headingId = useId();
+  const instances = repeatingGroupInstances(document, placement.id, parentInstanceId);
+  const parents = parentInstanceId ? [] : eligibleRepeatingGroupParents(document, placement.id);
+  const [selectedParentId, setSelectedParentId] = useState(parents[0]?.instanceId ?? "");
   const [dialogState, setDialogState] = useState<{ draft: EncounterDocument; instanceId: string; isNew: boolean; returnFocus: HTMLElement }>();
   const [finding, setFinding] = useState<RepeatingGroupFinding>();
   const editable = placement.mode !== "read-only";
   const openAdd = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const result = addRepeatingGroupOccurrence(document, placement.id, parentId || undefined);
+    const result = addRepeatingGroupOccurrence(document, placement.id, parentInstanceId ?? (selectedParentId || undefined));
     if (!result.ok) return setFinding(result.findings[0]);
     setFinding(undefined);
     setDialogState({ draft: result.document, instanceId: result.instanceId, isNew: true, returnFocus: event.currentTarget });
   };
-  return <section className="stationary-repeating-group" aria-labelledby={headingId} data-group-id={placement.id}>
+  return <section className="stationary-repeating-group" aria-labelledby={headingId} data-group-id={placement.id} {...(parentInstanceId ? { "data-parent-instance-id": parentInstanceId } : {})}>
     <div className="section-heading">
       <div><h2 id={headingId}>{placement.presentation.label}</h2><p>{placement.presentation.help}</p></div>
       {editable && <div className="stationary-group-add-controls">
-        {parents.length > 1 && <label>Parent row<select aria-label={`${placement.presentation.label} parent row`} value={parentId} onChange={(event) => setParentId(event.target.value)}>{parents.map((parent, index) => <option key={parent.instanceId} value={parent.instanceId}>Parent {index + 1}</option>)}</select></label>}
-        <button type="button" onClick={openAdd}>{placement.presentation.dialog?.addLabel ?? `Add ${placement.presentation.label}`}</button>
+        {parents.length > 1 && <label>Parent row<select aria-label={`${placement.presentation.label} parent row`} value={selectedParentId} onChange={(event) => setSelectedParentId(event.target.value)}>{parents.map((parent, index) => <option key={parent.instanceId} value={parent.instanceId}>Parent {index + 1}</option>)}</select></label>}
+        <button type="button" data-dialog-return-focus={`${placement.id}:${parentInstanceId ?? "record"}:add`} onClick={openAdd}>{placement.presentation.dialog?.addLabel ?? `Add ${placement.presentation.label}`}</button>
       </div>}
     </div>
     <div className="stationary-table-scroll" tabIndex={0} role="region" aria-label={`${placement.presentation.label} table`}>
@@ -146,7 +214,7 @@ function RepeatingGroupTable({ document, placement, onDocumentChange }: {
           const index = siblings.findIndex(({ instanceId }) => instanceId === instance.instanceId);
           return <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}>
             {repeatingGroupSummary(document, placement, instance).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>Not recorded</span>}</td>)}
-            <td><div className="stationary-row-actions"><button type="button" onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}>{editable ? "Edit" : "View"}</button>
+            <td><div className="stationary-row-actions"><button type="button" data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}>{editable ? "Edit" : "View"}</button>
               {editable && <><button type="button" disabled={index === 0} onClick={() => { const result = moveRepeatingGroupOccurrence(document, placement.id, instance.instanceId, index - 1); if (result.ok) onDocumentChange(result.document); }}>Move up</button>
                 <button type="button" disabled={index === siblings.length - 1} onClick={() => { const result = moveRepeatingGroupOccurrence(document, placement.id, instance.instanceId, index + 1); if (result.ok) onDocumentChange(result.document); }}>Move down</button>
                 <button type="button" onClick={() => { const result = removeRepeatingGroupOccurrence(document, placement.id, instance.instanceId); if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]); }}>Remove</button></>}</div></td>
@@ -166,6 +234,6 @@ export function StationaryRepeatingGroups({ document, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const groups = useMemo(() => configuredRepeatingGroups(), []);
+  const groups = useMemo(() => configuredRepeatingGroupRoots(), []);
   return <div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} onDocumentChange={onDocumentChange} />)}</div>;
 }

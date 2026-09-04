@@ -117,7 +117,7 @@ test("a mobile report reopens offline for stationary scalar editing through the 
   await page.getByRole("button", { name: "Reopen call" }).click();
   await expect(page.locator(".app-shell")).toHaveAttribute("data-presentation-mode", "stationary");
   await expect(page.getByText("Started on mobile", { exact: true })).toBeVisible();
-  await page.getByLabel(/^First Name/).fill("STATIONARY");
+  await page.getByLabel(/^First Name ePatient\.03/).fill("STATIONARY");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
 
   const offlineIdentity = await page.evaluate(({ expectedReportId }) => {

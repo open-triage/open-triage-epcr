@@ -13,9 +13,12 @@ import { editScalarOccurrence } from "../app/stationary-scalar";
 import { editStationaryCodedValue } from "../app/stationary-coded-value";
 import {
   addRepeatingGroupOccurrence,
+  configuredRepeatingGroupRoots,
   configuredRepeatingGroups,
+  ensureNestedSingleGroupOccurrence,
   moveRepeatingGroupOccurrence,
   removeRepeatingGroupOccurrence,
+  removeNestedGroupOccurrence,
   repeatingGroupInstances,
   repeatingGroupSummary,
 } from "../app/stationary-repeating-group";
@@ -27,15 +30,20 @@ function documentWithSceneResponderParent(): EncounterDocument {
   return structuredClone(synthetic) as EncounterDocument;
 }
 
-test("every configured repeating group has a catalog-driven table and add action", () => {
+test("every root repeating group has a table while nested tables stay in their parent row workflow", () => {
   const document = documentWithSceneResponderParent();
   const configured = configuredRepeatingGroups();
+  const roots = configuredRepeatingGroupRoots();
   assert.ok(configured.length > 30);
+  assert.ok(roots.length < configured.length);
+  assert.ok(roots.some(({ id }) => id === "eLabs.LabGroup"));
+  assert.ok(!roots.some(({ id }) => id === "eLabs.LabResultGroup"));
   const html = renderToStaticMarkup(createElement(StationaryRepeatingGroups, { document, onDocumentChange() {} }));
-  for (const placement of configured) {
+  for (const placement of roots) {
     assert.match(html, new RegExp(`data-group-id="${placement.id.replaceAll(".", "\\.")}"`));
     if (placement.mode !== "read-only") assert.ok(html.includes(placement.presentation.dialog!.addLabel));
   }
+  assert.ok(!html.includes('data-group-id="eLabs.LabResultGroup"'));
   assert.match(html, /role="region"/);
   assert.match(html, /tabindex="0"/);
 });
@@ -125,6 +133,84 @@ test("removing a parent row removes nested canonical group occurrences without o
   assert.equal(removed.ok, true);
   if (!removed.ok) return;
   assert.equal(removed.document.groups.some(({ id }) => id === "eLabs.LabGroup" || id === "eLabs.LabResultGroup"), false);
+});
+
+test("multiple parent rows keep independent nested children and enforce single cardinality per parent", () => {
+  const baseline = documentWithSceneResponderParent();
+  const withLabs = {
+    ...baseline,
+    groups: [...baseline.groups, { id: "eLabsSection", instances: [{ instanceId: "labs-section", parentInstanceId: "synthetic-pcr-1", elements: [] }] }],
+  } satisfies EncounterDocument;
+  const first = addRepeatingGroupOccurrence(withLabs, "eLabs.LabGroup", "labs-section", () => "lab-one");
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+  const second = addRepeatingGroupOccurrence(first.document, "eLabs.LabGroup", "labs-section", () => "lab-two");
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  const firstResult = addRepeatingGroupOccurrence(second.document, "eLabs.LabResultGroup", "lab-one", () => "result-one");
+  assert.equal(firstResult.ok, true);
+  if (!firstResult.ok) return;
+  const secondResult = addRepeatingGroupOccurrence(firstResult.document, "eLabs.LabResultGroup", "lab-two", () => "result-two");
+  assert.equal(secondResult.ok, true);
+  if (!secondResult.ok) return;
+  assert.deepEqual(repeatingGroupInstances(secondResult.document, "eLabs.LabResultGroup", "lab-one").map(({ instanceId }) => instanceId), ["result-one"]);
+  assert.deepEqual(repeatingGroupInstances(secondResult.document, "eLabs.LabResultGroup", "lab-two").map(({ instanceId }) => instanceId), ["result-two"]);
+
+  const withVitals = {
+    ...secondResult.document,
+    groups: [...secondResult.document.groups,
+      { id: "eVitalsSection", instances: [{ instanceId: "vitals-section", parentInstanceId: "synthetic-pcr-1", elements: [] }] },
+      { id: "eVitals.VitalGroup", instances: [{ instanceId: "vital-one", parentInstanceId: "vitals-section", elements: [] }, { instanceId: "vital-two", parentInstanceId: "vitals-section", elements: [] }] }],
+  } satisfies EncounterDocument;
+  const temperatureOne = ensureNestedSingleGroupOccurrence(withVitals, "eVitals.TemperatureGroup", "vital-one", () => "temperature-one");
+  assert.equal(temperatureOne.ok, true);
+  if (!temperatureOne.ok) return;
+  const sameTemperature = ensureNestedSingleGroupOccurrence(temperatureOne.document, "eVitals.TemperatureGroup", "vital-one", () => "duplicate-temperature");
+  assert.equal(sameTemperature.ok, true);
+  if (!sameTemperature.ok) return;
+  assert.equal(sameTemperature.instanceId, "temperature-one");
+  const temperatureTwo = ensureNestedSingleGroupOccurrence(sameTemperature.document, "eVitals.TemperatureGroup", "vital-two", () => "temperature-two");
+  assert.equal(temperatureTwo.ok, true);
+  if (!temperatureTwo.ok) return;
+  assert.equal(temperatureTwo.document.groups.find(({ id }) => id === "eVitals.TemperatureGroup")?.instances.length, 2);
+  const rhythm = ensureNestedSingleGroupOccurrence(temperatureTwo.document, "eVitals.CardiacRhythmGroup", "vital-one", () => "rhythm-one");
+  assert.equal(rhythm.ok, true);
+  if (!rhythm.ok) return;
+  assert.equal(removeNestedGroupOccurrence(rhythm.document, "eVitals.CardiacRhythmGroup", "rhythm-one").ok, false, "a required single child cannot be removed");
+  assert.equal(ensureNestedSingleGroupOccurrence(temperatureTwo.document, "eVitals.TemperatureGroup", "not-a-vital").ok, false);
+});
+
+test("nested identities and canonical parent links survive offline reopen and synchronization", () => {
+  const baseline = documentWithSceneResponderParent();
+  const withLabs = {
+    ...baseline,
+    groups: [...baseline.groups, { id: "eLabsSection", instances: [{ instanceId: "labs-section", parentInstanceId: "synthetic-pcr-1", elements: [] }] }],
+  } satisfies EncounterDocument;
+  const lab = addRepeatingGroupOccurrence(withLabs, "eLabs.LabGroup", "labs-section", () => "offline-lab");
+  assert.equal(lab.ok, true);
+  if (!lab.ok) return;
+  const result = addRepeatingGroupOccurrence(lab.document, "eLabs.LabResultGroup", lab.instanceId, () => "offline-lab-result");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const values = new Map<string, string>();
+  const storage = { getItem(key: string) { return values.get(key) ?? null; }, setItem(key: string, value: string) { values.set(key, value); }, removeItem(key: string) { values.delete(key); } };
+  saveShellState(storage, { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: result.document } }, reportId);
+  const reopened = loadShellStateResult(storage, undefined, reportId);
+  assert.equal(reopened.status, "restored");
+  if (reopened.status !== "restored") return;
+  const reopenedChild = repeatingGroupInstances(reopened.state.encounter.document, "eLabs.LabResultGroup", "offline-lab")[0];
+  assert.equal(reopenedChild?.instanceId, "offline-lab-result");
+  assert.equal(reopenedChild?.parentInstanceId, "offline-lab");
+
+  const persisted = encounterDocumentToDraftMutations(reportId, baseline);
+  const pending = encounterDocumentToDraftMutations(reportId, reopened.state.encounter.document, persisted);
+  const childMutation = pending.groups.find(({ groupId }) => groupId === "eLabs.LabResultGroup");
+  const parentMutation = pending.groups.find(({ groupId }) => groupId === "eLabs.LabGroup");
+  assert.equal(childMutation?.parentGroupInstanceId, parentMutation?.id);
+  const synchronized = reconcileActiveReportDocument(reportId, reopened.state.encounter.document, baseline, true, pendingDraftTargets(pending, persisted));
+  const synchronizedChild = repeatingGroupInstances(synchronized, "eLabs.LabResultGroup", "offline-lab")[0];
+  assert.equal(synchronizedChild?.instanceId, "offline-lab-result");
+  assert.equal(synchronizedChild?.parentInstanceId, "offline-lab");
 });
 
 test("offline reopen and cross-presentation reconciliation retain a pending table row", () => {
