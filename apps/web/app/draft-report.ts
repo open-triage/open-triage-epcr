@@ -1,10 +1,10 @@
-import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
-import { bundledEncounterDefinition } from "./standard-encounter";
-import { getNemsisGroup, requireNemsisDataElement, resolveNemsisElementValues } from "./nemsis-data-model";
+import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
+export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
 export interface ActiveDraftReport {
@@ -14,11 +14,20 @@ export interface ActiveDraftReport {
   readonly callNumber?: string;
   readonly dispatchedAt?: string;
   readonly dispatchReason?: string | null;
+  readonly dispatchPriority?: DispatchPriority | null;
   readonly chiefComplaint?: string | null;
   readonly unitCallSign?: string;
+  readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
   readonly status?: "draft";
+  readonly document?: EncounterDocument;
+  readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
+  readonly dispatchCancellation?: DispatchCancellation | null;
+}
+
+export function dispatchCancellationNotice(cancellation: DispatchCancellation): string {
+  return `Your report is preserved. Continue documentation as needed; cancellation received ${new Date(cancellation.canceledAt).toLocaleString()}.`;
 }
 
 export interface DraftGroupMutation {
@@ -27,6 +36,7 @@ export interface DraftGroupMutation {
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
+  readonly tombstone?: boolean;
 }
 
 export type DraftValue =
@@ -45,7 +55,8 @@ export interface DraftOccurrenceMutation {
   readonly groupInstanceId: string;
   readonly ordinal: number;
   readonly sourceAttributes?: Record<string, unknown>;
-  readonly value: DraftValue;
+  readonly tombstone?: boolean;
+  readonly value?: DraftValue;
 }
 
 export interface SaveDraftReportCommand {
@@ -71,6 +82,28 @@ export function stableDraftId(reportId: string, localId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+const persistedDraftIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function draftTargetId(reportId: string, targetKind: "group" | "occurrence", identity: string): string {
+  return persistedDraftIdPattern.test(identity) ? identity : stableDraftId(reportId, `${targetKind}:${identity}`);
+}
+
+export function draftCommandUsesLegacyDerivedIds(
+  reportId: string,
+  shell: ShellState,
+  command: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): boolean {
+  const legacyGroupIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances
+    .filter((instance) => persistedDraftIdPattern.test(instance.instanceId))
+    .map((instance) => stableDraftId(reportId, `group:${instance.instanceId}`))));
+  const legacyOccurrenceIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances.flatMap((instance) =>
+    instance.elements.flatMap((element) => element.values
+      .filter((value) => persistedDraftIdPattern.test(value.occurrenceId))
+      .map((value) => stableDraftId(reportId, `occurrence:${value.occurrenceId}`))))));
+  return command.groups.some(({ id }) => legacyGroupIds.has(id))
+    || command.occurrences.some(({ id }) => legacyOccurrenceIds.has(id));
+}
+
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
   if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };
@@ -91,72 +124,16 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
   return { kind: "text", value: String(value.value) };
 }
 
-function eventDocument(shell: ShellState): EncounterDocument {
-  const groups = shell.encounter.document.groups.filter(({ id }) => !["eNarrativeSection", "eVitals.VitalGroup", "eMedications.MedicationGroup", "eMedications.DosageGroup", "eProcedures.ProcedureGroup"].includes(id));
-  const eventGroups: Array<EncounterDocument["groups"][number]> = [];
-  const coded = (elementId: string, label: string) => {
-    const option = resolveNemsisElementValues(requireNemsisDataElement(elementId)).permissibleValues.find((item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
-    return option ? { kind: "coded" as const, code: option.code, display: option.label } : null;
-  };
-  const timestamp = (date: string | undefined, time: string) => `${date ?? "2026-04-18"}T${time}:00Z`;
-  for (const event of shell.encounter.events) {
-    if (event.kind === "note") eventGroups.push({ id: "eNarrativeSection", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [{ id: "eNarrative.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:narrative`, value: event.detail }] }] }] });
-    if (event.vitals) {
-      const elements: Array<{ id: string; value: EncounterValue }> = [
-        { id: "eVitals.01", value: { kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) } },
-      ];
-      bundledEncounterDefinition.events.vitals.fields.forEach((field) => {
-          const raw = event.vitals![field.id];
-          const absence = event.vitals!.nullValues[field.id];
-          if (raw) {
-            elements.push({ id: field.reference, value: { kind: "scalar", occurrenceId: `${event.id}:${field.reference}`, value: Number(raw) } });
-            return;
-          }
-          if (!absence) return;
-          const pertinent = field.absenceStates.find((item) => item.code === absence)?.kind === "PN";
-          elements.push({ id: field.reference, value: pertinent
-            ? { kind: "pertinent-negative", occurrenceId: `${event.id}:${field.reference}`, code: absence }
-            : { kind: "null", occurrenceId: `${event.id}:${field.reference}`, notValue: { code: absence } } });
-        });
-      eventGroups.push({ id: "eVitals.VitalGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: elements.map(({ id, value }) => ({ id, values: [value] })) }] });
-    }
-    if (event.procedure) {
-      const procedure = event.procedure;
-      const success = coded("eProcedures.06", procedure.success);
-      const outcome = coded("eProcedures.08", procedure.outcome);
-      const complications = procedure.complications.map((code, index) => ({ kind: "coded" as const, occurrenceId: `${event.id}:complication:${index}`, code }));
-      eventGroups.push({ id: "eProcedures.ProcedureGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eProcedures.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) }] },
-        { id: "eProcedures.03", values: [{ kind: "coded", occurrenceId: `${event.id}:procedure`, code: procedure.code, system: "SNOMED-CT", display: procedure.label, attributes: { warningAcknowledged: procedure.warningAcknowledged } }] },
-        { id: "eProcedures.05", values: [{ kind: "scalar", occurrenceId: `${event.id}:attempts`, value: procedure.attempts }] },
-        ...(success ? [{ id: "eProcedures.06", values: [{ ...success, occurrenceId: `${event.id}:success` }] }] : []),
-        ...(outcome ? [{ id: "eProcedures.08", values: [{ ...outcome, occurrenceId: `${event.id}:outcome` }] }] : []),
-        ...(complications.length ? [{ id: "eProcedures.07", values: complications }] : []),
-      ] }] });
-    }
-    if (event.medication) {
-      const medication = event.medication;
-      const route = coded("eMedications.04", medication.route.replace(/^.*?—\s*/, "")) ?? coded("eMedications.04", medication.route);
-      const unit = coded("eMedications.06", medication.unit);
-      const response = coded("eMedications.07", medication.response);
-      eventGroups.push({ id: "eMedications.MedicationGroup", instances: [{ instanceId: event.id, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eMedications.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: timestamp(event.date, event.time) }] },
-        { id: "eMedications.03", values: [{ kind: "coded", occurrenceId: `${event.id}:medication`, code: medication.medicationCode, system: medication.codeType, display: medication.label, attributes: { response: medication.response, warningAcknowledged: medication.warningAcknowledged } }] },
-        ...(route ? [{ id: "eMedications.04", values: [{ ...route, occurrenceId: `${event.id}:route` }] }] : []),
-        ...(response ? [{ id: "eMedications.07", values: [{ ...response, occurrenceId: `${event.id}:response` }] }] : []),
-      ] }] });
-      eventGroups.push({ id: "eMedications.DosageGroup", instances: [{ instanceId: `${event.id}:dosage`, attributes: { documentedTime: timestamp(event.date, event.time) }, elements: [
-        { id: "eMedications.05", values: [{ kind: "scalar", occurrenceId: `${event.id}:dose`, value: Number(medication.dose) }] },
-        ...(unit ? [{ id: "eMedications.06", values: [{ ...unit, occurrenceId: `${event.id}:unit` }] }] : []),
-      ] }] });
-    }
-  }
-  return { ...shell.encounter.document, groups: [...groups, ...eventGroups] };
-}
-
-export function shellStateToDraftMutations(reportId: string, shell: ShellState): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  const document = eventDocument(shell);
+export function encounterDocumentToDraftMutations(
+  reportId: string,
+  document: EncounterDocument,
+  persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
+  const groupTargetIds = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [
+    instance.instanceId,
+    draftTargetId(reportId, "group", instance.instanceId),
+  ] as const)));
   const groups: DraftGroupMutation[] = [];
   const occurrences: DraftOccurrenceMutation[] = [];
   document.groups.forEach((group) => {
@@ -164,20 +141,45 @@ export function shellStateToDraftMutations(reportId: string, shell: ShellState):
     group.instances.forEach((instance, ordinal) => {
       const parentGroupId = getNemsisGroup(group.id)?.parentId;
       const parentCandidates = parentGroupId ? [...instances.entries()].filter(([key]) => key.startsWith(`${parentGroupId}:`)).map(([, candidate]) => candidate) : [];
-      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`)) ?? parentCandidates[0];
-      const groupInstanceId = stableDraftId(reportId, `group:${instance.instanceId}`);
+      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+        ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
+        ?? parentCandidates[0];
+      const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: stableDraftId(reportId, `group:${parent.instanceId}`) } : {}), ...(documentedTime ? { documentedTime } : {}) });
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
-          id: stableDraftId(reportId, `occurrence:${value.occurrenceId}`), elementId: element.id,
+          id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
           value: draftValue(element.id, value),
         });
       }));
     });
   });
+  const activeGroupIds = new Set(groups.map(({ id }) => id));
+  const activeOccurrenceIds = new Set(occurrences.map(({ id }) => id));
+  for (const group of persisted?.groups ?? []) {
+    if (!group.tombstone && !activeGroupIds.has(group.id)) groups.push({ ...group, tombstone: true });
+  }
+  for (const occurrence of persisted?.occurrences ?? []) {
+    if (occurrence.tombstone || activeOccurrenceIds.has(occurrence.id)) continue;
+    occurrences.push({
+      id: occurrence.id,
+      elementId: occurrence.elementId,
+      groupInstanceId: occurrence.groupInstanceId,
+      ordinal: occurrence.ordinal,
+      tombstone: true,
+    });
+  }
   return { groups, occurrences };
+}
+
+export function shellStateToDraftMutations(
+  reportId: string,
+  shell: ShellState,
+  persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
 }
 
 function apiBaseUrl(): string | null {
@@ -205,6 +207,27 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport>;
+}
+
+export async function fetchActiveReport(
+  accessToken: string,
+  reportId: string,
+  etag?: string,
+): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
+  const base = apiBaseUrl();
+  if (!base) return null;
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/reports/${reportId}/active`, {
+      cache: "no-store",
+      headers: { authorization: `Bearer ${accessToken}`, ...(etag ? { "if-none-match": etag } : {}) },
+    });
+  } catch {
+    throw new Error("offline");
+  }
+  if (response.status === 304) return null;
+  if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
+  return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }
 
 export async function signDraftReport(

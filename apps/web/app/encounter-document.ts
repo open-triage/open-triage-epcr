@@ -9,7 +9,7 @@ import {
 
 export const ENCOUNTER_DOCUMENT_SCHEMA = "./encounter-document.schema-1.0.0.json" as const;
 export const ENCOUNTER_DOCUMENT_TYPE = "open-triage.encounter" as const;
-export const ENCOUNTER_MODEL_VERSION = "1.0.0" as const;
+export const ENCOUNTER_MODEL_VERSION = "1.1.0" as const;
 
 export type EncounterDocumentDiagnostic = { readonly path: string; readonly message: string };
 export type EncounterDocumentCompatibility = {
@@ -199,6 +199,19 @@ export function encounterDocumentDiagnostics(
   duplicateStrings(root.groups.map((group) => isRecord(group) ? group.id : undefined)).forEach((id) => {
     diagnostic(diagnostics, "$.groups", `contains duplicate group id ${id}`);
   });
+  const allInstanceIds: string[] = [];
+  const instanceParents = new Map<string, string>();
+  root.groups.forEach((candidateGroup) => {
+    if (!isRecord(candidateGroup) || !Array.isArray(candidateGroup.instances)) return;
+    candidateGroup.instances.forEach((candidate) => {
+      if (isRecord(candidate) && typeof candidate.instanceId === "string") {
+        allInstanceIds.push(candidate.instanceId);
+        if (typeof candidate.parentInstanceId === "string") instanceParents.set(candidate.instanceId, candidate.parentInstanceId);
+      }
+    });
+  });
+  const instanceIds = new Set(allInstanceIds);
+  duplicateStrings(allInstanceIds).forEach((id) => diagnostic(diagnostics, "$.groups", `contains duplicate instanceId ${id}`));
 
   root.groups.forEach((candidateGroup, groupIndex) => {
     const groupPath = `$.groups[${groupIndex}]`;
@@ -211,8 +224,16 @@ export function encounterDocumentDiagnostics(
       diagnostic(diagnostics, `${groupPath}.instances`, "must contain at least one group occurrence");
       return;
     }
-    if (standardGroup && standardGroup.occurrence.max !== "unbounded" && group.instances.length > standardGroup.occurrence.max) {
-      diagnostic(diagnostics, `${groupPath}.instances`, `${group.id} permits at most ${standardGroup.occurrence.max} occurrence(s)`);
+    if (standardGroup && standardGroup.occurrence.max !== "unbounded") {
+      const maximum = standardGroup.occurrence.max;
+      const counts = new Map<string, number>();
+      group.instances.forEach((instance) => {
+        const parent = isRecord(instance) && typeof instance.parentInstanceId === "string" ? instance.parentInstanceId : "$root";
+        counts.set(parent, (counts.get(parent) ?? 0) + 1);
+      });
+      if ([...counts.values()].some((count) => count > maximum)) {
+        diagnostic(diagnostics, `${groupPath}.instances`, `${group.id} permits at most ${maximum} occurrence(s) per parent`);
+      }
     }
     duplicateStrings(group.instances.map((instance) => isRecord(instance) ? instance.instanceId : undefined)).forEach((id) => {
       diagnostic(diagnostics, `${groupPath}.instances`, `contains duplicate instanceId ${id}`);
@@ -222,6 +243,16 @@ export function encounterDocumentDiagnostics(
       const instancePath = `${groupPath}.instances[${instanceIndex}]`;
       const instance = requireRecord(diagnostics, candidateInstance, instancePath);
       requireString(diagnostics, instance.instanceId, `${instancePath}.instanceId`);
+      if (instance.parentInstanceId !== undefined && requireString(diagnostics, instance.parentInstanceId, `${instancePath}.parentInstanceId`)) {
+        if (instance.parentInstanceId === instance.instanceId) diagnostic(diagnostics, `${instancePath}.parentInstanceId`, "must not reference itself");
+        else if (!instanceIds.has(instance.parentInstanceId)) diagnostic(diagnostics, `${instancePath}.parentInstanceId`, `references missing instance ${instance.parentInstanceId}`);
+        else {
+          const seen = new Set([String(instance.instanceId)]);
+          let ancestor: string | undefined = String(instance.parentInstanceId);
+          while (ancestor !== undefined && !seen.has(ancestor)) { seen.add(ancestor); ancestor = instanceParents.get(ancestor); }
+          if (ancestor !== undefined) diagnostic(diagnostics, `${instancePath}.parentInstanceId`, "must not form a parent cycle");
+        }
+      }
       validateAttributes(diagnostics, instance.attributes, `${instancePath}.attributes`);
       if (!Array.isArray(instance.elements)) {
         diagnostic(diagnostics, `${instancePath}.elements`, "must be an array");

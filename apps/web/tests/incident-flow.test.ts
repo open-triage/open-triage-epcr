@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary } from "../app/incident-document";
+import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary } from "../app/incident-document";
 import { RECOVERY_STORAGE_KEY, STORAGE_KEY, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
-import { patientDraftFromDocument, updatePatientDocument } from "../app/patient-document";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
+import { encounterEvents } from "../app/canonical-events";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
+import demoAssignedCalls from "../public/demo-assigned-calls.json";
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {
   const values = new Map<string, string>();
@@ -39,25 +41,75 @@ test("response, dispatch, crew, scene, and timing values live at their catalog i
   for (const { groupId, elementId } of Object.values(INCIDENT_FIELD_LOCATIONS)) {
     const element = getNemsisDataElement(elementId)!;
     assert.ok(element.groupPath.includes(groupId), `${elementId} must belong to ${groupId}`);
-    assert.ok(document.groups.find(({ id }) => id === groupId)?.instances.some((instance) => instance.elements.some(({ id }) => id === elementId)));
   }
   const timing = documentTimeline(document);
-  assert.deepEqual(timing.map(({ reference }) => reference), ["eTimes.06", "eTimes.05", "eTimes.03", "eTimes.01"]);
-  assert.deepEqual(timing.map(({ title }) => title), ["Unit Arrived on Scene", "Unit En Route", "Unit Notified by Dispatch", "PSAP Call"]);
-  assert.deepEqual(incidentSummary(document), {
-    number: "SYN-20260418-113 · 3-9-7-4-0",
-    complaint: "Medical assistance requested",
-    address: "100 Example Avenue (fictional), Unit 3",
-    crew: "AN",
-  });
+  assert.deepEqual(timing.map(({ reference }) => reference), ["eTimes.03", "eTimes.02"]);
+  assert.deepEqual(timing.map(({ title }) => title), ["Unit Notified by Dispatch", "Dispatch Notified"]);
+  assert.equal(incidentSummary(document).incidentNumber, demoAssignedCalls.assignedCalls[0]!.callNumber);
+  assert.equal(incidentSummary(document).callSign, demoAssignedCalls.assignedCalls[0]!.unit.callSign);
+  assert.ok(incidentSummary(document).responseNumber);
+  assert.ok(incidentSummary(document).location);
 });
 
-test("editing, refresh recovery, and reset keep incident display on the canonical document", () => {
+test("mobile projections expose only the configured operational subset", () => {
+  const document = structuredClone(INITIAL_SHELL_STATE.encounter.document);
+  const assignment = assignmentSummary(document);
+  const generated = demoAssignedCalls.assignedCalls[0]!;
+  assert.deepEqual(assignment, {
+    incidentNumber: generated.callNumber,
+    callSign: generated.unit.callSign,
+    unitNotifiedAt: generated.dispatchedAt,
+    dispatchReason: generated.dispatchReason,
+    dispatchPriority: generated.dispatchPriority?.display,
+  });
+  const serialized = JSON.stringify({ assignment, header: incidentSummary(document), timeline: documentTimeline(document) });
+  const hiddenIds = new Set(["eResponse.13", "ePatient.01", "ePatient.02", "ePatient.03", "ePatient.17", "ePatient.18", "ePatient.25"]);
+  const hiddenValues = document.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements)
+    .filter(({ id }) => hiddenIds.has(id)).flatMap(({ values }) => values)
+    .flatMap((value) => value.kind === "scalar" ? [String(value.value)] : value.kind === "coded" ? [value.code, value.display ?? ""] : []);
+  for (const hidden of hiddenValues.filter(Boolean)) {
+    assert.equal(serialized.includes(JSON.stringify(hidden)), false);
+  }
+
+  const withoutReason = { ...document, groups: document.groups.map((group) => group.id !== "eDispatchSection" ? group : {
+    ...group,
+    instances: group.instances.map((instance) => ({ ...instance, elements: instance.elements.filter(({ id }) => id !== "eDispatch.01") })),
+  }) };
+  assert.equal(assignmentSummary(withoutReason).dispatchReason, "Dispatch reason not provided");
+});
+
+test("operational timeline uses agency time and retains original offset lexicals", () => {
+  const document = structuredClone(INITIAL_SHELL_STATE.encounter.document);
+  const supported = ["eTimes.02", "eTimes.03", "eTimes.04", "eTimes.05", "eTimes.06", "eTimes.14", "eTimes.17"];
+  const timeElements = [
+    ...supported.map((id, index) => ({ id, values: [{
+      kind: "scalar" as const,
+      occurrenceId: `configured-${index}`,
+      value: `2026-01-15T0${index + 1}:30:00+02:00`,
+    }] })),
+    { id: "eTimes.01", values: [{ kind: "scalar" as const, occurrenceId: "hidden-psap", value: "2026-01-15T00:30:00+02:00" }] },
+    { id: "eTimes.07", values: [{ kind: "scalar" as const, occurrenceId: "hidden-patient", value: "2026-01-15T08:30:00+02:00" }] },
+  ];
+  const configured = { ...document, groups: document.groups.map((group) => group.id !== "eTimesSection" ? group : {
+    ...group, instances: group.instances.map((instance) => ({ ...instance, elements: timeElements })),
+  }) };
+  const timeline = documentTimeline(configured, "America/New_York");
+  assert.deepEqual(timeline.map(({ reference }) => reference), [...supported].reverse());
+  assert.equal(timeline.at(-1)?.date, "2026-01-14");
+  assert.equal(timeline.at(-1)?.time, "18:30");
+  assert.equal(timeline.at(-1)?.dateTime, "2026-01-15T01:30:00+02:00");
+  assert.equal(timeline.every(({ detail }) => detail === ""), true);
+});
+
+test("retained patient data, refresh recovery, and reset keep incident display on the canonical document", () => {
   const baselineDocument = INITIAL_SHELL_STATE.encounter.document;
   const before = { incident: incidentSummary(baselineDocument), timeline: documentTimeline(baselineDocument) };
-  const patient = patientDraftFromDocument(baselineDocument);
-  const editedDocument = updatePatientDocument(baselineDocument, { ...patient, lastName: "Edited" }, "2026-04-18T15:00:00-04:00");
-  let state = transitionShell(INITIAL_SHELL_STATE, { type: "patient-updated", document: editedDocument });
+  const editedDocument = { ...baselineDocument, groups: baselineDocument.groups.map((group) => group.id === "ePatient.PatientNameGroup" ? {
+    ...group, instances: group.instances.map((instance) => ({ ...instance, elements: instance.elements.map((element) => element.id === "ePatient.02" ? {
+      ...element, values: element.values.map((value) => value.kind === "scalar" ? { ...value, value: "Edited" } : value),
+    } : element) })),
+  } : group) };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: editedDocument } };
   assert.deepEqual(incidentSummary(state.encounter.document), before.incident);
   assert.deepEqual(documentTimeline(state.encounter.document), before.timeline);
 
@@ -90,19 +142,19 @@ test("version two browser state upgrades deterministically and removes the paral
   assert.equal(first.result.migrated, true);
   assert.deepEqual(first.result.state.encounter.document, second.result.state.encounter.document);
   assert.deepEqual(incidentSummary(first.result.state.encounter.document), {
-    number: "LEGACY-INCIDENT · CAD-LEGACY", complaint: "Legacy complaint", address: "9 Recovery Road", crew: "ZX",
+    incidentNumber: "LEGACY-INCIDENT", responseNumber: "CAD-LEGACY", callSign: "ZX", dispatchPriority: "Routine response", location: "9 Recovery Road",
   });
   assert.deepEqual(documentTimeline(first.result.state.encounter.document).map(({ reference, time }) => ({ reference, time })), [
     { reference: "eTimes.06", time: "08:01" },
     { reference: "eTimes.05", time: "07:54" },
     { reference: "eTimes.03", time: "07:52" },
-    { reference: "eTimes.01", time: "07:50" },
+    { reference: "eTimes.02", time: "07:50" },
   ]);
-  assert.deepEqual(first.result.state.encounter.events.map(({ id }) => id), ["visitor-note"]);
+  assert.deepEqual(encounterEvents(first.result.state.encounter.document, standardEncounterDefinition).map(({ id }) => id), ["visitor-note"]);
   assert.equal("incident" in first.result.state.encounter, false);
   assert.equal("crew" in first.result.state.encounter, false);
   saveShellState(first.storage, first.result.state);
-  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":4/);
+  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":5/);
   assert.doesNotMatch(first.storage.getItem(STORAGE_KEY)!, /"state":/);
 });
 

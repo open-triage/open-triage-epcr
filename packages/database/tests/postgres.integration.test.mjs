@@ -186,6 +186,94 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
+  await t.test("retains immutable dispatch receipts with tenant and source isolation", async () => {
+    await client.query("begin");
+    try {
+      const organizationA = "11000000-0000-4000-8000-000000000001";
+      const organizationB = "11000000-0000-4000-8000-000000000002";
+      const messageId = "12000000-0000-4000-8000-000000000001";
+      const otherMessageId = "12000000-0000-4000-8000-000000000002";
+      const compact = `{"messageId":"${messageId}","sourceRecordId":"response-1","revision":1,"nested":{"a":1,"b":2}}`;
+      const reordered = `{\n  "nested": { "b": 2, "a": 1 },\n  "revision": 1,\n  "sourceRecordId": "response-1",\n  "messageId": "${messageId}"\n}\n`;
+      const payload = JSON.parse(compact);
+      const finding = [{
+        severity: "warning", code: "dispatch.optional", pointer: "/nested",
+        message: "Optional value was retained only in the source artifact"
+      }];
+
+      await client.query(`insert into app_identity.organization (id, name, deployment_timezone) values
+        ($1, 'Dispatch tenant A', 'UTC'), ($2, 'Dispatch tenant B', 'UTC')`,
+      [organizationA, organizationB]);
+      const insert = async (organizationId, sourceId, bytes, body = payload) => client.query(`
+        insert into clinical.dispatch_receipt
+          (organization_id, source_id, message_id, source_record_id, source_revision,
+           source_bytes, source_payload, findings, status, result)
+        values ($1, $2, $3, 'response-1', 1, $4, $5::jsonb, $6::jsonb,
+          'applied_with_findings', '{"appliedOccurrences":4}'::jsonb)
+        returning id, exact_sha256, canonical_sha256
+      `, [organizationId, sourceId, messageId, Buffer.from(bytes), JSON.stringify(body), JSON.stringify(finding)]);
+
+      const tenantA = await insert(organizationA, "vendor-a", compact);
+      const tenantB = await insert(organizationB, "vendor-a", reordered);
+      const sourceB = await insert(organizationA, "vendor-b", reordered);
+
+      assert.notEqual(tenantA.rows[0].exact_sha256, tenantB.rows[0].exact_sha256);
+      assert.equal(tenantA.rows[0].canonical_sha256, tenantB.rows[0].canonical_sha256);
+      assert.equal(tenantA.rows[0].canonical_sha256, sourceB.rows[0].canonical_sha256);
+      assert.match(tenantA.rows[0].exact_sha256, /^[a-f0-9]{64}$/);
+      assert.match(tenantA.rows[0].canonical_sha256, /^[a-f0-9]{64}$/);
+
+      const duplicateMessage = { ...payload, sourceRecordId: "another-response", revision: 2 };
+      await rejectsSql(client, `insert into clinical.dispatch_receipt
+        (organization_id, source_id, message_id, source_record_id, source_revision,
+         source_bytes, source_payload, status)
+        values ($1, 'vendor-a', $2, 'another-response', 2, $3, $4::jsonb, 'applied')`,
+      [organizationA, messageId, Buffer.from(JSON.stringify(duplicateMessage)), JSON.stringify(duplicateMessage)], "23505");
+      const duplicateRevision = { ...payload, messageId: otherMessageId };
+      await rejectsSql(client, `insert into clinical.dispatch_receipt
+        (organization_id, source_id, message_id, source_record_id, source_revision,
+         source_bytes, source_payload, status)
+        values ($1, 'vendor-a', $2, 'response-1', 1, $3, $4::jsonb, 'applied')`,
+      [organizationA, otherMessageId, Buffer.from(JSON.stringify(duplicateRevision)), JSON.stringify(duplicateRevision)], "23505");
+      const mismatchedPayload = { ...payload, nested: { a: 9, b: 2 } };
+      await rejectsSql(client, `insert into clinical.dispatch_receipt
+        (organization_id, source_id, message_id, source_record_id, source_revision,
+         source_bytes, source_payload, status)
+        values ($1, 'vendor-a', $2, 'response-2', 1, $3, $4::jsonb, 'applied')`,
+      [organizationA, otherMessageId, Buffer.from(compact), JSON.stringify(mismatchedPayload)], "23514");
+      const forgedContext = { ...payload, messageId: otherMessageId, sourceRecordId: "response-2", organizationId: organizationB };
+      await rejectsSql(client, `insert into clinical.dispatch_receipt
+        (organization_id, source_id, message_id, source_record_id, source_revision,
+         source_bytes, source_payload, status)
+        values ($1, 'vendor-a', $2, 'response-2', 1, $3, $4::jsonb, 'applied')`,
+      [organizationA, otherMessageId, Buffer.from(JSON.stringify(forgedContext)), JSON.stringify(forgedContext)], "23514");
+      await rejectsSql(client, "update clinical.dispatch_receipt set status = 'applied' where id = $1",
+        [tenantA.rows[0].id], "P0001");
+      await rejectsSql(client, "delete from clinical.dispatch_receipt where id = $1",
+        [tenantA.rows[0].id], "P0001");
+
+      const evidence = await client.query(`
+        select organization_id, source_id, source_record_id, source_revision,
+          received_at is not null as received, convert_from(source_bytes, 'UTF8') as source_text,
+          findings, status, result
+        from clinical.dispatch_receipt where id = $1
+      `, [tenantA.rows[0].id]);
+      assert.deepEqual(evidence.rows[0], {
+        organization_id: organizationA,
+        source_id: "vendor-a",
+        source_record_id: "response-1",
+        source_revision: "1",
+        received: true,
+        source_text: compact,
+        findings: finding,
+        status: "applied_with_findings",
+        result: { appliedOccurrences: 4 }
+      });
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("classifies repeating-group time and provisions range partitions", async () => {
     const mappings = await client.query(`
       select resolution, count(*)::integer as count
@@ -213,6 +301,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         has_table_privilege('open_triage_projector', 'integration.projection_run', 'insert') as projector_run_insert,
         has_table_privilege('open_triage_operational', 'operations.projection_health', 'select') as operational_health,
         has_table_privilege('open_triage_operational', 'operations.projection_failures', 'select') as operational_failures,
+        not has_table_privilege('open_triage_analyst', 'clinical.dispatch_receipt', 'select') as no_analyst_receipt,
         has_function_privilege('open_triage_retention_executor', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as retention_delete,
         not has_function_privilege('open_triage_operational', 'retention.delete_verified_batch(uuid,uuid)', 'execute') as no_operational_delete,
         to_regclass('auth.users') is null as no_supabase_auth_dependency
@@ -225,6 +314,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       projector_run_insert: true,
       operational_health: true,
       operational_failures: true,
+      no_analyst_receipt: true,
       retention_delete: true,
       no_operational_delete: true,
       no_supabase_auth_dependency: true

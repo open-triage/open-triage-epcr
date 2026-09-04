@@ -1,7 +1,7 @@
 {
   "$schema": "./encounter-document.schema-1.0.0.json",
   "documentType": "open-triage.encounter",
-  "modelVersion": "1.0.0",
+  "modelVersion": "1.1.0",
   "dataModel": {
     "standard": "NEMSIS",
     "version": "3.5.1",
@@ -12,35 +12,149 @@
     "version": "1"
   },
   "encounter": {
-    "id": "synthetic-encounter-001",
-    "createdAt": "2026-04-18T14:30:00-04:00",
-    "updatedAt": "2026-04-18T14:42:00-04:00",
+    "id": "455d8423-412f-4c96-9ad5-b485c6a9506b",
+    "createdAt": "2026-08-15T09:14:05-04:00",
+    "updatedAt": "2026-08-15T09:14:05-04:00",
     "synthetic": true
   },
   "groups": [
     {
-      "id": "ePatient.PatientNameGroup",
+      "id": "EMSDataSet",
       "instances": [
         {
-          "instanceId": "patient-name-1",
+          "instanceId": "synthetic-dataset-1",
+          "elements": []
+        }
+      ]
+    },
+    {
+      "id": "HeaderGroup",
+      "instances": [
+        {
+          "instanceId": "synthetic-header-1",
+          "parentInstanceId": "synthetic-dataset-1",
+          "elements": []
+        }
+      ]
+    },
+    {
+      "id": "PatientCareReportGroup",
+      "instances": [
+        {
+          "instanceId": "synthetic-pcr-1",
+          "parentInstanceId": "synthetic-header-1",
+          "elements": []
+        }
+      ]
+    },
+    {
+      "id": "eResponseSection",
+      "instances": [
+        {
+          "instanceId": "synthetic-response-1",
+          "parentInstanceId": "synthetic-pcr-1",
           "elements": [
             {
-              "id": "ePatient.02",
+              "id": "eResponse.03",
               "values": [
                 {
                   "kind": "scalar",
-                  "occurrenceId": "patient-last-name-1",
-                  "value": "Rivera"
+                  "occurrenceId": "synthetic-incident-number",
+                  "value": "SYN-20260903-001"
                 }
               ]
             },
             {
-              "id": "ePatient.03",
+              "id": "eResponse.04",
               "values": [
                 {
                   "kind": "scalar",
-                  "occurrenceId": "patient-first-name-1",
-                  "value": "Jordan"
+                  "occurrenceId": "synthetic-response-number",
+                  "value": "SYN-20260903-001-1"
+                }
+              ]
+            },
+            {
+              "id": "eResponse.13",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-vehicle-number",
+                  "value": "SYNTHETIC-VEHICLE-7"
+                }
+              ]
+            },
+            {
+              "id": "eResponse.14",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-call-sign",
+                  "value": "SYNTHETIC-MEDIC-7"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eDispatchSection",
+      "instances": [
+        {
+          "instanceId": "synthetic-dispatch-1",
+          "parentInstanceId": "synthetic-pcr-1",
+          "elements": [
+            {
+              "id": "eDispatch.01",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-dispatch-reason",
+                  "code": "2301021",
+                  "display": "Chest Pain (Non-Traumatic)"
+                }
+              ]
+            },
+            {
+              "id": "eDispatch.05",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-dispatch-priority",
+                  "code": "2305003",
+                  "display": "Emergent"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eTimesSection",
+      "instances": [
+        {
+          "instanceId": "synthetic-times-1",
+          "parentInstanceId": "synthetic-pcr-1",
+          "elements": [
+            {
+              "id": "eTimes.02",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-time-dispatch-notified",
+                  "value": "2026-08-15T09:13:52-04:00"
+                }
+              ]
+            },
+            {
+              "id": "eTimes.03",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-time-unit-notified",
+                  "value": "2026-08-15T09:14:00-04:00"
                 }
               ]
             }
@@ -52,185 +166,202 @@
       "id": "ePatientSection",
       "instances": [
         {
-          "instanceId": "patient-1",
+          "instanceId": "synthetic-patient-1",
+          "parentInstanceId": "synthetic-pcr-1",
           "elements": [
             {
               "id": "ePatient.01",
-              "values": [{ "kind": "scalar", "occurrenceId": "patient-id-1", "value": "SYNTHETIC-0001" }]
-            },
-            {
-              "id": "ePatient.13",
-              "values": [{ "kind": "coded", "occurrenceId": "patient-sex-1", "code": "9906005", "display": "Unknown (Unable to Determine)" }]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ePatient.AgeGroup",
-      "instances": [
-        {
-          "instanceId": "patient-age-1",
-          "elements": [
-            {
-              "id": "ePatient.15",
-              "values": [{ "kind": "scalar", "occurrenceId": "patient-age-value-1", "value": 54 }]
-            },
-            {
-              "id": "ePatient.16",
-              "values": [{ "kind": "coded", "occurrenceId": "patient-age-unit-1", "code": "2516009", "display": "Years" }]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "eHistorySection",
-      "instances": [
-        {
-          "instanceId": "history-1",
-          "elements": [
-            {
-              "id": "eHistory.08",
-              "values": [{ "kind": "pertinent-negative", "occurrenceId": "history-none-1", "code": "8801015", "display": "None Reported" }]
-            },
-            {
-              "id": "eHistory.06",
-              "values": [{ "kind": "pertinent-negative", "occurrenceId": "allergies-none-1", "code": "8801013", "display": "No Known Drug Allergy" }]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "eHistory.CurrentMedsGroup",
-      "instances": [
-        {
-          "instanceId": "current-medication-1",
-          "elements": [
-            {
-              "id": "eHistory.12",
-              "values": [{ "kind": "pertinent-negative", "occurrenceId": "current-medications-none-1", "code": "8801015", "display": "None Reported" }]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "eResponseSection",
-      "instances": [{
-        "instanceId": "response-1",
-        "elements": [
-          { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "incident-number-1", "value": "SYN-20260418-113" }] },
-          { "id": "eResponse.04", "values": [{ "kind": "scalar", "occurrenceId": "response-number-1", "value": "3-9-7-4-0" }] }
-        ]
-      }]
-    },
-    {
-      "id": "eDispatchSection",
-      "instances": [{
-        "instanceId": "dispatch-1",
-        "elements": [
-          { "id": "eDispatch.01", "values": [{ "kind": "coded", "occurrenceId": "dispatch-reason-1", "code": "2301051", "display": "Medical assistance requested" }] },
-          { "id": "eDispatch.02", "values": [{ "kind": "coded", "occurrenceId": "emd-1", "code": "2302005", "display": "Yes, Without Pre-Arrival Instructions" }] },
-          { "id": "eDispatch.05", "values": [{ "kind": "coded", "occurrenceId": "dispatch-priority-1", "code": "2305005", "display": "Routine response" }] },
-          { "id": "eDispatch.06", "values": [{ "kind": "scalar", "occurrenceId": "cad-record-1", "value": "3-9-7-4-0" }] }
-        ]
-      }]
-    },
-    {
-      "id": "eCrew.CrewGroup",
-      "instances": [{
-        "instanceId": "crew-1",
-        "elements": [{ "id": "eCrew.01", "values": [{ "kind": "scalar", "occurrenceId": "crew-member-1", "value": "AN" }] }]
-      }]
-    },
-    {
-      "id": "eSceneSection",
-      "instances": [{
-        "instanceId": "scene-1",
-        "elements": [
-          { "id": "eScene.15", "values": [{ "kind": "scalar", "occurrenceId": "street-address-1", "value": "100 Example Avenue (fictional)" }] },
-          { "id": "eScene.16", "values": [{ "kind": "scalar", "occurrenceId": "scene-unit-1", "value": "Unit 3" }] }
-        ]
-      }]
-    },
-    {
-      "id": "eTimesSection",
-      "instances": [{
-        "instanceId": "times-1",
-        "elements": [
-          { "id": "eTimes.01", "values": [{ "kind": "scalar", "occurrenceId": "psap-call-time-1", "value": "2026-04-18T07:40:00-04:00", "attributes": { "timelineDetail": "Medical assistance requested" } }] },
-          { "id": "eTimes.03", "values": [{ "kind": "scalar", "occurrenceId": "unit-notified-time-1", "value": "2026-04-18T07:42:00-04:00", "attributes": { "timelineDetail": "3-9-7-4-0 · fictional dispatch notification" } }] },
-          { "id": "eTimes.05", "values": [{ "kind": "scalar", "occurrenceId": "unit-en-route-time-1", "value": "2026-04-18T07:44:00-04:00", "attributes": { "timelineDetail": "Routine response" } }] },
-          { "id": "eTimes.06", "values": [{ "kind": "scalar", "occurrenceId": "unit-arrived-scene-time-1", "value": "2026-04-18T07:51:00-04:00", "attributes": { "timelineDetail": "Fictional residence — standard access" } }] }
-        ]
-      }]
-    },
-    {
-      "id": "eVitals.VitalGroup",
-      "instances": [
-        {
-          "instanceId": "blood-pressure-1",
-          "attributes": { "correlationId": "vitals-1435" },
-          "elements": [
-            {
-              "id": "eVitals.06",
               "values": [
                 {
                   "kind": "scalar",
-                  "occurrenceId": "systolic-1",
-                  "value": 118,
-                  "attributes": { "units": "mmHg" }
+                  "occurrenceId": "synthetic-patient-id",
+                  "value": "SYNTHETIC-PATIENT-0001"
                 }
               ]
-            }
-          ]
-        },
-        {
-          "instanceId": "blood-pressure-2",
-          "attributes": { "correlationId": "vitals-1440" },
-          "elements": [
+            },
             {
-              "id": "eVitals.06",
+              "id": "ePatient.17",
               "values": [
                 {
-                  "kind": "null",
-                  "occurrenceId": "systolic-2",
-                  "notValue": {
-                    "code": "7701003",
-                    "display": "Not Recorded"
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-patient-dob",
+                  "value": "1980-01-01"
+                }
+              ]
+            },
+            {
+              "id": "ePatient.18",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-phone-home",
+                  "value": "212-555-0101",
+                  "attributes": {
+                    "PhoneNumberType": "9913003"
+                  }
+                },
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-phone-mobile",
+                  "value": "212-555-0102",
+                  "attributes": {
+                    "PhoneNumberType": "9913005"
                   }
                 }
               ]
+            },
+            {
+              "id": "ePatient.25",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-patient-sex",
+                  "code": "9919005",
+                  "display": "Unknown"
+                }
+              ]
             }
           ]
         }
       ]
     },
     {
-      "id": "org.example.ems:stroke-assessment",
+      "id": "ePatient.PatientNameGroup",
       "instances": [
         {
-          "instanceId": "stroke-assessment-1",
+          "instanceId": "synthetic-patient-name-1",
+          "parentInstanceId": "synthetic-patient-1",
           "elements": [
             {
-              "id": "org.example.ems:stroke-score",
+              "id": "ePatient.02",
               "values": [
                 {
                   "kind": "scalar",
-                  "occurrenceId": "stroke-score-1",
-                  "value": 2
+                  "occurrenceId": "synthetic-patient-last-name",
+                  "value": "SYNTHETIC-01"
                 }
-              ],
-              "org.example.ems:review": { "reviewed": true }
+              ]
+            },
+            {
+              "id": "ePatient.03",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-patient-first-name",
+                  "value": "PATIENT-01"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eSceneSection",
+      "instances": [
+        {
+          "instanceId": "synthetic-scene-1",
+          "parentInstanceId": "synthetic-pcr-1",
+          "elements": [
+            {
+              "id": "eScene.09",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-location-type",
+                  "code": "Y92.03",
+                  "system": "ICD-10-CM",
+                  "display": "Apartment/condo"
+                }
+              ]
+            },
+            {
+              "id": "eScene.11",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-scene-gps",
+                  "value": "40.750600,-73.997200"
+                }
+              ]
+            },
+            {
+              "id": "eScene.15",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-scene-street",
+                  "value": "100 SYNTHETIC CHEST PAIN WAY"
+                }
+              ]
+            },
+            {
+              "id": "eScene.16",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-scene-apartment",
+                  "value": "UNIT SYN-01"
+                }
+              ]
+            },
+            {
+              "id": "eScene.18",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-scene-state",
+                  "code": "36",
+                  "system": "ANSI-STATE",
+                  "display": "New York"
+                }
+              ]
+            },
+            {
+              "id": "eScene.19",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "synthetic-scene-zip",
+                  "value": "10001"
+                }
+              ]
+            },
+            {
+              "id": "eScene.21",
+              "values": [
+                {
+                  "kind": "coded",
+                  "occurrenceId": "synthetic-scene-county",
+                  "code": "36061",
+                  "system": "ANSI-COUNTY",
+                  "display": "New York County"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "eCrew.CrewGroup",
+      "instances": [
+        {
+          "instanceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew",
+          "elements": [
+            {
+              "id": "eCrew.01",
+              "values": [
+                {
+                  "kind": "scalar",
+                  "occurrenceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew-member",
+                  "value": "SYNTHETIC-MEDIC-7"
+                }
+              ]
             }
           ]
         }
       ]
     }
-  ],
-  "org.example.partner:transfer": {
-    "source": "synthetic-fixture"
-  }
+  ]
 }

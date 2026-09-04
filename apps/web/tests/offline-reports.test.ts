@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ClinicianSession } from "@open-triage/contracts";
+import type { ClinicianSession, EncounterDocument } from "@open-triage/contracts";
+import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 import {
   acceptDraftChange,
   cacheOpenCallSummary,
@@ -15,6 +16,9 @@ import {
   OFFLINE_REPORTS_STORAGE_KEY,
   purgeCompletedOfflineReports,
   queueDraftChange,
+  rebaseQueuedDraftChanges,
+  replaceQueuedDraftChanges,
+  reconcileCachedActiveReport,
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
@@ -43,6 +47,7 @@ const opened = {
     catalogReleaseId: "catalog-1",
     revision: 4,
     status: "draft" as const,
+    document: syntheticEncounter as EncounterDocument,
   },
   replacementAssignment: null,
 };
@@ -66,6 +71,7 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
     callNumber: "CALL-51",
     dispatchedAt: "2026-09-03T12:00:00.000Z",
     dispatchReason: "Breathing problem",
+    dispatchPriority: { code: "2305003", display: "Emergent" },
     chiefComplaint: "Shortness of breath",
     unit: { callSign: "Medic 32" },
   }, new Date("2026-09-03T12:01:00.000Z"));
@@ -79,7 +85,9 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.equal(cached.report.revision, 4);
   assert.equal(cached.report.dispatchedAt, "2026-09-03T12:00:00.000Z");
   assert.equal(cached.report.dispatchReason, "Breathing problem");
+  assert.deepEqual(cached.report.dispatchPriority, { code: "2305003", display: "Emergent" });
   assert.equal(cached.report.unitCallSign, "Medic 32");
+  assert.equal(cached.report.document?.groups.length, syntheticEncounter.groups.length);
   assert.equal(cached.workflowState, "open");
   assert.equal(cached.syncStatus, "pending");
   assert.equal(nextDraftChange(reloaded, opened.report.id)?.command.commandId, "command-1");
@@ -123,6 +131,51 @@ test("reconnect replay keeps attempted command identities and advances queued re
   assert.equal(cached.report.revision, 6);
   assert.equal(cached.syncStatus, "saved");
   assert.equal(nextDraftChange(storage, opened.report.id), null);
+});
+
+test("a known identity migration replaces the stale queue with one retryable latest command", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+  queueDraftChange(storage, opened.report.id, command("command-2", 5));
+
+  replaceQueuedDraftChanges(storage, opened.report.id, command("replacement-command", 4));
+
+  assert.deepEqual(nextDraftChange(storage, opened.report.id), {
+    command: command("replacement-command", 4),
+    attempted: false,
+  });
+  assert.equal(cachedOpenReports(storage, session.user.id)[0]!.syncStatus, "pending");
+});
+
+test("dispatch reconciliation rebases pending work and updates the offline report snapshot", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+  queueDraftChange(storage, opened.report.id, command("command-2", 5));
+  rebaseQueuedDraftChanges(storage, opened.report.id, 7);
+  reconcileCachedActiveReport(storage, opened.report.id, {
+    reportId: opened.report.id, reportRevision: 7, dispatchRevision: 3,
+    document: opened.report.document, dispatchConflicts: [], dispatchCancellation: null,
+  }, opened.report.document);
+
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.expectedRevision, 7);
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-2");
+  assert.equal(nextDraftChange(storage, opened.report.id)?.attempted, false);
+  assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.revision, 7);
+});
+
+test("reconciliation retains an attempted command byte-for-byte for an exact retry", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+
+  const before = nextDraftChange(storage, opened.report.id);
+  rebaseQueuedDraftChanges(storage, opened.report.id, 7);
+  assert.deepEqual(nextDraftChange(storage, opened.report.id), before);
 });
 
 test("an explicitly discarded stale queue resets only that report to the server snapshot", () => {

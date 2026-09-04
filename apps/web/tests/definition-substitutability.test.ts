@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type EncounterDefinition } from "../app/encounter-definition";
+import { encounterEvents } from "../app/canonical-events";
 import { loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import {
   EMPTY_VITALS,
@@ -23,7 +24,7 @@ function alternateDefinition(): EncounterDefinition {
     version: 7,
     composition: {
       ...structuredClone(standardEncounterDefinition.composition),
-      quickActionOrder: ["patient", "vitals", "medication", "procedure", "note"],
+      quickActionOrder: ["vitals", "medication", "procedure", "note"],
       summary: { eventTypeOrder: ["vitals", "note", "medication", "procedure"] },
     },
     events: {
@@ -69,8 +70,8 @@ test("a test-only definition changes capture, validation, review, and summary th
     { id: "pain", label: "Discomfort score" },
     { id: "systolic", label: "Systolic BP" },
   ]);
-  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["patient", "vitals", "medication", "procedure"]);
-  assert.equal(configuredQuickActions(definition)[1]?.label, "Record field observations");
+  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure"]);
+  assert.equal(configuredQuickActions(definition)[0]?.label, "Record field observations");
 
   const missingRequired = validateVitals("09:00", EMPTY_VITALS, definition);
   assert.match(missingRequired.errors.pain!, /eVitals\.27 requires a value/);
@@ -80,7 +81,7 @@ test("a test-only definition changes capture, validation, review, and summary th
   state = transitionShell(state, { type: "vitals-started", id: "alternate-vital", date: "2026-04-18", time: "09:00" }, definition);
   state = transitionShell(state, { type: "vitals-value-changed", field: "pain", value: "9" }, definition);
   state = transitionShell(state, { type: "vitals-saved" }, definition);
-  const captured = state.encounter.events.find(({ id }) => id === "alternate-vital")!;
+  const captured = encounterEvents(state.encounter.document, definition).find(({ id }) => id === "alternate-vital")!;
   assert.equal(captured.title, "Community observations");
   assert.equal(captured.vitals?.pain, "9");
 
@@ -112,6 +113,29 @@ test("saved state retains definition identity and restores only for an exact com
   assert.ok(storage.getItem(RECOVERY_STORAGE_KEY)?.includes(definition.id));
   assert.equal(loadShellState(storage, nextVersion), null);
   assert.strictEqual(transitionShell(createInitialShellState(nextVersion), { type: "state-restored", state }, nextVersion).encounter.definitionVersion, nextVersion.version);
+});
+
+test("report-scoped state restores against its pinned clinical form profile", () => {
+  const storage = memoryStorage();
+  const reportId = "6f41a704-a314-4e36-b2e7-9278f49e789b";
+  const pinnedFormProfile = { id: "32000000-0000-4000-8000-000000000007", version: "2" };
+  const initial = createInitialShellState(standardEncounterDefinition);
+  const state = {
+    ...initial,
+    encounter: {
+      ...initial.encounter,
+      document: { ...initial.encounter.document, formProfile: pinnedFormProfile },
+    },
+  };
+  saveShellState(storage, state, reportId);
+
+  const restored = loadShellStateResult(storage, standardEncounterDefinition, reportId, pinnedFormProfile);
+
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") return;
+  assert.deepEqual(restored.state.encounter.document.formProfile, pinnedFormProfile);
+  assert.equal(restored.state.encounter.definitionId, standardEncounterDefinition.id);
+  assert.equal(restored.state.encounter.definitionVersion, standardEncounterDefinition.version);
 });
 
 test("the production provider does not bundle the test-only alternate definition", () => {

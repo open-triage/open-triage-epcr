@@ -192,6 +192,7 @@ test("defines the transactional invariants and two private analytical base table
     "create table clinical.draft_target_state",
     "create table clinical.signed_snapshot",
     "create table clinical.amendment",
+    "create table clinical.dispatch_receipt",
     "create table clinical_audit.event",
     "create table clinical_audit.draft_reconciliation",
     "create table clinical_audit.post_signature_audit_note",
@@ -215,6 +216,42 @@ test("defines the transactional invariants and two private analytical base table
   assert.ok(!migration.includes("patient_care_reports"));
 });
 
+test("stores immutable dispatch delivery evidence under clinical-data controls", () => {
+  assert.match(migration, /create table clinical\.dispatch_receipt \([\s\S]*source_bytes bytea not null/);
+  assert.match(migration, /exact_sha256 text generated always as[\s\S]*digest\(source_bytes, 'sha256'\)/);
+  assert.match(migration, /canonical_sha256 text generated always as[\s\S]*digest\(source_payload::text, 'sha256'\)/);
+  assert.match(migration, /convert_from\(source_bytes, 'UTF8'\)::jsonb = source_payload/);
+  assert.match(migration, /not \(source_payload \?\| array\['organizationId', 'organization_id', 'sourceId', 'source_id'\]\)/);
+  assert.match(migration, /unique \(organization_id, source_id, message_id\)/);
+  assert.match(migration, /unique \(organization_id, source_id, source_record_id, source_revision\)/);
+  assert.match(migration, /dispatch_receipt_append_only[\s\S]*prevent_update_or_delete/);
+  assert.match(migration, /Source payload bytes must never be copied to ordinary logs/);
+});
+
+test("stores a rebuildable agency-scoped dispatch assignment projection", () => {
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*dispatch_source_id text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*dispatch_source_record_id text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*response_number text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*vehicle_number text/);
+  assert.match(migration, /unique \(organization_id, dispatch_source_id, dispatch_source_record_id\)/);
+  assert.match(migration, /foreign key \(organization_id, dispatch_receipt_id\)[\s\S]*references clinical\.dispatch_receipt\(organization_id, id\)/);
+  assert.doesNotMatch(migration, /unique \(organization_id, call_number\)/);
+});
+
+test("retains dispatch conflicts with both values, lineage, and explicit dispositions", () => {
+  assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_value jsonb[\s\S]*dispatch_value jsonb/);
+  assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_lineage jsonb not null[\s\S]*dispatch_receipt_id uuid not null[\s\S]*dispatch_revision bigint not null/);
+  assert.match(migration, /create table clinical\.element_occurrence \([\s\S]*unique \(report_id, id\)[\s\S]*unique nulls not distinct/);
+  assert.match(migration, /disposition text check \(disposition in \('keep', 'accept', 'acknowledge'\)\)/);
+  assert.match(migration, /dispatch_conflict_report_unresolved_idx[\s\S]*where disposition is null/);
+});
+
+test("dispatch cancellation and post-signature proposals remain durable without rewriting signed records", () => {
+  assert.match(migration, /dispatch_canceled_at timestamptz[\s\S]*dispatch_cancellation_revision bigint[\s\S]*dispatch_cancellation_receipt_id uuid/);
+  assert.match(migration, /create table clinical_audit\.post_signature_dispatch_delivery[\s\S]*proposed_snapshot jsonb not null[\s\S]*differences jsonb not null[\s\S]*acceptance_requires_amendment boolean not null default true/);
+  assert.match(migration, /post_signature_dispatch_delivery_append_only[\s\S]*prevent_update_or_delete/);
+});
+
 test("schedules bounded observable projection work inside the freshness target", () => {
   assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
   assert.match(scheduler, /concurrencyPolicy: Forbid/);
@@ -233,7 +270,7 @@ test("separates unsigned operations, immutable history, and signed analytics acc
   assert.match(migration, /grant select on clinical_history\.report_history to open_triage_auditor/);
   assert.match(migration, /draft_reconciliation_append_only[\s\S]*prevent_update_or_delete/);
   assert.match(migration, /post_signature_audit_note_append_only[\s\S]*prevent_update_or_delete/);
-  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note to open_triage_auditor/);
+  assert.match(migration, /grant select on clinical_audit\.draft_reconciliation, clinical_audit\.post_signature_audit_note,[\s\S]*post_signature_dispatch_delivery to open_triage_auditor/);
   assert.ok(!migration.includes("grant select on clinical_history.report_history to open_triage_operational"));
   assert.ok(!migration.includes("grant select on operations.unsigned_report_work_queue to open_triage_analyst"));
 });

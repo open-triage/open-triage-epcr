@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
-import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls } from "../app/assigned-calls";
+import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall, resolveDispatchConflict } from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
+import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 const call = (id: string, callNumber: string): AssignedCall => ({
   id,
@@ -10,6 +11,7 @@ const call = (id: string, callNumber: string): AssignedCall => ({
   unit: { id: "unit-id", callSign: "Medic 32" },
   dispatchedAt: "2026-09-03T12:00:00.000Z",
   dispatchReason: "Medical assistance requested",
+  dispatchPriority: { code: "2305003", display: "Emergent" },
   chiefComplaint: null,
   status: "assigned"
 });
@@ -18,8 +20,62 @@ test("assignment polling uses the agreed ten-second cadence", () => {
   assert.equal(ASSIGNED_CALL_POLL_INTERVAL_MS, 10_000);
 });
 
+test("first-open has no offline fallback and requires the server to create authoritative identities", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
+  try {
+    await assert.rejects(openAssignedCall("token", "assignment"), /connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the static export opens the generated sample fixture with a cacheable GET", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  let request: { url: string; method?: string } | undefined;
+  process.env.NEXT_PUBLIC_BASE_PATH = "/demo";
+  globalThis.fetch = async (input, init) => {
+    request = { url: String(input), method: init?.method };
+    return new Response(JSON.stringify(demoOpenAssignment), { status: 200 });
+  };
+  try {
+    const opened = await openAssignedCall("token", demoOpenAssignment.assignmentId);
+    assert.equal(opened.report.document.encounter.id, demoOpenAssignment.report.document.encounter.id);
+    assert.deepEqual(request, { url: "/demo/demo-open-assignment.json", method: "GET" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  }
+});
+
 test("refresh identifies only canceled unopened assignments that disappeared", () => {
   assert.deepEqual(canceledAssignedCalls([call("a", "CALL-A"), call("b", "CALL-B")], [], ["a"]), [call("a", "CALL-A")]);
+});
+
+test("dispatch conflict dispositions are posted to the report server", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  let request: { url: string; init?: RequestInit } | undefined;
+  globalThis.fetch = async (url, init) => {
+    request = { url: String(url), init };
+    return new Response(JSON.stringify({ id: "conflict", disposition: "acknowledge" }), {
+      status: 200, headers: { "content-type": "application/json" }
+    });
+  };
+  try {
+    const result = await resolveDispatchConflict("token", "report", "conflict", "acknowledge");
+    assert.equal(result.disposition, "acknowledge");
+    assert.equal(request?.url, "http://localhost:3001/api/reports/report/dispatch-conflicts/conflict");
+    assert.equal(request?.init?.method, "POST");
+    assert.equal(JSON.parse(String(request?.init?.body)).disposition, "acknowledge");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  }
 });
 
 test("completion cleanup removes only the server-confirmed report caches", () => {

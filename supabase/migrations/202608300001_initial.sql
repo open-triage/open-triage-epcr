@@ -591,12 +591,17 @@ create table clinical.report (
   revision bigint not null default 0 check (revision >= 0),
   reporting_date date,
   reporting_date_source text check (reporting_date_source in ('service-date', 'earliest-clinical-time', 'earliest-server-time', 'signing-time')),
+  dispatch_canceled_at timestamptz,
+  dispatch_cancellation_revision bigint check (dispatch_cancellation_revision > 0),
+  dispatch_cancellation_receipt_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   expires_at timestamptz,
   synthetic boolean not null default false,
   baseline boolean not null default false,
   check ((status = 'draft') or (reporting_date is not null and reporting_date_source is not null)),
+  check ((dispatch_canceled_at is null and dispatch_cancellation_revision is null and dispatch_cancellation_receipt_id is null)
+      or (dispatch_canceled_at is not null and dispatch_cancellation_revision is not null and dispatch_cancellation_receipt_id is not null)),
   unique (id, catalog_release_id),
   unique (organization_id, id),
   foreign key (organization_id, agency_demographic_version_id, catalog_release_id)
@@ -616,13 +621,24 @@ create table clinical.call_assignment (
   dispatched_at timestamptz not null,
   dispatch_reason text,
   chief_complaint text,
+  dispatch_source_id text check (length(btrim(dispatch_source_id)) between 1 and 200),
+  dispatch_source_record_id text check (length(btrim(dispatch_source_record_id)) between 1 and 200),
+  dispatch_revision bigint check (dispatch_revision > 0),
+  response_number text,
+  vehicle_number text,
+  dispatch_receipt_id uuid,
   status text not null default 'assigned' check (status in ('assigned', 'opened', 'canceled')),
   report_id uuid,
   synthetic boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (organization_id, call_number),
-  check (dispatch_reason is not null or chief_complaint is not null),
+  check (
+    synthetic or
+    (dispatch_source_id is not null and dispatch_source_record_id is not null and
+     dispatch_revision is not null and response_number is not null and
+     vehicle_number is not null and dispatch_receipt_id is not null)
+  ),
+  unique (organization_id, dispatch_source_id, dispatch_source_record_id),
   check ((status = 'opened' and report_id is not null) or (status <> 'opened' and report_id is null)),
   foreign key (organization_id, unit_id) references app_identity.operational_unit(organization_id, id),
   foreign key (organization_id, incident_id) references clinical.incident(organization_id, id),
@@ -743,6 +759,7 @@ create table clinical.element_occurrence (
   tombstoned_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  unique (report_id, id),
   unique nulls not distinct (report_id, group_instance_id, element_identity_id, ordinal),
   foreign key (report_id, catalog_release_id) references clinical.report(id, catalog_release_id),
   foreign key (report_id, group_instance_id) references clinical.group_instance(report_id, id),
@@ -770,6 +787,30 @@ create table clinical.element_occurrence (
 
 create index element_occurrence_report_idx on clinical.element_occurrence (report_id, group_instance_id, element_identity_id) where tombstoned_at is null;
 create index element_occurrence_element_idx on clinical.element_occurrence (element_identity_id, report_id) where tombstoned_at is null;
+
+create table clinical.dispatch_conflict (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references clinical.report(id) on delete cascade,
+  occurrence_id uuid not null,
+  element_id text not null,
+  clinician_value jsonb,
+  dispatch_value jsonb,
+  clinician_lineage jsonb not null,
+  dispatch_receipt_id uuid not null,
+  dispatch_revision bigint not null check (dispatch_revision > 0),
+  disposition text check (disposition in ('keep', 'accept', 'acknowledge')),
+  resolved_by uuid references app_identity.app_user(id),
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (report_id, occurrence_id, dispatch_revision),
+  foreign key (report_id, occurrence_id) references clinical.element_occurrence(report_id, id),
+  check ((disposition is null and resolved_by is null and resolved_at is null)
+      or (disposition is not null and resolved_by is not null and resolved_at is not null)),
+  check (dispatch_value is not null or clinician_value is not null)
+);
+
+create index dispatch_conflict_report_unresolved_idx
+on clinical.dispatch_conflict (report_id, created_at, id) where disposition is null;
 
 create function clinical.validate_element_occurrence_mapping()
 returns trigger
@@ -1167,6 +1208,80 @@ create trigger audit_event_chain_validate before insert on clinical_audit.event
 for each row execute function clinical_audit.validate_report_chain();
 
 create trigger audit_event_append_only before update or delete on clinical_audit.event
+for each row execute function public.prevent_update_or_delete();
+
+create table clinical.dispatch_receipt (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references app_identity.organization(id),
+  source_id text not null check (length(btrim(source_id)) between 1 and 200),
+  message_id uuid not null,
+  source_record_id text not null check (length(btrim(source_record_id)) between 1 and 200),
+  source_revision bigint not null check (source_revision > 0),
+  received_at timestamptz not null default clock_timestamp(),
+  source_bytes bytea not null,
+  exact_sha256 text generated always as
+    (encode(digest(source_bytes, 'sha256'), 'hex')) stored,
+  source_payload jsonb not null check (jsonb_typeof(source_payload) = 'object'),
+  canonical_sha256 text generated always as
+    (encode(digest(source_payload::text, 'sha256'), 'hex')) stored,
+  findings jsonb not null default '[]'::jsonb check (jsonb_typeof(findings) = 'array'),
+  status text not null check (status in (
+    'applied', 'applied_with_findings', 'rejected', 'quarantined', 'stale',
+    'conflicting', 'post_signature'
+  )),
+  result jsonb not null default '{}'::jsonb check (jsonb_typeof(result) = 'object'),
+  check (convert_from(source_bytes, 'UTF8')::jsonb = source_payload),
+  check ((source_payload->>'messageId')::uuid = message_id),
+  check (source_payload->>'sourceRecordId' = source_record_id),
+  check ((source_payload->>'revision')::bigint = source_revision),
+  check (not (source_payload ?| array['organizationId', 'organization_id', 'sourceId', 'source_id'])),
+  unique (organization_id, source_id, message_id),
+  unique (organization_id, source_id, source_record_id, source_revision),
+  unique (organization_id, id)
+);
+
+create index dispatch_receipt_source_history_idx
+on clinical.dispatch_receipt
+  (organization_id, source_id, source_record_id, source_revision desc);
+
+create trigger dispatch_receipt_append_only
+before update or delete on clinical.dispatch_receipt
+for each row execute function public.prevent_update_or_delete();
+
+comment on table clinical.dispatch_receipt is
+  'Append-only dispatch delivery evidence under clinical-data controls. Source payload bytes must never be copied to ordinary logs.';
+
+alter table clinical.call_assignment
+  add constraint call_assignment_dispatch_receipt_fk
+  foreign key (organization_id, dispatch_receipt_id)
+  references clinical.dispatch_receipt(organization_id, id);
+
+alter table clinical.dispatch_conflict
+  add constraint dispatch_conflict_receipt_fk
+  foreign key (dispatch_receipt_id) references clinical.dispatch_receipt(id);
+
+alter table clinical.report
+  add constraint report_dispatch_cancellation_receipt_fk
+  foreign key (dispatch_cancellation_receipt_id) references clinical.dispatch_receipt(id);
+
+create table clinical_audit.post_signature_dispatch_delivery (
+  id bigint generated always as identity primary key,
+  report_id uuid not null references clinical.report(id),
+  dispatch_receipt_id uuid not null unique references clinical.dispatch_receipt(id),
+  dispatch_revision bigint not null check (dispatch_revision > 0),
+  event_type text not null check (event_type in ('upsert', 'cancel')),
+  proposed_snapshot jsonb not null check (jsonb_typeof(proposed_snapshot) = 'object'),
+  differences jsonb not null check (jsonb_typeof(differences) = 'array'),
+  acceptance_requires_amendment boolean not null default true check (acceptance_requires_amendment),
+  created_at timestamptz not null default now(),
+  unique (report_id, dispatch_revision)
+);
+
+create index post_signature_dispatch_report_idx
+on clinical_audit.post_signature_dispatch_delivery (report_id, dispatch_revision desc);
+
+create trigger post_signature_dispatch_delivery_append_only
+before update or delete on clinical_audit.post_signature_dispatch_delivery
 for each row execute function public.prevent_update_or_delete();
 
 create table integration.outbox_event (
@@ -3088,6 +3203,8 @@ begin
     get diagnostics affected = row_count; wide_rows := wide_rows + affected;
     delete from integration.projection_backfill_job where report_id = selected_report.report_id;
     delete from integration.outbox_event where aggregate_type = 'report' and aggregate_id = selected_report.report_id;
+    delete from clinical_audit.post_signature_dispatch_delivery where report_id = selected_report.report_id;
+    delete from clinical_audit.post_signature_audit_note where report_id = selected_report.report_id;
     delete from clinical_audit.event where report_id = selected_report.report_id;
     delete from clinical.amendment_change where amendment_id in
       (select id from clinical.amendment where report_id = selected_report.report_id);
@@ -3368,7 +3485,8 @@ grant execute on function operations.record_query_audit(
 grant usage on schema clinical_history to open_triage_auditor;
 grant select on clinical_history.report_history to open_triage_auditor;
 grant usage on schema clinical_audit to open_triage_auditor;
-grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note to open_triage_auditor;
+grant select on clinical_audit.draft_reconciliation, clinical_audit.post_signature_audit_note,
+  clinical_audit.post_signature_dispatch_delivery to open_triage_auditor;
 grant usage on schema retention to open_triage_retention_executor, open_triage_auditor;
 grant select on retention.policy, retention.legal_hold, retention.archive_batch,
   retention.archive_batch_report, retention.evidence to open_triage_auditor;

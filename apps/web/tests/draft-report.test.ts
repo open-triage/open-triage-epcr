@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  dispatchCancellationNotice,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
+  ACTIVE_REPORT_POLL_INTERVAL_MS,
   draftChangesUrl,
+  draftCommandUsesLegacyDerivedIds,
+  fetchActiveReport,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
@@ -12,6 +16,14 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
+  const notice = dispatchCancellationNotice({
+    canceledAt: "2026-08-15T13:18:31.000Z", dispatchRevision: 3, receiptId: "receipt"
+  });
+  assert.match(notice, /report is preserved/i);
+  assert.match(notice, /continue documentation/i);
+});
 
 test("the draft adapter retains stable report, group, and occurrence identities", () => {
   const first = shellStateToDraftMutations(reportId, INITIAL_SHELL_STATE);
@@ -22,6 +34,45 @@ test("the draft adapter retains stable report, group, and occurrence identities"
   assert.equal(new Set(first.occurrences.map(({ id }) => id)).size, first.occurrences.length);
   assert.equal(DRAFT_SAVE_DEBOUNCE_MS, 1_000);
   assert.equal(DRAFT_SYNC_RETRY_MS, 2_000);
+  assert.equal(ACTIVE_REPORT_POLL_INTERVAL_MS, 10_000);
+});
+
+test("the draft adapter preserves identities rehydrated from PostgreSQL", () => {
+  const shell = structuredClone(INITIAL_SHELL_STATE);
+  const instance = shell.encounter.document.groups[0]!.instances[0]!;
+  const serverGroupId = "52000000-0000-4000-8000-000000000021";
+  (instance as { instanceId: string }).instanceId = serverGroupId;
+  const value = instance.elements[0]?.values[0];
+  const serverOccurrenceId = "52000000-0000-4000-9000-000000000022";
+  if (value) (value as { occurrenceId: string }).occurrenceId = serverOccurrenceId;
+
+  const mutations = shellStateToDraftMutations(reportId, shell);
+  assert.ok(mutations.groups.some(({ id }) => id === serverGroupId));
+  if (value) assert.ok(mutations.occurrences.some(({ id }) => id === serverOccurrenceId));
+  assert.equal(draftCommandUsesLegacyDerivedIds(reportId, shell, {
+    groups: [{ ...mutations.groups.find(({ id }) => id === serverGroupId)!, id: stableDraftId(reportId, `group:${serverGroupId}`) }],
+    occurrences: value ? [{ ...mutations.occurrences.find(({ id }) => id === serverOccurrenceId)!, id: stableDraftId(reportId, `occurrence:${serverOccurrenceId}`) }] : [],
+  }), true);
+  assert.equal(draftCommandUsesLegacyDerivedIds(reportId, shell, mutations), false);
+});
+
+test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  let headers: HeadersInit | undefined;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    headers = init?.headers;
+    return new Response(null, { status: 304, headers: { etag: '"report-4-dispatch-2"' } });
+  }) as typeof fetch;
+  try {
+    assert.equal(await fetchActiveReport("token", reportId, '"report-4-dispatch-2"'), null);
+    assert.equal((headers as Record<string, string>)["if-none-match"], '"report-4-dispatch-2"');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  }
 });
 
 test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {
@@ -67,6 +118,28 @@ test("timeline edits become typed revisioned API mutations without changing thei
   const updated = shellStateToDraftMutations(reportId, shell).occurrences.find(({ elementId }) => elementId === "eNarrative.01");
   assert.equal(updated?.id, note?.id);
   assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved" });
+});
+
+test("removing a persisted timeline event emits explicit group and occurrence tombstones", () => {
+  let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "persisted-note", date: "2026-09-03", time: "12:01" });
+  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Remove after saving" });
+  shell = transitionShell(shell, { type: "note-saved" });
+  const persisted = shellStateToDraftMutations(reportId, shell);
+  const persistedGroup = persisted.groups.find(({ groupId }) => groupId === "eNarrativeSection")!;
+  const persistedOccurrence = persisted.occurrences.find(({ elementId }) => elementId === "eNarrative.01")!;
+
+  shell = transitionShell(shell, { type: "note-opened", id: "persisted-note" });
+  shell = transitionShell(shell, { type: "note-removed" });
+  const removed = shellStateToDraftMutations(reportId, shell, persisted);
+
+  assert.deepEqual(removed.groups.find(({ id }) => id === persistedGroup.id), { ...persistedGroup, tombstone: true });
+  assert.deepEqual(removed.occurrences.find(({ id }) => id === persistedOccurrence.id), {
+    id: persistedOccurrence.id,
+    elementId: persistedOccurrence.elementId,
+    groupInstanceId: persistedOccurrence.groupInstanceId,
+    ordinal: persistedOccurrence.ordinal,
+    tombstone: true,
+  });
 });
 
 test("the web adapter sends bearer-authenticated commands to the report draft endpoint", async () => {

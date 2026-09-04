@@ -5,16 +5,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   fetchAssignedCalls,
-  canceledAssignedCalls,
   openAssignedCall
 } from "../app/assigned-calls";
 
-function dispatchTime(value: string): string {
+function dispatchTime(value: string, timeZone?: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: timeZone ?? "America/New_York",
   }).format(new Date(value));
 }
 
@@ -30,25 +30,17 @@ export function AssignedCalls({
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const callsRef = useRef<AssignedCall[]>([]);
-  const noticeTimer = useRef<number | null>(null);
   const handledRefreshRequest = useRef(refreshRequest);
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetchAssignedCalls(session.accessToken);
-      const removed = canceledAssignedCalls(callsRef.current, response.assignedCalls, response.canceledAssignmentIds);
       callsRef.current = response.assignedCalls;
       setCalls(response.assignedCalls);
       setLoaded(true);
       setError(null);
-      if (removed.length > 0) {
-        setNotice(`${removed.length === 1 ? `Call ${removed[0]!.callNumber}` : `${removed.length} calls`} assignment canceled.`);
-        if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
-        noticeTimer.current = window.setTimeout(() => setNotice(null), 5_000);
-      }
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Assigned calls could not be refreshed.");
     }
@@ -92,7 +84,6 @@ export function AssignedCalls({
     document.addEventListener("visibilitychange", visibilityChanged);
     return () => {
       if (pollTimer !== null) window.clearInterval(pollTimer);
-      if (noticeTimer.current !== null) window.clearTimeout(noticeTimer.current);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
   }, [refresh]);
@@ -111,7 +102,6 @@ export function AssignedCalls({
           <h1 id="assigned-calls-title">Assigned calls</h1>
         </div>
       </div>
-      {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="assignment-empty">Loading assigned calls…</p>}
       {loaded && calls.length === 0 && <p className="assignment-empty">No calls are currently assigned.</p>}
@@ -123,10 +113,11 @@ export function AssignedCalls({
                 <strong>{call.callNumber}</strong>
                 <span>{call.status}</span>
               </div>
-              <p>{call.dispatchReason ?? call.chiefComplaint}</p>
+              <p>{call.dispatchReason || "Dispatch reason not provided"}</p>
               <dl>
                 <div><dt>Unit</dt><dd>{call.unit.callSign}</dd></div>
-                <div><dt>Dispatched</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt)}</time></dd></div>
+                <div><dt>Priority</dt><dd>{call.dispatchPriority?.display ?? "Not provided"}</dd></div>
+                <div><dt>Unit notified</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, call.agencyTimeZone)}</time></dd></div>
               </dl>
               <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
                 {openingId === call.id ? "Opening…" : "Open call"}

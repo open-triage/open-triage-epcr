@@ -212,7 +212,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
 
     state.completed = true;
     await page.getByRole("button", { name: "Refresh calls" }).click();
-    await expect(page.getByText("This report was completed on the stationary interface. Further edits have stopped.")).toBeVisible();
+    await expect(page.locator(".assignment-notice")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Open calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);

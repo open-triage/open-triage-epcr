@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
-import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
@@ -24,27 +23,38 @@ import {
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 import { documentTimeline, incidentSummary } from "./incident-document";
+import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
+  ACTIVE_REPORT_POLL_INTERVAL_MS,
+  encounterDocumentToDraftMutations,
+  fetchActiveReport,
+  draftCommandUsesLegacyDerivedIds,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
   usesLocalDemoDrafts,
   type ActiveDraftReport,
   type DraftSyncStatus,
+  dispatchCancellationNotice,
 } from "./draft-report";
-import type { ClinicianSession } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { resolveDispatchConflict } from "./assigned-calls";
 import {
   acceptDraftChange,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
+  rebaseQueuedDraftChanges,
+  reconcileCachedActiveReport,
   removeSignedOfflineReport,
+  replaceQueuedDraftChanges,
   queueDraftChange,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
+import { reconcileActiveReportDocument } from "./active-report-reconciliation";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -56,7 +66,6 @@ const quickActionText: Record<QuickActionId, string> = {
   medication: "Medications",
   procedure: "Procedures",
   note: "Notes",
-  patient: "Patient",
 };
 
 function localClinicalTime(): string {
@@ -74,13 +83,19 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
-  const [patientOpen, setPatientOpen] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
+  const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
+  const [conflictError, setConflictError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
+  const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
+  const activeEtag = useRef<string | undefined>(undefined);
+  const shellRef = useRef(shell);
+  const skipReconciledQueue = useRef(false);
   const activeSave = useRef<Promise<void> | null>(null);
   const skipInitialQueue = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -88,32 +103,15 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const encounter = shell.encounter;
-  const incident = useMemo(() => {
-    const documented = incidentSummary(encounter.document);
-    return {
-      ...documented,
-      number: report?.callNumber ?? documented.number,
-      complaint: report?.dispatchReason ?? report?.chiefComplaint ?? documented.complaint,
-    };
-  }, [encounter.document, report]);
-  const incidentEvents = useMemo(() => {
-    if (!report?.dispatchedAt) return documentTimeline(encounter.document);
-    const dispatched = new Date(report.dispatchedAt);
-    const date = `${dispatched.getFullYear()}-${String(dispatched.getMonth() + 1).padStart(2, "0")}-${String(dispatched.getDate()).padStart(2, "0")}`;
-    const time = `${String(dispatched.getHours()).padStart(2, "0")}:${String(dispatched.getMinutes()).padStart(2, "0")}`;
-    return [{
-      id: `call-dispatch-${report.id}`,
-      date,
-      time,
-      kind: "document" as const,
-      title: "Unit Notified by Dispatch",
-      detail: report.dispatchReason ?? report.chiefComplaint ?? "",
-      reference: "eTimes.03",
-    }];
-  }, [encounter.document, report]);
-  const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
+  const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
+  const incidentEvents = useMemo(
+    () => documentTimeline(encounter.document, report?.agencyTimeZone),
+    [encounter.document, report?.agencyTimeZone],
+  );
+  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
+  const timelineEvents = useMemo(() => [...incidentEvents, ...clinicalEvents].sort((a, b) =>
     `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
-  ), [incidentEvents, encounter.events]);
+  ), [incidentEvents, clinicalEvents]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -129,17 +127,19 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }
     return statuses;
   }, [reviewFindings]);
-  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged);
+  const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
+  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged) && unresolvedDispatchConflicts.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
   const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
-  const activeDialog = patientOpen ? "patient" : shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+
+  useEffect(() => { shellRef.current = shell; }, [shell]);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "patient") setPatientOpen(false);
-    else if (activeDialog === "note") dispatch({ type: "note-cancelled" });
+    if (activeDialog === "note") dispatch({ type: "note-cancelled" });
     else if (activeDialog === "medication") dispatch({ type: "medication-cancelled" });
     else if (activeDialog === "procedure") dispatch({ type: "procedure-cancelled" });
     else if (activeDialog === "vitals") {
@@ -149,13 +149,22 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }, [activeDialog]);
 
   useEffect(() => {
-    const result = loadShellStateResult(window.localStorage, bundledEncounterDefinition, report?.id);
+    persistedDraft.current = report?.document
+      ? encounterDocumentToDraftMutations(report.id, report.document)
+      : { groups: [], occurrences: [] };
+    const result = loadShellStateResult(
+      window.localStorage,
+      bundledEncounterDefinition,
+      report?.id,
+      report?.document?.formProfile,
+    );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
       dispatch({ type: "state-restored", state: result.state });
     }
     else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
     else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
+    else if (report?.document) dispatch({ type: "document-opened", document: report.document });
     // Hydration must finish before the baseline is allowed to overwrite browser progress.
     queueMicrotask(() => {
       if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
@@ -185,6 +194,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
           revision.current = saved.revision;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
+          persistedDraft.current = {
+            groups: queued.command.groups.filter(({ tombstone }) => !tombstone),
+            occurrences: queued.command.occurrences.filter(({ tombstone }) => !tombstone),
+          };
         } catch (error) {
           const reason = error instanceof Error ? error.message : "offline";
           if (reason === "session") {
@@ -206,6 +219,21 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     if (!restored) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
+    const queuedBeforeSave = nextDraftChange(window.localStorage, report.id);
+    if (queuedBeforeSave && draftCommandUsesLegacyDerivedIds(report.id, shell, queuedBeforeSave.command)) {
+      replaceQueuedDraftChanges(window.localStorage, report.id, {
+        commandId: crypto.randomUUID(),
+        expectedRevision: revision.current,
+        authorId: session.user.id,
+        deviceId: `web:${report.id}`,
+        clientTime: new Date().toISOString(),
+        ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
+      });
+    }
+    if (skipReconciledQueue.current) {
+      skipReconciledQueue.current = false;
+      return;
+    }
     if (skipInitialQueue.current) {
       skipInitialQueue.current = false;
       if (nextDraftChange(window.localStorage, report.id)) {
@@ -223,7 +251,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       authorId: session.user.id,
       deviceId: `web:${report.id}`,
       clientTime,
-      ...shellStateToDraftMutations(report.id, shell),
+      ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
     });
     queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -254,6 +282,54 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }, DRAFT_SYNC_RETRY_MS);
     return () => window.clearTimeout(retryTimer);
   }, [flushSave, report, syncStatus]);
+
+  useEffect(() => {
+    if (!report || !restored) return;
+    let pollTimer: number | null = null;
+    let stopped = false;
+    const poll = async () => {
+      if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
+      const previousEtag = activeEtag.current;
+      try {
+        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
+        if (!response || stopped) return;
+        activeEtag.current = response.etag || previousEtag;
+        const local = shellRef.current.encounter.document;
+        const hasPending = nextDraftChange(window.localStorage, report.id) !== null;
+        const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending);
+        revision.current = response.resource.reportRevision;
+        if (hasPending) rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+        else {
+          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
+          skipReconciledQueue.current = true;
+        }
+        reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
+        setDispatchConflicts(response.resource.dispatchConflicts);
+        setDispatchCancellation(response.resource.dispatchCancellation);
+        dispatch({ type: "document-opened", document: merged });
+      } catch (error) {
+        if (error instanceof Error && error.message === "session") onSessionEnded();
+      }
+    };
+    const startOrPause = () => {
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      pollTimer = document.visibilityState === "visible"
+        ? window.setInterval(() => void poll(), ACTIVE_REPORT_POLL_INTERVAL_MS)
+        : null;
+    };
+    const visibilityChanged = () => {
+      if (document.visibilityState === "visible") void poll();
+      startOrPause();
+    };
+    void poll();
+    startOrPause();
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      stopped = true;
+      if (pollTimer !== null) window.clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
+  }, [onSessionEnded, report, restored, session.accessToken]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -321,11 +397,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     setEditingFinding(null);
     dispatch({ type: "note-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
-  function startPatient(event: React.MouseEvent<HTMLButtonElement>) {
-    rememberTrigger(event.currentTarget);
-    setEditingFinding(null);
-    setPatientOpen(true);
-  }
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -347,7 +418,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }
 
   const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
-    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
+    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote,
   };
 
   async function signRecord() {
@@ -372,9 +443,25 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     }
   }
 
+  async function disposeConflict(conflict: DispatchConflict, disposition: DispatchConflictDisposition) {
+    if (!report) return;
+    setConflictError(null);
+    try {
+      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
+      setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
+      revision.current += 1;
+    } catch (error) {
+      setConflictError(error instanceof Error ? error.message : "The dispatch difference could not be resolved.");
+    }
+  }
+
   return (
     <main className="app-shell">
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
+      {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
+        <strong>Dispatch canceled this response</strong>
+        <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
+      </aside>}
 
       <header className="encounter-header">
         {report && <div className="draft-actions">
@@ -384,8 +471,11 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
         <div className="incident-line">
           <div>
-            <span>{bundledEncounterDefinition.labels.incident} {incident.number}</span>
-            <strong>{incident.complaint}</strong>
+            <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
+            <span>Response {incident.responseNumber}</span>
+            <span>Unit {incident.callSign}</span>
+            <span>Priority {incident.dispatchPriority || "Not provided"}</span>
+            <strong>{incident.location}</strong>
           </div>
         </div>
       </header>
@@ -436,7 +526,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
               const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={`${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
+                <time dateTime={event.dateTime ?? `${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
@@ -487,9 +577,9 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               <p className="eyebrow">Warnings and errors</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
-            <span aria-live="polite">{reviewFindings.length} open</span>
+            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length} open</span>
           </div>
-          {!reviewFindings.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : (
+          {!reviewFindings.length && !unresolvedDispatchConflicts.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
@@ -502,11 +592,14 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
+          <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+          {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </section>
       )}
 
       {shell.view === "review" && (
+        <>
         <ReviewPanel
           findings={reviewFindings}
           errors={reviewErrors}
@@ -520,9 +613,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onSign={() => void signRecord()}
         />
+        <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+        {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
+        </>
       )}
-
-      {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -622,6 +716,41 @@ export default function Home() {
   return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
     <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
   )}</ClinicianSessionGate>;
+}
+
+function conflictValue(value: EncounterValue | null): string {
+  if (value === null) return "Retracted by dispatch";
+  if (value.kind === "coded") return value.display ?? value.code;
+  if (value.kind === "pertinent-negative") return value.display ?? value.code;
+  if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "Null";
+  if (value.kind === "absent") return "Not documented";
+  return String(value.value);
+}
+
+function DispatchConflictList({ conflicts, onDispose }: {
+  readonly conflicts: ReadonlyArray<DispatchConflict>;
+  readonly onDispose: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => void;
+}) {
+  const unresolved = conflicts.filter(({ disposition }) => disposition === null);
+  return (
+    <section className="review-group dispatch-conflicts" aria-labelledby="dispatch-conflicts-heading">
+      <h2 id="dispatch-conflicts-heading">Dispatch differences <span>{unresolved.length}</span></h2>
+      {!unresolved.length ? <p className="review-empty">✓ No unresolved dispatch differences.</p> : (
+        <ul className="review-findings">
+          {unresolved.map((conflict) => <li key={conflict.id} className="warning">
+            <span className="finding-category">Dispatch revision {conflict.dispatchRevision} · {conflict.elementId}</span>
+            <strong>Clinician value: {conflictValue(conflict.clinicianValue)}</strong>
+            <span>Dispatch proposes: {conflictValue(conflict.dispatchValue)}</span>
+            <div className="dispatch-conflict-actions">
+              <button type="button" onClick={() => onDispose(conflict, "keep")}>Keep my value</button>
+              <button type="button" onClick={() => onDispose(conflict, "accept")}>Accept dispatch value</button>
+              <button type="button" onClick={() => onDispose(conflict, "acknowledge")}>Acknowledge difference</button>
+            </div>
+          </li>)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, onFinding, onWarning, onSign }: {

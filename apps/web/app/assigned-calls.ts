@@ -1,6 +1,8 @@
 import type {
   AssignedCall,
   AssignedCallsResponse,
+  DispatchConflict,
+  DispatchConflictDisposition,
   OpenAssignmentResponse,
   OpenCallsResponse,
   ReopenOpenCallResponse
@@ -11,6 +13,23 @@ export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
 function apiBaseUrl(): string | null {
   if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
+}
+
+export async function resolveDispatchConflict(
+  accessToken: string,
+  reportId: string,
+  conflictId: string,
+  disposition: DispatchConflictDisposition
+): Promise<DispatchConflict> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("Conflict dispositions require a connection to the report server.");
+  const response = await fetch(`${baseUrl}/api/reports/${reportId}/dispatch-conflicts/${conflictId}`, {
+    method: "POST", cache: "no-store",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ commandId: crypto.randomUUID(), disposition })
+  });
+  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The dispatch difference could not be resolved.");
+  return response.json() as Promise<DispatchConflict>;
 }
 
 export function assignedCallsUrl(): string {
@@ -36,11 +55,17 @@ export function openAssignmentUrl(assignmentId: string): string {
   return `${basePath}/api/calls/${assignmentId}/open`;
 }
 
+export function staticOpenAssignmentUrl(): string {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
+  return `${basePath}/demo-open-assignment.json`;
+}
+
 export async function openAssignedCall(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
   let response: Response;
   try {
-    response = await fetch(openAssignmentUrl(assignmentId), {
-      method: "POST",
+    const staticExport = Boolean(process.env.NEXT_PUBLIC_BASE_PATH);
+    response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), {
+      method: staticExport ? "GET" : "POST",
       cache: "no-store",
       headers: { authorization: `Bearer ${accessToken}` }
     });
@@ -52,7 +77,9 @@ export async function openAssignedCall(accessToken: string, assignmentId: string
     if (response.status === 409) throw new Error("This call can no longer be opened.");
     throw new Error("The call could not be opened. Check your connection and try again.");
   }
-  return response.json() as Promise<OpenAssignmentResponse>;
+  const opened = await response.json() as OpenAssignmentResponse;
+  if (opened.assignmentId !== assignmentId) throw new Error("The static demo fixture does not match the selected assignment.");
+  return opened;
 }
 
 export function openCallsUrl(): string {

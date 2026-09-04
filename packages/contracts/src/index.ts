@@ -58,6 +58,11 @@ export interface EndClinicianSessionResponse {
 
 export type AssignmentStatus = "assigned";
 
+export interface DispatchPriority {
+  code: string;
+  display: string;
+}
+
 export interface AssignedCall {
   id: string;
   callNumber: string;
@@ -67,7 +72,10 @@ export interface AssignedCall {
   };
   dispatchedAt: string;
   dispatchReason: string | null;
+  dispatchPriority: DispatchPriority | null;
   chiefComplaint: string | null;
+  /** IANA zone used for operational-time presentation. */
+  agencyTimeZone?: string;
   status: AssignmentStatus;
 }
 
@@ -86,8 +94,40 @@ export interface OpenAssignmentResponse {
     catalogReleaseId: string;
     revision: number;
     status: "draft";
+    /** Complete server-authoritative encounter content, including fields hidden by the active form. */
+    document: EncounterDocument;
+    /** IANA zone used for operational-time presentation. */
+    agencyTimeZone?: string;
+    dispatchConflicts?: ReadonlyArray<DispatchConflict>;
+    dispatchCancellation?: DispatchCancellation | null;
   };
   replacementAssignment: AssignedCall | null;
+}
+
+export interface DispatchCancellation {
+  canceledAt: string;
+  dispatchRevision: number;
+  receiptId: string;
+}
+
+export type DispatchConflictDisposition = "keep" | "accept" | "acknowledge";
+
+export interface DispatchConflict {
+  id: string;
+  occurrenceId: string;
+  elementId: string;
+  clinicianValue: EncounterValue | null;
+  dispatchValue: EncounterValue | null;
+  dispatchRevision: number;
+  receiptId: string;
+  disposition: DispatchConflictDisposition | null;
+  createdAt: string;
+  resolvedAt?: string | null;
+}
+
+export interface ResolveDispatchConflictCommand {
+  commandId: string;
+  disposition: DispatchConflictDisposition;
 }
 
 export type OpenCallSyncStatus = "saved" | "pending";
@@ -97,8 +137,10 @@ export interface OpenCall {
   callNumber: string;
   dispatchedAt?: string;
   dispatchReason?: string | null;
+  dispatchPriority?: DispatchPriority | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
+  agencyTimeZone?: string;
   lastSavedAt: string;
   syncStatus: OpenCallSyncStatus;
   validationErrorCount: number;
@@ -117,12 +159,22 @@ export interface ReopenOpenCallResponse {
   callNumber: string;
   dispatchedAt?: string;
   dispatchReason?: string | null;
+  dispatchPriority?: DispatchPriority | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
-  report: OpenAssignmentResponse["report"] & {
-    groups: ReadonlyArray<Record<string, unknown>>;
-    occurrences: ReadonlyArray<Record<string, unknown>>;
-  };
+  report: OpenAssignmentResponse["report"];
+}
+
+/** Conditional representation used while a clinician has a draft open. */
+export interface ActiveReportResource {
+  reportId: string;
+  /** Clinical report revision, advanced by clinician saves and dispatch merges. */
+  reportRevision: number;
+  /** Latest complete dispatch snapshot revision applied to the assignment. */
+  dispatchRevision: number;
+  document: EncounterDocument;
+  dispatchConflicts: ReadonlyArray<DispatchConflict>;
+  dispatchCancellation: DispatchCancellation | null;
 }
 
 /**
@@ -131,7 +183,7 @@ export interface ReopenOpenCallResponse {
  */
 export const ENCOUNTER_DOCUMENT_SCHEMA = "./encounter-document.schema-1.0.0.json" as const;
 export const ENCOUNTER_DOCUMENT_TYPE = "open-triage.encounter" as const;
-export const ENCOUNTER_MODEL_VERSION = "1.0.0" as const;
+export const ENCOUNTER_MODEL_VERSION = "1.1.0" as const;
 
 export type EncounterIdentity = string;
 export type EncounterAttributeValue = string | number | boolean | null;
@@ -190,6 +242,8 @@ export type EncounterElement = {
 export type EncounterGroupInstance = {
   /** Stable identity for this occurrence when the group repeats. */
   readonly instanceId: string;
+  /** Stable identity of the containing group occurrence for nested NEMSIS groups. */
+  readonly parentInstanceId?: string;
   readonly attributes?: EncounterAttributes;
   readonly elements: ReadonlyArray<EncounterElement>;
   readonly [extension: string]: unknown;

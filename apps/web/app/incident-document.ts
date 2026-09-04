@@ -6,11 +6,20 @@ import type { EncounterEvent } from "./standard-encounter";
 export const INCIDENT_FIELD_LOCATIONS = {
   incidentNumber: { groupId: "eResponseSection", elementId: "eResponse.03" },
   responseNumber: { groupId: "eResponseSection", elementId: "eResponse.04" },
-  complaint: { groupId: "eDispatchSection", elementId: "eDispatch.01" },
-  crew: { groupId: "eCrew.CrewGroup", elementId: "eCrew.01" },
+  callSign: { groupId: "eResponseSection", elementId: "eResponse.14" },
+  dispatchReason: { groupId: "eDispatchSection", elementId: "eDispatch.01" },
+  dispatchPriority: { groupId: "eDispatchSection", elementId: "eDispatch.05" },
   streetAddress: { groupId: "eSceneSection", elementId: "eScene.15" },
-  unit: { groupId: "eSceneSection", elementId: "eScene.16" },
+  apartment: { groupId: "eSceneSection", elementId: "eScene.16" },
+  city: { groupId: "eSceneSection", elementId: "eScene.17" },
+  state: { groupId: "eSceneSection", elementId: "eScene.18" },
+  zip: { groupId: "eSceneSection", elementId: "eScene.19" },
 } as const;
+
+export const DEFAULT_AGENCY_TIME_ZONE = "America/New_York";
+const OPERATIONAL_TIME_IDS = new Set([
+  "eTimes.02", "eTimes.03", "eTimes.04", "eTimes.05", "eTimes.06", "eTimes.14", "eTimes.17",
+]);
 
 function valuesFor(document: EncounterDocument, groupId: string, elementId: string): ReadonlyArray<EncounterValue> {
   return document.groups.find((group) => group.id === groupId)?.instances.flatMap((instance) =>
@@ -31,43 +40,63 @@ function incidentValue(document: EncounterDocument, field: keyof typeof INCIDENT
   return displayValue(valuesFor(document, groupId, elementId)[0]);
 }
 
-/** Phone-header projection of the canonical response, dispatch, crew, and scene elements. */
+/** Projects only the operational NEMSIS fields approved for the mobile encounter header. */
 export function incidentSummary(document: EncounterDocument) {
-  const incidentNumber = incidentValue(document, "incidentNumber");
-  const responseNumber = incidentValue(document, "responseNumber");
   const streetAddress = incidentValue(document, "streetAddress");
-  const unit = incidentValue(document, "unit");
+  const apartment = incidentValue(document, "apartment");
+  const locality = [incidentValue(document, "city"), incidentValue(document, "state"), incidentValue(document, "zip")]
+    .filter(Boolean).join(" ");
   return {
-    number: [incidentNumber, responseNumber].filter(Boolean).join(" · "),
-    complaint: incidentValue(document, "complaint"),
-    address: [streetAddress, unit].filter(Boolean).join(", "),
-    crew: document.groups.find((group) => group.id === INCIDENT_FIELD_LOCATIONS.crew.groupId)?.instances
-      .flatMap((instance) => instance.elements.find((element) => element.id === INCIDENT_FIELD_LOCATIONS.crew.elementId)?.values ?? [])
-      .map(displayValue).filter(Boolean).join(", ") ?? "",
+    incidentNumber: incidentValue(document, "incidentNumber"),
+    responseNumber: incidentValue(document, "responseNumber"),
+    callSign: incidentValue(document, "callSign"),
+    dispatchPriority: incidentValue(document, "dispatchPriority"),
+    location: [[streetAddress, apartment].filter(Boolean).join(", "), locality].filter(Boolean).join(" · "),
   };
 }
 
-/** Projects every catalog date/time value onto the timeline without dispatch-event configuration or category switches. */
-export function documentTimeline(document: EncounterDocument): ReadonlyArray<EncounterEvent> {
+/** Assignment-card projection of the explicitly configured NEMSIS elements. */
+export function assignmentSummary(document: EncounterDocument) {
+  return {
+    incidentNumber: incidentValue(document, "incidentNumber"),
+    callSign: incidentValue(document, "callSign"),
+    unitNotifiedAt: displayValue(valuesFor(document, "eTimesSection", "eTimes.03")[0]),
+    dispatchReason: incidentValue(document, "dispatchReason") || "Dispatch reason not provided",
+    dispatchPriority: incidentValue(document, "dispatchPriority") || "Priority not provided",
+  };
+}
+
+export function agencyDateTimeParts(value: string, timeZone = DEFAULT_AGENCY_TIME_ZONE): { date: string; time: string } {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new TypeError(`Invalid operational timestamp: ${value}`);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return { date: `${part("year")}-${part("month")}-${part("day")}`, time: `${part("hour")}:${part("minute")}` };
+}
+
+/** Projects only configured operational times in agency time, retaining source lexical offsets. */
+export function documentTimeline(document: EncounterDocument, timeZone = DEFAULT_AGENCY_TIME_ZONE): ReadonlyArray<EncounterEvent> {
   const entries = document.groups.flatMap((group) => group.instances.flatMap((instance) => instance.elements.flatMap((element) => {
+    if (!OPERATIONAL_TIME_IDS.has(element.id)) return [];
     const catalogElement = getNemsisDataElement(element.id);
-    if (!catalogElement || catalogElement.datatype.base !== "dateTime") return [];
+    if (!catalogElement) return [];
     return element.values.flatMap((value) => {
       if (value.kind !== "scalar" || typeof value.value !== "string") return [];
-      const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value.value);
-      if (!match) return [];
+      const presented = agencyDateTimeParts(value.value, timeZone);
       return [{
         id: `document-${value.occurrenceId}`,
-        date: match[1]!,
-        time: match[2]!,
+        ...presented,
+        dateTime: value.value,
         kind: "document" as const,
         title: catalogElement.name.replace(/ Date\/Time$/, ""),
-        detail: typeof value.attributes?.timelineDetail === "string" ? value.attributes.timelineDetail : "",
+        detail: "",
         reference: catalogElement.id,
       }];
     });
   })));
-  return entries.sort((a, b) => `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`));
+  return entries.sort((a, b) => Date.parse(b.dateTime ?? "") - Date.parse(a.dateTime ?? ""));
 }
 
 const INCIDENT_GROUP_IDS = new Set(["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"]);
@@ -103,6 +132,7 @@ export function migrateLegacyIncidentDocument(source: EncounterDocument, legacy:
     { id: "eResponseSection", instances: [{ instanceId: "response-1", elements: [
       { id: "eResponse.03", values: [scalar("incident-number-1", incidentNumber)] },
       ...(responseNumber ? [{ id: "eResponse.04", values: [scalar("response-number-1", responseNumber)] }] : []),
+      { id: "eResponse.14", values: [scalar("call-sign-1", legacy.crew)] },
     ] }] },
     { id: "eDispatchSection", instances: [{ instanceId: "dispatch-1", elements: [
       { id: "eDispatch.01", values: [coded("dispatch-reason-1", "2301051", incident.complaint as string)] },
@@ -113,7 +143,7 @@ export function migrateLegacyIncidentDocument(source: EncounterDocument, legacy:
     { id: "eCrew.CrewGroup", instances: [{ instanceId: "crew-1", elements: [{ id: "eCrew.01", values: [scalar("crew-member-1", legacy.crew)] }] }] },
     { id: "eSceneSection", instances: [{ instanceId: "scene-1", elements: [{ id: "eScene.15", values: [scalar("street-address-1", incident.address as string)] }] }] },
     { id: "eTimesSection", instances: [{ instanceId: "times-1", elements: [
-      timeElement("eTimes.01", "baseline-4", "psap-call-time-1"),
+      timeElement("eTimes.02", "baseline-4", "dispatch-time-1"),
       timeElement("eTimes.03", "baseline-3", "unit-notified-time-1"),
       timeElement("eTimes.05", "baseline-2", "unit-en-route-time-1"),
       timeElement("eTimes.06", "baseline-1", "unit-arrived-scene-time-1"),

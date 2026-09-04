@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
-import type { OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import type {
@@ -25,6 +25,7 @@ import {
   validateCreateDraftReportCommand,
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
+import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
 
 type ReceiptRow = {
   report_id: string | null;
@@ -61,8 +62,11 @@ type OpenCallRow = {
   call_number: string;
   dispatched_at: Date | string;
   dispatch_reason: string | null;
+  dispatch_priority_code: string | null;
+  dispatch_priority_display: string | null;
   chief_complaint: string | null;
   unit_call_sign: string;
+  agency_time_zone: string;
   last_saved_at: Date | string;
   revision: string | number;
   form_version_id: string;
@@ -107,6 +111,24 @@ type ReconciliationAudit = {
 };
 
 const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftValue {
+  if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display };
+  if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, display: value.display };
+  if (value.kind === "null") return value.notValue
+    ? { kind: "null", absenceCode: value.notValue.code, display: value.notValue.display }
+    : { kind: "absent" };
+  if (value.kind === "absent") return { kind: "absent" };
+  if (typeof value.value === "boolean") return { kind: "boolean", value: value.value };
+  if (typeof value.value === "number") return Number.isInteger(value.value)
+    ? { kind: "integer", value: value.value } : { kind: "numeric", value: value.value };
+  const scalarKind: Record<string, DraftValue["kind"]> = {
+    string: "text", anyURI: "uri", integer: "integer", decimal: "numeric", boolean: "boolean",
+    date: "date", dateTime: "datetime", time: "time", duration: "duration", binary: "binary"
+  };
+  return { kind: scalarKind[baseDatatype] ?? "text", value: value.value } as DraftValue;
+}
 
 @Injectable()
 export class DraftReportService {
@@ -523,6 +545,13 @@ export class DraftReportService {
     const rows = await this.dataSource.query<OpenCallRow[]>(`
       select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
              ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
+             jsonb_path_query_first(dr.source_payload,
+               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
+               as dispatch_priority_code,
+             jsonb_path_query_first(dr.source_payload,
+               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
+               as dispatch_priority_display,
+             organization.deployment_timezone as agency_time_zone,
              r.updated_at as last_saved_at,
              r.revision, r.form_version_id, r.catalog_release_id,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
@@ -531,9 +560,11 @@ export class DraftReportService {
       join clinical.call_assignment ca
         on ca.organization_id = r.organization_id and ca.report_id = r.id
       join app_identity.operational_unit ou on ou.id = ca.unit_id
+      join app_identity.organization organization on organization.id = r.organization_id
+      left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
       left join clinical.validation_finding vf on vf.report_id = r.id
       where r.organization_id = $1 and r.documenting_user_id = $2 and r.status in ('draft', 'signed')
-      group by r.id, ca.id, ou.call_sign
+      group by r.id, ca.id, ou.call_sign, organization.deployment_timezone, dr.id
       order by r.updated_at desc, r.id
     `, [session.organization.id, session.user.id]);
     return {
@@ -542,8 +573,13 @@ export class DraftReportService {
         callNumber: row.call_number,
         dispatchedAt: new Date(row.dispatched_at).toISOString(),
         dispatchReason: row.dispatch_reason,
+        dispatchPriority: row.dispatch_priority_code ? {
+          code: row.dispatch_priority_code,
+          display: row.dispatch_priority_display ?? row.dispatch_priority_code,
+        } : null,
         chiefComplaint: row.chief_complaint,
         unitCallSign: row.unit_call_sign,
+        ...(row.agency_time_zone ? { agencyTimeZone: row.agency_time_zone } : {}),
         lastSavedAt: new Date(row.last_saved_at).toISOString(),
         syncStatus: "saved",
         validationErrorCount: Number(row.validation_error_count),
@@ -559,18 +595,36 @@ export class DraftReportService {
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
     const session = this.sessions.get(accessToken);
     const details = await this.get(accessToken, reportId);
+    const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
+    const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
     const calls = await this.dataSource.query<Array<{
       call_number: string;
       dispatched_at: Date | string;
       dispatch_reason: string | null;
+      dispatch_priority_code: string | null;
+      dispatch_priority_display: string | null;
       chief_complaint: string | null;
       unit_call_sign: string;
+      agency_time_zone: string;
+      dispatch_canceled_at: Date | string | null;
+      dispatch_cancellation_revision: string | number | null;
+      dispatch_cancellation_receipt_id: string | null;
     }>>(`
       select ca.call_number, ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint,
-             ou.call_sign as unit_call_sign
+             jsonb_path_query_first(dr.source_payload,
+               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
+               as dispatch_priority_code,
+             jsonb_path_query_first(dr.source_payload,
+               '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
+               as dispatch_priority_display,
+             ou.call_sign as unit_call_sign, organization.deployment_timezone as agency_time_zone,
+             r.dispatch_canceled_at,
+             r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
       from clinical.call_assignment ca
       join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
       join app_identity.operational_unit ou on ou.id = ca.unit_id
+      join app_identity.organization organization on organization.id = r.organization_id
+      left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
       where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
         and r.status = 'draft'
     `, [reportId, session.organization.id, session.user.id]);
@@ -579,6 +633,10 @@ export class DraftReportService {
       callNumber: calls[0].call_number,
       dispatchedAt: new Date(calls[0].dispatched_at).toISOString(),
       dispatchReason: calls[0].dispatch_reason,
+      dispatchPriority: calls[0].dispatch_priority_code ? {
+        code: calls[0].dispatch_priority_code,
+        display: calls[0].dispatch_priority_display ?? calls[0].dispatch_priority_code,
+      } : null,
       chiefComplaint: calls[0].chief_complaint,
       unitCallSign: calls[0].unit_call_sign,
       report: {
@@ -588,10 +646,117 @@ export class DraftReportService {
         catalogReleaseId: String(details.catalogReleaseId),
         revision: Number(details.revision),
         status: "draft",
-        groups: details.groups as ReadonlyArray<Record<string, unknown>>,
-        occurrences: details.occurrences as ReadonlyArray<Record<string, unknown>>
+        document,
+        ...(calls[0].agency_time_zone ? { agencyTimeZone: calls[0].agency_time_zone } : {}),
+        dispatchConflicts: conflicts,
+        ...(calls[0].dispatch_canceled_at && calls[0].dispatch_cancellation_revision && calls[0].dispatch_cancellation_receipt_id ? {
+          dispatchCancellation: {
+            canceledAt: new Date(calls[0].dispatch_canceled_at).toISOString(),
+            dispatchRevision: Number(calls[0].dispatch_cancellation_revision),
+            receiptId: calls[0].dispatch_cancellation_receipt_id
+          }
+        } : {})
       }
     };
+  }
+
+  async active(accessToken: string, reportId: string, ifNoneMatch?: string): Promise<{
+    readonly etag: string;
+    readonly resource: ActiveReportResource | null;
+  }> {
+    const session = this.sessions.get(accessToken);
+    const rows = await this.dataSource.query<Array<{
+      revision: string | number;
+      dispatch_revision: string | number | null;
+      dispatch_canceled_at: Date | string | null;
+      dispatch_cancellation_revision: string | number | null;
+      dispatch_cancellation_receipt_id: string | null;
+    }>>(`
+      select r.revision, ca.dispatch_revision, r.dispatch_canceled_at,
+             r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
+      from clinical.report r join clinical.call_assignment ca
+        on ca.report_id = r.id and ca.organization_id = r.organization_id
+      where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
+        and r.status = 'draft'
+    `, [reportId, session.organization.id, session.user.id]);
+    const row = rows[0];
+    if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
+    const reportRevision = Number(row.revision);
+    const dispatchRevision = Number(row.dispatch_revision ?? 0);
+    const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}"`;
+    if (ifNoneMatch === etag) return { etag, resource: null };
+    const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
+    const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
+    return {
+      etag,
+      resource: {
+        reportId,
+        reportRevision,
+        dispatchRevision,
+        document,
+        dispatchConflicts: conflicts,
+        dispatchCancellation: row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
+          canceledAt: new Date(row.dispatch_canceled_at).toISOString(),
+          dispatchRevision: Number(row.dispatch_cancellation_revision),
+          receiptId: row.dispatch_cancellation_receipt_id,
+        } : null,
+      },
+    };
+  }
+
+  async resolveDispatchConflict(
+    accessToken: string,
+    reportId: string,
+    conflictId: string,
+    input: unknown
+  ): Promise<DispatchConflict> {
+    const session = this.sessions.get(accessToken);
+    if (!input || typeof input !== "object" || !uuidV4.test(String((input as ResolveDispatchConflictCommand).commandId)) ||
+        !["keep", "accept", "acknowledge"].includes(String((input as ResolveDispatchConflictCommand).disposition))) {
+      throw new UnprocessableEntityException("A UUIDv4 commandId and keep, accept, or acknowledge disposition are required");
+    }
+    const command = input as ResolveDispatchConflictCommand;
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      const reports = await manager.query<ReportRow[]>(`select * from clinical.report
+        where id = $1 and organization_id = $2 and documenting_user_id = $3 for update`,
+      [reportId, session.organization.id, session.user.id]);
+      const report = reports[0];
+      if (!report) throw new NotFoundException(`Report ${reportId} was not found`);
+      if (report.status !== "draft") throw new ConflictException("Signed dispatch conflicts require an amendment");
+      const rows = await manager.query<Array<{
+        id: string; occurrence_id: string; element_id: string; dispatch_value: EncounterValue | null;
+        disposition: string | null; group_instance_id: string | null; ordinal: string | number; base_datatype: string;
+      }>>(`select dc.id, dc.occurrence_id, dc.element_id, dc.dispatch_value, dc.disposition,
+                 eo.group_instance_id, eo.ordinal, ed.base_datatype
+          from clinical.dispatch_conflict dc join clinical.element_occurrence eo
+            on eo.report_id = dc.report_id and eo.id = dc.occurrence_id
+          join catalog.element_definition ed
+            on ed.release_id = eo.catalog_release_id and ed.element_identity_id = eo.element_identity_id
+          where dc.id = $1 and dc.report_id = $2 for update of dc`, [conflictId, reportId]);
+      const conflict = rows[0];
+      if (!conflict) throw new NotFoundException(`Dispatch conflict ${conflictId} was not found`);
+      if (conflict.disposition) throw new ConflictException("Dispatch conflict is already resolved");
+      const nextRevision = Number(report.revision) + 1;
+      if (command.disposition === "accept") {
+        await this.applyOccurrence(manager, report, {
+          commandId: command.commandId, expectedRevision: Number(report.revision), authorId: session.user.id,
+          occurrences: []
+        }, {
+          id: conflict.occurrence_id, elementId: conflict.element_id,
+          groupInstanceId: conflict.group_instance_id, ordinal: Number(conflict.ordinal),
+          ...(conflict.dispatch_value ? { value: conflictDraftValue(conflict.dispatch_value, conflict.base_datatype) } : { tombstone: true })
+        });
+      }
+      await manager.query(`update clinical.dispatch_conflict
+        set disposition = $2, resolved_by = $3, resolved_at = now() where id = $1`,
+      [conflict.id, command.disposition, session.user.id]);
+      await manager.query("update clinical.report set revision = $2, updated_at = now() where id = $1", [reportId, nextRevision]);
+      await manager.query(`insert into clinical.report_change
+        (report_id, revision, idempotency_key, author_id, changes)
+        values ($1,$2,$3,$4,$5::jsonb)`, [reportId, nextRevision, command.commandId, session.user.id,
+        JSON.stringify({ dispatchConflictId: conflict.id, disposition: command.disposition })]);
+      return (await dispatchConflicts(manager, reportId)).find(({ id }) => id === conflict.id)!;
+    });
   }
 
   private async applyGroups(manager: EntityManager, report: ReportRow, command: SaveDraftReportCommand): Promise<void> {
@@ -648,9 +813,12 @@ export class DraftReportService {
   ): Promise<void> {
     if (occurrence.tombstone) {
       const removed = await manager.query<Array<{ id: string }>>(`
-        update clinical.element_occurrence set tombstoned_at = now(), updated_at = now(), author_id = $4
+        update clinical.element_occurrence set tombstoned_at = now(), updated_at = now(), author_id = $4,
+          provenance_kind = 'clinician',
+          provenance_detail = coalesce(provenance_detail, '{}'::jsonb) || $5::jsonb
         where id = $1 and report_id = $2 and element_id = $3 returning id
-      `, [occurrence.id, report.id, occurrence.elementId, command.authorId]);
+      `, [occurrence.id, report.id, occurrence.elementId, command.authorId,
+        JSON.stringify({ ownershipAction: "clear", clinicianValue: null })]);
       if (!removed[0]) throw new ConflictException(`Occurrence identity ${occurrence.id} does not belong to this report and element`);
       return;
     }
@@ -685,7 +853,8 @@ export class DraftReportService {
         terminology_version = excluded.terminology_version, absence_code = excluded.absence_code,
         absence_display = excluded.absence_display, source_attributes = excluded.source_attributes,
         correlation_id = excluded.correlation_id, provenance_kind = excluded.provenance_kind,
-        provenance_detail = excluded.provenance_detail, documented_time = excluded.documented_time,
+        provenance_detail = coalesce(clinical.element_occurrence.provenance_detail, '{}'::jsonb) || excluded.provenance_detail,
+        documented_time = excluded.documented_time,
         documented_utc_offset_minutes = excluded.documented_utc_offset_minutes,
         documented_precision = excluded.documented_precision, author_id = excluded.author_id,
         server_received_time = now(), tombstoned_at = null, updated_at = now()
@@ -702,8 +871,8 @@ export class DraftReportService {
       columns.valuePrecision, columns.code, columns.codeSystem, columns.codeDisplay,
       columns.terminologyVersion, columns.absenceCode, columns.absenceDisplay,
       occurrence.sourceAttributes ? JSON.stringify(occurrence.sourceAttributes) : null,
-      occurrence.correlationId ?? null, occurrence.provenanceKind ?? "clinician",
-      occurrence.provenanceDetail ? JSON.stringify(occurrence.provenanceDetail) : null,
+      occurrence.correlationId ?? null, "clinician",
+      JSON.stringify({ ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value }),
       occurrence.documentedTime ?? null, occurrence.documentedUtcOffsetMinutes ?? null,
       occurrence.documentedPrecision ?? null, command.authorId]);
     if (!saved[0]) throw new ConflictException(`Occurrence identity ${occurrence.id} already belongs to different data`);

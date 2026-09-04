@@ -8,6 +8,7 @@ import { standardEncounterDefinition } from "../app/standard-encounter-definitio
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { encounterEventDetail, encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, validateMedication, type EncounterEvent, type ShellState } from "../app/standard-encounter";
+import { encounterEvents } from "../app/canonical-events";
 
 function memoryStorage(): LocalStoragePort {
   const values = new Map<string, string>();
@@ -51,7 +52,7 @@ test("quick capture saves errors and warnings for review without acknowledgement
   assert.equal(validation.errors.length, 5);
   assert.ok(validation.errors.every((error) => /eMedications\./.test(error)));
   let saved = transitionShell(state, { type: "medication-saved" });
-  assert.equal(saved.encounter.events.length, 1);
+  assert.equal(encounterEvents(saved.encounter.document, standardEncounterDefinition).length, 1);
   assert.equal(saved.medicationDraft, null);
   assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "error"));
 
@@ -64,7 +65,7 @@ test("quick capture saves errors and warnings for review without acknowledgement
   assert.equal(validation.errors.length, 0);
   assert.equal(validation.warnings.length, 1);
   saved = transitionShell(state, { type: "medication-saved" });
-  assert.equal(saved.encounter.events.length, 1);
+  assert.equal(encounterEvents(saved.encounter.document, standardEncounterDefinition).length, 1);
   assert.equal(saved.medicationDraft, null);
   assert.ok(reviewEncounter(saved).some((finding) => finding.severity === "warning"));
 });
@@ -84,17 +85,18 @@ test("rejects included values outside the pinned medication and configured route
 test("multiple administrations persist distinctly and reopen for canonical editing", () => {
   let state = completeMedication(INITIAL_SHELL_STATE, "med-1", "08:35", "Morphine", "7052");
   state = completeMedication(state, "med-2", "08:36", "Aspirin", "1191");
-  assert.equal(state.encounter.events.filter((event) => event.kind === "medication").length, 2);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.kind === "medication").length, 2);
   state = transitionShell(state, { type: "medication-opened", id: "med-1" });
   assert.equal(state.medicationDraft?.medicationCode, "7052");
   state = transitionShell(state, { type: "medication-draft-changed", field: "dose", value: "2" });
   state = transitionShell(state, { type: "medication-saved" });
-  assert.equal(state.encounter.events.filter((event) => event.id === "med-1").length, 1);
-  assert.match(state.encounter.events.find((event) => event.id === "med-1")?.title ?? "", /2 Milligrams \(mg\)/);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.id === "med-1").length, 1);
+  assert.match(encounterEvents(state.encounter.document, standardEncounterDefinition).find((event) => event.id === "med-1")?.title ?? "", /2 Milligrams \(mg\)/);
 
   const storage = memoryStorage();
   saveShellState(storage, state);
-  assert.equal(loadShellState(storage)?.encounter.events.find((event) => event.id === "med-2")?.medication?.medicationCode, "1191");
+  const loaded = loadShellState(storage)!;
+  assert.equal(encounterEvents(loaded.encounter.document, standardEncounterDefinition).find((event) => event.id === "med-2")?.medication?.medicationCode, "1191");
 });
 
 test("remove deletes the opened medication group", () => {
@@ -102,7 +104,7 @@ test("remove deletes the opened medication group", () => {
   state = transitionShell(state, { type: "medication-opened", id: "med-remove" });
   state = transitionShell(state, { type: "medication-removed" });
   assert.equal(state.medicationDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "med-remove"), false);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "med-remove"), false);
 });
 
 test("configured medication metadata drives validation, warnings, review, and restored presentation", () => {
@@ -138,7 +140,7 @@ test("configured medication metadata drives validation, warnings, review, and re
   state = transitionShell(state, { type: "medication-warning-acknowledged", acknowledged: true }, definition);
   state = transitionShell(state, { type: "medication-saved" }, definition);
 
-  const saved = state.encounter.events.find((event) => event.id === "configured-med")!;
+  const saved = encounterEvents(state.encounter.document, definition).find((event) => event.id === "configured-med")!;
   const warning = reviewEncounter(state, definition).find((finding) => finding.target.eventId === saved.id)!;
   assert.equal(warning.category, "Treatment");
   assert.equal(warning.reference, "eMedications.07");
@@ -155,5 +157,5 @@ test("configured medication metadata drives validation, warnings, review, and re
   assert.equal(state.medicationDraft?.warningAcknowledged, false, "correcting the warning resets acknowledgement");
   state = transitionShell(state, { type: "medication-saved" }, definition);
   assert.equal(reviewEncounter(state, definition).some((finding) => finding.target.eventId === saved.id), false);
-  assert.equal(encounterEventDetail(state.encounter.events.find((event) => event.id === saved.id)!, definition), "Configured route · Pain improved");
+  assert.equal(encounterEventDetail(encounterEvents(state.encounter.document, definition).find((event) => event.id === saved.id)!, definition), "Configured route · Pain improved");
 });

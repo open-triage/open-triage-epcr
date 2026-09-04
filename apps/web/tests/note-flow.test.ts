@@ -4,6 +4,7 @@ import { clearShellState, ENCOUNTER_EXTENSION_KEY, ENCOUNTER_EXTENSION_VERSION, 
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
+import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -25,8 +26,8 @@ test("a quick-action note is timestamped and inserted newest first", () => {
   state = transitionShell(state, { type: "note-saved" });
 
   assert.equal(state.noteDraft, null);
-  assert.equal(state.encounter.events.length, 1);
-  assert.deepEqual(state.encounter.events[0], {
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).length, 1);
+  assert.deepEqual(encounterEvents(state.encounter.document, standardEncounterDefinition)[0], {
     id: "visitor-note-1",
     date: "2026-04-18",
     time: "09:02",
@@ -47,7 +48,7 @@ test("opening and revising a note updates the canonical event without duplicatio
   state = transitionShell(state, { type: "note-draft-changed", field: "time", value: "08:31" });
   state = transitionShell(state, { type: "note-saved" });
 
-  const matching = state.encounter.events.filter((event) => event.id === "visitor-note-1");
+  const matching = encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.id === "visitor-note-1");
   assert.equal(matching.length, 1);
   assert.equal(matching[0]?.detail, "Corrected note");
   assert.equal(matching[0]?.time, "08:31");
@@ -60,12 +61,12 @@ test("remove deletes an existing note and discards a new note draft", () => {
   state = transitionShell(state, { type: "note-opened", id: "visitor-note-1" });
   state = transitionShell(state, { type: "note-removed" });
   assert.equal(state.noteDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "visitor-note-1"), false);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "visitor-note-1"), false);
 
   state = transitionShell(state, { type: "note-started", id: "unsaved-note", time: "09:03" });
   state = transitionShell(state, { type: "note-removed" });
   assert.equal(state.noteDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "unsaved-note"), false);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "unsaved-note"), false);
 });
 
 test("the phone flow survives refresh with an in-progress draft and saved encounter", () => {
@@ -77,12 +78,12 @@ test("the phone flow survives refresh with an in-progress draft and saved encoun
   const restored = loadShellState(storage);
   assert.equal(restored?.noteDraft?.summary, "Draft before refresh");
   assert.equal(restored?.noteDraft?.time, "08:36");
-  assert.equal(restored?.encounter.events.length, 0);
+  assert.equal(encounterEvents(restored!.encounter.document, standardEncounterDefinition).length, 0);
 
   let resumed = transitionShell(restored!, { type: "note-saved" });
   saveShellState(storage, resumed);
   resumed = loadShellState(storage)!;
-  assert.equal(resumed.encounter.events.find((event) => event.id === "visitor-note-1")?.detail, "Draft before refresh");
+  assert.equal(encounterEvents(resumed.encounter.document, standardEncounterDefinition).find((event) => event.id === "visitor-note-1")?.detail, "Draft before refresh");
 });
 
 test("browser persistence stores one versioned canonical document and preserves compatible extensions", () => {
@@ -98,7 +99,7 @@ test("browser persistence stores one versioned canonical document and preserves 
   const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
   assert.equal(envelope.persistenceVersion, PERSISTENCE_VERSION);
   assert.equal(envelope.state, undefined);
-  assert.equal(envelope.document.modelVersion, "1.0.0");
+  assert.equal(envelope.document.modelVersion, "1.1.0");
   assert.equal(envelope.document.dataModel.version, "3.5.1");
   assert.deepEqual(envelope.document.formProfile, { id: "standard-encounter-v1", version: "1" });
   assert.equal(envelope.document[ENCOUNTER_EXTENSION_KEY].version, ENCOUNTER_EXTENSION_VERSION);
@@ -131,8 +132,8 @@ test("reset clears local progress and restores the version-controlled baseline",
 
   assert.equal(storage.values.has(STORAGE_KEY), false);
   assert.deepEqual(reset, INITIAL_SHELL_STATE);
-  assert.equal(reset.encounter.events.length, 0);
-  assert.equal(reset.encounter.events.some((event) => event.visitorEntered), false);
+  assert.equal(encounterEvents(reset.encounter.document, standardEncounterDefinition).length, 0);
+  assert.equal(encounterEvents(reset.encounter.document, standardEncounterDefinition).some((event) => event.visitorEntered), false);
 });
 
 test("category-named browser state is preserved for recovery instead of reinterpreted as the standard encounter", () => {
@@ -165,7 +166,7 @@ test("configured note metadata drives capture, validation, review navigation, an
 
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "configured-note", time: "09:10" }, definition);
   state = transitionShell(state, { type: "note-saved" }, definition);
-  const saved = state.encounter.events.find((event) => event.id === "configured-note")!;
+  const saved = encounterEvents(state.encounter.document, definition).find((event) => event.id === "configured-note")!;
   assert.equal(saved.title, "Field observation");
   assert.equal(saved.reference, "eNarrative.02");
 
@@ -185,7 +186,7 @@ test("configured note requiredness can permit an empty summary", () => {
   const base = standardEncounterDefinition.events.note;
   const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, note: { ...base, required: { ...base.required, summary: false } } } };
   const note: EncounterEvent = { id: "optional-note", time: "09:11", kind: "note", title: "Legacy title", detail: "", reference: "legacy" };
-  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [note, ...INITIAL_SHELL_STATE.encounter.events] } };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: saveCanonicalEvent(INITIAL_SHELL_STATE.encounter.document, note, definition) } };
 
   assert.equal(reviewEncounter(state, definition).some((finding) => finding.target.eventId === note.id), false);
 });
@@ -196,7 +197,8 @@ test("restored note events resolve current definition metadata instead of persis
   state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Persisted observation" });
   state = transitionShell(state, { type: "note-saved" });
   saveShellState(storage, state);
-  const restoredEvent = loadShellState(storage)!.encounter.events.find((event) => event.id === "visitor-note-1")!;
+  const restored = loadShellState(storage)!;
+  const restoredEvent = encounterEvents(restored.encounter.document, standardEncounterDefinition).find((event) => event.id === "visitor-note-1")!;
   const base = standardEncounterDefinition.events.note;
   const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, note: {
     ...base,

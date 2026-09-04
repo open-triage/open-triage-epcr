@@ -1,6 +1,6 @@
 export type NemsisReference = `e${string}`;
 export type ConfiguredEventType = "vitals" | "medication" | "procedure" | "note";
-export type QuickActionId = ConfiguredEventType | "patient";
+export type QuickActionId = ConfiguredEventType;
 export type ReviewSeverity = "error" | "warning";
 export type ProcedureField = "procedure" | "time" | "attempts" | "success" | "outcome" | "complications";
 export type VitalField = "systolic" | "diastolic" | "heartRate" | "spo2" | "respiratoryRate" | "gcs" | "pain";
@@ -128,13 +128,7 @@ export type EncounterDefinition = {
   readonly id: string;
   readonly version: number;
   readonly synthetic: true;
-  readonly labels: {
-    readonly incident: string; readonly patientDialogEyebrow: string; readonly patientDialogTitle: string;
-    readonly savePatient: string;
-  };
-  readonly patient: {
-    readonly quickAction: { readonly visible: boolean; readonly label: string; readonly title: string };
-  };
+  readonly labels: { readonly incident: string };
   readonly composition: {
     readonly quickActionOrder: ReadonlyArray<QuickActionId>;
     readonly review: {
@@ -156,7 +150,6 @@ export function configuredQuickActions(definition: EncounterDefinition): Readonl
     medication: { ...definition.events.medication.quickAction, title: definition.events.medication.labels.editorTitle },
     procedure: { ...definition.events.procedure.quickAction, title: definition.events.procedure.labels.editorTitle },
     note: { ...definition.events.note.quickAction, title: definition.events.note.labels.timelineTitle },
-    patient: definition.patient.quickAction,
   };
   return definition.composition.quickActionOrder.flatMap((id) => actions[id].visible ? [{ id, label: actions[id].label, title: actions[id].title }] : []);
 }
@@ -189,16 +182,11 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
       if (!supported.includes(key)) diagnostics.push(`${path ? `${path}.` : ""}${key} is not supported by schemaVersion 1`);
     }
   };
-  rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "patient", "composition", "events"]);
-  requiredStrings(root.labels, "labels", ["incident", "patientDialogEyebrow", "patientDialogTitle", "savePatient"]);
-  const patient = isRecord(root.patient) ? root.patient : {};
-  const patientQuickAction = isRecord(patient.quickAction) ? patient.quickAction : {};
-  if (typeof patientQuickAction.visible !== "boolean") diagnostics.push("patient.quickAction.visible must be a boolean");
-  requiredStrings(patientQuickAction, "patient.quickAction", ["label", "title"]);
-  rejectUnsupportedKeys(patient, "patient", ["quickAction"]);
+  rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "composition", "events"]);
+  requiredStrings(root.labels, "labels", ["incident"]);
   const composition = isRecord(root.composition) ? root.composition : {};
   rejectUnsupportedKeys(composition, "composition", ["quickActionOrder", "review", "summary"]);
-  const quickActionIds = ["vitals", "medication", "procedure", "note", "patient"] as const;
+  const quickActionIds = ["vitals", "medication", "procedure", "note"] as const;
   if (!Array.isArray(composition.quickActionOrder)
     || composition.quickActionOrder.length !== quickActionIds.length
     || new Set(composition.quickActionOrder).size !== quickActionIds.length

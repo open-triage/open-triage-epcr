@@ -1,4 +1,4 @@
-import type { ClinicianSession, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
@@ -28,6 +28,7 @@ type OpenedCallContext = {
   readonly callNumber: string;
   readonly dispatchedAt?: string;
   readonly dispatchReason?: string | null;
+  readonly dispatchPriority?: DispatchPriority | null;
   readonly chiefComplaint?: string | null;
   readonly unit?: { readonly callSign: string };
 };
@@ -74,6 +75,7 @@ export function cacheOpenedReport(
       ...(typeof call === "string" ? {} : {
         ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),
         ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
+        ...(call.dispatchPriority !== undefined ? { dispatchPriority: call.dispatchPriority } : {}),
         ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
         ...(call.unit?.callSign ? { unitCallSign: call.unit.callSign } : {}),
       }),
@@ -99,6 +101,7 @@ export function cacheReopenedReport(
     callNumber: opened.callNumber,
     ...(opened.dispatchedAt ? { dispatchedAt: opened.dispatchedAt } : {}),
     ...(opened.dispatchReason !== undefined ? { dispatchReason: opened.dispatchReason } : {}),
+    ...(opened.dispatchPriority !== undefined ? { dispatchPriority: opened.dispatchPriority } : {}),
     ...(opened.chiefComplaint !== undefined ? { chiefComplaint: opened.chiefComplaint } : {}),
     ...(opened.unitCallSign ? { unit: { callSign: opened.unitCallSign } } : {}),
   }, now);
@@ -118,8 +121,10 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
       status: "draft",
       ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),
       ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
+      ...(call.dispatchPriority !== undefined ? { dispatchPriority: call.dispatchPriority } : {}),
       ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
       ...(call.unitCallSign ? { unitCallSign: call.unitCallSign } : {}),
+      ...(call.agencyTimeZone ? { agencyTimeZone: call.agencyTimeZone } : {}),
     },
     ownerUserId: session.user.id,
     callNumber: call.callNumber,
@@ -169,15 +174,17 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     catalogReleaseId: cached.report.catalogReleaseId,
     ...(cached.report.dispatchedAt ? { dispatchedAt: cached.report.dispatchedAt } : {}),
     ...(cached.report.dispatchReason !== undefined ? { dispatchReason: cached.report.dispatchReason } : {}),
+    ...(cached.report.dispatchPriority !== undefined ? { dispatchPriority: cached.report.dispatchPriority } : {}),
     ...(cached.report.chiefComplaint !== undefined ? { chiefComplaint: cached.report.chiefComplaint } : {}),
     ...(cached.report.unitCallSign ? { unitCallSign: cached.report.unitCallSign } : {}),
+    ...(cached.report.agencyTimeZone ? { agencyTimeZone: cached.report.agencyTimeZone } : {}),
   }));
 }
 
 export function cachedReopenResponse(storage: StoragePort, ownerUserId: string, reportId: string): ReopenOpenCallResponse | null {
   const cached = cachedOpenReports(storage, ownerUserId).find((candidate) => candidate.report.id === reportId);
-  if (!cached) return null;
-  return { callNumber: cached.callNumber, report: { ...cached.report, status: "draft", groups: [], occurrences: [] } };
+  if (!cached?.report.document) return null;
+  return { callNumber: cached.callNumber, report: { ...cached.report, document: cached.report.document, dispatchConflicts: cached.report.dispatchConflicts ?? [], status: "draft" } };
 }
 
 export function queueDraftChange(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {
@@ -188,6 +195,13 @@ export function queueDraftChange(storage: StoragePort, reportId: string, command
   if (last && !last.attempted) queued[queued.length - 1] = { command, attempted: false };
   else queued.push({ command, attempted: false });
   replace(storage, { ...cached, syncStatus: "pending", queuedChanges: queued });
+}
+
+/** Rebuilds an unsynced queue from the latest local document after a known client-identity migration. */
+export function replaceQueuedDraftChanges(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) throw new Error(`Report ${reportId} is not cached for offline use`);
+  replace(storage, { ...cached, syncStatus: "pending", queuedChanges: [{ command, attempted: false }] });
 }
 
 export function nextDraftChange(storage: StoragePort, reportId: string): QueuedDraftChange | null {
@@ -210,6 +224,37 @@ export function acceptDraftChange(storage: StoragePort, reportId: string, comman
     syncStatus: queuedChanges.length ? "pending" : "saved",
     lastSavedAt: now.toISOString(),
     queuedChanges,
+  });
+}
+
+export function rebaseQueuedDraftChanges(storage: StoragePort, reportId: string, serverRevision: number): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  const latest = cached?.queuedChanges.at(-1);
+  if (!cached || !latest || latest.attempted) return;
+  replace(storage, {
+    ...cached,
+    report: { ...cached.report, revision: serverRevision },
+    queuedChanges: [{ command: { ...latest.command, expectedRevision: serverRevision }, attempted: false }],
+  });
+}
+
+export function reconcileCachedActiveReport(
+  storage: StoragePort,
+  reportId: string,
+  resource: ActiveReportResource,
+  document: EncounterDocument,
+): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached) return;
+  replace(storage, {
+    ...cached,
+    report: {
+      ...cached.report,
+      revision: resource.reportRevision,
+      document,
+      dispatchConflicts: resource.dispatchConflicts,
+      dispatchCancellation: resource.dispatchCancellation,
+    },
   });
 }
 

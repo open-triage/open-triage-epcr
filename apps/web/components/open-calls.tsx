@@ -62,7 +62,6 @@ export function OpenCalls({
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const callsRef = useRef<OpenCall[]>([]);
   const syncingCachedReports = useRef(false);
   const handledRefreshRequest = useRef(refreshRequest);
@@ -95,7 +94,6 @@ export function OpenCalls({
       const response = await fetchOpenCalls(session.accessToken);
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
-      const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       response.openCalls.forEach((call) => cacheOpenCallSummary(window.localStorage, session, call));
@@ -109,9 +107,6 @@ export function OpenCalls({
       const syncedVisible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
       callsRef.current = syncedVisible;
       setCalls(syncedVisible);
-      if (removed.length > 0) setNotice(removed.length === 1
-        ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
-        : `${removed.length} calls were completed on the stationary interface.`);
       if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
       if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
@@ -191,7 +186,6 @@ export function OpenCalls({
           <h1 id="open-calls-title">Open calls</h1>
         </div>
       </div>
-      {notice && <p className="assignment-notice" role="status">{notice}</p>}
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="assignment-empty">Loading open calls…</p>}
       {loaded && calls.length === 0 && <p className="assignment-empty">You have no open calls.</p>}
@@ -208,6 +202,7 @@ export function OpenCalls({
                 <span>{call.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
               </div>
               <dl>
+                <div><dt>Priority</dt><dd>{call.dispatchPriority?.display ?? "Not provided"}</dd></div>
                 <div><dt>Last saved</dt><dd><time dateTime={call.lastSavedAt}>{savedTime(call.lastSavedAt)}</time></dd></div>
                 <div><dt>Validation errors</dt><dd>{call.validationErrorCount}</dd></div>
               </dl>

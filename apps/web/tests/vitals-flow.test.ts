@@ -5,6 +5,7 @@ import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
 import { EMPTY_VITALS, INITIAL_SHELL_STATE, encounterEventDetail, encounterEventPresentation, reviewEncounter, bundledEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/standard-encounter";
 import { nullOptionsFor, validateVitals } from "../app/vital-validation";
+import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 
 const normal = { ...EMPTY_VITALS, systolic: "120", diastolic: "80", heartRate: "72", spo2: "98", respiratoryRate: "16", gcs: "15", pain: "2", nullValues: {} };
 function started(id = "vital-1", time = "09:00"): ShellState { return transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id, time }); }
@@ -18,7 +19,7 @@ test("repeatable vital sets save as distinct chronological NEMSIS timeline event
   let state = transitionShell(fill(started("vital-1", "09:00")), { type: "vitals-saved" });
   state = transitionShell(state, { type: "vitals-started", id: "vital-2", time: "08:45" });
   state = transitionShell(fill(state, { ...normal, heartRate: "80" }), { type: "vitals-saved" });
-  const entries = state.encounter.events.filter((event) => event.vitals && event.visitorEntered);
+  const entries = encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.vitals && event.visitorEntered);
   assert.equal(entries.length, 2);
   assert.deepEqual(entries.map((event) => event.time), ["09:00", "08:45"]);
   assert.equal(entries[0]?.reference, "eVitals.VitalGroup");
@@ -31,7 +32,7 @@ test("editing a vital set corrects the canonical entry and its clinical time", (
   state = transitionShell(state, { type: "vitals-value-changed", field: "systolic", value: "126" });
   state = transitionShell(state, { type: "vitals-time-changed", value: "08:25" });
   state = transitionShell(state, { type: "vitals-saved" });
-  const matching = state.encounter.events.filter((event) => event.id === "vital-1");
+  const matching = encounterEvents(state.encounter.document, standardEncounterDefinition).filter((event) => event.id === "vital-1");
   assert.equal(matching.length, 1); assert.equal(matching[0]?.time, "08:25"); assert.match(matching[0]?.detail ?? "", /BP 126\/80/);
 });
 
@@ -40,7 +41,7 @@ test("remove deletes the opened vital group", () => {
   state = transitionShell(state, { type: "vitals-opened", id: "vital-remove" });
   state = transitionShell(state, { type: "vitals-removed" });
   assert.equal(state.vitalDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "vital-remove"), false);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "vital-remove"), false);
 });
 
 test("NEMSIS ranges block errors while plausible-range warnings remain saveable", () => {
@@ -66,13 +67,14 @@ test("in-progress and saved vital sets persist across refresh", () => {
   const storage = memoryStorage(); let state = fill(started()); saveShellState(storage, state);
   assert.equal(loadShellState(storage)?.vitalDraft?.values.heartRate, "72");
   state = transitionShell(loadShellState(storage)!, { type: "vitals-saved" }); saveShellState(storage, state);
-  assert.equal(loadShellState(storage)?.encounter.events.some((event) => event.id === "vital-1"), true);
+  const restored = loadShellState(storage)!;
+  assert.equal(encounterEvents(restored.encounter.document, standardEncounterDefinition).some((event) => event.id === "vital-1"), true);
 });
 
 test("invalid quick captures save and remain blocking at review", () => {
   const state = transitionShell(started(), { type: "vitals-saved" });
   assert.equal(state.vitalDraft, null);
-  assert.equal(state.encounter.events.some((event) => event.id === "vital-1"), true);
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).some((event) => event.id === "vital-1"), true);
   assert.ok(reviewEncounter(state).some((finding) => finding.severity === "error"));
 });
 
@@ -111,7 +113,7 @@ test("configured vital metadata drives order, validation, review navigation, tim
     if (field !== "nullValues") state = transitionShell(state, { type: "vitals-value-changed", field: field as keyof Omit<VitalValues, "nullValues">, value: value as string }, definition);
   }
   state = transitionShell(state, { type: "vitals-saved" }, definition);
-  const saved = state.encounter.events.find(({ id }) => id === "configured-vital")!;
+  const saved = encounterEvents(state.encounter.document, definition).find(({ id }) => id === "configured-vital")!;
   assert.deepEqual(encounterEventPresentation(saved, definition), { title: "Configured observations", reference: "eVitals.ConfiguredGroup" });
   assert.match(saved.detail, /Pressure 251 kPa/);
   assert.match(encounterEventDetail({ ...saved, detail: "stale persisted summary" }, definition), /Pressure 251 kPa/);
@@ -126,13 +128,13 @@ test("configured vital metadata drives order, validation, review navigation, tim
 test("legacy persisted vital entries without nullValues remain readable and editable", () => {
   const legacyValues = { systolic: "118", diastolic: "76", heartRate: "70", spo2: "97", respiratoryRate: "15", gcs: "15", pain: "1" } as VitalValues;
   const legacyEvent = { id: "legacy-vital", date: "2026-04-18", time: "08:10", kind: "care" as const, title: "Vital signs", detail: "legacy", reference: "eVitals.VitalGroup", vitals: legacyValues };
-  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, events: [legacyEvent, ...INITIAL_SHELL_STATE.encounter.events] } };
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: saveCanonicalEvent(INITIAL_SHELL_STATE.encounter.document, legacyEvent, standardEncounterDefinition) } };
   assert.equal(reviewEncounter(state).some(({ target }) => target.eventId === legacyEvent.id), false);
   const opened = transitionShell(state, { type: "vitals-opened", id: legacyEvent.id });
   assert.equal(opened.vitalDraft?.values.heartRate, "70");
   assert.deepEqual(opened.vitalDraft?.values.nullValues, {});
 
   const storage = memoryStorage();
-  storage.setItem(STORAGE_KEY, JSON.stringify({ ...state, vitalDraft: { id: "legacy-draft", date: "2026-04-18", time: "08:12", values: legacyValues, isNew: true } }));
+  saveShellState(storage, { ...state, vitalDraft: { id: "legacy-draft", date: "2026-04-18", time: "08:12", values: legacyValues, isNew: true } });
   assert.deepEqual(loadShellState(storage)?.vitalDraft?.values.nullValues, {});
 });
