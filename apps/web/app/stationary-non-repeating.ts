@@ -1,10 +1,11 @@
 import type { EncounterDocument, EncounterGroupInstance } from "@open-triage/contracts";
 import { editStationaryCodedValue, type StationaryCodedSelection } from "./stationary-coded-value";
 import {
-  editScalarOccurrence,
+  editScalarSelection,
   scalarControlPresentation,
   type ScalarEditResult,
   type ScalarControlPresentation,
+  type StationaryScalarSelection,
 } from "./stationary-scalar";
 import {
   COMPILED_STATIONARY_LAYOUT,
@@ -173,22 +174,35 @@ export function editNonRepeatingScalarValue(
   createId: () => string = () => crypto.randomUUID(),
   now = new Date(),
 ): ScalarEditResult {
+  return editNonRepeatingScalarSelection(document, target, { kind: "scalar", input }, createId, now);
+}
+
+/** Applies the common picker state contract while preserving non-repeating ancestry and occurrence identity. */
+export function editNonRepeatingScalarSelection(
+  document: EncounterDocument,
+  target: { readonly groupId: string; readonly elementId: string; readonly groupInstanceId?: string; readonly parentInstanceId?: string; readonly occurrenceId?: string },
+  selection: StationaryScalarSelection | undefined,
+  createId: () => string = () => crypto.randomUUID(),
+  now = new Date(),
+): ScalarEditResult {
   const field = requireEditableNonRepeatingElement(target.groupId, target.elementId);
   if (!field.scalar) throw new Error(`${target.elementId} is coded, not scalar`);
   const currentInstance = target.groupInstanceId
     ? nonRepeatingGroupInstances(document, target.groupId).find(({ instanceId }) => instanceId === target.groupInstanceId)
     : undefined;
   if (target.groupInstanceId && !currentInstance) throw new Error(`${target.groupId} is missing instance ${target.groupInstanceId}`);
-  if (!currentInstance && input === "" && field.catalog.occurrence.min === 0) return { ok: true, document, occurrenceId: target.occurrenceId ?? "" };
+  if (!currentInstance && (!selection || (selection.kind === "scalar" && selection.input === "")) && field.catalog.occurrence.min === 0) {
+    return { ok: true, document, occurrenceId: target.occurrenceId ?? "" };
+  }
   const ensured = currentInstance
     ? { document, instance: currentInstance }
     : ensureNonRepeatingInstance(document, target.groupId, target.parentInstanceId, createId);
-  return editScalarOccurrence(ensured.document, {
+  return editScalarSelection(ensured.document, {
     groupId: target.groupId,
     groupInstanceId: ensured.instance.instanceId,
     elementId: target.elementId,
     ...(target.occurrenceId ? { occurrenceId: target.occurrenceId } : {}),
-    input,
+    ...(selection ? { selection } : {}),
   }, createId, now);
 }
 

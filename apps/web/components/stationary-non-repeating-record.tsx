@@ -4,6 +4,7 @@ import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "
 import React, { Fragment, useState, type CSSProperties } from "react";
 import {
   editNonRepeatingCodedValue,
+  editNonRepeatingScalarSelection,
   editNonRepeatingScalarValue,
   nonRepeatingGroupInstances,
   STATIONARY_NON_REPEATING_GROUPS,
@@ -13,6 +14,7 @@ import {
 import { scalarOccurrences, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { stationaryCodedField } from "../app/stationary-coded-value";
 import { StationaryCodedValueField } from "./stationary-coded-field";
+import { StationaryDatePicker } from "./stationary-date-picker";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 
@@ -56,6 +58,23 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
 }) {
   const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
   if (!field.scalar) return null;
+  if (field.id === "ePatient.17") {
+    const value = instance?.elements.find(({ id }) => id === field.id)?.values[0];
+    return <div data-element-id={field.id} {...(instance ? { "data-group-instance-id": instance.instanceId } : {})} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
+      <StationaryDatePicker presentation={field.scalar} catalog={field.catalog} value={value} findings={findings} disabled={disabled} onChange={(selection) => {
+        if (disabled) return;
+        const result = editNonRepeatingScalarSelection(document, {
+          groupId: group.id, elementId: field.id,
+          ...(instance ? { groupInstanceId: instance.instanceId } : {}),
+          ...(parentInstanceId ? { parentInstanceId } : {}),
+          ...(value ? { occurrenceId: value.occurrenceId } : {}),
+        }, selection);
+        if (!result.ok) return setFindings(result.findings);
+        setFindings([]);
+        onDocumentChange(result.document);
+      }} />
+    </div>;
+  }
   if (instance && (scalarOccurrences(document, group.id, instance.instanceId, field.id).length > 0 || field.scalar.repeatable)) {
     return <div data-element-id={field.id} data-group-instance-id={instance.instanceId} aria-disabled={disabled || undefined} className={disabled ? "stationary-field-disabled" : undefined}>
       <StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={field.scalar}

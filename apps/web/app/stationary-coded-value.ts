@@ -8,6 +8,14 @@ import {
   type NemsisDataElement,
 } from "./nemsis-data-model";
 import { withoutDemoProvenance } from "./demo-provenance";
+import {
+  stationaryExceptionalChoices,
+  stationaryExceptionalSelection,
+  validateStationaryExceptionalSelection,
+  type StationaryExceptionalChoice,
+} from "./stationary-value-picker";
+
+export type { StationaryExceptionalChoice } from "./stationary-value-picker";
 
 export type StationaryCodedControlKind = "select" | "combobox" | "external-search";
 export type StationaryCodedOption = NemsisCodeValue & {
@@ -15,11 +23,6 @@ export type StationaryCodedOption = NemsisCodeValue & {
   readonly terminologyVersion?: string;
   readonly suggested: boolean;
 };
-export type StationaryExceptionalChoice =
-  | { readonly key: "null"; readonly kind: "null"; readonly label: "No value" }
-  | { readonly key: `not-value:${string}`; readonly kind: "null"; readonly code: string; readonly label: string }
-  | { readonly key: `pertinent-negative:${string}`; readonly kind: "pertinent-negative"; readonly code: string; readonly label: string };
-
 export type StationaryCodedField = {
   readonly elementId: string;
   readonly label: string;
@@ -58,13 +61,7 @@ export function stationaryCodedField(elementOrId: NemsisDataElement | string): S
       terminologyVersion: list.publishedAt,
       suggested: true,
     })));
-  const exceptionalChoices: StationaryExceptionalChoice[] = [
-    ...(element.nillable && element.permittedNotValues.length === 0
-      ? [{ key: "null", kind: "null", label: "No value" } as const]
-      : []),
-    ...element.permittedNotValues.map(({ code, label }) => ({ key: `not-value:${code}` as const, kind: "null" as const, code, label })),
-    ...element.permittedPertinentNegatives.map(({ code, label }) => ({ key: `pertinent-negative:${code}` as const, kind: "pertinent-negative" as const, code, label })),
-  ];
+  const exceptionalChoices = stationaryExceptionalChoices(element);
   return {
     elementId: element.id,
     label: element.name,
@@ -92,10 +89,7 @@ export function validateStationaryCodedSelection(field: StationaryCodedField, se
     }
     return;
   }
-  const key = selection.kind === "null" && !selection.code ? "null" : `${selection.kind === "null" ? "not-value" : "pertinent-negative"}:${selection.code}`;
-  if (!field.exceptionalChoices.some((choice) => choice.key === key)) {
-    throw new Error(`${key} is not permitted for ${field.elementId}`);
-  }
+  validateStationaryExceptionalSelection(field.elementId, selection);
 }
 
 export function codedSelectionFromOption(option: StationaryCodedOption): StationaryCodedSelection {
@@ -103,11 +97,7 @@ export function codedSelectionFromOption(option: StationaryCodedOption): Station
 }
 
 export function exceptionalSelection(field: StationaryCodedField, key: string): StationaryCodedSelection | undefined {
-  if (!key) return undefined;
-  const choice = field.exceptionalChoices.find((candidate) => candidate.key === key);
-  if (!choice) throw new Error(`${key} is not permitted for ${field.elementId}`);
-  if (choice.kind === "pertinent-negative") return { kind: choice.kind, code: choice.code, display: choice.label };
-  return { kind: "null", ...(choice.key === "null" ? {} : { code: choice.code, display: choice.label }) };
+  return stationaryExceptionalSelection(field.elementId, key);
 }
 
 function canonicalValue(selection: StationaryCodedSelection, occurrenceId: string, attributes?: EncounterValue["attributes"]): EncounterValue {

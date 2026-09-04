@@ -2,6 +2,10 @@ import type { EncounterAttributes, EncounterDocument, EncounterValue, ScalarEnco
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } from "./nemsis-data-model";
 import { withoutDemoProvenance } from "./demo-provenance";
+import {
+  validateStationaryExceptionalSelection,
+  type StationaryExceptionalSelection,
+} from "./stationary-value-picker";
 
 export type ScalarDatatypeFamily = "text" | "numeric" | "integer" | "boolean" | "date" | "datetime" | "time" | "uri" | "duration" | "binary";
 
@@ -33,6 +37,10 @@ export interface ScalarValidationFinding {
 export type ScalarEditResult =
   | { readonly ok: true; readonly document: EncounterDocument; readonly occurrenceId: string }
   | { readonly ok: false; readonly document: EncounterDocument; readonly findings: ReadonlyArray<ScalarValidationFinding> };
+
+export type StationaryScalarSelection =
+  | { readonly kind: "scalar"; readonly input: string | boolean }
+  | StationaryExceptionalSelection;
 
 export function scalarDatatypeFamily(base: string): ScalarDatatypeFamily {
   if (["decimal", "double", "float"].includes(base)) return "numeric";
@@ -237,6 +245,51 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
     ...compatibleExtensions,
     ...scalarEncounterValue(element, options.input, occurrenceId, options.attributes ?? withoutDemoProvenance(previous?.attributes)),
   };
+  const values = [...existing];
+  if (index < 0) values.push(next); else values[index] = next;
+  return { ok: true, document: replaceElementValues(document, options.groupId, options.groupInstanceId, options.elementId, values, now), occurrenceId };
+}
+
+/** Replaces one scalar occurrence with an ordinary, exceptional, or unset state without changing its identity. */
+export function editScalarSelection(document: EncounterDocument, options: {
+  readonly groupId: string; readonly groupInstanceId: string; readonly elementId: string;
+  readonly occurrenceId?: string; readonly selection?: StationaryScalarSelection; readonly attributes?: EncounterAttributes;
+}, createId: () => string = () => crypto.randomUUID(), now = new Date()): ScalarEditResult {
+  if (options.selection?.kind === "scalar") return editScalarOccurrence(document, {
+    groupId: options.groupId,
+    groupInstanceId: options.groupInstanceId,
+    elementId: options.elementId,
+    ...(options.occurrenceId ? { occurrenceId: options.occurrenceId } : {}),
+    input: options.selection.input,
+    ...(options.attributes ? { attributes: options.attributes } : {}),
+  }, createId, now);
+
+  const element = requireNemsisDataElement(options.elementId);
+  if (element.valueSource.kind !== "scalar") throw new Error(`${options.elementId} is coded, not scalar`);
+  if (element.groupPath.at(-1) !== options.groupId) throw new Error(`${options.elementId} does not belong to ${options.groupId}`);
+  if (options.selection) validateStationaryExceptionalSelection(element, options.selection);
+  const existing = elementValues(document, options.groupId, options.groupInstanceId, options.elementId);
+  const index = options.occurrenceId
+    ? existing.findIndex(({ occurrenceId }) => occurrenceId === options.occurrenceId)
+    : existing.length ? 0 : -1;
+  const previous = index >= 0 ? existing[index] : undefined;
+  const occurrenceId = previous?.occurrenceId ?? options.occurrenceId ?? createId();
+  if (!options.selection) {
+    if (!previous) return { ok: true, document, occurrenceId };
+    return removeScalarOccurrence(document, options.groupId, options.groupInstanceId, options.elementId, occurrenceId, now);
+  }
+  if (!previous && element.occurrence.max !== "unbounded" && existing.length >= element.occurrence.max) {
+    return { ok: false, document, findings: [finding(element, "cardinality", `${element.name} allows ${element.occurrence.max} occurrence${element.occurrence.max === 1 ? "" : "s"}.`, occurrenceId)] };
+  }
+  const previousRecord: Record<string, unknown> = previous ?? {};
+  const { kind: _kind, occurrenceId: _occurrenceId, value: _value, lexical: _lexical, precision: _precision,
+    utcOffsetMinutes: _utcOffsetMinutes, attributes: _attributes, code: _code, display: _display,
+    notValue: _notValue, ...compatibleExtensions } = previousRecord;
+  const attributes = options.attributes ?? withoutDemoProvenance(previous?.attributes);
+  const common = { ...compatibleExtensions, occurrenceId, ...(attributes ? { attributes } : {}) };
+  const next: EncounterValue = options.selection.kind === "pertinent-negative"
+    ? { ...common, kind: "pertinent-negative", code: options.selection.code, ...(options.selection.display ? { display: options.selection.display } : {}) }
+    : { ...common, kind: "null", ...(options.selection.code ? { notValue: { code: options.selection.code, ...(options.selection.display ? { display: options.selection.display } : {}) } } : {}) };
   const values = [...existing];
   if (index < 0) values.push(next); else values[index] = next;
   return { ok: true, document: replaceElementValues(document, options.groupId, options.groupInstanceId, options.elementId, values, now), occurrenceId };
