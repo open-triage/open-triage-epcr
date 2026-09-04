@@ -1,4 +1,4 @@
-import type { ActiveReportResource, DispatchCancellation, DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 
@@ -14,6 +14,7 @@ export interface ActiveDraftReport {
   readonly callNumber?: string;
   readonly dispatchedAt?: string;
   readonly dispatchReason?: string | null;
+  readonly dispatchPriority?: DispatchPriority | null;
   readonly chiefComplaint?: string | null;
   readonly unitCallSign?: string;
   readonly agencyTimeZone?: string;
@@ -35,6 +36,7 @@ export interface DraftGroupMutation {
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
+  readonly tombstone?: boolean;
 }
 
 export type DraftValue =
@@ -53,7 +55,8 @@ export interface DraftOccurrenceMutation {
   readonly groupInstanceId: string;
   readonly ordinal: number;
   readonly sourceAttributes?: Record<string, unknown>;
-  readonly value: DraftValue;
+  readonly tombstone?: boolean;
+  readonly value?: DraftValue;
 }
 
 export interface SaveDraftReportCommand {
@@ -79,6 +82,28 @@ export function stableDraftId(reportId: string, localId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+const persistedDraftIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function draftTargetId(reportId: string, targetKind: "group" | "occurrence", identity: string): string {
+  return persistedDraftIdPattern.test(identity) ? identity : stableDraftId(reportId, `${targetKind}:${identity}`);
+}
+
+export function draftCommandUsesLegacyDerivedIds(
+  reportId: string,
+  shell: ShellState,
+  command: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): boolean {
+  const legacyGroupIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances
+    .filter((instance) => persistedDraftIdPattern.test(instance.instanceId))
+    .map((instance) => stableDraftId(reportId, `group:${instance.instanceId}`))));
+  const legacyOccurrenceIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances.flatMap((instance) =>
+    instance.elements.flatMap((element) => element.values
+      .filter((value) => persistedDraftIdPattern.test(value.occurrenceId))
+      .map((value) => stableDraftId(reportId, `occurrence:${value.occurrenceId}`))))));
+  return command.groups.some(({ id }) => legacyGroupIds.has(id))
+    || command.occurrences.some(({ id }) => legacyOccurrenceIds.has(id));
+}
+
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
   if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };
@@ -99,9 +124,16 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
   return { kind: "text", value: String(value.value) };
 }
 
-export function shellStateToDraftMutations(reportId: string, shell: ShellState): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
-  const document = shell.encounter.document;
+export function encounterDocumentToDraftMutations(
+  reportId: string,
+  document: EncounterDocument,
+  persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
   const instances = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [`${group.id}:${instance.instanceId}`, instance] as const)));
+  const groupTargetIds = new Map(document.groups.flatMap((group) => group.instances.map((instance) => [
+    instance.instanceId,
+    draftTargetId(reportId, "group", instance.instanceId),
+  ] as const)));
   const groups: DraftGroupMutation[] = [];
   const occurrences: DraftOccurrenceMutation[] = [];
   document.groups.forEach((group) => {
@@ -109,20 +141,45 @@ export function shellStateToDraftMutations(reportId: string, shell: ShellState):
     group.instances.forEach((instance, ordinal) => {
       const parentGroupId = getNemsisGroup(group.id)?.parentId;
       const parentCandidates = parentGroupId ? [...instances.entries()].filter(([key]) => key.startsWith(`${parentGroupId}:`)).map(([, candidate]) => candidate) : [];
-      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`)) ?? parentCandidates[0];
-      const groupInstanceId = stableDraftId(reportId, `group:${instance.instanceId}`);
+      const parent = parentCandidates.find((candidate) => candidate.instanceId === instance.parentInstanceId)
+        ?? parentCandidates.find((candidate) => candidate.instanceId === instance.instanceId || instance.instanceId.startsWith(`${candidate.instanceId}:`))
+        ?? parentCandidates[0];
+      const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: stableDraftId(reportId, `group:${parent.instanceId}`) } : {}), ...(documentedTime ? { documentedTime } : {}) });
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
-          id: stableDraftId(reportId, `occurrence:${value.occurrenceId}`), elementId: element.id,
+          id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
           value: draftValue(element.id, value),
         });
       }));
     });
   });
+  const activeGroupIds = new Set(groups.map(({ id }) => id));
+  const activeOccurrenceIds = new Set(occurrences.map(({ id }) => id));
+  for (const group of persisted?.groups ?? []) {
+    if (!group.tombstone && !activeGroupIds.has(group.id)) groups.push({ ...group, tombstone: true });
+  }
+  for (const occurrence of persisted?.occurrences ?? []) {
+    if (occurrence.tombstone || activeOccurrenceIds.has(occurrence.id)) continue;
+    occurrences.push({
+      id: occurrence.id,
+      elementId: occurrence.elementId,
+      groupInstanceId: occurrence.groupInstanceId,
+      ordinal: occurrence.ordinal,
+      tombstone: true,
+    });
+  }
   return { groups, occurrences };
+}
+
+export function shellStateToDraftMutations(
+  reportId: string,
+  shell: ShellState,
+  persisted?: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
 }
 
 function apiBaseUrl(): string | null {

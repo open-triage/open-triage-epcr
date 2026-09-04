@@ -39,4 +39,5 @@ test("payload identities map stably while nested and hidden values are seeded wi
   const record = occurrences.find((parameters) => parameters[5] === "eRecord.01");
   assert.equal(record[10], "PCR-AGENCY-0001");
   assert.equal(dispatchEntityId(reportId, "group:patient"), dispatchEntityId(reportId, "group:patient"));
+  assert.match(dispatchEntityId(reportId, "group:patient"), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });

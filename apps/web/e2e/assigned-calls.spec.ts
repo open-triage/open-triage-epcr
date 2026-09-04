@@ -74,6 +74,7 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(card).toContainText(assignedCall.callNumber);
   await expect(card).toContainText(assignedCall.unit.callSign);
   await expect(card).toContainText(assignedCall.dispatchReason!);
+  await expect(card).toContainText(assignedCall.dispatchPriority!.display);
   await expect(card).toContainText("Assigned", { ignoreCase: true });
   const dispatchedAt = new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -89,7 +90,7 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await refresh.click();
   await expect(card).toHaveCount(0);
   expect(await refresh.boundingBox()).toEqual(refreshSize);
-  await expect(section.getByRole("status")).toHaveText(`Call ${assignedCall.callNumber} assignment canceled.`);
+  await expect(section.getByRole("status")).toHaveCount(0);
 });
 
 test("an absent dispatch reason has a neutral label and never falls back to chief complaint", async ({ page }) => {
@@ -452,7 +453,7 @@ test("completion discovered while a form is active stops editing and returns to 
   completed = true;
   await page.getByRole("button", { name: "Refresh calls" }).click();
 
-  await expect(page.getByText("This report was completed on the stationary interface. Further edits have stopped.")).toBeVisible();
+  await expect(page.locator(".assignment-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);

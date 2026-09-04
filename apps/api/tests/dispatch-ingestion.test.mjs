@@ -7,7 +7,7 @@ import { ingestDispatchDelivery } from "../dist/dispatch/dispatch-ingestion.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const catalog = JSON.parse(await readFile(resolve(root, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"));
-const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8"));
+const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
 const context = {
   organizationId: "30000000-0000-4000-8000-000000000001",
   sourceId: "vendor-a"
@@ -31,8 +31,12 @@ function input(payload) {
 
 test("production ingestion returns a replay without writing for an identical delivery", async () => {
   let writes = 0;
-  const writer = { query: async (sql) => {
-    if (sql.includes("pg_advisory_xact_lock")) return [];
+  const writer = { query: async (sql, parameters = []) => {
+    if (sql.includes("pg_advisory_xact_lock")) {
+      assert.equal(parameters[0], JSON.stringify([context.organizationId, context.sourceId, source.sourceRecordId]));
+      assert.ok(!parameters[0].includes("\u0000"));
+      return [];
+    }
     if (sql.includes("from clinical.dispatch_receipt")) return [receipt()];
     writes += 1;
     return [];

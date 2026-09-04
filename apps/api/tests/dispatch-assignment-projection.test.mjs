@@ -10,7 +10,7 @@ import {
 } from "../dist/dispatch/dispatch-assignment.projection.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8"));
+const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
 const organizationId = "30000000-0000-4000-8000-000000000001";
 const unitId = "30000000-0000-4000-8000-000000000010";
 
@@ -76,10 +76,11 @@ test("routes by agency-scoped eResponse.14 and retains distinct physical vehicle
   assert.equal(routed.unitId, unitId);
   assert.equal(routed.projection.callSign, "SYNTHETIC-MEDIC-7");
   assert.equal(routed.projection.vehicleNumber, "SYNTHETIC-VEHICLE-7");
+  assert.deepEqual(routed.projection.dispatchPriority, { code: "2305003", display: "Emergent" });
   const assignment = writes.find(({ kind }) => kind === "assignment");
   assert.equal(assignment.parameters[2], unitId);
   assert.equal(assignment.parameters[9], source.sourceRecordId);
-  assert.equal(assignment.parameters[11], "SYNTHETIC-RESPONSE-0001");
+  assert.equal(assignment.parameters[11], "SYN-20260903-001-1");
   assert.equal(assignment.parameters[12], "SYNTHETIC-VEHICLE-7");
 });
 
@@ -142,5 +143,5 @@ test("the projection never derives or accepts ownership of eRecord.01", () => {
   const projection = projectDispatchAssignment(canonical);
   assert.equal("recordNumber" in projection, false);
   assert.equal(projection.sourceRecordId, source.sourceRecordId);
-  assert.notEqual(projection.sourceRecordId, "SYNTHETIC-RESPONSE-0001");
+  assert.notEqual(projection.sourceRecordId, "SYN-20260903-001-1");
 });

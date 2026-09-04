@@ -58,6 +58,11 @@ export interface EndClinicianSessionResponse {
 
 export type AssignmentStatus = "assigned";
 
+export interface DispatchPriority {
+  code: string;
+  display: string;
+}
+
 export interface AssignedCall {
   id: string;
   callNumber: string;
@@ -67,6 +72,7 @@ export interface AssignedCall {
   };
   dispatchedAt: string;
   dispatchReason: string | null;
+  dispatchPriority: DispatchPriority | null;
   chiefComplaint: string | null;
   /** IANA zone used for operational-time presentation. */
   agencyTimeZone?: string;
@@ -131,6 +137,7 @@ export interface OpenCall {
   callNumber: string;
   dispatchedAt?: string;
   dispatchReason?: string | null;
+  dispatchPriority?: DispatchPriority | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
   agencyTimeZone?: string;
@@ -152,6 +159,7 @@ export interface ReopenOpenCallResponse {
   callNumber: string;
   dispatchedAt?: string;
   dispatchReason?: string | null;
+  dispatchPriority?: DispatchPriority | null;
   chiefComplaint?: string | null;
   unitCallSign?: string;
   report: OpenAssignmentResponse["report"];

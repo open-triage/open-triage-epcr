@@ -219,7 +219,7 @@ test("defines the transactional invariants and two private analytical base table
 test("stores immutable dispatch delivery evidence under clinical-data controls", () => {
   assert.match(migration, /create table clinical\.dispatch_receipt \([\s\S]*source_bytes bytea not null/);
   assert.match(migration, /exact_sha256 text generated always as[\s\S]*digest\(source_bytes, 'sha256'\)/);
-  assert.match(migration, /canonical_sha256 text generated always as[\s\S]*digest\(convert_to\(source_payload::text, 'UTF8'\), 'sha256'\)/);
+  assert.match(migration, /canonical_sha256 text generated always as[\s\S]*digest\(source_payload::text, 'sha256'\)/);
   assert.match(migration, /convert_from\(source_bytes, 'UTF8'\)::jsonb = source_payload/);
   assert.match(migration, /not \(source_payload \?\| array\['organizationId', 'organization_id', 'sourceId', 'source_id'\]\)/);
   assert.match(migration, /unique \(organization_id, source_id, message_id\)/);
@@ -241,6 +241,7 @@ test("stores a rebuildable agency-scoped dispatch assignment projection", () => 
 test("retains dispatch conflicts with both values, lineage, and explicit dispositions", () => {
   assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_value jsonb[\s\S]*dispatch_value jsonb/);
   assert.match(migration, /create table clinical\.dispatch_conflict \([\s\S]*clinician_lineage jsonb not null[\s\S]*dispatch_receipt_id uuid not null[\s\S]*dispatch_revision bigint not null/);
+  assert.match(migration, /create table clinical\.element_occurrence \([\s\S]*unique \(report_id, id\)[\s\S]*unique nulls not distinct/);
   assert.match(migration, /disposition text check \(disposition in \('keep', 'accept', 'acknowledge'\)\)/);
   assert.match(migration, /dispatch_conflict_report_unresolved_idx[\s\S]*where disposition is null/);
 });

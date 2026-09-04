@@ -3,7 +3,7 @@
   "completedReportIds": [],
   "refreshedAt": "2026-08-15T09:14:05-04:00",
   "generatedFrom": {
-    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
-    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
+    "sha256": "f480ba40a6f0de64c1cb5b2969ca753d1cde26b9dfe54c396c4d4163680f5abf"
   }
 }

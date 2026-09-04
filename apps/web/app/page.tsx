@@ -29,7 +29,9 @@ import {
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   ACTIVE_REPORT_POLL_INTERVAL_MS,
+  encounterDocumentToDraftMutations,
   fetchActiveReport,
+  draftCommandUsesLegacyDerivedIds,
   saveDraftReport,
   signDraftReport,
   shellStateToDraftMutations,
@@ -48,6 +50,7 @@ import {
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
   removeSignedOfflineReport,
+  replaceQueuedDraftChanges,
   queueDraftChange,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
@@ -87,9 +90,9 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const [signError, setSignError] = useState<string | null>(null);
   const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
-  const [dispatchUpdateNotice, setDispatchUpdateNotice] = useState<string | null>(null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
+  const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
   const activeEtag = useRef<string | undefined>(undefined);
   const shellRef = useRef(shell);
   const skipReconciledQueue = useRef(false);
@@ -146,7 +149,15 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }, [activeDialog]);
 
   useEffect(() => {
-    const result = loadShellStateResult(window.localStorage, bundledEncounterDefinition, report?.id);
+    persistedDraft.current = report?.document
+      ? encounterDocumentToDraftMutations(report.id, report.document)
+      : { groups: [], occurrences: [] };
+    const result = loadShellStateResult(
+      window.localStorage,
+      bundledEncounterDefinition,
+      report?.id,
+      report?.document?.formProfile,
+    );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
       dispatch({ type: "state-restored", state: result.state });
@@ -183,6 +194,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
           revision.current = saved.revision;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
+          persistedDraft.current = {
+            groups: queued.command.groups.filter(({ tombstone }) => !tombstone),
+            occurrences: queued.command.occurrences.filter(({ tombstone }) => !tombstone),
+          };
         } catch (error) {
           const reason = error instanceof Error ? error.message : "offline";
           if (reason === "session") {
@@ -204,6 +219,17 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     if (!restored) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
+    const queuedBeforeSave = nextDraftChange(window.localStorage, report.id);
+    if (queuedBeforeSave && draftCommandUsesLegacyDerivedIds(report.id, shell, queuedBeforeSave.command)) {
+      replaceQueuedDraftChanges(window.localStorage, report.id, {
+        commandId: crypto.randomUUID(),
+        expectedRevision: revision.current,
+        authorId: session.user.id,
+        deviceId: `web:${report.id}`,
+        clientTime: new Date().toISOString(),
+        ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
+      });
+    }
     if (skipReconciledQueue.current) {
       skipReconciledQueue.current = false;
       return;
@@ -225,7 +251,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       authorId: session.user.id,
       deviceId: `web:${report.id}`,
       clientTime,
-      ...shellStateToDraftMutations(report.id, shell),
+      ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
     });
     queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -260,7 +286,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   useEffect(() => {
     if (!report || !restored) return;
     let pollTimer: number | null = null;
-    let noticeTimer: number | null = null;
     let stopped = false;
     const poll = async () => {
       if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
@@ -274,16 +299,14 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending);
         revision.current = response.resource.reportRevision;
         if (hasPending) rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
-        else skipReconciledQueue.current = true;
+        else {
+          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
+          skipReconciledQueue.current = true;
+        }
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
         setDispatchConflicts(response.resource.dispatchConflicts);
         setDispatchCancellation(response.resource.dispatchCancellation);
         dispatch({ type: "document-opened", document: merged });
-        if (previousEtag && previousEtag !== response.etag) {
-          setDispatchUpdateNotice(`Dispatch update ${response.resource.dispatchRevision} applied to report revision ${response.resource.reportRevision}.`);
-          if (noticeTimer !== null) window.clearTimeout(noticeTimer);
-          noticeTimer = window.setTimeout(() => setDispatchUpdateNotice(null), 4_000);
-        }
       } catch (error) {
         if (error instanceof Error && error.message === "session") onSessionEnded();
       }
@@ -304,7 +327,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     return () => {
       stopped = true;
       if (pollTimer !== null) window.clearInterval(pollTimer);
-      if (noticeTimer !== null) window.clearTimeout(noticeTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
   }, [onSessionEnded, report, restored, session.accessToken]);
@@ -436,7 +458,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   return (
     <main className="app-shell">
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
-      {dispatchUpdateNotice && <p className="assignment-notice dispatch-update-notice" role="status">{dispatchUpdateNotice}</p>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
@@ -453,6 +474,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
             <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
             <span>Response {incident.responseNumber}</span>
             <span>Unit {incident.callSign}</span>
+            <span>Priority {incident.dispatchPriority || "Not provided"}</span>
             <strong>{incident.location}</strong>
           </div>
         </div>

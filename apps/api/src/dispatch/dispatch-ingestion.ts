@@ -91,7 +91,7 @@ export async function ingestDispatchDelivery(
   }
 
   await writer.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-    `${input.organizationId}\u0000${input.sourceId}\u0000${sourceIdentity.sourceRecordId}`
+    JSON.stringify([input.organizationId, input.sourceId, sourceIdentity.sourceRecordId])
   ]);
   const receipts = await writer.query<ReceiptRow[]>(`
     select id, message_id, source_record_id, source_revision, source_payload,

@@ -759,6 +759,7 @@ create table clinical.element_occurrence (
   tombstoned_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  unique (report_id, id),
   unique nulls not distinct (report_id, group_instance_id, element_identity_id, ordinal),
   foreign key (report_id, catalog_release_id) references clinical.report(id, catalog_release_id),
   foreign key (report_id, group_instance_id) references clinical.group_instance(report_id, id),
@@ -1222,7 +1223,7 @@ create table clinical.dispatch_receipt (
     (encode(digest(source_bytes, 'sha256'), 'hex')) stored,
   source_payload jsonb not null check (jsonb_typeof(source_payload) = 'object'),
   canonical_sha256 text generated always as
-    (encode(digest(convert_to(source_payload::text, 'UTF8'), 'sha256'), 'hex')) stored,
+    (encode(digest(source_payload::text, 'sha256'), 'hex')) stored,
   findings jsonb not null default '[]'::jsonb check (jsonb_typeof(findings) = 'array'),
   status text not null check (status in (
     'applied', 'applied_with_findings', 'rejected', 'quarantined', 'stale',

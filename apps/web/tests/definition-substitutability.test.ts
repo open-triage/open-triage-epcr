@@ -115,6 +115,29 @@ test("saved state retains definition identity and restores only for an exact com
   assert.strictEqual(transitionShell(createInitialShellState(nextVersion), { type: "state-restored", state }, nextVersion).encounter.definitionVersion, nextVersion.version);
 });
 
+test("report-scoped state restores against its pinned clinical form profile", () => {
+  const storage = memoryStorage();
+  const reportId = "6f41a704-a314-4e36-b2e7-9278f49e789b";
+  const pinnedFormProfile = { id: "32000000-0000-4000-8000-000000000007", version: "2" };
+  const initial = createInitialShellState(standardEncounterDefinition);
+  const state = {
+    ...initial,
+    encounter: {
+      ...initial.encounter,
+      document: { ...initial.encounter.document, formProfile: pinnedFormProfile },
+    },
+  };
+  saveShellState(storage, state, reportId);
+
+  const restored = loadShellStateResult(storage, standardEncounterDefinition, reportId, pinnedFormProfile);
+
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") return;
+  assert.deepEqual(restored.state.encounter.document.formProfile, pinnedFormProfile);
+  assert.equal(restored.state.encounter.definitionId, standardEncounterDefinition.id);
+  assert.equal(restored.state.encounter.definitionVersion, standardEncounterDefinition.version);
+});
+
 test("the production provider does not bundle the test-only alternate definition", () => {
   assert.throws(() => encounterDefinitionProvider.get(alternateDefinition().id), /definition was not found/);
   assert.equal(encounterDefinitionProvider.get(standardEncounterDefinition.id).id, standardEncounterDefinition.id);

@@ -28,6 +28,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
       {
         report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
         dispatched_at: "2026-09-03T12:00:00.000Z", dispatch_reason: "Breathing problem",
+        dispatch_priority_code: "2305003", dispatch_priority_display: "Emergent",
         chief_complaint: "Shortness of breath", unit_call_sign: "Medic 32",
         agency_time_zone: "America/New_York",
         status: "draft",
@@ -56,6 +57,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
   assert.deepEqual(result.openCalls[0], {
     reportId: "42000000-0000-4000-8000-000000000002", callNumber: "CALL-NEW",
     dispatchedAt: "2026-09-03T12:00:00.000Z", dispatchReason: "Breathing problem",
+    dispatchPriority: { code: "2305003", display: "Emergent" },
     chiefComplaint: "Shortness of breath", unitCallSign: "Medic 32",
     agencyTimeZone: "America/New_York",
     lastSavedAt: "2026-09-03T14:00:00.000Z", syncStatus: "saved", validationErrorCount: 2,
@@ -124,6 +126,7 @@ test("reopening restores the creator's report with its pinned form and saved con
       return [{
         call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
         dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
+        dispatch_priority_code: "2305003", dispatch_priority_display: "Emergent",
         unit_call_sign: "Medic 32", dispatch_canceled_at: "2026-09-03T12:18:31.000Z",
         dispatch_cancellation_revision: "3", dispatch_cancellation_receipt_id: "dispatch-receipt",
         agency_time_zone: "America/New_York"
@@ -138,6 +141,7 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.callNumber, "CALL-NEW");
   assert.equal(reopened.dispatchedAt, "2026-09-03T12:00:00.000Z");
   assert.equal(reopened.dispatchReason, "Breathing problem");
+  assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
   assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.agencyTimeZone, "America/New_York");
   assert.equal(reopened.report.formVersionId, "pinned-form");

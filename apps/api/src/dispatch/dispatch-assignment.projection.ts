@@ -19,6 +19,7 @@ export type DispatchAssignmentProjection = {
   readonly unitNotifiedAt: string;
   readonly canceledAt: string | null;
   readonly dispatchReason: string | null;
+  readonly dispatchPriority: { readonly code: string; readonly display: string } | null;
 };
 
 export type RouteDispatchAssignmentInput = {
@@ -108,6 +109,12 @@ export function projectDispatchAssignment(canonical: JsonRecord): DispatchAssign
   const dispatchReason = dispatchReasonValue
     ? (typeof dispatchReasonValue.display === "string" ? dispatchReasonValue.display : lexical(dispatchReasonValue) ?? null)
     : null;
+  const dispatchPriorityValue = elementValue(canonical, "eDispatch.05");
+  const dispatchPriorityCode = lexical(dispatchPriorityValue);
+  const dispatchPriority = dispatchPriorityCode ? {
+    code: dispatchPriorityCode,
+    display: typeof dispatchPriorityValue?.display === "string" ? dispatchPriorityValue.display : dispatchPriorityCode,
+  } : null;
   return {
     sourceRecordId,
     revision: Number(revision),
@@ -118,7 +125,8 @@ export function projectDispatchAssignment(canonical: JsonRecord): DispatchAssign
     callSign: required(canonical, "eResponse.14"),
     unitNotifiedAt: required(canonical, "eTimes.03"),
     canceledAt: eventType === "cancel" ? required(canonical, "eTimes.14") : null,
-    dispatchReason
+    dispatchReason,
+    dispatchPriority,
   };
 }
 

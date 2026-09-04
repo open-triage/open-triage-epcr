@@ -38,7 +38,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const schemaPath = resolve(root, "packages/contracts/dispatch-message.schema-1.0.0.json");
 const examplePaths = [
-  resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment.json"),
+  ...Array.from({ length: 10 }, (_, index) => resolve(root, `packages/contracts/examples/dispatch/synthetic-assignment-${String(index + 1).padStart(2, "0")}.json`)),
   resolve(root, "packages/contracts/examples/dispatch/synthetic-update.json"),
   resolve(root, "packages/contracts/examples/dispatch/synthetic-cancellation.json"),
 ];
@@ -175,14 +175,15 @@ test("synthetic dispatch lifecycle validates against the strict envelope and pin
     validateAgainstCatalog(message);
   }
 
-  assert.deepEqual(messages.map(({ revision }) => revision), [1, 2, 3]);
-  assert.equal(new Set(messages.map(({ sourceRecordId }) => sourceRecordId)).size, 1);
-  assert.equal(new Set(messages.map(({ messageId }) => messageId)).size, 3);
-  assert.deepEqual(messages.map(({ eventType }) => eventType), ["upsert", "upsert", "cancel"]);
+  assert.deepEqual(messages.map(({ revision }) => revision), [...Array(10).fill(1), 2, 3]);
+  assert.equal(new Set(messages.map(({ sourceRecordId }) => sourceRecordId)).size, 10);
+  assert.equal(new Set(messages.map(({ messageId }) => messageId)).size, 12);
+  assert.deepEqual(messages.map(({ eventType }) => eventType), [...Array(11).fill("upsert"), "cancel"]);
 
   const required = ["eResponse.03", "eResponse.04", "eResponse.13", "eResponse.14", "eTimes.02", "eTimes.03"];
   for (const message of messages) for (const id of required) assert.equal(findElement(message, id)?.values.length, 1, `${id} required in revision ${message.revision}`);
-  const [assignment, , cancellation] = messages;
+  const assignment = messages[0];
+  const cancellation = messages.at(-1);
   assert.ok(assignment && cancellation, "all lifecycle examples must be present");
   assert.ok(findElement(cancellation, "eTimes.14"), "cancellation must include eTimes.14");
 

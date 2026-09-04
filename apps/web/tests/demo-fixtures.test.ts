@@ -15,7 +15,7 @@ import { buildDemoFixtures } from "../scripts/demo-fixture-core";
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(webRoot, "../..");
-const samplePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json");
+const samplePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json");
 const catalogPath = resolve(webRoot, "app/data/nemsis-data-model-3.5.1.json");
 
 async function source(): Promise<{ bytes: Buffer; sample: Record<string, unknown>; catalog: DispatchValidationCatalog }> {
@@ -59,11 +59,13 @@ test("generated static resources are the validator/projector output for the comm
     unit: { ...generatedAssignedCalls.assignedCalls[0]!.unit, callSign: projection.callSign },
     dispatchedAt: projection.unitNotifiedAt,
     dispatchReason: projection.dispatchReason,
+    dispatchPriority: projection.dispatchPriority,
   });
   assert.deepEqual(incidentSummary(generatedOpenAssignment.report.document as EncounterDocument), {
     incidentNumber: projection.incidentNumber,
     responseNumber: projection.responseNumber,
     callSign: projection.callSign,
+    dispatchPriority: projection.dispatchPriority?.display ?? "",
     location: incidentSummary(generatedOpenAssignment.report.document as EncounterDocument).location,
   });
 });

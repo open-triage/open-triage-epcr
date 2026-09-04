@@ -7,7 +7,7 @@ import { validateDispatchAssignment } from "../dist/dispatch/dispatch-assignment
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const catalog = JSON.parse(await readFile(resolve(root, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"));
-const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8"));
+const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
 const cancellation = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8"));
 
 function copy(value = source) {
@@ -31,6 +31,8 @@ test("valid EMSDataSet content, including hidden patient identity and telephone 
   assert.equal(result.status, "applied");
   assert.deepEqual(result.findings, []);
   assert.deepEqual(result.canonical, source);
+  assert.equal(element(result.canonical, "eDispatch.05").values[0].code, "2305003");
+  assert.equal(element(result.canonical, "eScene.11").values[0].value, "40.750600,-73.997200");
   assert.deepEqual(element(result.canonical, "ePatient.18"), element(source, "ePatient.18"));
   assert.deepEqual(element(result.canonical, "ePatient.02"), element(source, "ePatient.02"));
 });

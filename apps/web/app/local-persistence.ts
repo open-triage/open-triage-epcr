@@ -26,6 +26,7 @@ export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string
 }
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export interface PersistedFormProfile { readonly id: string; readonly version: string }
 
 export type ShellStateLoadResult =
   | { readonly status: "empty" }
@@ -61,7 +62,12 @@ function preserveForRecovery(storage: LocalStoragePort, serialized: string, sour
   return RECOVERY_STORAGE_KEY;
 }
 
-export function loadShellStateResult(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition, reportId?: string): ShellStateLoadResult {
+export function loadShellStateResult(
+  storage: LocalStoragePort,
+  definition: EncounterDefinition = bundledEncounterDefinition,
+  reportId?: string,
+  expectedFormProfile?: PersistedFormProfile,
+): ShellStateLoadResult {
   const key = reportStorageKey(reportId);
   const serialized = storage.getItem(key);
   if (serialized === null) {
@@ -107,7 +113,10 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
       id: isCurrentEnvelope || isCanonicalEventsEnvelope ? (currentDocument?.formProfile as Record<string, unknown> | undefined)?.id as string ?? null : typeof candidateEncounter?.definitionId === "string" ? candidateEncounter.definitionId : null,
       version: isCurrentEnvelope || isCanonicalEventsEnvelope ? Number((currentDocument?.formProfile as Record<string, unknown> | undefined)?.version) || null : Number.isInteger(candidateEncounter?.definitionVersion) ? candidateEncounter!.definitionVersion as number : null,
     };
-    const expectedDefinition = { id: definition.id, version: definition.version };
+    const pinnedProfile = expectedFormProfile ?? { id: definition.id, version: String(definition.version) };
+    const expectedDefinition = isCurrentEnvelope || isCanonicalEventsEnvelope
+      ? { id: pinnedProfile.id, version: Number(pinnedProfile.version) }
+      : { id: definition.id, version: definition.version };
     if (savedDefinition.id !== expectedDefinition.id || savedDefinition.version !== expectedDefinition.version) {
       return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
@@ -122,7 +131,7 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
     const needsIncidentMigration = !isCurrentEnvelope && !isCanonicalEventsEnvelope && record.persistenceVersion !== 3;
     const migrated = !isCurrentEnvelope;
     let document = currentDocument
-      ? loadEncounterDocument(currentDocument, { formProfiles: { [definition.id]: [String(definition.version)] } })
+      ? loadEncounterDocument(currentDocument, { formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] } })
       : candidateEncounter?.document
       ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
       : initialDocument;
@@ -168,8 +177,13 @@ export function loadShellStateResult(storage: LocalStoragePort, definition: Enco
   }
 }
 
-export function loadShellState(storage: LocalStoragePort, definition: EncounterDefinition = bundledEncounterDefinition, reportId?: string): ShellState | null {
-  const result = loadShellStateResult(storage, definition, reportId);
+export function loadShellState(
+  storage: LocalStoragePort,
+  definition: EncounterDefinition = bundledEncounterDefinition,
+  reportId?: string,
+  expectedFormProfile?: PersistedFormProfile,
+): ShellState | null {
+  const result = loadShellStateResult(storage, definition, reportId, expectedFormProfile);
   return result.status === "restored" ? result.state : null;
 }
 

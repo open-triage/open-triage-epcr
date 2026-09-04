@@ -60,7 +60,7 @@ integrationTest("dispatch projection routes by call sign and quarantines unknown
   const unitId = randomUUID();
   const otherUnitId = randomUUID();
   const [source, cancellationSource] = await Promise.all([
-    readFile(path.join(repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8").then(JSON.parse),
+    readFile(path.join(repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8").then(JSON.parse),
     readFile(path.join(repoRoot, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8").then(JSON.parse)
   ]);
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Dispatch routing', 'UTC')", [organizationId]);
@@ -73,7 +73,10 @@ integrationTest("dispatch projection routes by call sign and quarantines unknown
            ($4, $2, 'SYNTHETIC-MEDIC-8', 'Medic 8', $3)`,
   [unitId, organizationId, formId, otherUnitId]);
 
-  const route = (canonical) => routeDispatchAssignment(client, {
+  const dispatchWriter = {
+    query: async (sql, parameters) => (await client.query(sql, parameters)).rows
+  };
+  const route = (canonical) => routeDispatchAssignment(dispatchWriter, {
     organizationId,
     sourceId: "vendor-a",
     sourceBytes: Buffer.from(JSON.stringify(canonical)),
@@ -93,7 +96,7 @@ integrationTest("dispatch projection routes by call sign and quarantines unknown
   assert.deepEqual(assignment, {
     unit_id: unitId,
     dispatch_source_record_id: source.sourceRecordId,
-    response_number: "SYNTHETIC-RESPONSE-0001",
+    response_number: "SYN-20260903-001-1",
     vehicle_number: "SYNTHETIC-VEHICLE-7",
     dispatch_revision: "1",
     receipt_status: "applied",
@@ -128,15 +131,16 @@ integrationTest("dispatch projection routes by call sign and quarantines unknown
   reassigned.messageId = randomUUID();
   reassigned.sourceRecordId = "SYNTHETIC-SOURCE-RECORD-0002";
   reassigned.groups.flatMap((group) => group.instances)
-    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.04").values[0].value = "SYNTHETIC-RESPONSE-0002";
+    .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.04").values[0].value = "SYN-20260903-001-2";
   reassigned.groups.flatMap((group) => group.instances)
     .flatMap((instance) => instance.elements).find(({ id }) => id === "eResponse.14").values[0].value = "SYNTHETIC-MEDIC-8";
   await route(reassigned);
   const responseHistory = await client.query(`
     select status, incident_id, response_number, unit_id
-    from clinical.call_assignment where call_number = 'SYNTHETIC-INCIDENT-0001'
+    from clinical.call_assignment
+    where organization_id = $1 and call_number = 'SYN-20260903-001'
     order by response_number
-  `);
+  `, [organizationId]);
   assert.equal(responseHistory.rows.length, 2);
   assert.equal(responseHistory.rows[0].status, "canceled");
   assert.equal(responseHistory.rows[1].status, "assigned");
@@ -389,11 +393,13 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   assert.match(payload.assignedCalls[0].id, /^[0-9a-f-]{36}$/);
   assert.deepEqual({ ...payload.assignedCalls[0], id: undefined }, {
     id: undefined,
-    callNumber: "SYNTHETIC-INCIDENT-0001",
+    callNumber: "SYN-20260903-001",
     unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "SYNTHETIC-MEDIC-7" },
     dispatchedAt: "2026-08-15T13:14:00.000Z",
     dispatchReason: "Chest Pain (Non-Traumatic)",
+    dispatchPriority: { code: "2305003", display: "Emergent" },
     chiefComplaint: null,
+    agencyTimeZone: "UTC",
     status: "assigned"
   });
   assert.deepEqual(payload.canceledAssignmentIds, []);
@@ -432,7 +438,12 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
   });
   const session = await signIn.json();
-  const assignmentId = "32000000-0000-4000-8000-000000000011";
+  const assignmentId = (await client.query(`
+    select id from clinical.call_assignment
+    where organization_id = '32000000-0000-4000-8000-000000000001'
+      and dispatch_source_id = 'synthetic-bootstrap'
+      and status = 'assigned'
+  `)).rows[0].id;
   const latestBeforeOpen = (await client.query(`
     select fv.id from forms.form_version fv
     join app_identity.operational_unit ou on ou.default_form_id = fv.form_id
@@ -463,7 +474,21 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
       .instances[0].elements.find(({ id }) => id === "eRecord.01").values[0].value,
       `PCR-${opened.report.id}`);
     assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
-    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
+    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-08-15T13:29:00.000Z");
+    const generatedDispatch = (await client.query(`
+      select ca.response_number, ca.dispatch_source_record_id, dr.source_payload
+      from clinical.call_assignment ca
+      join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
+      where ca.id = $1
+    `, [opened.replacementAssignment.id])).rows[0];
+    const generatedElement = (id) => generatedDispatch.source_payload.groups.flatMap((group) => group.instances)
+      .flatMap((instance) => instance.elements).find((element) => element.id === id).values[0].value;
+    assert.equal(generatedDispatch.response_number, "SYN-20260903-002-1");
+    assert.equal(generatedDispatch.dispatch_source_record_id, "SYNTHETIC-SOURCE-RECORD-0002");
+    assert.equal(generatedElement("eResponse.03"), "SYN-20260903-002");
+    assert.equal(generatedElement("eResponse.04"), "SYN-20260903-002-1");
+    assert.equal(generatedElement("eTimes.02"), "2026-08-15T09:28:52-04:00");
+    assert.equal(generatedElement("eTimes.03"), "2026-08-15T09:29:00-04:00");
 
     const state = (await client.query(`
       select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
@@ -485,6 +510,15 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     assert.equal(reopenedResponse.status, 200);
     const reopened = await reopenedResponse.json();
     assert.deepEqual(reopened.report.document, opened.report.document);
+    assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
+
+    const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+    assert.equal(openCallsResponse.status, 200);
+    const openCalls = await openCallsResponse.json();
+    assert.deepEqual(openCalls.openCalls.find(({ reportId }) => reportId === opened.report.id)?.dispatchPriority,
+      { code: "2305003", display: "Emergent" });
 
     const laterVersionId = randomUUID();
     await client.query(`

@@ -8,6 +8,7 @@ export const INCIDENT_FIELD_LOCATIONS = {
   responseNumber: { groupId: "eResponseSection", elementId: "eResponse.04" },
   callSign: { groupId: "eResponseSection", elementId: "eResponse.14" },
   dispatchReason: { groupId: "eDispatchSection", elementId: "eDispatch.01" },
+  dispatchPriority: { groupId: "eDispatchSection", elementId: "eDispatch.05" },
   streetAddress: { groupId: "eSceneSection", elementId: "eScene.15" },
   apartment: { groupId: "eSceneSection", elementId: "eScene.16" },
   city: { groupId: "eSceneSection", elementId: "eScene.17" },
@@ -49,17 +50,19 @@ export function incidentSummary(document: EncounterDocument) {
     incidentNumber: incidentValue(document, "incidentNumber"),
     responseNumber: incidentValue(document, "responseNumber"),
     callSign: incidentValue(document, "callSign"),
+    dispatchPriority: incidentValue(document, "dispatchPriority"),
     location: [[streetAddress, apartment].filter(Boolean).join(", "), locality].filter(Boolean).join(" · "),
   };
 }
 
-/** Assignment-card projection of the four explicitly configured NEMSIS elements. */
+/** Assignment-card projection of the explicitly configured NEMSIS elements. */
 export function assignmentSummary(document: EncounterDocument) {
   return {
     incidentNumber: incidentValue(document, "incidentNumber"),
     callSign: incidentValue(document, "callSign"),
     unitNotifiedAt: displayValue(valuesFor(document, "eTimesSection", "eTimes.03")[0]),
     dispatchReason: incidentValue(document, "dispatchReason") || "Dispatch reason not provided",
+    dispatchPriority: incidentValue(document, "dispatchPriority") || "Priority not provided",
   };
 }
 

@@ -50,11 +50,14 @@ test("associates the demo clinician and unit, then ingests only the committed in
   assert.ok(bootstrap.includes("insert into app_identity.operational_unit"));
   assert.ok(bootstrap.includes("insert into app_identity.unit_clinician"));
   assert.ok(!bootstrap.includes("insert into clinical.call_assignment"));
-  assert.match(bootstrap, /synthetic-assignment\.json/);
+  assert.match(bootstrap, /synthetic-assignment-01\.json/);
   assert.ok(!bootstrap.includes("synthetic-update.json"));
   assert.ok(!bootstrap.includes("synthetic-cancellation.json"));
-  assert.match(bootstrap, /ingestDispatchDelivery\(client/);
+  assert.match(bootstrap, /dispatchWriter = \{[\s\S]*client\.query\(sql, parameters\)\)\.rows/);
+  assert.match(bootstrap, /ingestDispatchDelivery\(dispatchWriter/);
   assert.match(bootstrap, /projectDispatchAssignment\(validatedDispatch\.canonical\)/);
+  assert.match(bootstrap, /dispatch-priority[\s\S]*eDispatch\.05/);
+  assert.doesNotMatch(bootstrap, /dispatch-priority[\s\S]{0,120}eDispatch\.02/);
   assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
   assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
   assert.ok(!bootstrap.includes("SYN-20260903-001"));

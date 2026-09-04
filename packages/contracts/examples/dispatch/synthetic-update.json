@@ -15,14 +15,15 @@
     {
       "id": "eResponseSection",
       "instances": [{ "instanceId": "synthetic-response-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
-        { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-incident-number", "value": "SYNTHETIC-INCIDENT-0001" }] },
-        { "id": "eResponse.04", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-response-number", "value": "SYNTHETIC-RESPONSE-0001" }] },
+        { "id": "eResponse.03", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-incident-number", "value": "SYN-20260903-001" }] },
+        { "id": "eResponse.04", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-response-number", "value": "SYN-20260903-001-1" }] },
         { "id": "eResponse.13", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-vehicle-number", "value": "SYNTHETIC-VEHICLE-7" }] },
         { "id": "eResponse.14", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-call-sign", "value": "SYNTHETIC-MEDIC-7" }] }
       ] }]
     },
     { "id": "eDispatchSection", "instances": [{ "instanceId": "synthetic-dispatch-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
-      { "id": "eDispatch.01", "values": [{ "kind": "coded", "occurrenceId": "synthetic-dispatch-reason", "code": "2301021", "display": "Chest Pain (Non-Traumatic)" }] }
+      { "id": "eDispatch.01", "values": [{ "kind": "coded", "occurrenceId": "synthetic-dispatch-reason", "code": "2301021", "display": "Chest Pain (Non-Traumatic)" }] },
+      { "id": "eDispatch.05", "values": [{ "kind": "coded", "occurrenceId": "synthetic-dispatch-priority", "code": "2305003", "display": "Emergent" }] }
     ] }] },
     { "id": "eTimesSection", "instances": [{ "instanceId": "synthetic-times-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
       { "id": "eTimes.02", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-time-dispatch-notified", "value": "2026-08-15T09:13:52-04:00" }] },
@@ -45,6 +46,7 @@
     ] }] },
     { "id": "eSceneSection", "instances": [{ "instanceId": "synthetic-scene-1", "parentInstanceId": "synthetic-pcr-1", "elements": [
       { "id": "eScene.09", "values": [{ "kind": "coded", "occurrenceId": "synthetic-location-type", "code": "Y92.03", "system": "ICD-10-CM", "display": "Apartment/condo" }] },
+      { "id": "eScene.11", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-gps", "value": "40.750600,-73.997200" }] },
       { "id": "eScene.15", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-street", "value": "123 SYNTHETIC EXAMPLE AVENUE" }] },
       { "id": "eScene.16", "values": [{ "kind": "scalar", "occurrenceId": "synthetic-scene-apartment", "value": "APT 4S" }] },
       { "id": "eScene.18", "values": [{ "kind": "coded", "occurrenceId": "synthetic-scene-state", "code": "36", "system": "ANSI-STATE", "display": "New York" }] },

@@ -69,7 +69,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-incident-number",
-                      "value": "SYNTHETIC-INCIDENT-0001"
+                      "value": "SYN-20260903-001"
                     }
                   ]
                 },
@@ -79,7 +79,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-response-number",
-                      "value": "SYNTHETIC-RESPONSE-0001"
+                      "value": "SYN-20260903-001-1"
                     }
                   ]
                 },
@@ -122,6 +122,17 @@
                       "occurrenceId": "synthetic-dispatch-reason",
                       "code": "2301021",
                       "display": "Chest Pain (Non-Traumatic)"
+                    }
+                  ]
+                },
+                {
+                  "id": "eDispatch.05",
+                  "values": [
+                    {
+                      "kind": "coded",
+                      "occurrenceId": "synthetic-dispatch-priority",
+                      "code": "2305003",
+                      "display": "Emergent"
                     }
                   ]
                 }
@@ -236,7 +247,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-last-name",
-                      "value": "SYNTHETIC"
+                      "value": "SYNTHETIC-01"
                     }
                   ]
                 },
@@ -246,7 +257,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-patient-first-name",
-                      "value": "PATIENT"
+                      "value": "PATIENT-01"
                     }
                   ]
                 }
@@ -274,12 +285,22 @@
                   ]
                 },
                 {
+                  "id": "eScene.11",
+                  "values": [
+                    {
+                      "kind": "scalar",
+                      "occurrenceId": "synthetic-scene-gps",
+                      "value": "40.750600,-73.997200"
+                    }
+                  ]
+                },
+                {
                   "id": "eScene.15",
                   "values": [
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-scene-street",
-                      "value": "123 SYNTHETIC EXAMPLE AVENUE"
+                      "value": "100 SYNTHETIC CHEST PAIN WAY"
                     }
                   ]
                 },
@@ -289,7 +310,7 @@
                     {
                       "kind": "scalar",
                       "occurrenceId": "synthetic-scene-apartment",
-                      "value": "APT 4S"
+                      "value": "UNIT SYN-01"
                     }
                   ]
                 },
@@ -359,7 +380,7 @@
   },
   "replacementAssignment": null,
   "generatedFrom": {
-    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
-    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
+    "sha256": "f480ba40a6f0de64c1cb5b2969ca753d1cde26b9dfe54c396c4d4163680f5abf"
   }
 }

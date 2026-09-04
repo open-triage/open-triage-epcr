@@ -60,6 +60,7 @@ test("mobile projections expose only the configured operational subset", () => {
     callSign: generated.unit.callSign,
     unitNotifiedAt: generated.dispatchedAt,
     dispatchReason: generated.dispatchReason,
+    dispatchPriority: generated.dispatchPriority?.display,
   });
   const serialized = JSON.stringify({ assignment, header: incidentSummary(document), timeline: documentTimeline(document) });
   const hiddenIds = new Set(["eResponse.13", "ePatient.01", "ePatient.02", "ePatient.03", "ePatient.17", "ePatient.18", "ePatient.25"]);
@@ -141,7 +142,7 @@ test("version two browser state upgrades deterministically and removes the paral
   assert.equal(first.result.migrated, true);
   assert.deepEqual(first.result.state.encounter.document, second.result.state.encounter.document);
   assert.deepEqual(incidentSummary(first.result.state.encounter.document), {
-    incidentNumber: "LEGACY-INCIDENT", responseNumber: "CAD-LEGACY", callSign: "ZX", location: "9 Recovery Road",
+    incidentNumber: "LEGACY-INCIDENT", responseNumber: "CAD-LEGACY", callSign: "ZX", dispatchPriority: "Routine response", location: "9 Recovery Road",
   });
   assert.deepEqual(documentTimeline(first.result.state.encounter.document).map(({ reference, time }) => ({ reference, time })), [
     { reference: "eTimes.06", time: "08:01" },

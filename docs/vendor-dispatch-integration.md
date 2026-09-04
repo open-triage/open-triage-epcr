@@ -5,7 +5,7 @@ The OpenTriage dispatch message is a strict envelope around a **partial, NEMSIS 
 The executable contract artifacts are:
 
 - [`dispatch-message.schema-1.0.0.json`](../packages/contracts/dispatch-message.schema-1.0.0.json)
-- [`synthetic-assignment.json`](../packages/contracts/examples/dispatch/synthetic-assignment.json)
+- Ten distinct assignment fixtures: `synthetic-assignment-01.json` through `synthetic-assignment-10.json`
 - [`synthetic-update.json`](../packages/contracts/examples/dispatch/synthetic-update.json)
 - [`synthetic-cancellation.json`](../packages/contracts/examples/dispatch/synthetic-cancellation.json)
 

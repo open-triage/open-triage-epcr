@@ -223,16 +223,18 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.match(tenantA.rows[0].exact_sha256, /^[a-f0-9]{64}$/);
       assert.match(tenantA.rows[0].canonical_sha256, /^[a-f0-9]{64}$/);
 
+      const duplicateMessage = { ...payload, sourceRecordId: "another-response", revision: 2 };
       await rejectsSql(client, `insert into clinical.dispatch_receipt
         (organization_id, source_id, message_id, source_record_id, source_revision,
          source_bytes, source_payload, status)
         values ($1, 'vendor-a', $2, 'another-response', 2, $3, $4::jsonb, 'applied')`,
-      [organizationA, messageId, Buffer.from(compact), JSON.stringify(payload)], "23505");
+      [organizationA, messageId, Buffer.from(JSON.stringify(duplicateMessage)), JSON.stringify(duplicateMessage)], "23505");
+      const duplicateRevision = { ...payload, messageId: otherMessageId };
       await rejectsSql(client, `insert into clinical.dispatch_receipt
         (organization_id, source_id, message_id, source_record_id, source_revision,
          source_bytes, source_payload, status)
         values ($1, 'vendor-a', $2, 'response-1', 1, $3, $4::jsonb, 'applied')`,
-      [organizationA, otherMessageId, Buffer.from(compact), JSON.stringify(payload)], "23505");
+      [organizationA, otherMessageId, Buffer.from(JSON.stringify(duplicateRevision)), JSON.stringify(duplicateRevision)], "23505");
       const mismatchedPayload = { ...payload, nested: { a: 9, b: 2 } };
       await rejectsSql(client, `insert into clinical.dispatch_receipt
         (organization_id, source_id, message_id, source_record_id, source_revision,

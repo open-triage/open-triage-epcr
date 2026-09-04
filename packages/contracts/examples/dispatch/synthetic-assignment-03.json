@@ -1,21 +1,16 @@
 {
-  "$schema": "./encounter-document.schema-1.0.0.json",
-  "documentType": "open-triage.encounter",
-  "modelVersion": "1.1.0",
+  "$schema": "https://open-triage.dev/schemas/dispatch-message/1.0.0",
+  "messageType": "open-triage.dispatch",
+  "schemaVersion": "1.0.0",
+  "messageId": "11000000-0000-4000-8000-000000000003",
+  "sourceRecordId": "SYNTHETIC-SOURCE-RECORD-0003",
+  "revision": 1,
+  "eventType": "upsert",
+  "sentAt": "2026-08-15T09:14:05-04:00",
   "dataModel": {
     "standard": "NEMSIS",
     "version": "3.5.1",
     "dataset": "EMSDataSet"
-  },
-  "formProfile": {
-    "id": "standard-encounter-v1",
-    "version": "1"
-  },
-  "encounter": {
-    "id": "455d8423-412f-4c96-9ad5-b485c6a9506b",
-    "createdAt": "2026-08-15T09:14:05-04:00",
-    "updatedAt": "2026-08-15T09:14:05-04:00",
-    "synthetic": true
   },
   "groups": [
     {
@@ -60,7 +55,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-incident-number",
-                  "value": "SYN-20260903-001"
+                  "value": "SYN-20260903-003"
                 }
               ]
             },
@@ -70,7 +65,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-response-number",
-                  "value": "SYN-20260903-001-1"
+                  "value": "SYN-20260903-003-1"
                 }
               ]
             },
@@ -111,8 +106,8 @@
                 {
                   "kind": "coded",
                   "occurrenceId": "synthetic-dispatch-reason",
-                  "code": "2301021",
-                  "display": "Chest Pain (Non-Traumatic)"
+                  "code": "2301033",
+                  "display": "Falls"
                 }
               ]
             },
@@ -122,8 +117,8 @@
                 {
                   "kind": "coded",
                   "occurrenceId": "synthetic-dispatch-priority",
-                  "code": "2305003",
-                  "display": "Emergent"
+                  "code": "2305005",
+                  "display": "Lower Acuity"
                 }
               ]
             }
@@ -175,7 +170,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-id",
-                  "value": "SYNTHETIC-PATIENT-0001"
+                  "value": "SYNTHETIC-PATIENT-0003"
                 }
               ]
             },
@@ -185,7 +180,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-dob",
-                  "value": "1980-01-01"
+                  "value": "1942-03-03"
                 }
               ]
             },
@@ -195,7 +190,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-phone-home",
-                  "value": "212-555-0101",
+                  "value": "212-555-0105",
                   "attributes": {
                     "PhoneNumberType": "9913003"
                   }
@@ -203,7 +198,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-phone-mobile",
-                  "value": "212-555-0102",
+                  "value": "212-555-0106",
                   "attributes": {
                     "PhoneNumberType": "9913005"
                   }
@@ -238,7 +233,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-last-name",
-                  "value": "SYNTHETIC-01"
+                  "value": "SYNTHETIC-03"
                 }
               ]
             },
@@ -248,7 +243,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-patient-first-name",
-                  "value": "PATIENT-01"
+                  "value": "PATIENT-03"
                 }
               ]
             }
@@ -281,7 +276,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-scene-gps",
-                  "value": "40.750600,-73.997200"
+                  "value": "40.730610,-73.935242"
                 }
               ]
             },
@@ -291,7 +286,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-scene-street",
-                  "value": "100 SYNTHETIC CHEST PAIN WAY"
+                  "value": "300 SYNTHETIC FALLS LANE"
                 }
               ]
             },
@@ -301,7 +296,7 @@
                 {
                   "kind": "scalar",
                   "occurrenceId": "synthetic-scene-apartment",
-                  "value": "UNIT SYN-01"
+                  "value": "UNIT SYN-03"
                 }
               ]
             },
@@ -336,26 +331,6 @@
                   "code": "36061",
                   "system": "ANSI-COUNTY",
                   "display": "New York County"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "eCrew.CrewGroup",
-      "instances": [
-        {
-          "instanceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew",
-          "elements": [
-            {
-              "id": "eCrew.01",
-              "values": [
-                {
-                  "kind": "scalar",
-                  "occurrenceId": "SYNTHETIC-SOURCE-RECORD-0001:demo-crew-member",
-                  "value": "SYNTHETIC-MEDIC-7"
                 }
               ]
             }

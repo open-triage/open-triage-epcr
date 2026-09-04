@@ -51,7 +51,7 @@ and source context to the JSON-output CLI:
 ```sh
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   npm run dispatch:ingest -w @open-triage/api -- \
-  --file packages/contracts/examples/dispatch/synthetic-assignment.json \
+  --file packages/contracts/examples/dispatch/synthetic-assignment-01.json \
   --organization-id 32000000-0000-4000-8000-000000000001 \
   --source-id synthetic-bootstrap
 ```

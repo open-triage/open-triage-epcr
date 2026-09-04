@@ -11,6 +11,7 @@ const call = (id: string, callNumber: string): AssignedCall => ({
   unit: { id: "unit-id", callSign: "Medic 32" },
   dispatchedAt: "2026-09-03T12:00:00.000Z",
   dispatchReason: "Medical assistance requested",
+  dispatchPriority: { code: "2305003", display: "Emergent" },
   chiefComplaint: null,
   status: "assigned"
 });

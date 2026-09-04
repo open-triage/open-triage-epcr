@@ -46,10 +46,9 @@ input, select, textarea { touch-action: manipulation; }
 .assigned-call-card dl > div { display: grid; gap: 2px; }
 .assigned-call-card dt { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .assigned-call-card dd { margin: 0; font-size: 13px; font-weight: 650; }
-.assignment-empty, .assignment-error, .assignment-notice { margin: 12px 0 0; padding: 10px 12px; font-size: 13px; line-height: 1.35; }
+.assignment-empty, .assignment-error { margin: 12px 0 0; padding: 10px 12px; font-size: 13px; line-height: 1.35; }
 .assignment-empty { color: var(--muted); padding-inline: 0; }
 .assignment-error { border-left: 3px solid #a5342d; color: #812b26; background: #fff1f0; }
-.assignment-notice { border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; }
 .active-report-notice { margin: 0; padding: 9px 16px; background: #e8f3ee; color: #195b3b; font-size: 13px; font-weight: 700; }
 .draft-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -2px 0 12px; }
 .draft-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }

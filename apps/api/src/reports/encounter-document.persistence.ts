@@ -55,10 +55,10 @@ function record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Stable RFC-4122 UUID derived from a report and vendor-owned opaque identity. */
+/** Stable UUID with the schema-required v4 shape, derived from a report and vendor-owned opaque identity. */
 export function dispatchEntityId(reportId: string, identity: string): string {
   const bytes = createHash("sha256").update(`${reportId}\u0000${identity}`).digest().subarray(0, 16);
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;

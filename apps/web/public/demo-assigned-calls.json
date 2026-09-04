@@ -2,13 +2,17 @@
   "assignedCalls": [
     {
       "id": "cd99f745-e09c-48db-a314-29ef2f8a514d",
-      "callNumber": "SYNTHETIC-INCIDENT-0001",
+      "callNumber": "SYN-20260903-001",
       "unit": {
         "id": "fa6b3570-882c-4c59-ba63-bae62de5830e",
         "callSign": "SYNTHETIC-MEDIC-7"
       },
       "dispatchedAt": "2026-08-15T09:14:00-04:00",
       "dispatchReason": "Chest Pain (Non-Traumatic)",
+      "dispatchPriority": {
+        "code": "2305003",
+        "display": "Emergent"
+      },
       "chiefComplaint": null,
       "agencyTimeZone": "America/New_York",
       "status": "assigned"
@@ -17,7 +21,7 @@
   "canceledAssignmentIds": [],
   "refreshedAt": "2026-08-15T09:14:05-04:00",
   "generatedFrom": {
-    "path": "packages/contracts/examples/dispatch/synthetic-assignment.json",
-    "sha256": "7974404a3c9fb16be8dae842ddb31cd7172b821662c18611b513998dec8e77c8"
+    "path": "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
+    "sha256": "f480ba40a6f0de64c1cb5b2969ca753d1cde26b9dfe54c396c4d4163680f5abf"
   }
 }

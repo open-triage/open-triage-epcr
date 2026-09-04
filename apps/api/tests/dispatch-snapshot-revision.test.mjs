@@ -10,7 +10,7 @@ import {
 } from "../dist/dispatch/dispatch-snapshot-revision.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment.json"), "utf8"));
+const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
 
 function copy(value = source) {
   return structuredClone(value);

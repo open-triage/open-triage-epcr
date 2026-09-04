@@ -18,7 +18,7 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required to bootstrap the synthetic installation");
 const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
 const dispatchSamplePath = path.join(
-  repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json"
+  repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"
 );
 const dispatchSourceBytes = await readFile(dispatchSamplePath);
 const dispatchPayload = JSON.parse(dispatchSourceBytes.toString("utf8"));
@@ -76,7 +76,7 @@ const formDefinition = {
     presentation: { title: "Dispatch" },
     fields: [
       { key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" }, required: false },
-      { key: "dispatch-priority", source: { kind: "nemsis", elementId: "eDispatch.02" }, required: false }
+      { key: "dispatch-priority", source: { kind: "nemsis", elementId: "eDispatch.05" }, required: false }
     ]
   }]
 };
@@ -99,6 +99,9 @@ async function ensureCatalog() {
 
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
+const dispatchWriter = {
+  query: async (sql, parameters) => (await client.query(sql, parameters)).rows
+};
 
 try {
   const migrated = await ensureFoundation(client);
@@ -174,7 +177,7 @@ try {
       join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
       where e.release_id = $1 and e.element_id = any($2::text[])
-    `, [releaseId, ["eDispatch.01", "eDispatch.02"]]);
+    `, [releaseId, ["eDispatch.01", "eDispatch.05"]]);
     if (fields.rowCount !== 2) throw new Error("The synthetic form fields are missing from the pinned catalog");
 
     const existingFormVersion = await client.query(
@@ -228,7 +231,7 @@ try {
       on conflict do nothing
     `, [ids.unit, ids.clinician, ids.organization]);
 
-    const dispatchIngestion = await ingestDispatchDelivery(client, {
+    const dispatchIngestion = await ingestDispatchDelivery(dispatchWriter, {
       organizationId: ids.organization,
       sourceId: "synthetic-bootstrap",
       sourceBytes: dispatchSourceBytes

@@ -17,7 +17,7 @@ export type GeneratedDemoFixtures = {
 };
 
 type DemoFixtureSource = {
-  readonly path: "packages/contracts/examples/dispatch/synthetic-assignment.json";
+  readonly path: "packages/contracts/examples/dispatch/synthetic-assignment-01.json";
   readonly sha256: string;
 };
 
@@ -43,7 +43,7 @@ export function buildDemoFixtures(
   const projection = projectDispatchAssignment(canonical);
   const sentAt = typeof canonical.sentAt === "string" ? canonical.sentAt : projection.unitNotifiedAt;
   const source = {
-    path: "packages/contracts/examples/dispatch/synthetic-assignment.json",
+    path: "packages/contracts/examples/dispatch/synthetic-assignment-01.json",
     sha256: createHash("sha256").update(sourceBytes).digest("hex"),
   } as const;
   const assignmentId = stableUuid("static-demo-assignment", projection.sourceRecordId);
@@ -77,6 +77,7 @@ export function buildDemoFixtures(
     unit: { id: unitId, callSign: projection.callSign },
     dispatchedAt: projection.unitNotifiedAt,
     dispatchReason: projection.dispatchReason,
+    dispatchPriority: projection.dispatchPriority,
     chiefComplaint: null,
     agencyTimeZone: "America/New_York",
     status: "assigned" as const,

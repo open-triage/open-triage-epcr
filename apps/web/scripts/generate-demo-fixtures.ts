@@ -7,7 +7,7 @@ import { buildDemoFixtures } from "./demo-fixture-core.js";
 async function main(): Promise<void> {
   const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const repositoryRoot = resolve(webRoot, "../..");
-  const sourcePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment.json");
+  const sourcePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json");
   const sourceBytes = await readFile(sourcePath);
   const sample: unknown = JSON.parse(sourceBytes.toString("utf8"));
   const catalog = JSON.parse(await readFile(resolve(webRoot, "app/data/nemsis-data-model-3.5.1.json"), "utf8")) as DispatchValidationCatalog;
