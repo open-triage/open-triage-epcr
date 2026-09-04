@@ -116,6 +116,15 @@ function canonicalValue(selection: StationaryCodedSelection, occurrenceId: strin
   return { ...common, kind: "coded", code: selection.code, ...(selection.system ? { system: selection.system } : {}), ...(selection.display ? { display: selection.display } : {}), ...(selection.terminologyVersion ? { terminologyVersion: selection.terminologyVersion } : {}) } as CodedEncounterValue;
 }
 
+function compatibleValueExtensions(value: EncounterValue | undefined): Readonly<Record<string, unknown>> {
+  if (!value) return {};
+  const { kind: _kind, occurrenceId: _occurrenceId, attributes: _attributes, code: _code,
+    display: _display, system: _system, terminologyVersion: _terminologyVersion,
+    notValue: _notValue, value: _value, lexical: _lexical, precision: _precision,
+    utcOffsetMinutes: _utcOffsetMinutes, ...extensions } = value;
+  return extensions;
+}
+
 /** Atomically replaces an ordinary or exceptional value, so incompatible states cannot coexist. */
 export function editStationaryCodedValue(
   document: EncounterDocument,
@@ -143,7 +152,10 @@ export function editStationaryCodedValue(
   if (target.occurrenceId && !existingValue) throw new Error(`${target.elementId} is missing occurrence ${target.occurrenceId}`);
   const values = [...existingElement?.values ?? []];
   if (selection) {
-    const value = canonicalValue(selection, existingValue?.occurrenceId ?? createId(), existingValue?.attributes);
+    const value = {
+      ...compatibleValueExtensions(existingValue),
+      ...canonicalValue(selection, existingValue?.occurrenceId ?? createId(), existingValue?.attributes),
+    } as EncounterValue;
     if (existingValue) values[valueIndex] = value;
     else values.push(value);
   } else if (existingValue) values.splice(valueIndex, 1);

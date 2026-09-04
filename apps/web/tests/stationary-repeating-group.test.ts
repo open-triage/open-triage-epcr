@@ -94,6 +94,19 @@ test("group cardinality, duplicate identity, and parent ownership are enforced",
   if (crew.ok) assert.equal(crew.document.groups.some(({ id }) => id === "eCrew.CrewGroup"), false);
 });
 
+test("adding a top-level repeating row creates only its missing non-repeating ancestry", () => {
+  const document = documentWithSceneResponderParent();
+  let sequence = 0;
+  const added = addRepeatingGroupOccurrence(document, "ePayment.SupplyItemGroup", undefined, () => `created-${++sequence}`);
+  assert.equal(added.ok, true);
+  if (!added.ok) return;
+  const payment = added.document.groups.find(({ id }) => id === "ePaymentSection")?.instances[0];
+  const supply = added.document.groups.find(({ id }) => id === "ePayment.SupplyItemGroup")?.instances[0];
+  assert.equal(payment?.parentInstanceId, "synthetic-pcr-1");
+  assert.equal(supply?.parentInstanceId, payment?.instanceId);
+  assert.equal(supply?.instanceId, added.instanceId);
+});
+
 test("removing a parent row removes nested canonical group occurrences without orphaning them", () => {
   let document = documentWithSceneResponderParent();
   const parent = addRepeatingGroupOccurrence(document, "eLabs.LabGroup", "synthetic-pcr-1", () => "lab-row");

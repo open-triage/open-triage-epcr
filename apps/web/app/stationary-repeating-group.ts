@@ -1,6 +1,7 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup } from "./stationary-layout";
 import { getNemsisGroup, NEMSIS_DATA_MODEL } from "./nemsis-data-model";
+import { ensureNonRepeatingInstance } from "./stationary-non-repeating";
 
 export type RepeatingGroupFinding = {
   readonly code: "cardinality" | "parent" | "identity";
@@ -61,31 +62,42 @@ export function addRepeatingGroupOccurrence(
 ): RepeatingGroupEditResult {
   const catalogGroup = getNemsisGroup(groupId);
   if (!catalogGroup?.repeating) throw new Error(`${groupId} is not a catalog repeating group`);
+  let nextDocument = document;
+  let resolvedParentInstanceId = parentInstanceId;
   if (catalogGroup.parentId !== null) {
-    const parentExists = document.groups.find(({ id }) => id === catalogGroup.parentId)?.instances
-      .some(({ instanceId }) => instanceId === parentInstanceId);
+    let parentExists = nextDocument.groups.find(({ id }) => id === catalogGroup.parentId)?.instances
+      .some(({ instanceId }) => instanceId === resolvedParentInstanceId);
+    const parentCatalog = getNemsisGroup(catalogGroup.parentId);
+    if (!resolvedParentInstanceId && !parentCatalog?.repeating) {
+      try {
+        const ensured = ensureNonRepeatingInstance(nextDocument, catalogGroup.parentId, undefined, createId);
+        nextDocument = ensured.document;
+        resolvedParentInstanceId = ensured.instance.instanceId;
+        parentExists = true;
+      } catch { /* A missing or ambiguous repeating ancestor is reported below. */ }
+    }
     if (!parentExists) return failure(document, "parent", `${catalogGroup.name} requires an existing ${catalogGroup.parentId} parent.`);
   } else if (parentInstanceId !== undefined) {
     return failure(document, "parent", `${catalogGroup.name} is a root group and cannot have a parent occurrence.`);
   }
-  const existing = repeatingGroupInstances(document, groupId, parentInstanceId);
+  const existing = repeatingGroupInstances(nextDocument, groupId, resolvedParentInstanceId);
   if (catalogGroup.occurrence.max !== "unbounded" && existing.length >= catalogGroup.occurrence.max) {
     return failure(document, "cardinality", `${catalogGroup.name} allows ${catalogGroup.occurrence.max} occurrence${catalogGroup.occurrence.max === 1 ? "" : "s"} per parent.`);
   }
   const instanceId = createId();
-  if (document.groups.some((group) => group.instances.some((instance) => instance.instanceId === instanceId))) {
+  if (nextDocument.groups.some((group) => group.instances.some((instance) => instance.instanceId === instanceId))) {
     return failure(document, "identity", `Group occurrence identity ${instanceId} is already in use.`);
   }
   const instance: EncounterGroupInstance = {
     instanceId,
-    ...(parentInstanceId ? { parentInstanceId } : {}),
+    ...(resolvedParentInstanceId ? { parentInstanceId: resolvedParentInstanceId } : {}),
     elements: [],
   };
-  const groupIndex = document.groups.findIndex(({ id }) => id === groupId);
-  const groups = [...document.groups];
+  const groupIndex = nextDocument.groups.findIndex(({ id }) => id === groupId);
+  const groups = [...nextDocument.groups];
   if (groupIndex < 0) groups.push({ id: groupId, instances: [instance] });
   else groups[groupIndex] = { ...groups[groupIndex]!, instances: [...groups[groupIndex]!.instances, instance] };
-  return { ok: true, document: changed(document, groups, now), instanceId };
+  return { ok: true, document: changed(nextDocument, groups, now), instanceId };
 }
 
 function descendantInstanceIds(document: EncounterDocument, instanceId: string): Set<string> {
