@@ -3,13 +3,13 @@
 import type { EncounterDocument } from "@open-triage/contracts";
 import { useState } from "react";
 import {
-  editStationaryScalarValue,
+  editStationaryScalarSelection,
   STATIONARY_SCALAR_FIELDS,
-  stationaryScalarValues,
+  stationaryScalarValue,
 } from "../app/stationary-scalar-group";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
-import { validateScalarInput, type ScalarValidationFinding } from "../app/stationary-scalar";
-import { StationaryScalarControl } from "./stationary-scalar-control";
+import type { ScalarValidationFinding } from "../app/stationary-scalar";
+import { StationaryTextPicker } from "./stationary-text-picker";
 import { editStationaryCodedValue, stationaryCodedField } from "../app/stationary-coded-value";
 import { StationaryCodedValueField } from "./stationary-coded-field";
 
@@ -19,7 +19,6 @@ export function StationaryPatientName({ document, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const values = stationaryScalarValues(document);
   const [findings, setFindings] = useState<Readonly<Record<string, ReadonlyArray<ScalarValidationFinding>>>>({});
   const patient = document.groups.find(({ id }) => id === "ePatientSection")?.instances[0];
   const sex = patient?.elements.find(({ id }) => id === sexField.elementId)?.values[0];
@@ -34,17 +33,17 @@ export function StationaryPatientName({ document, onDocumentChange }: {
       </div>
       <div className="stationary-scalar-fields">
         {STATIONARY_SCALAR_FIELDS.map((field) => (
-          <StationaryScalarControl
+          <StationaryTextPicker
             key={field.id}
             presentation={field}
-            value={values[field.id] === undefined ? undefined : {
-              kind: "scalar", occurrenceId: field.id, value: values[field.id]!,
-            }}
+            catalog={requireNemsisDataElement(field.id)}
+            value={stationaryScalarValue(document, field.id)}
             findings={findings[field.id]}
-            onInput={(input) => {
-              const nextFindings = validateScalarInput(requireNemsisDataElement(field.id), input);
-              setFindings((current) => ({ ...current, [field.id]: nextFindings }));
-              if (!nextFindings.length) onDocumentChange(editStationaryScalarValue(document, field.id, String(input)));
+            onChange={(selection) => {
+              const result = editStationaryScalarSelection(document, field.id, selection);
+              if (!result.ok) return setFindings((current) => ({ ...current, [field.id]: result.findings }));
+              setFindings((current) => ({ ...current, [field.id]: [] }));
+              onDocumentChange(result.document);
             }}
           />
         ))}

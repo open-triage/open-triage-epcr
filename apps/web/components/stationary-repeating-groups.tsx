@@ -22,6 +22,8 @@ import { StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryNumericPicker } from "./stationary-numeric-picker";
+import { StationaryTextOccurrences } from "./stationary-text-occurrences";
+import { StationaryTextPicker } from "./stationary-text-picker";
 
 function NumericGroupField({ document, instance, placement, presentation, value, initialFocus, onDocumentChange }: {
   readonly document: EncounterDocument;
@@ -72,6 +74,17 @@ function GroupField({ document, instance, placement, initialFocus = false, onDoc
     </div>;
   }
   const presentation = scalarControlPresentation(catalogElement, placement.label ?? catalogElement.name, placement.help ?? catalogElement.definition);
+  if (presentation.family === "text") {
+    if (presentation.repeatable) return <div data-element-id={placement.id}><StationaryTextOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} /></div>;
+    const value = element?.values[0];
+    return <div data-element-id={placement.id}><StationaryTextPicker presentation={presentation} catalog={catalogElement} value={value} initialFocus={initialFocus} onChange={(selection) => {
+      const result = editScalarSelection(document, {
+        groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,
+        ...(value ? { occurrenceId: value.occurrenceId } : {}), ...(selection ? { selection } : {}),
+      });
+      if (result.ok) onDocumentChange(result.document);
+    }} /></div>;
+  }
   if (presentation.repeatable) return <div data-element-id={placement.id}><StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} /></div>;
   const value = element?.values[0];
   if (presentation.family === "numeric" || presentation.family === "integer") return <div data-element-id={placement.id}><NumericGroupField

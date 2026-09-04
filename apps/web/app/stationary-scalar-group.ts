@@ -1,7 +1,7 @@
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { requireNemsisDataElement } from "./nemsis-data-model";
-import { scalarControlPresentation } from "./stationary-scalar";
+import { editScalarSelection, scalarControlPresentation, type ScalarEditResult, type StationaryScalarSelection } from "./stationary-scalar";
 
 export const STATIONARY_SCALAR_GROUP_ID = "ePatient.PatientNameGroup";
 export const STATIONARY_SCALAR_ELEMENT_IDS = ["ePatient.02", "ePatient.03", "ePatient.04"] as const;
@@ -30,6 +30,31 @@ export function stationaryScalarValues(document: EncounterDocument): Readonly<Re
     const value = instance?.elements.find((element) => element.id === id)?.values[0];
     return [id, value?.kind === "scalar" ? String(value.value) : ""];
   }));
+}
+
+export function stationaryScalarValue(document: EncounterDocument, elementId: typeof STATIONARY_SCALAR_ELEMENT_IDS[number]): EncounterValue | undefined {
+  return document.groups.find(({ id }) => id === STATIONARY_SCALAR_GROUP_ID)?.instances[0]?.elements
+    .find(({ id }) => id === elementId)?.values[0];
+}
+
+export function editStationaryScalarSelection(
+  document: EncounterDocument,
+  elementId: typeof STATIONARY_SCALAR_ELEMENT_IDS[number],
+  selection: StationaryScalarSelection | undefined,
+  createId: () => string = () => crypto.randomUUID(),
+  now = new Date(),
+): ScalarEditResult {
+  if (!STATIONARY_SCALAR_ELEMENT_IDS.includes(elementId)) throw new Error(`${elementId} is not configured in the stationary scalar group`);
+  const instance = document.groups.find(({ id }) => id === STATIONARY_SCALAR_GROUP_ID)?.instances[0];
+  if (!instance) throw new Error(`Canonical document is missing an occurrence of ${STATIONARY_SCALAR_GROUP_ID}`);
+  const value = stationaryScalarValue(document, elementId);
+  return editScalarSelection(document, {
+    groupId: STATIONARY_SCALAR_GROUP_ID,
+    groupInstanceId: instance.instanceId,
+    elementId,
+    ...(value ? { occurrenceId: value.occurrenceId } : {}),
+    ...(selection ? { selection } : {}),
+  }, createId, now);
 }
 
 /** Replaces one canonical scalar value while retaining its group and occurrence identities. */
