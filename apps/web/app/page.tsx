@@ -55,6 +55,7 @@ import {
   saveCachedValidationErrorCount,
 } from "./offline-reports";
 import { reconcileActiveReportDocument } from "./active-report-reconciliation";
+import type { PresentationMode } from "./presentation-mode";
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -73,9 +74,10 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }: {
+function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onSessionEnded }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
+  readonly presentationMode: PresentationMode;
   readonly onSaveAndClose: () => void;
   readonly onSessionEnded: () => void;
 }) {
@@ -137,6 +139,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
   useEffect(() => { shellRef.current = shell; }, [shell]);
+
+  useEffect(() => {
+    if (presentationMode === "mobile" && shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
+  }, [presentationMode, shell.view]);
 
   const closeActiveDialog = useCallback(() => {
     if (activeDialog === "note") dispatch({ type: "note-cancelled" });
@@ -456,7 +462,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}>
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
@@ -505,7 +511,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         ))}
       </nav>
 
-      {(shell.view === "timeline" || shell.view === "checklist") && (
+      {presentationMode === "stationary" && (shell.view === "timeline" || shell.view === "checklist") && (
         <div className="sign-action-bar">
           <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
         </div>
@@ -598,7 +604,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         </section>
       )}
 
-      {shell.view === "review" && (
+      {presentationMode === "stationary" && shell.view === "review" && (
         <>
         <ReviewPanel
           findings={reviewFindings}
@@ -713,8 +719,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, sessionEnded }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
   )}</ClinicianSessionGate>;
 }
 

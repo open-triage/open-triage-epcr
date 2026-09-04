@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { loadPresentationMode, PRESENTATION_MODE_STORAGE_KEY, storePresentationMode } from "../app/presentation-mode";
+
+test("presentation mode defaults safely to mobile and ignores invalid saved values", () => {
+  assert.equal(loadPresentationMode({ getItem: () => null }), "mobile");
+  assert.equal(loadPresentationMode({ getItem: () => "desktop" }), "mobile");
+});
+
+test("presentation mode persists independently in browser storage", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  };
+
+  storePresentationMode(storage, "stationary");
+
+  assert.equal(values.get(PRESENTATION_MODE_STORAGE_KEY), "stationary");
+  assert.equal(loadPresentationMode(storage), "stationary");
+});

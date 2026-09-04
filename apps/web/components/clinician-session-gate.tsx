@@ -15,6 +15,7 @@ import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
+import { loadPresentationMode, storePresentationMode, type PresentationMode } from "../app/presentation-mode";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -22,6 +23,7 @@ export function ClinicianSessionGate({ children }: {
     report: ActiveDraftReport | null;
     closeReport: () => void;
     sessionEnded: () => void;
+    presentationMode: PresentationMode;
   }) => ReactNode);
 }) {
   const [ready, setReady] = useState(false);
@@ -31,10 +33,12 @@ export function ClinicianSessionGate({ children }: {
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   const [openCallsRevision, setOpenCallsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
+  const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
 
   useEffect(() => {
     queueMicrotask(() => {
       setSession(loadClinicianSession(window.localStorage));
+      setPresentationMode(loadPresentationMode(window.localStorage));
       setReady(true);
     });
   }, []);
@@ -89,6 +93,11 @@ export function ClinicianSessionGate({ children }: {
     if (accessToken) void endClinicianSession(accessToken).catch(() => undefined);
   }
 
+  function selectPresentationMode(mode: PresentationMode) {
+    storePresentationMode(window.localStorage, mode);
+    setPresentationMode(mode);
+  }
+
   const sessionEnded = useCallback(() => {
     clearClinicianSession(window.localStorage);
     setSession(null);
@@ -128,6 +137,10 @@ export function ClinicianSessionGate({ children }: {
       <header className="session-bar">
         <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
+        <div className="presentation-selector" role="group" aria-label="Documentation presentation">
+          <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
+          <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
+        </div>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
@@ -151,7 +164,7 @@ export function ClinicianSessionGate({ children }: {
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, closeReport: () => {
+      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, closeReport: () => {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}

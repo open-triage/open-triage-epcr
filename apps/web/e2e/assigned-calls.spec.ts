@@ -233,6 +233,7 @@ test("Sign record requires acknowledged validation and removes the report from O
     }) });
   });
   await signIn(page);
+  await page.getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 

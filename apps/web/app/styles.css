@@ -24,10 +24,13 @@ input, select, textarea { touch-action: manipulation; }
 .login-card button { min-height: 52px; margin-top: 6px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }
 .login-card button:disabled { opacity: .65; cursor: wait; }
 .login-message { margin: 0; padding: 10px 12px; border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; font-size: 13px; }
-.session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: 78px minmax(0, 1fr) 78px; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: 12px; }
+.session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: 12px; }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
 .session-identity { min-width: 0; text-align: center; }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
+.presentation-selector { display: grid; grid-template-columns: 1fr 1fr; padding: 2px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; }
+.session-bar .presentation-selector button { min-height: 34px; padding: 3px 9px; border: 0; }
+.session-bar .presentation-selector button[aria-pressed="true"] { color: #123b52; background: #fff; }
 .authenticated-shell .safety-notice { top: 48px; }
 .authenticated-shell .quick-actions { top: 86px; }
 .assigned-calls { padding: 18px 16px 20px; border-bottom: 1px solid var(--line); background: #f3f7f4; }
@@ -227,6 +230,12 @@ input, select, textarea { touch-action: manipulation; }
 .review-actions button:disabled { border-color: #b8bbb5; color: #666a64; background: #e2e4df; cursor: not-allowed; }
 .finish-help { margin: 9px 18px 0; color: var(--muted); font-size: 12px; text-align: right; }
 @media (max-width: 410px) { .vital-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) {
+  .session-bar { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .presentation-selector { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: min(280px, 100%); }
+  .authenticated-shell .safety-notice { top: 98px; }
+  .authenticated-shell .quick-actions { top: 136px; }
+}
 @media (max-width: 370px) {
   .safety-notice { align-items: flex-start; flex-direction: column; gap: 1px; }
   .encounter-header { padding-inline: 16px; }
