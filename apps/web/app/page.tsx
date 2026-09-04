@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
-import { PatientDialog } from "../components/patient-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { TimePicker } from "../components/time-picker";
@@ -24,6 +23,7 @@ import {
 import { nullOptionsFor, validateVitals } from "./vital-validation";
 import { localClinicalDate } from "./time-picker";
 import { documentTimeline, incidentSummary } from "./incident-document";
+import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
   DRAFT_SAVE_DEBOUNCE_MS,
@@ -57,7 +57,6 @@ const quickActionText: Record<QuickActionId, string> = {
   medication: "Medications",
   procedure: "Procedures",
   note: "Notes",
-  patient: "Patient",
 };
 
 function localClinicalTime(): string {
@@ -75,7 +74,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
-  const [patientOpen, setPatientOpen] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
   const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
@@ -114,9 +112,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       reference: "eTimes.03",
     }];
   }, [encounter.document, report]);
-  const timelineEvents = useMemo(() => [...incidentEvents, ...encounter.events].sort((a, b) =>
+  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
+  const timelineEvents = useMemo(() => [...incidentEvents, ...clinicalEvents].sort((a, b) =>
     `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
-  ), [incidentEvents, encounter.events]);
+  ), [incidentEvents, clinicalEvents]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -139,11 +138,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
   const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
-  const activeDialog = patientOpen ? "patient" : shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "patient") setPatientOpen(false);
-    else if (activeDialog === "note") dispatch({ type: "note-cancelled" });
+    if (activeDialog === "note") dispatch({ type: "note-cancelled" });
     else if (activeDialog === "medication") dispatch({ type: "medication-cancelled" });
     else if (activeDialog === "procedure") dispatch({ type: "procedure-cancelled" });
     else if (activeDialog === "vitals") {
@@ -325,11 +323,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     setEditingFinding(null);
     dispatch({ type: "note-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
   }
-  function startPatient(event: React.MouseEvent<HTMLButtonElement>) {
-    rememberTrigger(event.currentTarget);
-    setEditingFinding(null);
-    setPatientOpen(true);
-  }
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -351,7 +344,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }
 
   const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
-    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote, patient: startPatient,
+    vitals: startVitals, medication: startMedication, procedure: startProcedure, note: startNote,
   };
 
   async function signRecord() {
@@ -543,8 +536,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </>
       )}
-
-      {patientOpen && <PatientDialog document={encounter.document} definition={bundledEncounterDefinition} dialogRef={dialog} onClose={() => setPatientOpen(false)} onSave={(document) => { dispatch({ type: "patient-updated", document }); setPatientOpen(false); }} />}
 
       {shell.noteDraft && (
         <div className="dialog-backdrop" role="presentation">

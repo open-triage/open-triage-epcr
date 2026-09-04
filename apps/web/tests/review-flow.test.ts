@@ -8,9 +8,11 @@ import {
   type EncounterEvent,
   type ShellState,
 } from "../app/standard-encounter";
+import { saveCanonicalEvent } from "../app/canonical-events";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 
 function withEvent(state: ShellState, event: EncounterEvent): ShellState {
-  return { ...state, encounter: { ...state.encounter, events: [event, ...state.encounter.events] } };
+  return { ...state, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, standardEncounterDefinition) } };
 }
 
 test("consolidates timeline-entry errors and warnings", () => {

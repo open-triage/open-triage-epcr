@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type EncounterDefinition } from "../app/encounter-definition";
+import { encounterEvents } from "../app/canonical-events";
 import { loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import {
   EMPTY_VITALS,
@@ -23,7 +24,7 @@ function alternateDefinition(): EncounterDefinition {
     version: 7,
     composition: {
       ...structuredClone(standardEncounterDefinition.composition),
-      quickActionOrder: ["patient", "vitals", "medication", "procedure", "note"],
+      quickActionOrder: ["vitals", "medication", "procedure", "note"],
       summary: { eventTypeOrder: ["vitals", "note", "medication", "procedure"] },
     },
     events: {
@@ -69,8 +70,8 @@ test("a test-only definition changes capture, validation, review, and summary th
     { id: "pain", label: "Discomfort score" },
     { id: "systolic", label: "Systolic BP" },
   ]);
-  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["patient", "vitals", "medication", "procedure"]);
-  assert.equal(configuredQuickActions(definition)[1]?.label, "Record field observations");
+  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure"]);
+  assert.equal(configuredQuickActions(definition)[0]?.label, "Record field observations");
 
   const missingRequired = validateVitals("09:00", EMPTY_VITALS, definition);
   assert.match(missingRequired.errors.pain!, /eVitals\.27 requires a value/);
@@ -80,7 +81,7 @@ test("a test-only definition changes capture, validation, review, and summary th
   state = transitionShell(state, { type: "vitals-started", id: "alternate-vital", date: "2026-04-18", time: "09:00" }, definition);
   state = transitionShell(state, { type: "vitals-value-changed", field: "pain", value: "9" }, definition);
   state = transitionShell(state, { type: "vitals-saved" }, definition);
-  const captured = state.encounter.events.find(({ id }) => id === "alternate-vital")!;
+  const captured = encounterEvents(state.encounter.document, definition).find(({ id }) => id === "alternate-vital")!;
   assert.equal(captured.title, "Community observations");
   assert.equal(captured.vitals?.pain, "9");
 

@@ -12,7 +12,7 @@ test("compiles the neutral JSON form while preserving catalog-owned semantics", 
   assert.ok(systolic.absenceStates.some(({ kind }) => kind === "NV"));
   assert.ok(definition.events.procedure.complicationOptions.length > 1);
   assert.equal(definition.events.procedure.attempts.max, 10);
-  assert.ok(!configuredQuickActions(definition).some(({ id }) => id === "patient"));
+  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure", "note"]);
 });
 
 test("a test profile hides, relabels, removes, adds, and reorders supported elements", () => {
@@ -50,11 +50,8 @@ test("reports unknown elements, duplicate placements, illegal semantic overrides
     && error.message.includes("$.review.groups: must contain error and warning exactly once"));
 });
 
-test("rejects patient UI that is not backed by a configured NEMSIS field", () => {
-  const profile = structuredClone(standardEncounterFormProfile) as unknown as {
-    sections: Array<{ id: string; visible: boolean; elements: string[] }>;
-  };
-  profile.sections.find(({ id }) => id === "patient")!.visible = true;
-
-  assert.throws(() => compileEncounterFormProfile(profile), /visible sections must contain at least one configured NEMSIS field/);
+test("rejects a patient-specific editor section", () => {
+  const profile = structuredClone(standardEncounterFormProfile) as unknown as { sections: unknown[] };
+  profile.sections.push({ id: "patient", visible: true, quickActionLabel: "Edit patient", elements: [] });
+  assert.throws(() => compileEncounterFormProfile(profile), /unsupported section patient/);
 });

@@ -1,4 +1,4 @@
-export function QuickActionIcon({ kind }: { readonly kind: "vitals" | "medication" | "procedure" | "note" | "patient" }) {
+export function QuickActionIcon({ kind }: { readonly kind: "vitals" | "medication" | "procedure" | "note" }) {
   const common = {
     width: 32,
     height: 32,
@@ -39,7 +39,5 @@ export function QuickActionIcon({ kind }: { readonly kind: "vitals" | "medicatio
     <path d="m19.5 7.5 5 5M7 20l5 5" />
   </svg>;
 
-  return <svg {...common}>
-    <path d="M7 28c2.5-3.2 3.8-5.9 3.8-8.2 0-2.2-2.2-4.3-2.2-8.1C8.6 6.6 12.4 3 17.2 3c4.9 0 8.2 3.4 8.2 7.9l2.1 3.2c.5.8.1 1.7-.8 1.9l-1.4.4v3.1c0 1.3-1 2.3-2.3 2.3h-2.2V24c0 1.4.8 2.8 2.2 4H7Z" />
-  </svg>;
+  return null;
 }

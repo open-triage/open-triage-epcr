@@ -22,13 +22,13 @@ export class EncounterFormProfileError extends Error {
   }
 }
 
-const sectionIds = ["vitals", "medication", "procedure", "note", "patient"] as const;
+const sectionIds = ["vitals", "medication", "procedure", "note"] as const;
 const eventIds = ["vitals", "medication", "procedure", "note"] as const;
 const supported: Record<SectionId, ReadonlyArray<string>> = {
   vitals: catalogBackedDefaults.events.vitals.fields.map(({ reference }) => reference),
   medication: catalogBackedDefaults.events.medication.fields.map(({ reference }) => reference),
   procedure: Object.values(catalogBackedDefaults.events.procedure.references),
-  note: [catalogBackedDefaults.events.note.references.summary], patient: [],
+  note: [catalogBackedDefaults.events.note.references.summary],
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -116,7 +116,6 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
       review: { groups: profile.review.groups, eventTypeOrder: profile.review.sectionOrder },
       summary: { eventTypeOrder: profile.summary.sectionOrder },
     },
-    patient: { quickAction: { ...catalogBackedDefaults.patient.quickAction, visible: section("patient").visible, label: section("patient").quickActionLabel } },
     events: {
       note: { ...catalogBackedDefaults.events.note, quickAction: { visible: section("note").visible, label: section("note").quickActionLabel }, labels: { ...catalogBackedDefaults.events.note.labels, timeHelp: profile.helpText?.["eNarrative.01"] ?? catalogBackedDefaults.events.note.labels.timeHelp } },
       procedure: { ...catalogBackedDefaults.events.procedure, quickAction: { visible: section("procedure").visible, label: section("procedure").quickActionLabel }, fieldOrder: section("procedure").elements.map((reference) => procedureByReference.get(reference)!), required: procedureMetadata.required, attempts: procedureMetadata.attempts, successOptions: procedureMetadata.successOptions, outcomeOptions: procedureMetadata.outcomeOptions, complicationOptions: procedureMetadata.complicationOptions },

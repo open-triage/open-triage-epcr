@@ -9,7 +9,7 @@ test("validates and serves the bundled versioned encounter definition", () => {
 
   assert.equal(definition.schemaVersion, 1);
   assert.equal(definition.version, 1);
-  assert.equal(definition.patient.quickAction.label, "Edit patient information");
+  assert.deepEqual(definition.composition.quickActionOrder, ["vitals", "medication", "procedure", "note"]);
   assert.equal(definition.events.note.quickAction.visible, true);
   assert.equal(definition.events.note.quickAction.label, "Add clinical note");
   assert.equal(definition.events.note.required.summary, true);

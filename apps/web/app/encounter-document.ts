@@ -224,8 +224,16 @@ export function encounterDocumentDiagnostics(
       diagnostic(diagnostics, `${groupPath}.instances`, "must contain at least one group occurrence");
       return;
     }
-    if (standardGroup && standardGroup.occurrence.max !== "unbounded" && group.instances.length > standardGroup.occurrence.max) {
-      diagnostic(diagnostics, `${groupPath}.instances`, `${group.id} permits at most ${standardGroup.occurrence.max} occurrence(s)`);
+    if (standardGroup && standardGroup.occurrence.max !== "unbounded") {
+      const maximum = standardGroup.occurrence.max;
+      const counts = new Map<string, number>();
+      group.instances.forEach((instance) => {
+        const parent = isRecord(instance) && typeof instance.parentInstanceId === "string" ? instance.parentInstanceId : "$root";
+        counts.set(parent, (counts.get(parent) ?? 0) + 1);
+      });
+      if ([...counts.values()].some((count) => count > maximum)) {
+        diagnostic(diagnostics, `${groupPath}.instances`, `${group.id} permits at most ${maximum} occurrence(s) per parent`);
+      }
     }
     duplicateStrings(group.instances.map((instance) => isRecord(instance) ? instance.instanceId : undefined)).forEach((id) => {
       diagnostic(diagnostics, `${groupPath}.instances`, `contains duplicate instanceId ${id}`);
