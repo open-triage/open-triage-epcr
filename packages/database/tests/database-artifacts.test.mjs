@@ -228,6 +228,16 @@ test("stores immutable dispatch delivery evidence under clinical-data controls",
   assert.match(migration, /Source payload bytes must never be copied to ordinary logs/);
 });
 
+test("stores a rebuildable agency-scoped dispatch assignment projection", () => {
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*dispatch_source_id text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*dispatch_source_record_id text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*response_number text/);
+  assert.match(migration, /create table clinical\.call_assignment \([\s\S]*vehicle_number text/);
+  assert.match(migration, /unique \(organization_id, dispatch_source_id, dispatch_source_record_id\)/);
+  assert.match(migration, /foreign key \(organization_id, dispatch_receipt_id\)[\s\S]*references clinical\.dispatch_receipt\(organization_id, id\)/);
+  assert.doesNotMatch(migration, /unique \(organization_id, call_number\)/);
+});
+
 test("schedules bounded observable projection work inside the freshness target", () => {
   assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
   assert.match(scheduler, /concurrencyPolicy: Forbid/);
