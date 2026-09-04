@@ -133,7 +133,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   return (
-    <div className="authenticated-shell">
+    <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
         <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>

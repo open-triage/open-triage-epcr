@@ -129,13 +129,14 @@ function renderContexts(document: EncounterDocument, group: StationaryNonRepeati
 }
 
 /** Full inline stationary projection. Fields stay in the DOM even when optional or not applicable. */
-export function StationaryNonRepeatingRecord({ document, applicability = {}, onDocumentChange }: {
+export function StationaryNonRepeatingRecord({ document, applicability = {}, groups = STATIONARY_NON_REPEATING_GROUPS, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly applicability?: Readonly<Record<string, StationaryApplicability>>;
+  readonly groups?: ReadonlyArray<StationaryNonRepeatingGroup>;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   return <div className="stationary-non-repeating-record" aria-label="Complete non-repeating NEMSIS record">
-    {STATIONARY_NON_REPEATING_GROUPS.map((group) => {
+    {groups.map((group) => {
       const contexts = renderContexts(document, group);
       const ancestry = group.path.join(" / ");
       return <section
