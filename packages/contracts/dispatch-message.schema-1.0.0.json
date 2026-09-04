@@ -96,6 +96,7 @@
             "code": { "type": "string", "minLength": 1 },
             "display": { "type": "string", "minLength": 1 },
             "system": { "type": "string", "minLength": 1 },
+            "terminologyVersion": { "type": "string", "minLength": 1 },
             "attributes": { "$ref": "#/$defs/attributes" }
           }
         }

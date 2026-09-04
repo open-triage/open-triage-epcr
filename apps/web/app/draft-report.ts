@@ -45,7 +45,7 @@ export type DraftValue =
   | { readonly kind: "boolean"; readonly value: boolean }
   | { readonly kind: "date" | "datetime" | "time" | "duration"; readonly value: string }
   | { readonly kind: "binary"; readonly value: string }
-  | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string }
+  | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string; readonly terminologyVersion?: string }
   | { readonly kind: "null" | "pertinent-negative"; readonly absenceCode: string; readonly display?: string }
   | { readonly kind: "absent"; readonly absenceCode?: string; readonly display?: string };
 
@@ -106,7 +106,7 @@ export function draftCommandUsesLegacyDerivedIds(
 }
 
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
-  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}) };
+  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}), ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };
   if (value.kind === "null") return value.notValue
     ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}) }
