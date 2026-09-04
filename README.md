@@ -37,12 +37,24 @@ PATIENT_KEY_SECRET_BASE64='<base64-encoded-random-32-byte-secret>' \
 ```
 
 The command applies the foundation migration when needed, loads the pinned catalog,
-and creates a synthetic organization, versioned agency demographics, users and
-capabilities, a published form, and a baseline draft report. It is safe to replay:
+creates a synthetic organization, versioned agency demographics, users and
+capabilities, a published form, and a baseline draft report, then ingests only the
+committed initial dispatch sample through the production ingestion library. It is safe to replay:
 stable fixture identities are verified and immutable versions are never rewritten.
 The fixture uses an unknown patient with a one-way synthetic pseudonym and fictional
 dispatch metadata—no real patient data. It is only loaded by this explicit command;
 production API and migration entry points do not import it.
+
+To ingest one vendor snapshot explicitly, pass the file and caller-owned organization
+and source context to the JSON-output CLI:
+
+```sh
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  npm run dispatch:ingest -w @open-triage/api -- \
+  --file packages/contracts/examples/dispatch/synthetic-assignment.json \
+  --organization-id 32000000-0000-4000-8000-000000000001 \
+  --source-id synthetic-bootstrap
+```
 
 The mobile entry screen prefills the synthetic clinician credentials and requires
 an explicit **Sign in** action. The seeded organization fixes that session at 14
