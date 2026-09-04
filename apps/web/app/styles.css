@@ -271,3 +271,38 @@ input, select, textarea { touch-action: manipulation; }
   .view-switcher button.active { outline: 2px solid currentColor; }
 }
 @media (min-width: 481px) { .app-shell { border-inline: 1px solid #d0d3cd; } }
+.stationary-repeating-groups {
+  display: grid;
+  gap: 1rem;
+  margin: 0 auto 1rem;
+  max-width: 1180px;
+  padding: 0 1rem;
+}
+
+.stationary-repeating-group {
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.stationary-repeating-group .section-heading { align-items: end; }
+.stationary-repeating-group .section-heading p { margin: 0.25rem 0 0; }
+.stationary-group-add-controls, .stationary-row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.stationary-group-add-controls label { display: grid; gap: 0.2rem; }
+.stationary-table-scroll { max-width: 100%; overflow-x: auto; }
+.stationary-repeating-group table { border-collapse: collapse; min-width: 42rem; width: 100%; }
+.stationary-repeating-group th, .stationary-repeating-group td { border-bottom: 1px solid var(--border, #d9dee7); padding: 0.65rem; text-align: left; vertical-align: top; }
+.stationary-repeating-group td > span { display: block; }
+.stationary-empty-table { color: var(--muted, #596273); }
+.stationary-group-dialog { max-height: min(88vh, 58rem); max-width: 54rem; overflow-y: auto; width: min(92vw, 54rem); }
+.stationary-group-dialog-fields { display: grid; gap: 1rem; }
+.stationary-group-coded-occurrences { display: grid; gap: 0.75rem; }
+
+@media (max-width: 640px) {
+  .stationary-repeating-groups { padding: 0 0.5rem; }
+  .stationary-repeating-group { padding: 0.75rem; }
+  .stationary-repeating-group .section-heading { align-items: stretch; flex-direction: column; }
+  .stationary-group-add-controls > button { width: 100%; }
+  .stationary-group-dialog { width: calc(100vw - 1rem); }
+}

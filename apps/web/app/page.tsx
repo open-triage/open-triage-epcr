@@ -5,6 +5,7 @@ import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryPatientName } from "../components/stationary-patient-name";
+import { StationaryRepeatingGroups } from "../components/stationary-repeating-groups";
 import { TimePicker } from "../components/time-picker";
 import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
@@ -300,10 +301,16 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       )}
 
       {presentationMode === "stationary" && shell.view === "timeline" && (
+        <>
         <StationaryPatientName
           document={encounter.document}
           onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
         />
+        <StationaryRepeatingGroups
+          document={encounter.document}
+          onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
+        />
+        </>
       )}
 
       {shell.view === "timeline" && (
