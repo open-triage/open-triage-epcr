@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dispatchEntityId, seedDispatchEncounter } from "../dist/reports/encounter-document.persistence.js";
+import { dispatchEntityId, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
 
 const reportId = "42000000-0000-4000-8000-000000000002";
 
@@ -40,4 +40,29 @@ test("payload identities map stably while nested and hidden values are seeded wi
   assert.equal(record[10], "PCR-AGENCY-0001");
   assert.equal(dispatchEntityId(reportId, "group:patient"), dispatchEntityId(reportId, "group:patient"));
   assert.match(dispatchEntityId(reportId, "group:patient"), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("stored scalar values rehydrate lexical, precision, offset, binary, and source attributes", () => {
+  const common = {
+    id: "62000000-0000-4000-8000-000000000060", group_instance_id: "group", element_id: "test", ordinal: 0,
+    value_kind: "datetime", value_text: null, value_integer: null, value_numeric: null, value_boolean: null,
+    value_date: null, value_datetime: "2026-09-04T16:30:45.120Z", value_time: null, value_duration: null,
+    value_binary: null, value_lexical: null, value_utc_offset_minutes: -240, value_precision: "fractional-3",
+    code: null, code_system: null, code_display: null, absence_code: null, absence_display: null,
+    source_attributes: { source: "monitor" }, provenance_kind: "clinician", provenance_detail: null,
+  };
+  assert.deepEqual(storedEncounterValue(common), {
+    kind: "scalar", occurrenceId: common.id, value: "2026-09-04T16:30:45.120Z",
+    attributes: { source: "monitor" }, utcOffsetMinutes: -240, precision: "fractional-3",
+  });
+  assert.deepEqual(storedEncounterValue({
+    ...common, value_kind: "numeric", value_datetime: null, value_numeric: "001.20", value_lexical: "001.20",
+    value_utc_offset_minutes: null, value_precision: null,
+  }), {
+    kind: "scalar", occurrenceId: common.id, value: 1.2, lexical: "001.20", attributes: { source: "monitor" },
+  });
+  assert.deepEqual(storedEncounterValue({
+    ...common, value_kind: "binary", value_datetime: null, value_binary: "AAEC/w==",
+    value_utc_offset_minutes: null, value_precision: null,
+  }).value, "AAEC/w==");
 });

@@ -1,6 +1,7 @@
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { requireNemsisDataElement } from "./nemsis-data-model";
+import { scalarControlPresentation } from "./stationary-scalar";
 
 export const STATIONARY_SCALAR_GROUP_ID = "ePatient.PatientNameGroup";
 export const STATIONARY_SCALAR_ELEMENT_IDS = ["ePatient.02", "ePatient.03", "ePatient.04"] as const;
@@ -18,11 +19,8 @@ export const STATIONARY_SCALAR_FIELDS = STATIONARY_SCALAR_ELEMENT_IDS.map((id) =
   const catalog = requireNemsisDataElement(id);
   const placement = COMPILED_STATIONARY_LAYOUT.elements.find((candidate) => candidate.id === id)!;
   return {
+    ...scalarControlPresentation(catalog, placement.label ?? catalog.name, placement.help ?? catalog.definition),
     id,
-    label: placement.label ?? catalog.name,
-    help: placement.help ?? catalog.definition,
-    minLength: Number(catalog.datatype.constraints.minLength ?? 0),
-    maxLength: Number(catalog.datatype.constraints.maxLength ?? 524_288),
   };
 });
 

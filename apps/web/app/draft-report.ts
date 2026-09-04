@@ -43,7 +43,9 @@ export type DraftValue =
   | { readonly kind: "text" | "uri"; readonly value: string }
   | { readonly kind: "integer" | "numeric"; readonly value: string | number; readonly lexical?: string }
   | { readonly kind: "boolean"; readonly value: boolean }
-  | { readonly kind: "date" | "datetime" | "time" | "duration"; readonly value: string }
+  | { readonly kind: "date"; readonly value: string; readonly precision?: string }
+  | { readonly kind: "datetime" | "time"; readonly value: string; readonly utcOffsetMinutes?: number; readonly precision?: string }
+  | { readonly kind: "duration"; readonly value: string; readonly lexical?: string }
   | { readonly kind: "binary"; readonly value: string }
   | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string }
   | { readonly kind: "null" | "pertinent-negative"; readonly absenceCode: string; readonly display?: string }
@@ -113,15 +115,15 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
     : { kind: "absent" };
   if (value.kind === "absent") return { kind: "absent" };
   const base = requireNemsisDataElement(elementId).datatype.base;
-  if (base === "integer") return { kind: "integer", value: typeof value.value === "boolean" ? Number(value.value) : value.value };
-  if (["decimal", "double", "float"].includes(base)) return { kind: "numeric", value: typeof value.value === "boolean" ? Number(value.value) : value.value };
+  if (base === "integer") return { kind: "integer", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+  if (["decimal", "double", "float"].includes(base)) return { kind: "numeric", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
   if (base === "boolean") return { kind: "boolean", value: Boolean(value.value) };
-  if (base === "date") return { kind: "date", value: String(value.value) };
-  if (base === "dateTime") return { kind: "datetime", value: String(value.value) };
-  if (base === "time") return { kind: "time", value: String(value.value) };
-  if (base === "duration") return { kind: "duration", value: String(value.value) };
+  if (base === "date") return { kind: "date", value: String(value.value), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "dateTime") return { kind: "datetime", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "time") return { kind: "time", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "duration") return { kind: "duration", value: String(value.value), ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
   if (base === "anyURI") return { kind: "uri", value: String(value.value) };
-  if (base === "base64Binary") return { kind: "binary", value: String(value.value) };
+  if (base === "binary" || base === "base64Binary" || base === "hexBinary") return { kind: "binary", value: String(value.value) };
   return { kind: "text", value: String(value.value) };
 }
 
