@@ -18,6 +18,7 @@ import {
   stationaryExceptionalSelection,
 } from "../app/stationary-value-picker";
 import { StationaryDatePicker } from "../components/stationary-date-picker";
+import { StationaryDateTimePicker } from "../components/stationary-date-time-picker";
 import { StationaryNonRepeatingRecord } from "../components/stationary-non-repeating-record";
 
 const patientGroupId = "ePatientSection";
@@ -123,4 +124,34 @@ test("Date of Birth rejects exceptional values not permitted by the pinned catal
     "pertinent-negative:8801023",
     "pertinent-negative:8801019",
   ]);
+});
+
+test("the Times section and clinical event timestamps use the common picker anatomy", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const times = STATIONARY_NON_REPEATING_GROUPS.find(({ id }) => id === "eTimesSection")!;
+  const html = renderToStaticMarkup(createElement(StationaryNonRepeatingRecord, {
+    document,
+    groups: [times],
+    onDocumentChange() {},
+  }));
+  assert.equal((html.match(/<fieldset class="stationary-value-picker"/g) ?? []).length, 17);
+  assert.equal((html.match(/time-picker-trigger/g) ?? []).length, 17);
+  assert.doesNotMatch(html, /type="text"/);
+
+  const procedureTime = requireNemsisDataElement("eProcedures.01");
+  const exceptional: EncounterValue = {
+    kind: "null",
+    occurrenceId: "procedure-time",
+    notValue: { code: "7701003", display: "Not Recorded" },
+  };
+  const picker = renderToStaticMarkup(createElement(StationaryDateTimePicker, {
+    presentation: scalarControlPresentation(procedureTime),
+    catalog: procedureTime,
+    value: exceptional,
+    onChange() {},
+  }));
+  assert.match(picker, /data-value-state="exceptional"/);
+  assert.match(picker, /<strong>Not Recorded<\/strong>/);
+  assert.match(picker, /No exceptional value/);
+  for (const choice of stationaryExceptionalChoices(procedureTime)) assert.match(picker, new RegExp(choice.label));
 });

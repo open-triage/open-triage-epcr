@@ -144,3 +144,49 @@ test("common numeric pickers edit inline and repeating-dialog values with visibl
   await expect(reopenedSystolic.locator(".stationary-value-picker-state strong")).toHaveText("Refused");
   expect(await reopenedSystolic.getAttribute("data-occurrence-id")).toBe(occurrenceId);
 });
+
+test("clinical date-time pickers integrate Times and repeating event dialogs with keyboard focus", async ({ page }) => {
+  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(demoOpenAssignment),
+  }));
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+
+  const dispatch = page.locator('[data-element-id="eTimes.01"] .stationary-value-picker');
+  await expect(dispatch).toHaveAttribute("data-value-state", "unset");
+  await dispatch.getByLabel("Exceptional value").selectOption({ label: "Not Recorded" });
+  await expect(dispatch.locator(".stationary-value-picker-state strong")).toHaveText("Not Recorded");
+  const dispatchOccurrence = await dispatch.getAttribute("data-occurrence-id");
+  expect(dispatchOccurrence).toBeTruthy();
+  expect(await dispatch.getAttribute("data-occurrence-id")).toBe(dispatchOccurrence);
+  const dispatchTrigger = dispatch.locator(".time-picker-trigger");
+  await dispatchTrigger.click();
+  const timeDialog = page.getByRole("dialog", { name: "Select clinical time" });
+  await expect(timeDialog.getByRole("spinbutton", { name: "Date" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dispatchTrigger).toBeFocused();
+  await dispatchTrigger.click();
+  await timeDialog.getByRole("button", { name: "Use date & time" }).click();
+  await expect(dispatch).toHaveAttribute("data-value-state", "ordinary");
+  expect(await dispatch.getAttribute("data-occurrence-id")).toBe(dispatchOccurrence);
+  await expect(dispatch.locator(".stationary-value-picker-state strong")).toContainText(/T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/);
+
+  const vitals = page.locator('[data-group-id="eVitals.VitalGroup"]');
+  await vitals.getByRole("button", { name: "Add eVitals.VitalGroup" }).click();
+  const vitalDialog = page.getByRole("dialog", { name: "Add eVitals.VitalGroup" });
+  const clinicalTime = vitalDialog.locator('[data-element-id="eVitals.01"] .stationary-value-picker');
+  const clinicalTrigger = clinicalTime.locator(".time-picker-trigger");
+  await expect(clinicalTrigger).toBeFocused();
+  await clinicalTrigger.click();
+  await page.getByRole("dialog", { name: "Select clinical time" }).getByRole("button", { name: "Use date & time" }).click();
+  await expect(clinicalTrigger).toBeFocused();
+  await expect(clinicalTime).toHaveAttribute("data-value-state", "ordinary");
+  await vitalDialog.getByRole("button", { name: "Add row", exact: true }).click();
+  await vitals.locator("tbody > tr").getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit eVitals.VitalGroup" }).locator('[data-element-id="eVitals.01"] .stationary-value-picker')).toHaveAttribute("data-value-state", "ordinary");
+});

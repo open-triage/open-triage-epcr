@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adjustClinicalDate, adjustClockPart, formatClinicalTime, repeatDelay } from "../app/time-picker";
+import { adjustClinicalDate, adjustClockPart, clinicalDateTimeParts, composeClinicalDateTime, formatClinicalTime, repeatDelay } from "../app/time-picker";
 
 test("clock values wrap at their limits", () => {
   assert.equal(adjustClockPart(23, 1, 24), 0);
@@ -17,4 +17,11 @@ test("a sustained drag accelerates progressively", () => {
   assert.ok(repeatDelay(0) > repeatDelay(600));
   assert.ok(repeatDelay(600) > repeatDelay(1_300));
   assert.ok(repeatDelay(1_300) > repeatDelay(2_200));
+});
+
+test("clinical date-time edits preserve canonical precision and UTC offset", () => {
+  const existing = "2026-09-04T12:30:45.120-04:00";
+  assert.deepEqual(clinicalDateTimeParts(existing), { date: "2026-09-04", time: "12:30" });
+  assert.equal(composeClinicalDateTime("2026-09-05", "13:42", existing), "2026-09-05T13:42:45.120-04:00");
+  assert.match(composeClinicalDateTime("2026-09-05", "13:42"), /^2026-09-05T13:42:00[+-]\d{2}:\d{2}$/);
 });

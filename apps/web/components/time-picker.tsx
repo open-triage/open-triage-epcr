@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { adjustClinicalDate, adjustClockPart, formatClinicalDate, formatClinicalTime, localClinicalDate, parseClinicalTime, repeatDelay } from "../app/time-picker";
 
 type ClockPart = "hours" | "minutes";
@@ -11,17 +11,21 @@ type Props = {
   readonly onChange: (value: string) => void;
   readonly date?: string;
   readonly onDateChange?: (value: string) => void;
+  readonly onDateTimeChange?: (date: string, time: string) => void;
+  readonly minDate?: string;
+  readonly maxDate?: string;
   readonly describedBy?: string;
   readonly invalid?: boolean;
   readonly initialFocus?: boolean;
   readonly className?: string;
 };
 
-export function TimePicker({ label, value, onChange, date = localClinicalDate(), onDateChange, describedBy, invalid, initialFocus, className }: Props) {
+export function TimePicker({ label, value, onChange, date = localClinicalDate(), onDateChange, onDateTimeChange, minDate, maxDate, describedBy, invalid, initialFocus, className }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => parseClinicalTime(value));
   const [draftDate, setDraftDate] = useState(date);
   const popover = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +39,19 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
     setOpen(true);
   }
 
+  function closePicker() {
+    setOpen(false);
+    window.requestAnimationFrame(() => trigger.current?.focus());
+  }
+
+  function changeDate(delta: number) {
+    setDraftDate((current) => {
+      const next = adjustClinicalDate(current, delta);
+      if ((minDate && next < minDate) || (maxDate && next > maxDate)) return current;
+      return next;
+    });
+  }
+
   function change(part: ClockPart, delta: number) {
     setDraft((current) => ({
       ...current,
@@ -46,6 +63,7 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
     <div className={`time-picker-field ${className ?? ""}`.trim()}>
       <span className="time-picker-label">{label}</span>
       <button
+        ref={trigger}
         type="button"
         className="time-picker-trigger"
         aria-label={typeof label === "string" ? `${label}: ${formatClinicalDate(date)} at ${value}. Change` : undefined}
@@ -70,7 +88,14 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
-              setOpen(false);
+              closePicker();
+            }
+            if (event.key === "Tab" && popover.current) {
+              const controls = [...popover.current.querySelectorAll<HTMLElement>("button:not(:disabled), [role='spinbutton'][tabindex='0']")];
+              const first = controls[0];
+              const last = controls.at(-1);
+              if (first && last && event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+              else if (first && last && !event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
             }
           }}
         >
@@ -79,15 +104,20 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
             <span>Drag up or down · hold to speed up</span>
           </div>
           <div className="time-wheels" aria-label={`Selected time ${formatClinicalTime(draft.hours, draft.minutes)}`}>
-            <DateWheel value={draftDate} onChange={(delta) => setDraftDate((current) => adjustClinicalDate(current, delta))} />
+            <DateWheel value={draftDate} min={minDate} max={maxDate} onChange={changeDate} />
             <TimeWheel label="Hour" value={draft.hours} limit={24} onChange={(delta) => change("hours", delta)} />
             <span className="time-separator" aria-hidden="true">:</span>
             <TimeWheel label="Minute" value={draft.minutes} limit={60} onChange={(delta) => change("minutes", delta)} />
           </div>
           <output className="time-picker-output" aria-live="polite">{formatClinicalDate(draftDate)} · {formatClinicalTime(draft.hours, draft.minutes)}</output>
           <div className="time-picker-actions">
-            <button type="button" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="button" onClick={() => { onDateChange?.(draftDate); onChange(formatClinicalTime(draft.hours, draft.minutes)); setOpen(false); }}>Use date &amp; time</button>
+            <button type="button" onClick={closePicker}>Cancel</button>
+            <button type="button" onClick={() => {
+              const time = formatClinicalTime(draft.hours, draft.minutes);
+              if (onDateTimeChange) onDateTimeChange(draftDate, time);
+              else { onDateChange?.(draftDate); onChange(time); }
+              closePicker();
+            }}>Use date &amp; time</button>
           </div>
         </div>
       )}
@@ -95,12 +125,14 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
   );
 }
 
-function DateWheel({ value, onChange }: { readonly value: string; readonly onChange: (delta: number) => void }) {
+function DateWheel({ value, min, max, onChange }: { readonly value: string; readonly min?: string; readonly max?: string; readonly onChange: (delta: number) => void }) {
   const drag = useAcceleratingDrag(onChange);
+  const canIncrease = !max || adjustClinicalDate(value, 1) <= max;
+  const canDecrease = !min || adjustClinicalDate(value, -1) >= min;
   return (
     <div className="time-wheel-group date-wheel-group">
       <span>Date</span>
-      <button type="button" aria-label="Next date" onClick={() => onChange(1)}>▲</button>
+      <button type="button" aria-label="Next date" disabled={!canIncrease} onClick={() => onChange(1)}>▲</button>
       <div
         className="time-wheel date-wheel"
         role="spinbutton"
@@ -108,8 +140,8 @@ function DateWheel({ value, onChange }: { readonly value: string; readonly onCha
         aria-label="Date"
         aria-valuetext={value}
         onKeyDown={(event) => {
-          if (event.key === "ArrowUp") { event.preventDefault(); onChange(1); }
-          if (event.key === "ArrowDown") { event.preventDefault(); onChange(-1); }
+          if (event.key === "ArrowUp" && canIncrease) { event.preventDefault(); onChange(1); }
+          if (event.key === "ArrowDown" && canDecrease) { event.preventDefault(); onChange(-1); }
         }}
         onWheel={(event) => { event.preventDefault(); onChange(event.deltaY < 0 ? 1 : -1); }}
         {...drag}
@@ -118,7 +150,7 @@ function DateWheel({ value, onChange }: { readonly value: string; readonly onCha
         <strong>{formatClinicalDate(value)}</strong>
         <small>{formatClinicalDate(adjustClinicalDate(value, -1))}</small>
       </div>
-      <button type="button" aria-label="Previous date" onClick={() => onChange(-1)}>▼</button>
+      <button type="button" aria-label="Previous date" disabled={!canDecrease} onClick={() => onChange(-1)}>▼</button>
     </div>
   );
 }

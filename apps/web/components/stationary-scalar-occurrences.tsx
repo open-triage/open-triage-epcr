@@ -1,6 +1,6 @@
 "use client";
 
-import type { EncounterDocument } from "@open-triage/contracts";
+import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import React, { useState } from "react";
 import {
   editScalarOccurrence,
@@ -15,6 +15,8 @@ import {
 } from "../app/stationary-scalar";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
 import { StationaryNumericPicker } from "./stationary-numeric-picker";
+import { StationaryDatePicker } from "./stationary-date-picker";
+import { StationaryDateTimePicker } from "./stationary-date-time-picker";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 
 /** Generic repeated-value editor shared by all catalog scalar families. */
@@ -25,8 +27,8 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
   readonly disabled?: boolean;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const numeric = presentation.family === "numeric" || presentation.family === "integer";
-  const occurrences = numeric
+  const selectionPicker = ["numeric", "integer", "date", "datetime"].includes(presentation.family);
+  const occurrences = selectionPicker
     ? scalarSelectionOccurrences(document, presentation.groupId, groupInstanceId, presentation.elementId)
     : scalarOccurrences(document, presentation.groupId, groupInstanceId, presentation.elementId);
   const catalog = requireNemsisDataElement(presentation.elementId);
@@ -49,9 +51,8 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
     <div className="stationary-scalar-occurrences">
       {occurrences.map((value, index) => (
         <div className="stationary-scalar-occurrence" key={value.occurrenceId}>
-          {numeric
-            ? <StationaryNumericPicker presentation={presentation} catalog={catalog} value={value} disabled={disabled}
-              findings={findings[value.occurrenceId]} onChange={(selection) => {
+          {selectionPicker
+            ? renderSelectionPicker(value, findings[value.occurrenceId], (selection) => {
                 const result = editScalarSelection(document, {
                   groupId: presentation.groupId, groupInstanceId, elementId: presentation.elementId, occurrenceId: value.occurrenceId,
                   ...(selection ? { selection } : {}),
@@ -59,7 +60,7 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
                 if (!result.ok) return setFindings((current) => ({ ...current, [value.occurrenceId]: result.findings }));
                 setFindings((current) => ({ ...current, [value.occurrenceId]: [] }));
                 onDocumentChange(result.document);
-              }} />
+              })
             : <StationaryScalarControl presentation={presentation} value={value.kind === "scalar" ? value : undefined} inputValue={raw[value.occurrenceId]} disabled={disabled}
               findings={findings[value.occurrenceId]} onInput={(input) => apply(value.occurrenceId, input)} />}
           {presentation.repeatable && <div className="stationary-occurrence-actions" aria-label={`${presentation.label} occurrence actions`}>
@@ -80,12 +81,11 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
         </div>
       ))}
       {presentation.repeatable && canAdd && <div className="stationary-scalar-occurrence stationary-scalar-addition">
-        {numeric
-          ? <StationaryNumericPicker key={`new-${occurrences.length}`} presentation={presentation} catalog={catalog} findings={findings.new} disabled={disabled}
-            onChange={setNumericAddition} />
+        {selectionPicker
+          ? renderSelectionPicker(undefined, findings.new, setNumericAddition, `new-${occurrences.length}`)
           : <StationaryScalarControl presentation={presentation} inputValue={addition} findings={findings.new} disabled={disabled}
             onInput={setAddition} />}
-        {numeric
+        {selectionPicker
           ? <button type="button" disabled={disabled || !numericAddition} onClick={() => {
               if (!numericAddition) return;
               const result = editScalarSelection(document, {
@@ -108,4 +108,12 @@ export function StationaryScalarOccurrences({ document, groupInstanceId, present
       </div>}
     </div>
   );
+
+  function renderSelectionPicker(value: EncounterValue | undefined, pickerFindings: ReadonlyArray<ScalarValidationFinding> | undefined,
+    onChange: (selection: StationaryScalarSelection | undefined) => void, key?: string) {
+    const props = { key, presentation, catalog, value, findings: pickerFindings, disabled, onChange };
+    if (presentation.family === "date") return <StationaryDatePicker {...props} />;
+    if (presentation.family === "datetime") return <StationaryDateTimePicker {...props} />;
+    return <StationaryNumericPicker {...props} />;
+  }
 }

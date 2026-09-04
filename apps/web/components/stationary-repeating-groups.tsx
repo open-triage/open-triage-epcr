@@ -24,6 +24,8 @@ import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryNumericPicker } from "./stationary-numeric-picker";
 import { StationaryTextOccurrences } from "./stationary-text-occurrences";
 import { StationaryTextPicker } from "./stationary-text-picker";
+import { StationaryDatePicker } from "./stationary-date-picker";
+import { StationaryDateTimePicker } from "./stationary-date-time-picker";
 
 function NumericGroupField({ document, instance, placement, presentation, value, initialFocus, onDocumentChange }: {
   readonly document: EncounterDocument;
@@ -45,6 +47,31 @@ function NumericGroupField({ document, instance, placement, presentation, value,
     setFindings([]);
     onDocumentChange(result.document);
   }} />;
+}
+
+function TemporalGroupField({ document, instance, placement, presentation, value, initialFocus, onDocumentChange }: {
+  readonly document: EncounterDocument;
+  readonly instance: EncounterGroupInstance;
+  readonly placement: StationaryElementPlacement;
+  readonly presentation: ScalarControlPresentation;
+  readonly value?: EncounterValue;
+  readonly initialFocus: boolean;
+  readonly onDocumentChange: (document: EncounterDocument) => void;
+}) {
+  const [findings, setFindings] = useState<ReadonlyArray<ScalarValidationFinding>>([]);
+  const catalog = requireNemsisDataElement(placement.id);
+  const apply = (selection: Parameters<typeof editScalarSelection>[1]["selection"]) => {
+    const result = editScalarSelection(document, {
+      groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,
+      ...(value ? { occurrenceId: value.occurrenceId } : {}), ...(selection ? { selection } : {}),
+    });
+    if (!result.ok) return setFindings(result.findings);
+    setFindings([]);
+    onDocumentChange(result.document);
+  };
+  return presentation.family === "date"
+    ? <StationaryDatePicker presentation={presentation} catalog={catalog} value={value} findings={findings} initialFocus={initialFocus} onChange={apply} />
+    : <StationaryDateTimePicker presentation={presentation} catalog={catalog} value={value} findings={findings} initialFocus={initialFocus} onChange={apply} />;
 }
 
 function GroupField({ document, instance, placement, initialFocus = false, onDocumentChange }: {
@@ -90,6 +117,9 @@ function GroupField({ document, instance, placement, initialFocus = false, onDoc
   if (presentation.family === "numeric" || presentation.family === "integer") return <div data-element-id={placement.id}><NumericGroupField
     document={document} instance={instance} placement={placement} presentation={presentation} value={value} initialFocus={initialFocus} onDocumentChange={onDocumentChange}
   /></div>;
+  if (presentation.family === "date" || presentation.family === "datetime") return <div data-element-id={placement.id}><TemporalGroupField
+    document={document} instance={instance} placement={placement} presentation={presentation} value={value} initialFocus={initialFocus} onDocumentChange={onDocumentChange}
+  /></div>;
   return <div data-element-id={placement.id}><StationaryScalarControl presentation={presentation} value={value?.kind === "scalar" ? value : undefined} initialFocus={initialFocus} onInput={(input) => {
     const result = editScalarOccurrence(document, {
       groupId: placement.groupId, groupInstanceId: instance.instanceId, elementId: placement.id,
@@ -117,6 +147,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
       const initial = frame.current?.querySelector<HTMLElement>("[autofocus]")
+        ?? frame.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")
         ?? frame.current?.querySelector<HTMLElement>("input, select, textarea")
         ?? frame.current?.querySelector<HTMLElement>("button");
       initial?.focus();
