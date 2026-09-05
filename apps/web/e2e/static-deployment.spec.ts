@@ -87,7 +87,11 @@ test("static deployment preserves the complete browser-only journey", async ({ p
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
-  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  const warningAcknowledgements = page.getByLabel("I reviewed and acknowledge this warning");
+  await expect(warningAcknowledgements.first()).toBeVisible();
+  for (const acknowledgement of await warningAcknowledgements.all()) {
+    await acknowledgement.check();
+  }
   await page.getByRole("button", { name: "Sign record" }).click();
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Open calls" }).getByText(generatedCall.callNumber, { exact: true })).toHaveCount(0);
