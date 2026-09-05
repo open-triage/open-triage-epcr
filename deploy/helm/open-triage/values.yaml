@@ -15,7 +15,7 @@ api:
     tag: latest
     pullPolicy: IfNotPresent
   replicas: 1
-  host: api.opentriage.org
+  host: api.demo.opentriage.org
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
@@ -33,7 +33,7 @@ ingress:
 secrets:
   databaseUrl: ""
   supabaseUrl: ""
-  supabaseServiceRoleKey: ""
+  supabaseSecretKey: ""
   patientKeyInstallationId: ""
   patientKeyVersion: "1"
   patientKeySecretBase64: ""

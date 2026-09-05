@@ -8,5 +8,6 @@ playwright-report/
 test-results/
 .env
 .env.local
+deploy/helm/open-triage/values.demo.yaml
 *.tsbuildinfo
 .DS_Store
