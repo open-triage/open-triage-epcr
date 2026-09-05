@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { adjustClinicalDate, adjustClockPart, formatClinicalDate, formatClinicalTime, localClinicalDate, parseClinicalTime, repeatDelay } from "../app/time-picker";
 
 type ClockPart = "hours" | "minutes";
@@ -10,17 +10,21 @@ type Props = {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly date?: string;
+  readonly initialValue?: string;
+  readonly initialDate?: string;
   readonly onDateChange?: (value: string) => void;
+  readonly onDateTimeChange?: (date: string, time: string) => void;
   readonly describedBy?: string;
   readonly invalid?: boolean;
   readonly initialFocus?: boolean;
   readonly className?: string;
+  readonly hideLabel?: boolean;
 };
 
-export function TimePicker({ label, value, onChange, date = localClinicalDate(), onDateChange, describedBy, invalid, initialFocus, className }: Props) {
+export function TimePicker({ label, value, onChange, date = "", initialValue, initialDate, onDateChange, onDateTimeChange, describedBy, invalid, initialFocus, className, hideLabel = false }: Props) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(() => parseClinicalTime(value));
-  const [draftDate, setDraftDate] = useState(date);
+  const [draft, setDraft] = useState(() => parseClinicalTime(value || initialValue || ""));
+  const [draftDate, setDraftDate] = useState(date || initialDate || localClinicalDate());
   const popover = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,8 +34,8 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
   }, [open]);
 
   function showPicker() {
-    setDraft(parseClinicalTime(value));
-    setDraftDate(date);
+    setDraft(parseClinicalTime(value || initialValue || ""));
+    setDraftDate(date || initialDate || localClinicalDate());
     setOpen(true);
   }
 
@@ -44,11 +48,11 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
 
   return (
     <div className={`time-picker-field ${className ?? ""}`.trim()}>
-      <span className="time-picker-label">{label}</span>
+      {!hideLabel && <span className="time-picker-label">{label}</span>}
       <button
         type="button"
         className="time-picker-trigger"
-        aria-label={typeof label === "string" ? `${label}: ${formatClinicalDate(date)} at ${value}. Change` : undefined}
+        aria-label={typeof label === "string" ? value && date ? `${label}: ${formatClinicalDate(date)} at ${value}. Change` : `${label}: not recorded. Set date and time` : undefined}
         aria-describedby={describedBy}
         aria-haspopup="dialog"
         data-invalid={invalid || undefined}
@@ -56,8 +60,8 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
         onClick={showPicker}
       >
         <span aria-hidden="true">◷</span>
-        <strong>{formatClinicalDate(date)} · {value}</strong>
-        <span>Change</span>
+        <strong>{value && date ? `${formatClinicalDate(date)} · ${value}` : "Not recorded"}</strong>
+        <span>{value && date ? "Change" : "Set"}</span>
       </button>
       {open && (
         <div
@@ -87,7 +91,12 @@ export function TimePicker({ label, value, onChange, date = localClinicalDate(),
           <output className="time-picker-output" aria-live="polite">{formatClinicalDate(draftDate)} · {formatClinicalTime(draft.hours, draft.minutes)}</output>
           <div className="time-picker-actions">
             <button type="button" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="button" onClick={() => { onDateChange?.(draftDate); onChange(formatClinicalTime(draft.hours, draft.minutes)); setOpen(false); }}>Use date &amp; time</button>
+            <button type="button" onClick={() => {
+              const time = formatClinicalTime(draft.hours, draft.minutes);
+              if (onDateTimeChange) onDateTimeChange(draftDate, time);
+              else { onDateChange?.(draftDate); onChange(time); }
+              setOpen(false);
+            }}>Use date &amp; time</button>
           </div>
         </div>
       )}

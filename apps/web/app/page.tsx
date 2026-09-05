@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
+import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
-import { loadShellStateResult, purgeCompletedReportCaches, saveReportSyncStatus, saveShellState } from "./local-persistence";
+import { DialogValidationMessage } from "../components/dialog-validation-message";
+import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -26,35 +28,21 @@ import { documentTimeline, incidentSummary } from "./incident-document";
 import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
-  DRAFT_SAVE_DEBOUNCE_MS,
-  DRAFT_SYNC_RETRY_MS,
-  ACTIVE_REPORT_POLL_INTERVAL_MS,
-  encounterDocumentToDraftMutations,
-  fetchActiveReport,
-  draftCommandUsesLegacyDerivedIds,
-  saveDraftReport,
   signDraftReport,
-  shellStateToDraftMutations,
-  usesLocalDemoDrafts,
   type ActiveDraftReport,
-  type DraftSyncStatus,
   dispatchCancellationNotice,
 } from "./draft-report";
-import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
-import { resolveDispatchConflict } from "./assigned-calls";
-import {
-  acceptDraftChange,
-  expectedRevisionForNextChange,
-  markDraftChangeAttempted,
-  nextDraftChange,
-  rebaseQueuedDraftChanges,
-  reconcileCachedActiveReport,
-  removeSignedOfflineReport,
-  replaceQueuedDraftChanges,
-  queueDraftChange,
-  saveCachedValidationErrorCount,
-} from "./offline-reports";
-import { reconcileActiveReportDocument } from "./active-report-reconciliation";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
+import type { PresentationMode } from "./presentation-mode";
+import { useReportWorkspace } from "./report-workspace";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { stationarySectionForGroup } from "./stationary-record";
+import { validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
+import { stationarySigningBlockers } from "./stationary-signing";
+import { repeatingDialogPath } from "./stationary-repeating-group";
+
+type SigningFinding = ReviewFinding | StationaryValidationFinding;
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -73,32 +61,22 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }: {
+function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
+  readonly presentationMode: PresentationMode;
   readonly onSaveAndClose: () => void;
+  readonly onReportCompleted: () => void;
   readonly onSessionEnded: () => void;
 }) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
-  const [restored, setRestored] = useState(false);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
-  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
-  const [editingFinding, setEditingFinding] = useState<ReviewFinding | null>(null);
-  const [syncStatus, setSyncStatus] = useState<DraftSyncStatus>("Saved");
+  const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
-  const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
-  const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
-  const [conflictError, setConflictError] = useState<string | null>(null);
-  const revision = useRef(report?.revision ?? 0);
-  const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
-  const activeEtag = useRef<string | undefined>(undefined);
-  const shellRef = useRef(shell);
-  const skipReconciledQueue = useRef(false);
-  const activeSave = useRef<Promise<void> | null>(null);
-  const skipInitialQueue = useRef(false);
-  const saveTimer = useRef<number | null>(null);
+  const [online, setOnline] = useState(true);
+  const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -117,8 +95,22 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   const medicationDefinition = bundledEncounterDefinition.events.medication;
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
-  const reviewErrors = reviewFindings.filter((finding) => finding.severity === "error");
-  const reviewWarnings = reviewFindings.filter((finding) => finding.severity === "warning");
+  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document), [encounter.document]);
+  const signingFindings: ReadonlyArray<SigningFinding> = useMemo(
+    () => [...stationaryFindings, ...reviewFindings], [reviewFindings, stationaryFindings],
+  );
+  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? signingFindings : reviewFindings;
+  const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
+  const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
+  const {
+    restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
+    conflictError, flushSave, resolveConflict,
+  } = useReportWorkspace({
+    session, report, presentationMode, shell, dispatch,
+    validationErrorCount: reviewErrors.length,
+    onSessionEnded,
+    onReportCompleted,
+  });
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -128,15 +120,43 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     return statuses;
   }, [reviewFindings]);
   const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
-  const canFinish = reviewErrors.length === 0 && reviewWarnings.every((finding) => finding.acknowledged) && unresolvedDispatchConflicts.length === 0;
+  const signingBlockers = stationarySigningBlockers({
+    presentationMode, restored, online, syncStatus, errorCount: reviewErrors.length,
+    warnings: reviewWarnings, unresolvedDispatchConflictCount: unresolvedDispatchConflicts.length,
+  });
+  const canFinish = signingBlockers.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
+  const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
-  const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
-  useEffect(() => { shellRef.current = shell; }, [shell]);
+  useEffect(() => {
+    if (presentationMode === "mobile" && shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
+  }, [presentationMode, shell.view]);
+
+  useEffect(() => {
+    const populate = () => dispatch({ type: "demo-populated" });
+    const clear = () => dispatch({ type: "demo-cleared" });
+    window.addEventListener(DEMO_POPULATE_EVENT, populate);
+    window.addEventListener(DEMO_CLEAR_EVENT, clear);
+    return () => {
+      window.removeEventListener(DEMO_POPULATE_EVENT, populate);
+      window.removeEventListener(DEMO_CLEAR_EVENT, clear);
+    };
+  }, []);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   const closeActiveDialog = useCallback(() => {
     if (activeDialog === "note") dispatch({ type: "note-cancelled" });
@@ -147,189 +167,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       dispatch({ type: "vitals-cancelled" });
     }
   }, [activeDialog]);
-
-  useEffect(() => {
-    persistedDraft.current = report?.document
-      ? encounterDocumentToDraftMutations(report.id, report.document)
-      : { groups: [], occurrences: [] };
-    const result = loadShellStateResult(
-      window.localStorage,
-      bundledEncounterDefinition,
-      report?.id,
-      report?.document?.formProfile,
-    );
-    if (result.status === "restored") {
-      skipInitialQueue.current = true;
-      dispatch({ type: "state-restored", state: result.state });
-    }
-    else if (result.status === "incompatible") queueMicrotask(() => setRecoveryNotice(`Saved encounter ${result.savedDefinition.id ?? "(unknown)"} version ${result.savedDefinition.version ?? "(unknown)"} is incompatible. Its original JSON was preserved in ${result.recoveryKey}.`));
-    else if (result.status === "invalid") queueMicrotask(() => setRecoveryNotice(`Saved encounter could not be loaded: ${result.reason}. Its original JSON was preserved in ${result.recoveryKey}.`));
-    else if (report?.document) dispatch({ type: "document-opened", document: report.document });
-    // Hydration must finish before the baseline is allowed to overwrite browser progress.
-    queueMicrotask(() => {
-      if (report && nextDraftChange(window.localStorage, report.id)) setSyncStatus("Pending sync");
-      setRestored(true);
-    });
-  }, [report]);
-
-  const flushSave = useCallback(async (): Promise<void> => {
-    if (!report) return;
-    if (saveTimer.current !== null) {
-      window.clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-    if (activeSave.current) {
-      await activeSave.current;
-    }
-    while (true) {
-      const queued = nextDraftChange(window.localStorage, report.id);
-      if (!queued) {
-        setSyncStatus("Saved");
-        return;
-      }
-      setSyncStatus("Saving");
-      markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
-      const attempt = (async () => {
-        try {
-          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
-          revision.current = saved.revision;
-          acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
-          persistedDraft.current = {
-            groups: queued.command.groups.filter(({ tombstone }) => !tombstone),
-            occurrences: queued.command.occurrences.filter(({ tombstone }) => !tombstone),
-          };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "offline";
-          if (reason === "session") {
-            setSyncStatus("Pending sync");
-            onSessionEnded();
-            return;
-          }
-          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
-        }
-      })();
-      activeSave.current = attempt;
-      await attempt;
-      activeSave.current = null;
-      if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
-    }
-  }, [onSessionEnded, report, session.accessToken]);
-
-  useEffect(() => {
-    if (!restored) return;
-    saveShellState(window.localStorage, shell, report?.id);
-    if (!report) return;
-    const queuedBeforeSave = nextDraftChange(window.localStorage, report.id);
-    if (queuedBeforeSave && draftCommandUsesLegacyDerivedIds(report.id, shell, queuedBeforeSave.command)) {
-      replaceQueuedDraftChanges(window.localStorage, report.id, {
-        commandId: crypto.randomUUID(),
-        expectedRevision: revision.current,
-        authorId: session.user.id,
-        deviceId: `web:${report.id}`,
-        clientTime: new Date().toISOString(),
-        ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
-      });
-    }
-    if (skipReconciledQueue.current) {
-      skipReconciledQueue.current = false;
-      return;
-    }
-    if (skipInitialQueue.current) {
-      skipInitialQueue.current = false;
-      if (nextDraftChange(window.localStorage, report.id)) {
-        if (navigator.onLine) queueMicrotask(() => void flushSave());
-        else queueMicrotask(() => setSyncStatus("Pending sync"));
-      }
-      return;
-    }
-    const existing = nextDraftChange(window.localStorage, report.id);
-    const commandId = existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID();
-    const clientTime = existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString();
-    queueDraftChange(window.localStorage, report.id, {
-      commandId,
-      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
-      authorId: session.user.id,
-      deviceId: `web:${report.id}`,
-      clientTime,
-      ...shellStateToDraftMutations(report.id, shell, persistedDraft.current),
-    });
-    queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
-    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-    if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
-  }, [flushSave, restored, shell, report, session.user.id]);
-
-  useEffect(() => {
-    if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);
-  }, [report, syncStatus]);
-
-  useEffect(() => {
-    if (report) saveCachedValidationErrorCount(window.localStorage, report.id, reviewErrors.length);
-  }, [report, reviewErrors.length]);
-
-  useEffect(() => {
-    const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
-    window.addEventListener("online", retry);
-    return () => {
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-      window.removeEventListener("online", retry);
-    };
-  }, [flushSave, report]);
-
-  useEffect(() => {
-    if (!report || syncStatus !== "Pending sync") return;
-    const retryTimer = window.setTimeout(() => {
-      if (navigator.onLine && nextDraftChange(window.localStorage, report.id)) void flushSave();
-    }, DRAFT_SYNC_RETRY_MS);
-    return () => window.clearTimeout(retryTimer);
-  }, [flushSave, report, syncStatus]);
-
-  useEffect(() => {
-    if (!report || !restored) return;
-    let pollTimer: number | null = null;
-    let stopped = false;
-    const poll = async () => {
-      if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
-      const previousEtag = activeEtag.current;
-      try {
-        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
-        if (!response || stopped) return;
-        activeEtag.current = response.etag || previousEtag;
-        const local = shellRef.current.encounter.document;
-        const hasPending = nextDraftChange(window.localStorage, report.id) !== null;
-        const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending);
-        revision.current = response.resource.reportRevision;
-        if (hasPending) rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
-        else {
-          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
-          skipReconciledQueue.current = true;
-        }
-        reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
-        setDispatchConflicts(response.resource.dispatchConflicts);
-        setDispatchCancellation(response.resource.dispatchCancellation);
-        dispatch({ type: "document-opened", document: merged });
-      } catch (error) {
-        if (error instanceof Error && error.message === "session") onSessionEnded();
-      }
-    };
-    const startOrPause = () => {
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      pollTimer = document.visibilityState === "visible"
-        ? window.setInterval(() => void poll(), ACTIVE_REPORT_POLL_INTERVAL_MS)
-        : null;
-    };
-    const visibilityChanged = () => {
-      if (document.visibilityState === "visible") void poll();
-      startOrPause();
-    };
-    void poll();
-    startOrPause();
-    document.addEventListener("visibilitychange", visibilityChanged);
-    return () => {
-      stopped = true;
-      if (pollTimer !== null) window.clearInterval(pollTimer);
-      document.removeEventListener("visibilitychange", visibilityChanged);
-    };
-  }, [onSessionEnded, report, restored, session.accessToken]);
 
   useEffect(() => {
     if (shell.noteDraft) noteSummary.current?.focus();
@@ -380,10 +217,58 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     returnFocus.current = element;
   }
 
-  function editValidationFinding(finding: ReviewFinding, trigger: HTMLElement) {
+  function navigateToStationaryFinding(finding: SigningFinding) {
+    dispatch({ type: "view-selected", view: "timeline" });
+    const target = finding.target;
+    window.requestAnimationFrame(() => {
+      const section = stationarySectionForGroup(target.groupId);
+      if (section) window.history.pushState(null, "", `#${section.hash}`);
+      const escape = (value: string) => CSS.escape(value);
+      const instanceId = "groupInstanceId" in target ? target.groupInstanceId : target.instanceId;
+      const focusTarget = () => {
+        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog']");
+        const group = document.querySelector<HTMLElement>(`[data-group-id="${escape(target.groupId)}"]`);
+        const scope = dialogs.item(dialogs.length - 1) ?? group;
+        const elementId = "fieldId" in target ? target.fieldId : target.elementId;
+        const occurrenceId = "occurrenceId" in target ? target.occurrenceId : undefined;
+        const occurrence = occurrenceId ? scope?.querySelector<HTMLElement>(`[data-occurrence-id="${escape(occurrenceId)}"]`) : null;
+        const field = elementId ? scope?.querySelector<HTMLElement>(`[data-element-id="${escape(elementId)}"]`) : null;
+        const destination = occurrence ?? field ?? scope;
+        destination?.scrollIntoView({ block: "center" });
+        (destination?.matches("button, input, select, textarea") ? destination : destination?.querySelector<HTMLElement>("button, input, select, textarea, [tabindex]"))?.focus();
+        setNavigationMessage(`Opened ${finding.reference} for correction.`);
+      };
+      const dialogPath = instanceId ? repeatingDialogPath(shell.encounter.document, target.groupId, instanceId) : [];
+      const openDialog = (index: number) => {
+        if (index >= dialogPath.length) return window.requestAnimationFrame(focusTarget);
+        const step = dialogPath[index]!;
+        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog']");
+        const scope: ParentNode = dialogs.item(dialogs.length - 1) ?? document;
+        const group = scope.querySelector<HTMLElement>(`[data-group-id="${escape(step.groupId)}"]`);
+        const row = group?.querySelector<HTMLElement>(`[data-group-instance-id="${escape(step.instanceId)}"]`)?.closest("tr");
+        const edit = row?.querySelector<HTMLButtonElement>("button.stationary-icon-action.edit, button");
+        if (!edit) return focusTarget();
+        edit.click();
+        window.requestAnimationFrame(() => openDialog(index + 1));
+      };
+      if (dialogPath.length) openDialog(0);
+      else {
+        const group = document.querySelector<HTMLElement>(`[data-group-id="${escape(target.groupId)}"]`);
+        if (!instanceId) group?.querySelector<HTMLButtonElement>(".stationary-group-add-controls button, button")?.click();
+        window.requestAnimationFrame(focusTarget);
+      }
+    });
+  }
+
+  function editValidationFinding(finding: SigningFinding, trigger: HTMLElement) {
     rememberTrigger(trigger);
     setEditingFinding(finding);
     setOpenNullField(null);
+    if (presentationMode === "stationary") {
+      navigateToStationaryFinding(finding);
+      return;
+    }
+    if (!("eventType" in finding)) return;
     if (finding.id === MISSING_VITALS_FINDING_ID) {
       dispatch({ type: "view-selected", view: "timeline" });
       dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
@@ -426,7 +311,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
     setSigning(true);
     setSignError(null);
     await flushSave();
-    if (!usesLocalDemoDrafts() && nextDraftChange(window.localStorage, report.id)) {
+    if (!navigator.onLine || nextDraftChange(window.localStorage, report.id)) {
       setSignError("The record must finish syncing before it can be signed.");
       setSigning(false);
       return;
@@ -435,7 +320,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       await signDraftReport(session.accessToken, report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
       purgeCompletedReportCaches(window.localStorage, [report.id]);
       removeSignedOfflineReport(window.localStorage, report.id);
-      onSaveAndClose();
+      onReportCompleted();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : "The record could not be signed.");
     } finally {
@@ -444,47 +329,46 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
   }
 
   async function disposeConflict(conflict: DispatchConflict, disposition: DispatchConflictDisposition) {
-    if (!report) return;
-    setConflictError(null);
-    try {
-      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
-      setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
-      revision.current += 1;
-    } catch (error) {
-      setConflictError(error instanceof Error ? error.message : "The dispatch difference could not be resolved.");
-    }
+    await resolveConflict(conflict, disposition);
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}>
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
       </aside>}
+      {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
 
       <header className="encounter-header">
-        {report && <div className="draft-actions">
-          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
-          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
-        </div>}
-        <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
-        <div className="incident-line">
-          <div>
+        {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
+          <span><small>Response</small><strong>{incident.responseNumber || "Not provided"}</strong></span>
+          <span><small>Unit</small><strong>{incident.callSign || "Not provided"}</strong></span>
+          <span><small>Priority</small><strong>{incident.dispatchPriority || "Not provided"}</strong></span>
+          <span className="encounter-location"><small>Location</small><strong>{incident.location || "Not provided"}</strong></span>
+        </div> : <>
+          <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
+          <div className="incident-line"><div>
             <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
             <span>Response {incident.responseNumber}</span>
             <span>Unit {incident.callSign}</span>
             <span>Priority {incident.dispatchPriority || "Not provided"}</span>
             <strong>{incident.location}</strong>
-          </div>
-        </div>
+          </div></div>
+        </>}
+        {report && <div className="draft-actions">
+          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
+          {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => dispatch(shell.view === "review" ? { type: "view-selected", view: "timeline" } : { type: "review-opened" })}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
+          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
+        </div>}
       </header>
 
-      <nav className="quick-actions" aria-label="Quick documentation">
+      {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
         {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
-      </nav>
+      </nav>}
 
-      <nav className="view-switcher" aria-label="Encounter views">
+      {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
@@ -498,20 +382,24 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
             {tab.label}
             {tab.id === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
             {tab.id === "checklist" && <span className="checklist-counts" aria-hidden="true">
-              <span className="error-count">{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
-              <span className="warning-count">{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
+              <span className={`error-count${reviewErrors.length ? "" : " zero-count"}`}>{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
+              <span className={`warning-count${reviewWarnings.length ? "" : " zero-count"}`}>{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
             </span>}
           </button>
         ))}
-      </nav>
+      </nav>}
 
-      {(shell.view === "timeline" || shell.view === "checklist") && (
-        <div className="sign-action-bar">
-          <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
+      {presentationMode === "stationary" && (
+        <div hidden={shell.view === "review"}>
+          <StationaryRecord
+            document={encounter.document}
+            findings={signingFindings}
+            onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
+          />
         </div>
       )}
 
-      {shell.view === "timeline" && (
+      {presentationMode === "mobile" && shell.view === "timeline" && (
         <section className="content-panel" aria-labelledby="timeline-heading">
           <div className="section-heading">
             <div>
@@ -570,7 +458,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           </ol>
         </section>
       )}
-      {shell.view === "checklist" && (
+      {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
             <div>
@@ -587,7 +475,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                     <span className="finding-category">{finding.severity === "error" ? "Error" : "Warning"} · {finding.category}</span>
                     <strong>{finding.title}</strong>
                     <span>{finding.message}</span>
-                    <small>{finding.target.vitalField ? "Edit value or choose PN/NV × →" : "Edit affected entry →"}</small>
+                    <small>{"vitalField" in finding.target && finding.target.vitalField ? "Edit value or choose PN/NV × →" : "Edit affected entry →"}</small>
                   </button>
                 </li>
               ))}
@@ -598,10 +486,10 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
         </section>
       )}
 
-      {shell.view === "review" && (
+      {presentationMode === "stationary" && shell.view === "review" && (
         <>
         <ReviewPanel
-          findings={reviewFindings}
+          findings={signingFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}
@@ -612,6 +500,11 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
           onFinding={editValidationFinding}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onSign={() => void signRecord()}
+          blockedReason={!restored ? "The report is still loading."
+            : !online ? "Signing is unavailable while offline. Reconnect and finish synchronization."
+              : syncStatus !== "Saved" ? "Signing is unavailable until all changes finish synchronizing."
+                : unresolvedDispatchConflicts.length ? "Resolve every dispatch difference before signing."
+                  : undefined}
         />
         <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
         {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
@@ -628,8 +521,6 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               </div>
               <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
             </div>
-            <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
-            <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
             <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
               {noteDefinition.labels.summary}
               <textarea
@@ -641,6 +532,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                 value={shell.noteDraft.summary}
                 onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
               />
+              <DialogValidationMessage finding={noteSummaryFindingActive ? editingFinding : undefined} />
             </label>
             <div className="note-dialog-actions">
               <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
@@ -653,7 +545,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
       )}
       {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
 
-      {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding ?? undefined} />}
+      {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
 
       {shell.vitalDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -662,12 +554,13 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
               <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
-            <TimePicker className={vitalFindingActive && editingFinding && !editingFinding.target.vitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
                 return (
-                <div className={`vital-field ${vitalFindingActive && editingFinding?.target.vitalField === field ? `finding-frame ${editingFinding.severity}` : ""}`.trim()} key={field}>
+                <div className={`vital-field ${vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()} key={field}>
                   <label htmlFor={`vital-${field}`}>{configuredField.label} <small>{configuredField.unit}</small></label>
                   <div className="vital-inputs">
                     <input id={`vital-${field}`} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
@@ -700,6 +593,7 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
                       </div>
                     )}
                   </div>
+                  <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingFinding : undefined} />
                 </div>
               );})}
             </div>
@@ -713,8 +607,8 @@ function EncounterWorkspace({ session, report, onSaveAndClose, onSessionEnded }:
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, closeReport, sessionEnded }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} onSaveAndClose={closeReport} onSessionEnded={sessionEnded} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} />
   )}</ClinicianSessionGate>;
 }
 
@@ -753,16 +647,17 @@ function DispatchConflictList({ conflicts, onDispose }: {
   );
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, onFinding, onWarning, onSign }: {
-  readonly findings: ReadonlyArray<ReviewFinding>;
-  readonly errors: ReadonlyArray<ReviewFinding>;
-  readonly warnings: ReadonlyArray<ReviewFinding>;
+function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, blockedReason, onFinding, onWarning, onSign }: {
+  readonly findings: ReadonlyArray<SigningFinding>;
+  readonly errors: ReadonlyArray<SigningFinding>;
+  readonly warnings: ReadonlyArray<SigningFinding>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly validationClear: boolean;
   readonly signing: boolean;
   readonly signError: string | null;
-  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
+  readonly blockedReason?: string;
+  readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
   readonly onSign: () => void;
 }) {
@@ -779,7 +674,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       <div className="review-actions">
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
       </div>
-      {!canFinish && <p className="finish-help" role="status">Signing stays blocked until errors are fixed and every warning is acknowledged.</p>}
+      {!canFinish && <p className="finish-help" role="status">{blockedReason ?? "Signing stays blocked until errors are fixed and every warning is acknowledged."}</p>}
       {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
@@ -788,13 +683,13 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
 function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
   readonly title: string;
   readonly empty: string;
-  readonly findings: ReadonlyArray<ReviewFinding>;
-  readonly onFinding: (finding: ReviewFinding, trigger: HTMLElement) => void;
+  readonly findings: ReadonlyArray<SigningFinding>;
+  readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
   return (
     <section className="review-group">
-      <h2>{title} <span>{findings.length}</span></h2>
+      <h2>{title} <span className={findings.length ? undefined : "zero-count"}>{findings.length}</span></h2>
       {!findings.length ? <p className="review-empty">✓ {empty}</p> : (
         <ul className="review-findings">
           {findings.map((finding) => (

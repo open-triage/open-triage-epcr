@@ -9,6 +9,8 @@ import type { EncounterDocument } from "@open-triage/contracts";
 import syntheticEncounterDocument from "./data/synthetic-encounter-document.json";
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
+import { clearStationaryDemoData, populateStationaryDemoData } from "./stationary-demo-data";
+import { getNemsisDataElement } from "./nemsis-data-model";
 
 export type ShellView = "timeline" | "checklist" | "review";
 
@@ -87,6 +89,8 @@ export type ShellState = {
 export type ShellAction =
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
+  | { readonly type: "demo-populated" }
+  | { readonly type: "demo-cleared" }
   | { readonly type: "note-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "note-opened"; readonly id: string }
   | { readonly type: "note-draft-changed"; readonly field: "date" | "time" | "summary"; readonly value: string }
@@ -216,7 +220,6 @@ export function validateNoteEvent(event: EncounterEvent, definition: EncounterDe
   if (event.kind !== "note") return [];
   const note = definition.events.note;
   const findings: Array<{ reference: string; message: string }> = [];
-  if (note.required.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) findings.push({ reference: note.references.time, message: note.validationMessages.invalidTime });
   if (note.required.summary && !event.detail.trim()) findings.push({ reference: note.references.summary, message: note.validationMessages.summaryRequired });
   return findings;
 }
@@ -234,8 +237,19 @@ function eventFinding(
   vitalField?: VitalField,
 ): ReviewFinding {
   const id = `${category.toLowerCase()}:${event.id}:${severity}:${index}:${message}`;
+  const vitalGroupId = getNemsisDataElement(reference)?.groupPath.at(-1) ?? definitionGroup("vitals");
+  const instances = state.encounter.document.groups.flatMap(({ instances }) => instances);
+  const byId = new Map(instances.map((instance) => [instance.instanceId, instance]));
+  const vitalInstance = vitalGroupId === definitionGroup("vitals") ? byId.get(event.id) : state.encounter.document.groups.find(({ id }) => id === vitalGroupId)?.instances.find((candidate) => {
+    let parentId = candidate.parentInstanceId;
+    while (parentId) {
+      if (parentId === event.id) return true;
+      parentId = byId.get(parentId)?.parentInstanceId;
+    }
+    return false;
+  });
   const canonicalTarget = eventType === "vitals"
-    ? { groupId: definitionGroup("vitals"), instanceId: event.id, elementId: reference }
+    ? { groupId: vitalGroupId, instanceId: vitalInstance?.instanceId ?? event.id, elementId: reference }
     : eventType === "medication"
       ? { groupId: definitionGroup("medication"), instanceId: event.id, elementId: reference }
       : eventType === "procedure"
@@ -304,7 +318,19 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
     return [];
   });
 
-  const missingVitals: ReadonlyArray<ReviewFinding> = canonicalEvents.some((event) => event.vitals)
+  const allInstances = state.encounter.document.groups.flatMap(({ instances }) => instances);
+  const vitalRoots = new Set(state.encounter.document.groups.find(({ id }) => id === "eVitals.VitalGroup")?.instances.map(({ instanceId }) => instanceId) ?? []);
+  const belongsToVitalSet = (instanceId: string): boolean => {
+    let current = allInstances.find((instance) => instance.instanceId === instanceId);
+    while (current) {
+      if (vitalRoots.has(current.instanceId)) return true;
+      current = allInstances.find((instance) => instance.instanceId === current?.parentInstanceId);
+    }
+    return false;
+  };
+  const hasDocumentedVitalSet = allInstances.some((instance) => belongsToVitalSet(instance.instanceId)
+    && instance.elements.some((element) => element.id !== "eVitals.01" && element.values.length > 0));
+  const missingVitals: ReadonlyArray<ReviewFinding> = hasDocumentedVitalSet
     ? []
     : [{
         id: MISSING_VITALS_FINDING_ID,
@@ -364,6 +390,10 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
   switch (action.type) {
     case "document-opened":
       return { ...state, encounter: { ...state.encounter, document: action.document } };
+    case "demo-populated":
+      return { ...state, encounter: { ...state.encounter, document: populateStationaryDemoData(state.encounter.document) } };
+    case "demo-cleared":
+      return { ...state, encounter: { ...state.encounter, document: clearStationaryDemoData(state.encounter.document) } };
     case "view-selected":
       return { ...state, view: action.view };
     case "review-opened":

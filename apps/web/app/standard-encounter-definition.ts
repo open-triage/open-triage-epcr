@@ -28,13 +28,12 @@ export const standardEncounterDefinition = {
       quickAction: { visible: true, label: "Add clinical note" },
       labels: {
         category: "Note", timelineTitle: "Clinical note", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event",
-        editorTitle: "Clinical note", remove: "Remove", time: "Clinical time",
-        timeHelp: "Correct the time if documentation was entered later.", summary: "Note summary",
+        editorTitle: "Clinical note", remove: "Remove", summary: "Note summary",
         summaryPlaceholder: "Document the clinical observation or decision…", cancel: "Cancel", add: "Add to timeline", save: "Save changes",
       },
-      required: { time: true, summary: true },
-      references: { time: "eNarrative.01", summary: "eNarrative.01" },
-      validationMessages: { invalidTime: "Enter a valid clinical time (HH:mm).", summaryRequired: "Add a clinical note before signing." },
+      required: { summary: true },
+      references: { summary: "eNarrative.01" },
+      validationMessages: { summaryRequired: "Add a clinical note before signing." },
     },
     procedure: {
       quickAction: { visible: true, label: "Add procedure" },

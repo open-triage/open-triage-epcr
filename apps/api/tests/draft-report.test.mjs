@@ -8,6 +8,22 @@ import {
   validateCreateDraftReportCommand,
   validateSaveDraftReportCommand
 } from "../dist/reports/draft-report.validation.js";
+import { storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+
+test("active-report reconstruction retains coded terminology metadata", () => {
+  assert.deepEqual(storedEncounterValue({
+    id: "coded-occurrence", group_instance_id: "group", element_id: "eScene.09", ordinal: 0,
+    value_kind: "coded", value_text: null, value_integer: null, value_numeric: null,
+    value_boolean: null, value_date: null, value_datetime: null, value_time: null,
+    value_duration: null, value_binary: null, code: "Y92.03", code_system: "ICD-10-CM",
+    code_display: "Apartment/condo", terminology_version: "2025-03-06",
+    absence_code: null, absence_display: null, source_attributes: null,
+    provenance_kind: "clinician", provenance_detail: null
+  }), {
+    occurrenceId: "coded-occurrence", kind: "coded", code: "Y92.03",
+    system: "ICD-10-CM", display: "Apartment/condo", terminologyVersion: "2025-03-06"
+  });
+});
 
 test("draft creation requires offline-safe UUIDv4 identities", () => {
   const command = {

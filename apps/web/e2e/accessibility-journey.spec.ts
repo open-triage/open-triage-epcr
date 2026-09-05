@@ -23,8 +23,14 @@ async function expectNoBlockingAccessibilityViolations(page: Page) {
 }
 
 async function expectPhoneLayout(page: Page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(0);
+  const overflow = await page.evaluate(() => ({
+    amount: document.documentElement.scrollWidth - window.innerWidth,
+    elements: [...document.querySelectorAll<HTMLElement>("body *")]
+      .filter((element) => element.getBoundingClientRect().right > window.innerWidth + 0.5)
+      .map((element) => `${element.tagName.toLowerCase()}.${element.className}`)
+      .slice(0, 8),
+  }));
+  expect(overflow.amount, `overflowing elements: ${overflow.elements.join(", ")}`).toBeLessThanOrEqual(0);
 
   for (const control of await page.locator(".view-switcher button, .sign-action-bar button, .quick-actions button").all()) {
     const box = await control.boundingBox();
@@ -95,11 +101,8 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByRole("heading", { name: "Checklist" })).toBeVisible();
   await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
   await expectNoBlockingAccessibilityViolations(page);
-  await page.getByRole("button", { name: "Review & sign" }).click();
-  await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
-  await page.getByLabel("I reviewed and acknowledge this warning").check();
-  await expect(page.getByRole("button", { name: "Sign record" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Review & sign" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign record" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
   await page.getByRole("button", { name: /Timeline/ }).click();
   const addNote = page.getByRole("button", { name: "Add clinical note" });
@@ -159,31 +162,17 @@ test("all four documentation dialogs share a slightly portrait, near-square size
   expect(new Set(sizes).size).toBe(1);
 });
 
-test("review and sign actions stay at the viewport bottom and turn green when validation is clear", async ({ page }) => {
-  await openCall(page);
-  await page.getByRole("button", { name: "Add vital signs" }).click();
-  const dialog = page.getByRole("dialog", { name: "Vital signs" });
-  const values = [
-    [/Systolic BP/, "120"],
-    [/Diastolic BP/, "80"],
-    [/Heart rate/, "70"],
-    [/SpO₂/, "98"],
-    [/Respiratory rate/, "16"],
-    [/GCS total/, "15"],
-    [/Pain score/, "0"],
-  ] as const;
-  for (const [label, value] of values) await dialog.getByRole("textbox", { name: label }).fill(value);
-  await dialog.getByRole("button", { name: "Add vital set" }).click();
+test("stationary review keeps the signing action fixed after population", async ({ page }) => {
+  await page.getByRole("button", { name: "Stationary" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".stationary-record-layout")).toBeVisible();
+  await page.getByRole("button", { name: "Populate" }).click();
 
   const reviewButton = page.getByRole("button", { name: "Review & sign" });
-  await expect(reviewButton).toHaveClass(/validation-clear/);
-  expect(await reviewButton.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe("rgb(0, 120, 58)");
-  const reviewBar = await page.locator(".sign-action-bar").boundingBox();
-  expect(Math.abs((reviewBar!.y + reviewBar!.height) - page.viewportSize()!.height)).toBeLessThanOrEqual(1);
-
+  await expect(reviewButton).toBeVisible();
   await reviewButton.click();
   const signButton = page.getByRole("button", { name: "Sign record" });
-  await expect(signButton).toHaveClass(/validation-clear/);
+  await expect(signButton).toBeVisible();
   const signBar = await page.locator(".review-actions").boundingBox();
   expect(Math.abs((signBar!.y + signBar!.height) - page.viewportSize()!.height)).toBeLessThanOrEqual(1);
 });

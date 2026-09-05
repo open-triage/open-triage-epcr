@@ -5,6 +5,8 @@ import {
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   ACTIVE_REPORT_POLL_INTERVAL_MS,
+  applyDraftMutationDelta,
+  draftMutationDelta,
   draftChangesUrl,
   draftCommandUsesLegacyDerivedIds,
   fetchActiveReport,
@@ -75,6 +77,51 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
   }
 });
 
+test("active polling and draft saves identify a report completed by another client", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  try {
+    globalThis.fetch = (async () => new Response(null, { status: 404 })) as typeof fetch;
+    await assert.rejects(fetchActiveReport("token", reportId), /completed/);
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({ id: reportId, revision: 9, status: "signed" }), { status: 200 })) as typeof fetch;
+    const result = await saveDraftReport("token", reportId, {
+      commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+      authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+      clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+    });
+    assert.equal(result.status, "signed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  }
+});
+
+test("the browser-only static build considers its durable local write synchronized", async () => {
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalFetch = globalThis.fetch;
+  process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  globalThis.fetch = (async () => { throw new Error("the static build must not call a report API"); }) as typeof fetch;
+  try {
+    const result = await saveDraftReport("token", reportId, {
+      commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+      authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+      clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+    });
+    assert.deepEqual(result, { id: reportId, status: "draft", revision: 8 });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  }
+});
+
 test("signing sends the current revision, clinician attestation, and warning acknowledgements", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
@@ -110,14 +157,27 @@ test("timeline edits become typed revisioned API mutations without changing thei
   shell = transitionShell(shell, { type: "note-saved" });
   const first = shellStateToDraftMutations(reportId, shell);
   const note = first.occurrences.find(({ elementId }) => elementId === "eNarrative.01");
-  assert.deepEqual(note?.value, { kind: "text", value: "Patient reassessed" });
+  assert.deepEqual(note?.value, { kind: "text", value: "Patient reassessed\n2026-09-03T12:01:00-04:00" });
 
   shell = transitionShell(shell, { type: "note-opened", id: "note-1" });
   shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Patient reassessed; pain improved" });
   shell = transitionShell(shell, { type: "note-saved" });
   const updated = shellStateToDraftMutations(reportId, shell).occurrences.find(({ elementId }) => elementId === "eNarrative.01");
   assert.equal(updated?.id, note?.id);
-  assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved" });
+  assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved\n2026-09-03T12:01:00-04:00" });
+});
+
+test("workspace mutation deltas include only changed targets and advance the accepted baseline", () => {
+  const baseline = shellStateToDraftMutations(reportId, INITIAL_SHELL_STATE);
+  let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "delta-note", date: "2026-09-03", time: "12:01" });
+  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Only these targets changed" });
+  shell = transitionShell(shell, { type: "note-saved" });
+  const current = shellStateToDraftMutations(reportId, shell, baseline);
+  const delta = draftMutationDelta(current, baseline);
+
+  assert.deepEqual(delta.groups.map(({ groupId }) => groupId), ["eNarrativeSection"]);
+  assert.deepEqual(delta.occurrences.map(({ elementId }) => elementId), ["eNarrative.01"]);
+  assert.deepEqual(applyDraftMutationDelta(baseline, delta), current);
 });
 
 test("removing a persisted timeline event emits explicit group and occurrence tombstones", () => {

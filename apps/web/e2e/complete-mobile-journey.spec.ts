@@ -167,7 +167,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await page.getByRole("button", { name: "Add clinical note" }).click();
     await page.getByLabel("Note summary").fill("Synthetic care documented on the Android-sized workflow");
     await page.getByRole("button", { name: "Add to timeline" }).click();
-    await expect(page.getByText("Synthetic care documented on the Android-sized workflow", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Edit Clinical note.*Synthetic care documented on the Android-sized workflow/ })).toBeVisible();
     await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 4_000 });
 
     state.backendOnline = false;
@@ -176,7 +176,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await page.getByRole("button", { name: "Add to timeline" }).click();
     await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
     await page.getByRole("button", { name: /^Checklist,/ }).click();
-    await expect(page.locator(".checklist-findings li.error").first()).toBeVisible();
+    await expect(page.locator(".checklist-findings li.error")).toHaveCount(0);
     await page.getByRole("button", { name: "Save & close" }).click();
     await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
     const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
@@ -199,10 +199,11 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await context.setOffline(true);
     await recoveredCard.getByRole("button", { name: "Reopen call" }).click();
     await page.getByRole("button", { name: /^Timeline/ }).click();
-    await expect(page.getByText("Synthetic care documented on the Android-sized workflow", { exact: true })).toBeVisible();
+    await expect(page.locator(".timeline-list button").filter({ hasText: "Synthetic care documented on the Android-sized workflow" })).toBeVisible();
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", formVersionId);
     await page.getByRole("button", { name: /^Checklist,/ }).click();
-    await expect(page.locator(".checklist-findings li.error").first()).toBeVisible();
+    await expect(page.locator(".checklist-findings li.error")).toHaveCount(0);
+    await expect(page.locator(".checklist-findings li.warning")).toHaveCount(1);
 
     state.backendOnline = true;
     await context.setOffline(false);

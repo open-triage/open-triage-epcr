@@ -1,0 +1,3680 @@
+{
+  "$schema": "./stationary-layout.schema-1.0.0.json",
+  "schemaVersion": "1.0.0",
+  "profileId": "open-triage.stationary.full-record",
+  "catalog": {
+    "release": "3.5.1",
+    "dataset": "EMSDataSet",
+    "elementCount": 453,
+    "groupCount": 88
+  },
+  "customNamespaces": [],
+  "groups": [
+    {
+      "id": "EMSDataSet",
+      "parentId": null,
+      "mode": "read-only",
+      "presentation": {
+        "kind": "inline",
+        "label": "EMSDataSet"
+      }
+    },
+    {
+      "id": "HeaderGroup",
+      "parentId": "EMSDataSet",
+      "mode": "read-only",
+      "presentation": {
+        "kind": "table",
+        "label": "Header",
+        "help": "Add or edit Header entries.",
+        "dialog": {
+          "addLabel": "Add Header",
+          "editLabel": "Edit Header"
+        },
+        "columns": [
+          {
+            "elementId": "dAgency.01"
+          },
+          {
+            "elementId": "dAgency.02"
+          },
+          {
+            "elementId": "dAgency.04"
+          },
+          {
+            "elementId": "eAirway.01"
+          }
+        ]
+      }
+    },
+    {
+      "id": "DemographicGroup",
+      "parentId": "HeaderGroup",
+      "mode": "read-only",
+      "presentation": {
+        "kind": "inline",
+        "label": "DemographicGroup"
+      }
+    },
+    {
+      "id": "eCustomConfigurationSection",
+      "parentId": "HeaderGroup",
+      "mode": "read-only",
+      "presentation": {
+        "kind": "inline",
+        "label": "eCustomConfiguration"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.eCustomGroup",
+      "parentId": "eCustomConfigurationSection",
+      "mode": "read-only",
+      "presentation": {
+        "kind": "table",
+        "label": "eCustomConfiguration.CustomGroup",
+        "help": "Add or edit eCustomConfiguration.CustomGroup entries.",
+        "dialog": {
+          "addLabel": "Add eCustomConfiguration.CustomGroup",
+          "editLabel": "Edit eCustomConfiguration.CustomGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eCustomConfiguration.01"
+          },
+          {
+            "elementId": "eCustomConfiguration.02"
+          },
+          {
+            "elementId": "eCustomConfiguration.03"
+          },
+          {
+            "elementId": "eCustomConfiguration.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "PatientCareReportGroup",
+      "parentId": "HeaderGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "PatientCareReport",
+        "help": "Add or edit PatientCareReport entries.",
+        "dialog": {
+          "addLabel": "Add PatientCareReport",
+          "editLabel": "Edit PatientCareReport"
+        },
+        "columns": [
+          {
+            "elementId": "eAirway.01"
+          },
+          {
+            "elementId": "eAirway.02"
+          },
+          {
+            "elementId": "eAirway.03"
+          },
+          {
+            "elementId": "eAirway.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eRecordSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eRecord"
+      }
+    },
+    {
+      "id": "eRecord.SoftwareApplicationGroup",
+      "parentId": "eRecordSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eRecord.SoftwareApplicationGroup"
+      }
+    },
+    {
+      "id": "eResponseSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eResponse"
+      }
+    },
+    {
+      "id": "eResponse.AgencyGroup",
+      "parentId": "eResponseSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eResponse.AgencyGroup"
+      }
+    },
+    {
+      "id": "eResponse.ServiceGroup",
+      "parentId": "eResponseSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eResponse.ServiceGroup"
+      }
+    },
+    {
+      "id": "eDispatchSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDispatch"
+      }
+    },
+    {
+      "id": "eCrewSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eCrew"
+      }
+    },
+    {
+      "id": "eCrew.CrewGroup",
+      "parentId": "eCrewSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eCrew.CrewGroup",
+        "help": "Add or edit eCrew.CrewGroup entries.",
+        "dialog": {
+          "addLabel": "Add eCrew.CrewGroup",
+          "editLabel": "Edit eCrew.CrewGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eCrew.01"
+          },
+          {
+            "elementId": "eCrew.02"
+          },
+          {
+            "elementId": "eCrew.03"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eTimesSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eTimes"
+      }
+    },
+    {
+      "id": "ePatientSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePatient"
+      }
+    },
+    {
+      "id": "ePatient.PatientNameGroup",
+      "parentId": "ePatientSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePatient.PatientNameGroup"
+      }
+    },
+    {
+      "id": "ePatient.AgeGroup",
+      "parentId": "ePatientSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePatient.AgeGroup"
+      }
+    },
+    {
+      "id": "ePaymentSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePayment"
+      }
+    },
+    {
+      "id": "ePayment.CertificateGroup",
+      "parentId": "ePaymentSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePayment.CertificateGroup"
+      }
+    },
+    {
+      "id": "ePayment.InsuranceGroup",
+      "parentId": "ePaymentSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "ePayment.InsuranceGroup",
+        "help": "Add or edit ePayment.InsuranceGroup entries.",
+        "dialog": {
+          "addLabel": "Add ePayment.InsuranceGroup",
+          "editLabel": "Edit ePayment.InsuranceGroup"
+        },
+        "columns": [
+          {
+            "elementId": "ePayment.09"
+          },
+          {
+            "elementId": "ePayment.10"
+          },
+          {
+            "elementId": "ePayment.11"
+          },
+          {
+            "elementId": "ePayment.12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ePayment.ClosestRelativeGroup",
+      "parentId": "ePaymentSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePayment.ClosestRelativeGroup"
+      }
+    },
+    {
+      "id": "ePayment.EmployerGroup",
+      "parentId": "ePaymentSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "ePayment.EmployerGroup"
+      }
+    },
+    {
+      "id": "ePayment.SupplyItemGroup",
+      "parentId": "ePaymentSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "ePayment.SupplyItemGroup",
+        "help": "Add or edit ePayment.SupplyItemGroup entries.",
+        "dialog": {
+          "addLabel": "Add ePayment.SupplyItemGroup",
+          "editLabel": "Edit ePayment.SupplyItemGroup"
+        },
+        "columns": [
+          {
+            "elementId": "ePayment.55"
+          },
+          {
+            "elementId": "ePayment.56"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eSceneSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eScene"
+      }
+    },
+    {
+      "id": "eScene.ResponderGroup",
+      "parentId": "eSceneSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eScene.ResponderGroup",
+        "help": "Add or edit eScene.ResponderGroup entries.",
+        "dialog": {
+          "addLabel": "Add eScene.ResponderGroup",
+          "editLabel": "Edit eScene.ResponderGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eScene.02"
+          },
+          {
+            "elementId": "eScene.03"
+          },
+          {
+            "elementId": "eScene.04"
+          },
+          {
+            "elementId": "eScene.24"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eSituationSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eSituation"
+      }
+    },
+    {
+      "id": "eSituation.PatientComplaintGroup",
+      "parentId": "eSituationSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eSituation.PatientComplaintGroup",
+        "help": "Add or edit eSituation.PatientComplaintGroup entries.",
+        "dialog": {
+          "addLabel": "Add eSituation.PatientComplaintGroup",
+          "editLabel": "Edit eSituation.PatientComplaintGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eSituation.03"
+          },
+          {
+            "elementId": "eSituation.04"
+          },
+          {
+            "elementId": "eSituation.05"
+          },
+          {
+            "elementId": "eSituation.06"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eSituation.WorkRelatedGroup",
+      "parentId": "eSituationSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eSituation.WorkRelatedGroup"
+      }
+    },
+    {
+      "id": "eInjurySection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eInjury"
+      }
+    },
+    {
+      "id": "eInjury.CollisionGroup",
+      "parentId": "eInjurySection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eInjury.CollisionGroup"
+      }
+    },
+    {
+      "id": "eInjury.SeatGroup",
+      "parentId": "eInjury.CollisionGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eInjury.SeatGroup",
+        "help": "Add or edit eInjury.SeatGroup entries.",
+        "dialog": {
+          "addLabel": "Add eInjury.SeatGroup",
+          "editLabel": "Edit eInjury.SeatGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eInjury.26"
+          },
+          {
+            "elementId": "eInjury.27"
+          },
+          {
+            "elementId": "eInjury.28"
+          },
+          {
+            "elementId": "eInjury.29"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eArrestSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eArrest"
+      }
+    },
+    {
+      "id": "eHistorySection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eHistory"
+      }
+    },
+    {
+      "id": "eHistory.PractitionerGroup",
+      "parentId": "eHistorySection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eHistory.PractitionerGroup",
+        "help": "Add or edit eHistory.PractitionerGroup entries.",
+        "dialog": {
+          "addLabel": "Add eHistory.PractitionerGroup",
+          "editLabel": "Edit eHistory.PractitionerGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eHistory.02"
+          },
+          {
+            "elementId": "eHistory.03"
+          },
+          {
+            "elementId": "eHistory.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eHistory.ImmunizationsGroup",
+      "parentId": "eHistorySection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eHistory.ImmunizationsGroup",
+        "help": "Add or edit eHistory.ImmunizationsGroup entries.",
+        "dialog": {
+          "addLabel": "Add eHistory.ImmunizationsGroup",
+          "editLabel": "Edit eHistory.ImmunizationsGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eHistory.10"
+          },
+          {
+            "elementId": "eHistory.11"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eHistory.CurrentMedsGroup",
+      "parentId": "eHistorySection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eHistory.CurrentMedsGroup",
+        "help": "Add or edit eHistory.CurrentMedsGroup entries.",
+        "dialog": {
+          "addLabel": "Add eHistory.CurrentMedsGroup",
+          "editLabel": "Edit eHistory.CurrentMedsGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eHistory.12"
+          },
+          {
+            "elementId": "eHistory.13"
+          },
+          {
+            "elementId": "eHistory.14"
+          },
+          {
+            "elementId": "eHistory.15"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eNarrativeSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eNarrative"
+      }
+    },
+    {
+      "id": "eVitalsSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals"
+      }
+    },
+    {
+      "id": "eVitals.VitalGroup",
+      "parentId": "eVitalsSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eVitals.VitalGroup",
+        "help": "Add or edit eVitals.VitalGroup entries.",
+        "dialog": {
+          "addLabel": "Add eVitals.VitalGroup",
+          "editLabel": "Edit eVitals.VitalGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eVitals.01"
+          },
+          {
+            "elementId": "eVitals.02"
+          },
+          {
+            "elementId": "eVitals.03"
+          },
+          {
+            "elementId": "eVitals.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eVitals.CardiacRhythmGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.CardiacRhythmGroup"
+      }
+    },
+    {
+      "id": "eVitals.BloodPressureGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.BloodPressureGroup"
+      }
+    },
+    {
+      "id": "eVitals.HeartRateGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.HeartRateGroup"
+      }
+    },
+    {
+      "id": "eVitals.GlasgowScoreGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.GlasgowScoreGroup"
+      }
+    },
+    {
+      "id": "eVitals.TemperatureGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.TemperatureGroup"
+      }
+    },
+    {
+      "id": "eVitals.PainScaleGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.PainScaleGroup"
+      }
+    },
+    {
+      "id": "eVitals.StrokeScaleGroup",
+      "parentId": "eVitals.VitalGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eVitals.StrokeScaleGroup"
+      }
+    },
+    {
+      "id": "eLabsSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eLabs"
+      }
+    },
+    {
+      "id": "eLabs.LabGroup",
+      "parentId": "eLabsSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eLabs.LabGroup",
+        "help": "Add or edit eLabs.LabGroup entries.",
+        "dialog": {
+          "addLabel": "Add eLabs.LabGroup",
+          "editLabel": "Edit eLabs.LabGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eLabs.01"
+          },
+          {
+            "elementId": "eLabs.02"
+          },
+          {
+            "elementId": "eLabs.03"
+          },
+          {
+            "elementId": "eLabs.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eLabs.LabResultGroup",
+      "parentId": "eLabs.LabGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eLabs.LabResultGroup",
+        "help": "Add or edit eLabs.LabResultGroup entries.",
+        "dialog": {
+          "addLabel": "Add eLabs.LabResultGroup",
+          "editLabel": "Edit eLabs.LabResultGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eLabs.03"
+          },
+          {
+            "elementId": "eLabs.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eLabs.LabImageGroup",
+      "parentId": "eLabs.LabGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eLabs.LabImageGroup",
+        "help": "Add or edit eLabs.LabImageGroup entries.",
+        "dialog": {
+          "addLabel": "Add eLabs.LabImageGroup",
+          "editLabel": "Edit eLabs.LabImageGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eLabs.05"
+          },
+          {
+            "elementId": "eLabs.06"
+          },
+          {
+            "elementId": "eLabs.07"
+          },
+          {
+            "elementId": "eLabs.08"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eLabs.WaveformGraphicGroup",
+      "parentId": "eLabs.LabImageGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eLabs.WaveformGraphicGroup",
+        "help": "Add or edit eLabs.WaveformGraphicGroup entries.",
+        "dialog": {
+          "addLabel": "Add eLabs.WaveformGraphicGroup",
+          "editLabel": "Edit eLabs.WaveformGraphicGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eLabs.07"
+          },
+          {
+            "elementId": "eLabs.08"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExamSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eExam"
+      }
+    },
+    {
+      "id": "eExam.AssessmentGroup",
+      "parentId": "eExamSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.AssessmentGroup",
+        "help": "Add or edit eExam.AssessmentGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.AssessmentGroup",
+          "editLabel": "Edit eExam.AssessmentGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.03"
+          },
+          {
+            "elementId": "eExam.04"
+          },
+          {
+            "elementId": "eExam.05"
+          },
+          {
+            "elementId": "eExam.06"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.AbdomenGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.AbdomenGroup",
+        "help": "Add or edit eExam.AbdomenGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.AbdomenGroup",
+          "editLabel": "Edit eExam.AbdomenGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.10"
+          },
+          {
+            "elementId": "eExam.11"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.SpineGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.SpineGroup",
+        "help": "Add or edit eExam.SpineGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.SpineGroup",
+          "editLabel": "Edit eExam.SpineGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.13"
+          },
+          {
+            "elementId": "eExam.14"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.ExtremityGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.ExtremityGroup",
+        "help": "Add or edit eExam.ExtremityGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.ExtremityGroup",
+          "editLabel": "Edit eExam.ExtremityGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.15"
+          },
+          {
+            "elementId": "eExam.16"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.EyeGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.EyeGroup",
+        "help": "Add or edit eExam.EyeGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.EyeGroup",
+          "editLabel": "Edit eExam.EyeGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.17"
+          },
+          {
+            "elementId": "eExam.18"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.LungGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.LungGroup",
+        "help": "Add or edit eExam.LungGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.LungGroup",
+          "editLabel": "Edit eExam.LungGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.22"
+          },
+          {
+            "elementId": "eExam.23"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eExam.ChestGroup",
+      "parentId": "eExam.AssessmentGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eExam.ChestGroup",
+        "help": "Add or edit eExam.ChestGroup entries.",
+        "dialog": {
+          "addLabel": "Add eExam.ChestGroup",
+          "editLabel": "Edit eExam.ChestGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eExam.24"
+          },
+          {
+            "elementId": "eExam.25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eProtocolsSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eProtocols"
+      }
+    },
+    {
+      "id": "eProtocols.ProtocolGroup",
+      "parentId": "eProtocolsSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eProtocols.ProtocolGroup",
+        "help": "Add or edit eProtocols.ProtocolGroup entries.",
+        "dialog": {
+          "addLabel": "Add eProtocols.ProtocolGroup",
+          "editLabel": "Edit eProtocols.ProtocolGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eProtocols.01"
+          },
+          {
+            "elementId": "eProtocols.02"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eMedicationsSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eMedications"
+      }
+    },
+    {
+      "id": "eMedications.MedicationGroup",
+      "parentId": "eMedicationsSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eMedications.MedicationGroup",
+        "help": "Add or edit eMedications.MedicationGroup entries.",
+        "dialog": {
+          "addLabel": "Add eMedications.MedicationGroup",
+          "editLabel": "Edit eMedications.MedicationGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eMedications.01"
+          },
+          {
+            "elementId": "eMedications.02"
+          },
+          {
+            "elementId": "eMedications.03"
+          },
+          {
+            "elementId": "eMedications.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eMedications.DosageGroup",
+      "parentId": "eMedications.MedicationGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eMedications.DosageGroup"
+      }
+    },
+    {
+      "id": "eProceduresSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eProcedures"
+      }
+    },
+    {
+      "id": "eProcedures.ProcedureGroup",
+      "parentId": "eProceduresSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eProcedures.ProcedureGroup",
+        "help": "Add or edit eProcedures.ProcedureGroup entries.",
+        "dialog": {
+          "addLabel": "Add eProcedures.ProcedureGroup",
+          "editLabel": "Edit eProcedures.ProcedureGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eProcedures.01"
+          },
+          {
+            "elementId": "eProcedures.02"
+          },
+          {
+            "elementId": "eProcedures.03"
+          },
+          {
+            "elementId": "eProcedures.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eAirwaysSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eAirway"
+      }
+    },
+    {
+      "id": "eAirway.AirwayGroup",
+      "parentId": "eAirwaysSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eAirway.AirwayGroup"
+      }
+    },
+    {
+      "id": "eAirway.ConfirmationGroup",
+      "parentId": "eAirway.AirwayGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eAirway.ConfirmationGroup",
+        "help": "Add or edit eAirway.ConfirmationGroup entries.",
+        "dialog": {
+          "addLabel": "Add eAirway.ConfirmationGroup",
+          "editLabel": "Edit eAirway.ConfirmationGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eAirway.02"
+          },
+          {
+            "elementId": "eAirway.03"
+          },
+          {
+            "elementId": "eAirway.04"
+          },
+          {
+            "elementId": "eAirway.05"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eDevicesSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDevice"
+      }
+    },
+    {
+      "id": "eDevice.DeviceGroup",
+      "parentId": "eDevicesSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eDevice.DeviceGroup",
+        "help": "Add or edit eDevice.DeviceGroup entries.",
+        "dialog": {
+          "addLabel": "Add eDevice.DeviceGroup",
+          "editLabel": "Edit eDevice.DeviceGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eDevice.01"
+          },
+          {
+            "elementId": "eDevice.02"
+          },
+          {
+            "elementId": "eDevice.03"
+          },
+          {
+            "elementId": "eDevice.04"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eDevice.WaveformGroup",
+      "parentId": "eDevice.DeviceGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDevice.WaveformGroup"
+      }
+    },
+    {
+      "id": "eDevice.ShockGroup",
+      "parentId": "eDevice.DeviceGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDevice.ShockGroup"
+      }
+    },
+    {
+      "id": "eDispositionSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDisposition"
+      }
+    },
+    {
+      "id": "eDisposition.DestinationGroup",
+      "parentId": "eDispositionSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDisposition.DestinationGroup"
+      }
+    },
+    {
+      "id": "eDisposition.IncidentDispositionGroup",
+      "parentId": "eDispositionSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eDisposition.IncidentDispositionGroup"
+      }
+    },
+    {
+      "id": "eDisposition.HospitalTeamActivationGroup",
+      "parentId": "eDispositionSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eDisposition.HospitalTeamActivationGroup",
+        "help": "Add or edit eDisposition.HospitalTeamActivationGroup entries.",
+        "dialog": {
+          "addLabel": "Add eDisposition.HospitalTeamActivationGroup",
+          "editLabel": "Edit eDisposition.HospitalTeamActivationGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eDisposition.24"
+          },
+          {
+            "elementId": "eDisposition.25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOutcomeSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eOutcome"
+      }
+    },
+    {
+      "id": "eOutcome.ExternalDataGroup",
+      "parentId": "eOutcomeSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOutcome.ExternalDataGroup",
+        "help": "Add or edit eOutcome.ExternalDataGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOutcome.ExternalDataGroup",
+          "editLabel": "Edit eOutcome.ExternalDataGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOutcome.03"
+          },
+          {
+            "elementId": "eOutcome.04"
+          },
+          {
+            "elementId": "eOutcome.05"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOutcome.EmergencyDepartmentProceduresGroup",
+      "parentId": "eOutcomeSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOutcome.EmergencyDepartmentProceduresGroup",
+        "help": "Add or edit eOutcome.EmergencyDepartmentProceduresGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOutcome.EmergencyDepartmentProceduresGroup",
+          "editLabel": "Edit eOutcome.EmergencyDepartmentProceduresGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOutcome.09"
+          },
+          {
+            "elementId": "eOutcome.19"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOutcome.HospitalProceduresGroup",
+      "parentId": "eOutcomeSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOutcome.HospitalProceduresGroup",
+        "help": "Add or edit eOutcome.HospitalProceduresGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOutcome.HospitalProceduresGroup",
+          "editLabel": "Edit eOutcome.HospitalProceduresGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOutcome.12"
+          },
+          {
+            "elementId": "eOutcome.20"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eCustomResultsSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "enhanced",
+      "presentation": {
+        "kind": "inline",
+        "label": "eCustomResults"
+      }
+    },
+    {
+      "id": "eCustomConfiguration.eResultsGroup",
+      "parentId": "eCustomResultsSection",
+      "mode": "enhanced",
+      "presentation": {
+        "kind": "table",
+        "label": "eCustomResults.ResultsGroup",
+        "help": "Add or edit eCustomResults.ResultsGroup entries.",
+        "dialog": {
+          "addLabel": "Add eCustomResults.ResultsGroup",
+          "editLabel": "Edit eCustomResults.ResultsGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eCustomResults.01"
+          },
+          {
+            "elementId": "eCustomResults.02"
+          },
+          {
+            "elementId": "eCustomResults.03"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOtherSection",
+      "parentId": "PatientCareReportGroup",
+      "mode": "editable",
+      "presentation": {
+        "kind": "inline",
+        "label": "eOther"
+      }
+    },
+    {
+      "id": "eOther.EMSCrewMemberGroup",
+      "parentId": "eOtherSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOther.EMSCrewMemberGroup",
+        "help": "Add or edit eOther.EMSCrewMemberGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOther.EMSCrewMemberGroup",
+          "editLabel": "Edit eOther.EMSCrewMemberGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOther.03"
+          },
+          {
+            "elementId": "eOther.04"
+          },
+          {
+            "elementId": "eOther.05"
+          },
+          {
+            "elementId": "eOther.06"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOther.FileGroup",
+      "parentId": "eOtherSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOther.FileGroup",
+        "help": "Add or edit eOther.FileGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOther.FileGroup",
+          "editLabel": "Edit eOther.FileGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOther.09"
+          },
+          {
+            "elementId": "eOther.10"
+          },
+          {
+            "elementId": "eOther.11"
+          },
+          {
+            "elementId": "eOther.22"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eOther.SignatureGroup",
+      "parentId": "eOtherSection",
+      "mode": "editable",
+      "presentation": {
+        "kind": "table",
+        "label": "eOther.SignatureGroup",
+        "help": "Add or edit eOther.SignatureGroup entries.",
+        "dialog": {
+          "addLabel": "Add eOther.SignatureGroup",
+          "editLabel": "Edit eOther.SignatureGroup"
+        },
+        "columns": [
+          {
+            "elementId": "eOther.12"
+          },
+          {
+            "elementId": "eOther.13"
+          },
+          {
+            "elementId": "eOther.14"
+          },
+          {
+            "elementId": "eOther.15"
+          }
+        ]
+      }
+    }
+  ],
+  "elements": [
+    {
+      "id": "dAgency.01",
+      "groupId": "DemographicGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "dAgency.02",
+      "groupId": "DemographicGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "dAgency.04",
+      "groupId": "DemographicGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eAirway.01",
+      "groupId": "eAirway.AirwayGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.02",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.03",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.04",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.05",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.06",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.07",
+      "groupId": "eAirway.ConfirmationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.08",
+      "groupId": "eAirway.AirwayGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.09",
+      "groupId": "eAirway.AirwayGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.10",
+      "groupId": "eAirway.AirwayGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eAirway.11",
+      "groupId": "eAirway.AirwayGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.01",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.02",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.03",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.04",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.07",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.09",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.10",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.11",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.12",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.13",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.14",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.15",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.16",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.17",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.18",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.19",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.20",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.21",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eArrest.22",
+      "groupId": "eArrestSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eCrew.01",
+      "groupId": "eCrew.CrewGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eCrew.02",
+      "groupId": "eCrew.CrewGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eCrew.03",
+      "groupId": "eCrew.CrewGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eCustomConfiguration.01",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.02",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.03",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.04",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.05",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.06",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.07",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.08",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomConfiguration.09",
+      "groupId": "eCustomConfiguration.eCustomGroup",
+      "mode": "read-only"
+    },
+    {
+      "id": "eCustomResults.01",
+      "groupId": "eCustomConfiguration.eResultsGroup",
+      "mode": "enhanced"
+    },
+    {
+      "id": "eCustomResults.02",
+      "groupId": "eCustomConfiguration.eResultsGroup",
+      "mode": "enhanced"
+    },
+    {
+      "id": "eCustomResults.03",
+      "groupId": "eCustomConfiguration.eResultsGroup",
+      "mode": "enhanced"
+    },
+    {
+      "id": "eDevice.01",
+      "groupId": "eDevice.DeviceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.02",
+      "groupId": "eDevice.DeviceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.03",
+      "groupId": "eDevice.DeviceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.04",
+      "groupId": "eDevice.WaveformGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.05",
+      "groupId": "eDevice.WaveformGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.06",
+      "groupId": "eDevice.WaveformGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.07",
+      "groupId": "eDevice.DeviceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.08",
+      "groupId": "eDevice.DeviceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.09",
+      "groupId": "eDevice.ShockGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.10",
+      "groupId": "eDevice.ShockGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.11",
+      "groupId": "eDevice.ShockGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDevice.12",
+      "groupId": "eDevice.ShockGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.01",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.02",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.03",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.04",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.05",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDispatch.06",
+      "groupId": "eDispatchSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.01",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.02",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.03",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.04",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.05",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.06",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.07",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.08",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.09",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.10",
+      "groupId": "eDisposition.DestinationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.11",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.13",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.14",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.15",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.16",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.17",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.18",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.19",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.20",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.21",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.22",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.23",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.24",
+      "groupId": "eDisposition.HospitalTeamActivationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.25",
+      "groupId": "eDisposition.HospitalTeamActivationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.26",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.27",
+      "groupId": "eDisposition.IncidentDispositionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.28",
+      "groupId": "eDisposition.IncidentDispositionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.29",
+      "groupId": "eDisposition.IncidentDispositionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.30",
+      "groupId": "eDisposition.IncidentDispositionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.31",
+      "groupId": "eDisposition.IncidentDispositionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eDisposition.32",
+      "groupId": "eDispositionSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.01",
+      "groupId": "eExamSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.02",
+      "groupId": "eExamSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.03",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.04",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.05",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.06",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.07",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.09",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.10",
+      "groupId": "eExam.AbdomenGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.11",
+      "groupId": "eExam.AbdomenGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.12",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.13",
+      "groupId": "eExam.SpineGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.14",
+      "groupId": "eExam.SpineGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.15",
+      "groupId": "eExam.ExtremityGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.16",
+      "groupId": "eExam.ExtremityGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.17",
+      "groupId": "eExam.EyeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.18",
+      "groupId": "eExam.EyeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.19",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.20",
+      "groupId": "eExam.AssessmentGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.21",
+      "groupId": "eExamSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.22",
+      "groupId": "eExam.LungGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.23",
+      "groupId": "eExam.LungGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.24",
+      "groupId": "eExam.ChestGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eExam.25",
+      "groupId": "eExam.ChestGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.01",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.02",
+      "groupId": "eHistory.PractitionerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.03",
+      "groupId": "eHistory.PractitionerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.04",
+      "groupId": "eHistory.PractitionerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.05",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.06",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.07",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.08",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.09",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.10",
+      "groupId": "eHistory.ImmunizationsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.11",
+      "groupId": "eHistory.ImmunizationsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.12",
+      "groupId": "eHistory.CurrentMedsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.13",
+      "groupId": "eHistory.CurrentMedsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.14",
+      "groupId": "eHistory.CurrentMedsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.15",
+      "groupId": "eHistory.CurrentMedsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.16",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.17",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.18",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.19",
+      "groupId": "eHistorySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eHistory.20",
+      "groupId": "eHistory.CurrentMedsGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.01",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.02",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.03",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.04",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.05",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.06",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.07",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.08",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.09",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.10",
+      "groupId": "eInjurySection",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.11",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.12",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.13",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.14",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.15",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.16",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.17",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.18",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.19",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.20",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.21",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.22",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.23",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.24",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.25",
+      "groupId": "eInjury.CollisionGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.26",
+      "groupId": "eInjury.SeatGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.27",
+      "groupId": "eInjury.SeatGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.28",
+      "groupId": "eInjury.SeatGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eInjury.29",
+      "groupId": "eInjury.SeatGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.01",
+      "groupId": "eLabs.LabGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.02",
+      "groupId": "eLabs.LabGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.03",
+      "groupId": "eLabs.LabResultGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.04",
+      "groupId": "eLabs.LabResultGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.05",
+      "groupId": "eLabs.LabImageGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.06",
+      "groupId": "eLabs.LabImageGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.07",
+      "groupId": "eLabs.WaveformGraphicGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eLabs.08",
+      "groupId": "eLabs.WaveformGraphicGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.01",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.02",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.03",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.04",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.05",
+      "groupId": "eMedications.DosageGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.06",
+      "groupId": "eMedications.DosageGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.07",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.08",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.09",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.10",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.11",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.12",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eMedications.13",
+      "groupId": "eMedications.MedicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eNarrative.01",
+      "groupId": "eNarrativeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.01",
+      "groupId": "eOtherSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.02",
+      "groupId": "eOtherSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.03",
+      "groupId": "eOther.EMSCrewMemberGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.04",
+      "groupId": "eOther.EMSCrewMemberGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.05",
+      "groupId": "eOther.EMSCrewMemberGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.06",
+      "groupId": "eOther.EMSCrewMemberGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.07",
+      "groupId": "eOtherSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.08",
+      "groupId": "eOtherSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.09",
+      "groupId": "eOther.FileGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.10",
+      "groupId": "eOther.FileGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.11",
+      "groupId": "eOther.FileGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.12",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.13",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.14",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.15",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.16",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.17",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.18",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.19",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.20",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.21",
+      "groupId": "eOther.SignatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOther.22",
+      "groupId": "eOther.FileGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.01",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.02",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.03",
+      "groupId": "eOutcome.ExternalDataGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.04",
+      "groupId": "eOutcome.ExternalDataGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.05",
+      "groupId": "eOutcome.ExternalDataGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.09",
+      "groupId": "eOutcome.EmergencyDepartmentProceduresGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.10",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.11",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.12",
+      "groupId": "eOutcome.HospitalProceduresGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.13",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.16",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.18",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.19",
+      "groupId": "eOutcome.EmergencyDepartmentProceduresGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.20",
+      "groupId": "eOutcome.HospitalProceduresGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eOutcome.21",
+      "groupId": "eOutcomeSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.01",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.02",
+      "groupId": "ePatient.PatientNameGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.03",
+      "groupId": "ePatient.PatientNameGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.04",
+      "groupId": "ePatient.PatientNameGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.05",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.06",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.07",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.08",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.09",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.10",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.11",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.12",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.13",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.14",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.15",
+      "groupId": "ePatient.AgeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.16",
+      "groupId": "ePatient.AgeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.17",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.18",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.19",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.20",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.21",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.22",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.23",
+      "groupId": "ePatient.PatientNameGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.24",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePatient.25",
+      "groupId": "ePatientSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.01",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.02",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.03",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.04",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.05",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.06",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.07",
+      "groupId": "ePayment.CertificateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.08",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.09",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.10",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.11",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.12",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.13",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.14",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.15",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.16",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.17",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.18",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.19",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.20",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.21",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.22",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.23",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.24",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.25",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.26",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.27",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.28",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.29",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.30",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.31",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.32",
+      "groupId": "ePayment.ClosestRelativeGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.33",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.34",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.35",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.36",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.37",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.38",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.39",
+      "groupId": "ePayment.EmployerGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.40",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.41",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.42",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.44",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.45",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.46",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.47",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.48",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.49",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.50",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.51",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.52",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.53",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.54",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.55",
+      "groupId": "ePayment.SupplyItemGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.56",
+      "groupId": "ePayment.SupplyItemGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.57",
+      "groupId": "ePaymentSection",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.58",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.59",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "ePayment.60",
+      "groupId": "ePayment.InsuranceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.01",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.02",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.03",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.04",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.05",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.06",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.07",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.08",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.09",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.10",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.11",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.12",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.13",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.14",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProcedures.15",
+      "groupId": "eProcedures.ProcedureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProtocols.01",
+      "groupId": "eProtocols.ProtocolGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eProtocols.02",
+      "groupId": "eProtocols.ProtocolGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eRecord.01",
+      "groupId": "eRecordSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eRecord.02",
+      "groupId": "eRecord.SoftwareApplicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eRecord.03",
+      "groupId": "eRecord.SoftwareApplicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eRecord.04",
+      "groupId": "eRecord.SoftwareApplicationGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.01",
+      "groupId": "eResponse.AgencyGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.02",
+      "groupId": "eResponse.AgencyGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.03",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.04",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.05",
+      "groupId": "eResponse.ServiceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.06",
+      "groupId": "eResponse.ServiceGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.07",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.08",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.09",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.10",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.11",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.12",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.13",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.14",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.16",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.17",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.18",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.19",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.20",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.21",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.22",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.23",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eResponse.24",
+      "groupId": "eResponseSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.01",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.02",
+      "groupId": "eScene.ResponderGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.03",
+      "groupId": "eScene.ResponderGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.04",
+      "groupId": "eScene.ResponderGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.05",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.06",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.07",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.08",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.09",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.10",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.11",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.12",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.13",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.14",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.15",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.16",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.17",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.18",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.19",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.20",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.21",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.22",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.23",
+      "groupId": "eSceneSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.24",
+      "groupId": "eScene.ResponderGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eScene.25",
+      "groupId": "eScene.ResponderGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.01",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.02",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.03",
+      "groupId": "eSituation.PatientComplaintGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.04",
+      "groupId": "eSituation.PatientComplaintGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.05",
+      "groupId": "eSituation.PatientComplaintGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.06",
+      "groupId": "eSituation.PatientComplaintGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.07",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.08",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.09",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.10",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.11",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.12",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.13",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.14",
+      "groupId": "eSituation.WorkRelatedGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.15",
+      "groupId": "eSituation.WorkRelatedGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.16",
+      "groupId": "eSituation.WorkRelatedGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.17",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.18",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.19",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eSituation.20",
+      "groupId": "eSituationSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.01",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.02",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.03",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.04",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.05",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.06",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.07",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.08",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.09",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.10",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.11",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.12",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.13",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.14",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.15",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.16",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eTimes.17",
+      "groupId": "eTimesSection",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.01",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.02",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.03",
+      "groupId": "eVitals.CardiacRhythmGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.04",
+      "groupId": "eVitals.CardiacRhythmGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.05",
+      "groupId": "eVitals.CardiacRhythmGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.06",
+      "groupId": "eVitals.BloodPressureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.07",
+      "groupId": "eVitals.BloodPressureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.08",
+      "groupId": "eVitals.BloodPressureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.09",
+      "groupId": "eVitals.BloodPressureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.10",
+      "groupId": "eVitals.HeartRateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.11",
+      "groupId": "eVitals.HeartRateGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.12",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.13",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.14",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.15",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.16",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.17",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.18",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.19",
+      "groupId": "eVitals.GlasgowScoreGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.20",
+      "groupId": "eVitals.GlasgowScoreGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.21",
+      "groupId": "eVitals.GlasgowScoreGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.22",
+      "groupId": "eVitals.GlasgowScoreGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.23",
+      "groupId": "eVitals.GlasgowScoreGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.24",
+      "groupId": "eVitals.TemperatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.25",
+      "groupId": "eVitals.TemperatureGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.26",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.27",
+      "groupId": "eVitals.PainScaleGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.28",
+      "groupId": "eVitals.PainScaleGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.29",
+      "groupId": "eVitals.StrokeScaleGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.30",
+      "groupId": "eVitals.StrokeScaleGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.31",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.32",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.33",
+      "groupId": "eVitals.VitalGroup",
+      "mode": "editable"
+    },
+    {
+      "id": "eVitals.34",
+      "groupId": "eVitals.StrokeScaleGroup",
+      "mode": "editable"
+    }
+  ]
+}

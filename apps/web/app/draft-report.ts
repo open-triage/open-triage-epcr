@@ -1,6 +1,7 @@
 import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
+import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
@@ -36,6 +37,7 @@ export interface DraftGroupMutation {
   readonly parentGroupInstanceId?: string | null;
   readonly ordinal: number;
   readonly documentedTime?: string;
+  readonly correlationId?: string;
   readonly tombstone?: boolean;
 }
 
@@ -43,9 +45,11 @@ export type DraftValue =
   | { readonly kind: "text" | "uri"; readonly value: string }
   | { readonly kind: "integer" | "numeric"; readonly value: string | number; readonly lexical?: string }
   | { readonly kind: "boolean"; readonly value: boolean }
-  | { readonly kind: "date" | "datetime" | "time" | "duration"; readonly value: string }
+  | { readonly kind: "date"; readonly value: string; readonly precision?: string }
+  | { readonly kind: "datetime" | "time"; readonly value: string; readonly utcOffsetMinutes?: number; readonly precision?: string }
+  | { readonly kind: "duration"; readonly value: string; readonly lexical?: string }
   | { readonly kind: "binary"; readonly value: string }
-  | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string }
+  | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string; readonly terminologyVersion?: string }
   | { readonly kind: "null" | "pertinent-negative"; readonly absenceCode: string; readonly display?: string }
   | { readonly kind: "absent"; readonly absenceCode?: string; readonly display?: string };
 
@@ -55,6 +59,8 @@ export interface DraftOccurrenceMutation {
   readonly groupInstanceId: string;
   readonly ordinal: number;
   readonly sourceAttributes?: Record<string, unknown>;
+  readonly provenanceKind?: string;
+  readonly provenanceDetail?: Record<string, unknown>;
   readonly tombstone?: boolean;
   readonly value?: DraftValue;
 }
@@ -70,6 +76,7 @@ export interface SaveDraftReportCommand {
 }
 
 export interface SavedDraftReport { readonly id: string; readonly revision: number; readonly status: "draft" }
+export interface RetainedSignedDraftAttempt { readonly id: string; readonly revision: number; readonly status: "signed" }
 
 /** Produces an RFC-4122-shaped, deterministic identity for a local report entity. */
 export function stableDraftId(reportId: string, localId: string): string {
@@ -105,22 +112,22 @@ export function draftCommandUsesLegacyDerivedIds(
 }
 
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
-  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}) };
+  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}), ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };
   if (value.kind === "null") return value.notValue
     ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}) }
     : { kind: "absent" };
   if (value.kind === "absent") return { kind: "absent" };
   const base = requireNemsisDataElement(elementId).datatype.base;
-  if (base === "integer") return { kind: "integer", value: typeof value.value === "boolean" ? Number(value.value) : value.value };
-  if (["decimal", "double", "float"].includes(base)) return { kind: "numeric", value: typeof value.value === "boolean" ? Number(value.value) : value.value };
+  if (base === "integer") return { kind: "integer", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+  if (["decimal", "double", "float"].includes(base)) return { kind: "numeric", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
   if (base === "boolean") return { kind: "boolean", value: Boolean(value.value) };
-  if (base === "date") return { kind: "date", value: String(value.value) };
-  if (base === "dateTime") return { kind: "datetime", value: String(value.value) };
-  if (base === "time") return { kind: "time", value: String(value.value) };
-  if (base === "duration") return { kind: "duration", value: String(value.value) };
+  if (base === "date") return { kind: "date", value: String(value.value), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "dateTime") return { kind: "datetime", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "time") return { kind: "time", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
+  if (base === "duration") return { kind: "duration", value: String(value.value), ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
   if (base === "anyURI") return { kind: "uri", value: String(value.value) };
-  if (base === "base64Binary") return { kind: "binary", value: String(value.value) };
+  if (base === "binary" || base === "base64Binary" || base === "hexBinary") return { kind: "binary", value: String(value.value) };
   return { kind: "text", value: String(value.value) };
 }
 
@@ -146,11 +153,13 @@ export function encounterDocumentToDraftMutations(
         ?? parentCandidates[0];
       const groupInstanceId = groupTargetIds.get(instance.instanceId)!;
       const documentedTime = typeof instance.attributes?.documentedTime === "string" ? instance.attributes.documentedTime : undefined;
-      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}) });
+      groups.push({ id: groupInstanceId, groupId: group.id, ordinal, ...(parent ? { parentGroupInstanceId: groupTargetIds.get(parent.instanceId)! } : {}), ...(documentedTime ? { documentedTime } : {}),
+        ...(hasDemoProvenance(instance.attributes) ? { correlationId: `${DEMO_GROUP_CORRELATION_PREFIX}${instance.instanceId}` } : {}) });
       instance.elements.forEach((element) => element.values.forEach((value, valueOrdinal) => {
         occurrences.push({
           id: draftTargetId(reportId, "occurrence", value.occurrenceId), elementId: element.id,
           groupInstanceId, ordinal: valueOrdinal, ...(value.attributes ? { sourceAttributes: value.attributes } : {}),
+          ...(hasDemoProvenance(value.attributes) ? { provenanceKind: "demo", provenanceDetail: { generator: DEMO_PROVENANCE_VALUE } } : {}),
           value: draftValue(element.id, value),
         });
       }));
@@ -182,6 +191,37 @@ export function shellStateToDraftMutations(
   return encounterDocumentToDraftMutations(reportId, shell.encounter.document, persisted);
 }
 
+/** Reduces a canonical document projection to only targets changed from its last accepted projection. */
+export function draftMutationDelta(
+  current: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  const baselineGroups = new Map(baseline.groups.map((group) => [group.id, group]));
+  const baselineOccurrences = new Map(baseline.occurrences.map((occurrence) => [occurrence.id, occurrence]));
+  return {
+    groups: current.groups.filter((group) => JSON.stringify(group) !== JSON.stringify(baselineGroups.get(group.id))),
+    occurrences: current.occurrences.filter((occurrence) => JSON.stringify(occurrence) !== JSON.stringify(baselineOccurrences.get(occurrence.id))),
+  };
+}
+
+/** Advances an accepted full baseline by one target-level mutation set. */
+export function applyDraftMutationDelta(
+  baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  delta: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  const groups = new Map(baseline.groups.map((group) => [group.id, group]));
+  const occurrences = new Map(baseline.occurrences.map((occurrence) => [occurrence.id, occurrence]));
+  for (const group of delta.groups) {
+    if (group.tombstone) groups.delete(group.id);
+    else groups.set(group.id, group);
+  }
+  for (const occurrence of delta.occurrences) {
+    if (occurrence.tombstone) occurrences.delete(occurrence.id);
+    else occurrences.set(occurrence.id, occurrence);
+  }
+  return { groups: [...groups.values()], occurrences: [...occurrences.values()] };
+}
+
 function apiBaseUrl(): string | null {
   if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
@@ -197,7 +237,13 @@ export function draftChangesUrl(reportId: string): string {
   return base ? `${base}${path}` : `${process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? ""}${path}`;
 }
 
-export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport> {
+export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
+  // The static prototype's durable browser cache is its only backing store. A
+  // successful local write is therefore synchronized; no nonexistent HTTP API
+  // should leave the browser-only workflow permanently pending.
+  if (apiBaseUrl() === null && process.env.NEXT_PUBLIC_BASE_PATH) {
+    return { id: reportId, status: "draft", revision: command.expectedRevision + 1 };
+  }
   let response: Response;
   try {
     response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(command) });
@@ -206,7 +252,7 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   }
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
-  return response.json() as Promise<SavedDraftReport>;
+  return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
 }
 
 export async function fetchActiveReport(
@@ -226,6 +272,7 @@ export async function fetchActiveReport(
     throw new Error("offline");
   }
   if (response.status === 304) return null;
+  if (response.status === 404 || response.status === 410) throw new Error("completed");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }

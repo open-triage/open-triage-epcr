@@ -233,13 +233,18 @@ test("Sign record requires acknowledged validation and removes the report from O
     }) });
   });
   await signIn(page);
+  await page.getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  await page.getByRole("button", { name: "Populate" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
-  await expect(page.getByText("At least one set of vital signs should be documented.")).toBeVisible();
-  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  await expect(page.getByText("At least one set of vital signs should be documented.")).toHaveCount(0);
+  const acknowledgements = await page.getByLabel("I reviewed and acknowledge this warning").all();
+  expect(acknowledgements.length).toBeGreaterThan(0);
+  for (const acknowledgement of acknowledgements) await acknowledgement.check();
   await page.getByRole("button", { name: "Sign record" }).click();
 
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();

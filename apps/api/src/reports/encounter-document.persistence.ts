@@ -24,6 +24,7 @@ type StoredGroupRow = {
   group_id: string;
   ordinal: string | number;
   documented_time: Date | string | null;
+  correlation_id: string | null;
 };
 
 type StoredOccurrenceRow = {
@@ -36,14 +37,18 @@ type StoredOccurrenceRow = {
   value_integer: string | number | null;
   value_numeric: string | number | null;
   value_boolean: boolean | null;
-  value_date: string | null;
+  value_date: Date | string | null;
   value_datetime: Date | string | null;
   value_time: string | null;
   value_duration: string | null;
   value_binary: string | null;
+  value_lexical: string | null;
+  value_utc_offset_minutes: string | number | null;
+  value_precision: string | null;
   code: string | null;
   code_system: string | null;
   code_display: string | null;
+  terminology_version: string | null;
   absence_code: string | null;
   absence_display: string | null;
   source_attributes: JsonRecord | null;
@@ -53,6 +58,27 @@ type StoredOccurrenceRow = {
 
 function record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function catalogDateTime(value: Date | string, utcOffsetMinutes: string | number | null, precision: string | null): string {
+  const instant = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(instant.getTime())) return String(value);
+  const offset = utcOffsetMinutes == null ? 0 : Number(utcOffsetMinutes);
+  const shifted = new Date(instant.getTime() + offset * 60_000);
+  const iso = shifted.toISOString();
+  const fractionDigits = precision?.match(/^fractional-(\d+)$/)?.[1];
+  const local = fractionDigits
+    ? `${iso.slice(0, 19)}.${iso.slice(20, 20 + Math.min(Number(fractionDigits), 3)).padEnd(Number(fractionDigits), "0")}`
+    : iso.slice(0, 19);
+  const sign = offset < 0 ? "-" : "+";
+  const absolute = Math.abs(offset);
+  return `${local}${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
+}
+
+function catalogDate(value: Date | string): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? String(value) : value.toISOString().slice(0, 10);
+  const calendarDate = /^(\d{4}-\d{2}-\d{2})(?:T|$)/.exec(value)?.[1];
+  return calendarDate ?? value;
 }
 
 /** Stable UUID with the schema-required v4 shape, derived from a report and vendor-owned opaque identity. */
@@ -72,7 +98,7 @@ function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
     return empty;
   };
   if (value.kind === "coded") {
-    empty[0] = "coded"; empty[13] = value.code; empty[14] = value.system ?? null; empty[15] = value.display ?? null;
+    empty[0] = "coded"; empty[13] = value.code; empty[14] = value.system ?? null; empty[15] = value.display ?? null; empty[16] = value.terminologyVersion ?? null;
     return empty;
   }
   if (value.kind === "null") {
@@ -199,13 +225,20 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const source = row.provenance_detail?.sourceValue;
   if (record(source)) return { ...source, occurrenceId: row.id } as EncounterValue;
   const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}) };
-  if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}) } as EncounterValue;
+  if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}), ...(row.terminology_version ? { terminologyVersion: row.terminology_version } : {}) } as EncounterValue;
   if (row.value_kind === "null") return { ...common, kind: "null", ...(row.absence_code ? { notValue: { code: row.absence_code, ...(row.absence_display ? { display: row.absence_display } : {}) } } : {}) } as EncounterValue;
   if (row.value_kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: row.absence_code!, ...(row.absence_display ? { display: row.absence_display } : {}) } as EncounterValue;
   if (row.value_kind === "absent") return { ...common, kind: "absent" } as EncounterValue;
   const raw = row.value_text ?? row.value_integer ?? row.value_numeric ?? row.value_boolean ?? row.value_date ?? row.value_datetime ?? row.value_time ?? row.value_duration ?? row.value_binary ?? "";
-  const value = row.value_datetime instanceof Date ? row.value_datetime.toISOString() : raw;
-  return { ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean } as EncounterValue;
+  const value = row.value_kind === "datetime" && row.value_datetime != null
+    ? catalogDateTime(row.value_datetime, row.value_utc_offset_minutes, row.value_precision)
+    : row.value_kind === "date" && row.value_date != null ? catalogDate(row.value_date) : raw;
+  return {
+    ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean,
+    ...(row.value_lexical != null ? { lexical: row.value_lexical } : {}),
+    ...(row.value_utc_offset_minutes != null ? { utcOffsetMinutes: Number(row.value_utc_offset_minutes) } : {}),
+    ...(row.value_precision != null ? { precision: row.value_precision } : {}),
+  } as EncounterValue;
 }
 
 /** Rehydrates the portable encounter document from normalized canonical storage. */
@@ -220,13 +253,14 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   const report = reports[0];
   if (!report) throw new TypeError(`Report ${reportId} is unavailable`);
   const groups = await manager.query<StoredGroupRow[]>(`
-    select id, parent_group_instance_id, group_id, ordinal, documented_time from clinical.group_instance
+    select id, parent_group_instance_id, group_id, ordinal, documented_time, correlation_id from clinical.group_instance
     where report_id = $1 and tombstoned_at is null order by group_id, ordinal, id
   `, [reportId]);
   const occurrences = await manager.query<StoredOccurrenceRow[]>(`
     select id, group_instance_id, element_id, ordinal, value_kind, value_text, value_integer,
            value_numeric, value_boolean, value_date, value_datetime, value_time, value_duration,
-           encode(value_binary, 'base64') as value_binary, code, code_system, code_display,
+           encode(value_binary, 'base64') as value_binary, value_lexical, value_utc_offset_minutes,
+           value_precision, code, code_system, code_display, terminology_version,
            absence_code, absence_display, source_attributes, provenance_kind, provenance_detail
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
@@ -238,6 +272,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
     const clinicianOwned = groupOccurrences.some((item) => item.provenance_kind === "clinician");
     const attributes = {
       ...(clinicianOwned ? { "x-open-triage-owner": "clinician" } : {}),
+      ...(group.correlation_id?.startsWith("demo:stationary-populate-v1:") ? { "x-open-triage-demo": "stationary-populate-v1" } : {}),
       ...(group.documented_time ? { documentedTime: new Date(group.documented_time).toISOString() } : {}),
     };
     const instance = {

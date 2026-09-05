@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession } from "@open-triage/contracts";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   createClinicianSession,
@@ -15,13 +15,17 @@ import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
+import { loadPresentationMode, storePresentationMode, type PresentationMode } from "../app/presentation-mode";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
     session: ClinicianSession;
     report: ActiveDraftReport | null;
     closeReport: () => void;
+    completeReport: () => void;
     sessionEnded: () => void;
+    presentationMode: PresentationMode;
   }) => ReactNode);
 }) {
   const [ready, setReady] = useState(false);
@@ -31,10 +35,19 @@ export function ClinicianSessionGate({ children }: {
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
   const [openCallsRevision, setOpenCallsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
+  const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
+  const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
+  const [completionNotice, setCompletionNotice] = useState<string | null>(null);
+  const completionNoticeRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (completionNotice) completionNoticeRef.current?.focus();
+  }, [completionNotice]);
 
   useEffect(() => {
     queueMicrotask(() => {
       setSession(loadClinicianSession(window.localStorage));
+      setPresentationMode(loadPresentationMode(window.localStorage));
       setReady(true);
     });
   }, []);
@@ -89,6 +102,11 @@ export function ClinicianSessionGate({ children }: {
     if (accessToken) void endClinicianSession(accessToken).catch(() => undefined);
   }
 
+  function selectPresentationMode(mode: PresentationMode) {
+    storePresentationMode(window.localStorage, mode);
+    setPresentationMode(mode);
+  }
+
   const sessionEnded = useCallback(() => {
     clearClinicianSession(window.localStorage);
     setSession(null);
@@ -124,18 +142,28 @@ export function ClinicianSessionGate({ children }: {
   }
 
   return (
-    <div className="authenticated-shell">
+    <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
         <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
+        <div className="presentation-selector" role="group" aria-label="Documentation presentation">
+          <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
+          <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
+        </div>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
         <strong>Synthetic data only</strong>
         <span>Usability prototype — not for clinical use</span>
+        {activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
+          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}>Populate</button>
+          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
+        </span>}
       </aside>
       <div hidden={activeReport !== null}>
-        <AssignedCalls session={session} refreshRequest={refreshRequest} onOpened={(opened, call) => {
+        {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
+        <AssignedCalls session={session} refreshRequest={refreshRequest} suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
+          setCompletionNotice(null);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
           setActiveReport(cached.report);
         }} />
@@ -151,7 +179,12 @@ export function ClinicianSessionGate({ children }: {
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, closeReport: () => {
+      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, closeReport: () => {
+        setActiveReport(null);
+        setOpenCallsRevision((value) => value + 1);
+      }, completeReport: () => {
+        if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
+        setCompletionNotice(activeReport.callNumber ? `Call ${activeReport.callNumber} was signed and removed from active calls.` : "The report was signed and removed from active calls.");
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}

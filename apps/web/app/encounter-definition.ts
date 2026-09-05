@@ -38,17 +38,15 @@ export type NoteEventDefinition = {
     readonly editEyebrow: string;
     readonly editorTitle: string;
     readonly remove: string;
-    readonly time: string;
-    readonly timeHelp: string;
     readonly summary: string;
     readonly summaryPlaceholder: string;
     readonly cancel: string;
     readonly add: string;
     readonly save: string;
   };
-  readonly required: { readonly time: boolean; readonly summary: boolean };
-  readonly references: { readonly time: NemsisReference; readonly summary: NemsisReference };
-  readonly validationMessages: { readonly invalidTime: string; readonly summaryRequired: string };
+  readonly required: { readonly summary: boolean };
+  readonly references: { readonly summary: NemsisReference };
+  readonly validationMessages: { readonly summaryRequired: string };
 };
 
 export type ProcedureEventDefinition = {
@@ -223,11 +221,11 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   const quickAction = isRecord(note.quickAction) ? note.quickAction : {};
   if (typeof quickAction.visible !== "boolean") diagnostics.push("events.note.quickAction.visible must be a boolean");
   requiredStrings(quickAction, "events.note.quickAction", ["label"]);
-  requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "remove", "time", "timeHelp", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
+  requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "remove", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
   const required = isRecord(note.required) ? note.required : {};
-  for (const field of ["time", "summary"] as const) if (typeof required[field] !== "boolean") diagnostics.push(`events.note.required.${field} must be a boolean`);
-  requiredStrings(note.references, "events.note.references", ["time", "summary"]);
-  requiredStrings(note.validationMessages, "events.note.validationMessages", ["invalidTime", "summaryRequired"]);
+  if (typeof required.summary !== "boolean") diagnostics.push("events.note.required.summary must be a boolean");
+  requiredStrings(note.references, "events.note.references", ["summary"]);
+  requiredStrings(note.validationMessages, "events.note.validationMessages", ["summaryRequired"]);
   const procedure = isRecord(events.procedure) ? events.procedure : {};
   rejectUnsupportedKeys(procedure, "events.procedure", ["quickAction", "fieldOrder", "labels", "terminology", "required", "references", "attempts", "successOptions", "outcomeOptions", "complicationOptions", "validationMessages", "warningBehavior", "timeline"]);
   const procedureQuickAction = isRecord(procedure.quickAction) ? procedure.quickAction : {};

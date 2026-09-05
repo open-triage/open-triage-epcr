@@ -50,3 +50,13 @@ section visibility, quick actions, ordering, labels, help text, review groups,
 and summary order. The profile compiler rejects unsupported presentation
 structures and semantic overrides; datatypes, cardinality, coded values, and
 NV/PN behavior always come from the catalog above.
+
+## Canonical stationary layout
+
+`stationary-layout-1.0.0.json` places every catalog element and structural
+group exactly once for the full-record renderer. Its versioned JSON Schema and
+the compiler in `stationary-layout.ts` limit it to presentation metadata while
+checking stable identities, catalog ancestry, custom namespaces, read-only
+agency/configuration metadata, and complete coverage. Run
+`npm run generate:stationary-layout` after an intentional catalog update;
+`npm run check:stationary-layout` rejects stale committed output.

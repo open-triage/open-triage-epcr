@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { adjustClinicalDate, adjustClockPart, formatClinicalTime, repeatDelay } from "../app/time-picker";
+import { TimePicker } from "../components/time-picker";
 
 test("clock values wrap at their limits", () => {
   assert.equal(adjustClockPart(23, 1, 24), 0);
@@ -17,4 +20,17 @@ test("a sustained drag accelerates progressively", () => {
   assert.ok(repeatDelay(0) > repeatDelay(600));
   assert.ok(repeatDelay(600) > repeatDelay(1_300));
   assert.ok(repeatDelay(1_300) > repeatDelay(2_200));
+});
+
+test("an initial dial position does not render as an entered timestamp", () => {
+  const html = renderToStaticMarkup(createElement(TimePicker, {
+    label: "Assessment Date/Time",
+    value: "",
+    initialDate: "2026-09-04",
+    initialValue: "10:30",
+    onChange() {},
+  }));
+  assert.match(html, />Not recorded</);
+  assert.doesNotMatch(html, /Choose date &amp; time/);
+  assert.doesNotMatch(html, /Sep 4, 2026 · 10:30/);
 });

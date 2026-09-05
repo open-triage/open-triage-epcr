@@ -217,11 +217,19 @@ export type CodedEncounterValue = EncounterValueBase & {
   readonly code: string;
   readonly system?: string;
   readonly display?: string;
+  /** Version of the terminology or bundled suggestion set used to choose the code. */
+  readonly terminologyVersion?: string;
 };
 
 export type ScalarEncounterValue = EncounterValueBase & {
   readonly kind: "scalar";
   readonly value: string | number | boolean;
+  /** Exact user-entered spelling for numeric and duration values. */
+  readonly lexical?: string;
+  /** Supported source precision (for example day, minute, second, or fractional digits). */
+  readonly precision?: string;
+  /** Original explicit UTC offset. This prevents offset-aware values changing on reopen. */
+  readonly utcOffsetMinutes?: number;
 };
 
 export type EncounterValue =

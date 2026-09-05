@@ -114,7 +114,7 @@ const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftValue {
-  if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display };
+  if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display, ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, display: value.display };
   if (value.kind === "null") return value.notValue
     ? { kind: "null", absenceCode: value.notValue.code, display: value.notValue.display }
@@ -871,8 +871,10 @@ export class DraftReportService {
       columns.valuePrecision, columns.code, columns.codeSystem, columns.codeDisplay,
       columns.terminologyVersion, columns.absenceCode, columns.absenceDisplay,
       occurrence.sourceAttributes ? JSON.stringify(occurrence.sourceAttributes) : null,
-      occurrence.correlationId ?? null, "clinician",
-      JSON.stringify({ ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value }),
+      occurrence.correlationId ?? null, occurrence.provenanceKind === "demo" ? "demo" : "clinician",
+      JSON.stringify(occurrence.provenanceKind === "demo"
+        ? { ...occurrence.provenanceDetail, ownershipAction: "demo-populate", clinicianValue: occurrence.value }
+        : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value }),
       occurrence.documentedTime ?? null, occurrence.documentedUtcOffsetMinutes ?? null,
       occurrence.documentedPrecision ?? null, command.authorId]);
     if (!saved[0]) throw new ConflictException(`Occurrence identity ${occurrence.id} already belongs to different data`);
