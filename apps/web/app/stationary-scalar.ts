@@ -1,7 +1,7 @@
 import type { EncounterAttributes, EncounterDocument, EncounterValue, ScalarEncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
-import { NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } from "./nemsis-data-model";
-import { withoutDemoProvenance } from "./demo-provenance";
+import { getNemsisDataElement, NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } from "./nemsis-data-model";
+import { clinicianOwnedAttributes, withoutDemoProvenance } from "./demo-provenance";
 
 export type ScalarDatatypeFamily = "text" | "numeric" | "integer" | "boolean" | "date" | "datetime" | "time" | "uri" | "duration" | "binary";
 
@@ -11,7 +11,7 @@ export interface ScalarControlPresentation {
   readonly label: string;
   readonly help: string;
   readonly family: ScalarDatatypeFamily;
-  readonly inputType: "text" | "number" | "checkbox" | "date" | "url" | "file";
+  readonly inputType: "text" | "number" | "checkbox" | "date" | "url" | "email" | "tel" | "file";
   readonly inputMode?: "text" | "decimal" | "numeric" | "url";
   readonly min?: string;
   readonly max?: string;
@@ -57,10 +57,12 @@ function numberConstraint(value: string | number | undefined): number | undefine
 export function scalarControlPresentation(element: NemsisDataElement, label = element.name, help = element.definition): ScalarControlPresentation {
   const family = scalarDatatypeFamily(element.datatype.base);
   const constraints = element.datatype.constraints;
+  const types = new Set(element.datatype.typeChain);
   const fractionDigits = numberConstraint(constraints.fractionDigits);
   const inputType = family === "numeric" || family === "integer" ? "number"
     : family === "boolean" ? "checkbox" : family === "date" ? "date"
-      : family === "uri" ? "url" : family === "binary" ? "file" : "text";
+      : family === "uri" ? "url" : family === "binary" ? "file"
+        : types.has("EmailAddress") ? "email" : types.has("PhoneNumber") ? "tel" : "text";
   return {
     elementId: element.id,
     groupId: element.groupPath.at(-1)!,
@@ -92,6 +94,41 @@ export const STATIONARY_SCALAR_PRESENTATIONS: ReadonlyArray<ScalarControlPresent
     return scalarControlPresentation(element, placement.label ?? element.name, placement.help ?? element.definition);
   });
 
+function scalarDateTimeValues(document: EncounterDocument, groupId: string, parentInstanceId?: string, excludedOccurrenceId?: string): string[] {
+  return (document.groups.find((group) => group.id === groupId)?.instances ?? [])
+    .filter((instance) => instance.parentInstanceId === parentInstanceId)
+    .flatMap((instance) => instance.elements.flatMap((element) => {
+      if (getNemsisDataElement(element.id)?.datatype.base !== "dateTime") return [];
+      return element.values.flatMap((value) => value.kind === "scalar"
+        && value.occurrenceId !== excludedOccurrenceId
+        && typeof value.value === "string"
+        && Number.isFinite(Date.parse(value.value)) ? [value.value] : []);
+    }));
+}
+
+function operationalDateTimeFallback(document: EncounterDocument): string | undefined {
+  const times = document.groups.find(({ id }) => id === "eTimesSection")?.instances
+    .flatMap((instance) => instance.elements.flatMap((element) => element.values.flatMap((value) =>
+      value.kind === "scalar" && typeof value.value === "string" && Number.isFinite(Date.parse(value.value))
+        ? [{ id: element.id, value: value.value }] : [],
+    ))) ?? [];
+  return times.find(({ id }) => id === "eTimes.06")?.value
+    ?? times.toSorted((left, right) => Date.parse(right.value) - Date.parse(left.value))[0]?.value;
+}
+
+/** Defaults a new clinical timestamp from its latest sibling, then arrived-on-scene. */
+export function stationaryDateTimeDefault(document: EncounterDocument, options: {
+  readonly groupId: string;
+  readonly groupInstanceId?: string;
+  readonly excludedOccurrenceId?: string;
+}): string {
+  const instance = document.groups.find(({ id }) => id === options.groupId)?.instances
+    .find(({ instanceId }) => instanceId === options.groupInstanceId);
+  const siblingValues = scalarDateTimeValues(document, options.groupId, instance?.parentInstanceId, options.excludedOccurrenceId)
+    .toSorted((left, right) => Date.parse(right) - Date.parse(left));
+  return siblingValues[0] ?? operationalDateTimeFallback(document) ?? new Date().toISOString();
+}
+
 function finding(element: NemsisDataElement, code: ScalarValidationFinding["code"], message: string, occurrenceId?: string): ScalarValidationFinding {
   return { elementId: element.id, ...(occurrenceId ? { occurrenceId } : {}), code, message };
 }
@@ -113,7 +150,10 @@ export function validateScalarInput(element: NemsisDataElement, input: string | 
   const lexical = typeof input === "boolean" ? String(input) : input;
   const constraints = element.datatype.constraints;
   const findings: ScalarValidationFinding[] = [];
-  if (!lexical.length) return element.occurrence.min > 0 ? [finding(element, "required", `${element.name} is required.`, occurrenceId)] : [];
+  // An empty editor is not itself a malformed scalar. NEMSIS occurrence
+  // cardinality is evaluated against the document as a whole, where nillable
+  // values and other exceptional values can be represented correctly.
+  if (!lexical.length) return [];
   if (family === "boolean" && typeof input !== "boolean") findings.push(finding(element, "datatype", `${element.name} must be true or false.`, occurrenceId));
   if (family === "integer" && !/^[+-]?\d+$/.test(lexical)) findings.push(finding(element, "datatype", `${element.name} must be a whole number.`, occurrenceId));
   if (family === "numeric" && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(lexical)) findings.push(finding(element, "datatype", `${element.name} must be a decimal number.`, occurrenceId));
@@ -196,7 +236,7 @@ function replaceElementValues(document: EncounterDocument, groupId: string, grou
   if (elementIndex < 0) elements.push({ id: elementId, values });
   else elements[elementIndex] = { ...elements[elementIndex]!, values };
   const instances = [...group.instances];
-  instances[instanceIndex] = { ...instance, attributes: withoutDemoProvenance(instance.attributes), elements };
+  instances[instanceIndex] = { ...instance, attributes: clinicianOwnedAttributes(instance.attributes), elements };
   const groups = [...document.groups];
   groups[groupIndex] = { ...group, instances };
   return { ...document, encounter: { ...document.encounter, updatedAt: now.toISOString() }, groups };
@@ -243,9 +283,7 @@ export function editScalarOccurrence(document: EncounterDocument, options: {
 }
 
 export function removeScalarOccurrence(document: EncounterDocument, groupId: string, groupInstanceId: string, elementId: string, occurrenceId: string, now = new Date()): ScalarEditResult {
-  const element = requireNemsisDataElement(elementId);
   const existing = elementValues(document, groupId, groupInstanceId, elementId);
-  if (existing.length <= element.occurrence.min) return { ok: false, document, findings: [finding(element, "cardinality", `${element.name} requires ${element.occurrence.min} occurrence${element.occurrence.min === 1 ? "" : "s"}.`, occurrenceId)] };
   return { ok: true, document: replaceElementValues(document, groupId, groupInstanceId, elementId, existing.filter((value) => value.occurrenceId !== occurrenceId), now), occurrenceId };
 }
 

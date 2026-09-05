@@ -65,17 +65,35 @@ test("the full inline surface exposes every field while rendering system metadat
     onDocumentChange() {},
   }));
   for (const group of STATIONARY_NON_REPEATING_GROUPS) {
-    assert.match(html, new RegExp(`data-group-id="${group.id.replaceAll(".", "\\.")}"`));
+    const groupMarkup = new RegExp(`data-group-id="${group.id.replaceAll(".", "\\.")}"`);
+    if (group.fields.length) assert.match(html, groupMarkup);
+    else assert.doesNotMatch(html, groupMarkup, `${group.id} should not render an empty structural box`);
     for (const field of group.fields) assert.ok(html.includes(field.id), `${field.id} must remain discoverable`);
   }
   const demographic = html.slice(html.indexOf('data-group-id="DemographicGroup"'), html.indexOf("</section>", html.indexOf('data-group-id="DemographicGroup"')));
-  assert.match(demographic, /Read-only system metadata/);
   assert.match(demographic, /data-read-only="true"/);
   assert.doesNotMatch(demographic, /<(?:input|select|textarea)/);
+  assert.doesNotMatch(html, /Canonical non-repeating group|Read-only system metadata|Structural group; contained/);
   const narrative = html.slice(html.indexOf('data-group-id="eNarrativeSection"'), html.indexOf("</section>", html.indexOf('data-group-id="eNarrativeSection"')));
   assert.match(narrative, /Not applicable: No narrative required/);
   assert.match(narrative, /disabled=""/);
   assert.match(narrative, /eNarrative\.01/);
+});
+
+test("field validation keeps severity color and explanation adjacent to the affected control", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const html = renderToStaticMarkup(createElement(StationaryNonRepeatingRecord, {
+    document,
+    groups: STATIONARY_NON_REPEATING_GROUPS.filter(({ id }) => id === "eNarrativeSection"),
+    findings: [{
+      severity: "warning",
+      message: "Narrative needs clinical context.",
+      target: { groupId: "eNarrativeSection", elementId: "eNarrative.01" },
+    }],
+    onDocumentChange() {},
+  }));
+  assert.match(html, /stationary-field-shell stationary-validation-state warning/);
+  assert.match(html, /Warning:<\/strong> Narrative needs clinical context\./);
 });
 
 test("inline edits retain stable identities, ancestry, source attributes, and compatible extensions through reopen", () => {
@@ -113,7 +131,7 @@ test("inline edits retain stable identities, ancestry, source attributes, and co
   const reopenedElement = reopenedInstance.elements.find(({ id }) => id === element.id)!;
   assert.equal(reopenedInstance.instanceId, instance.instanceId);
   assert.equal(reopenedInstance.parentInstanceId, instance.parentInstanceId);
-  assert.deepEqual(reopenedInstance.attributes, { source: "dispatch" });
+  assert.deepEqual(reopenedInstance.attributes, { source: "dispatch", "x-open-triage-owner": "clinician" });
   assert.deepEqual(reopenedGroup.vendorGroupExtension, { retained: true });
   assert.equal(reopenedInstance.vendorInstanceExtension, "retained");
   assert.equal(reopenedElement.vendorElementExtension, 62);

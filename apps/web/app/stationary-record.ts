@@ -4,7 +4,15 @@ import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup, type Stationa
 
 export type StationarySectionFinding = {
   readonly severity: "error" | "warning";
-  readonly target: { readonly groupId: string; readonly elementId?: string };
+  readonly message?: string;
+  readonly target: {
+    readonly groupId: string;
+    readonly groupInstanceId?: string;
+    readonly instanceId?: string;
+    readonly elementId?: string;
+    readonly fieldId?: string;
+    readonly occurrenceId?: string;
+  };
 };
 
 export type StationarySectionStatus = {

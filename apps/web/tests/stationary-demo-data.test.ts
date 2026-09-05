@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { encounterDocumentDiagnostics } from "../app/encounter-document";
+import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
 import { NEMSIS_DATA_MODEL } from "../app/nemsis-data-model";
-import { bundledEncounterDefinition, syntheticEncounter } from "../app/standard-encounter";
+import { bundledEncounterDefinition, INITIAL_SHELL_STATE, MISSING_VITALS_FINDING_ID, reviewEncounter, syntheticEncounter } from "../app/standard-encounter";
 import { clearStationaryDemoData, populateStationaryDemoData } from "../app/stationary-demo-data";
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
 import { editScalarOccurrence } from "../app/stationary-scalar";
+import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
 
 const editableGroups = new Set(COMPILED_STATIONARY_LAYOUT.groups.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 const editableElements = new Set(COMPILED_STATIONARY_LAYOUT.elements.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
@@ -41,6 +43,10 @@ test("Populate deterministically covers every editable element and repeating str
   assert.deepEqual(encounterDocumentDiagnostics(populated, {
     formProfiles: { [bundledEncounterDefinition.id]: [String(bundledEncounterDefinition.version)] },
   }), []);
+  assert.ok(encounterEvents(populated, bundledEncounterDefinition).some(({ vitals }) => vitals), "populated vital signs are reviewable");
+  const review = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...syntheticEncounter, document: populated } }, bundledEncounterDefinition);
+  assert.equal(review.some(({ id }) => id === MISSING_VITALS_FINDING_ID), false);
+  assert.equal(review.some(({ severity, reference }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(reference)), false);
 });
 
 test("Clear removes only explicitly provenanced demo values and group instances", () => {
@@ -90,4 +96,25 @@ test("editing a generated value transfers ownership to the clinician before Clea
   assert.equal(retained.elements.find(({ id }) => id === "eNarrative.01")!.values[0]!.kind, "scalar");
   assert.equal((retained.elements.find(({ id }) => id === "eNarrative.01")!.values[0] as { value: unknown }).value, "Clinician-entered narrative");
   assert.equal(hasDemoProvenance(retained.attributes), false);
+});
+
+test("vital dialog findings follow the displayed draft and clear after a corrected value loses focus", () => {
+  const populated = populateStationaryDemoData(syntheticEncounter.document);
+  const vital = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!;
+  const respiratory = vital.elements.find(({ id }) => id === "eVitals.14")!.values[0]!;
+  const unusual = editScalarOccurrence(populated, {
+    groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId, elementId: "eVitals.14",
+    occurrenceId: respiratory.occurrenceId, input: "60",
+  });
+  assert.equal(unusual.ok, true);
+  assert.ok(stationaryDialogFindings(unusual.document).some(({ message }) => message?.includes("Clinically unusual respiratory rate")));
+
+  const corrected = editScalarOccurrence(unusual.document, {
+    groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId, elementId: "eVitals.14",
+    occurrenceId: respiratory.occurrenceId, input: "16",
+  });
+  assert.equal(corrected.ok, true);
+  const findings = stationaryDialogFindings(corrected.document);
+  assert.equal(findings.some(({ message }) => message?.includes("Clinically unusual respiratory rate")), false);
+  assert.equal(findings.some(({ severity, target }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(target.fieldId ?? target.elementId ?? "")), false);
 });

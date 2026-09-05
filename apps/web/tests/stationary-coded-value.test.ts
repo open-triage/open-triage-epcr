@@ -13,6 +13,7 @@ import {
   codedSelectionFromOption,
   editStationaryCodedValue,
   exceptionalSelection,
+  repeatableExceptionalChoices,
   stationaryCodedField,
   validateStationaryCodedSelection,
 } from "../app/stationary-coded-value";
@@ -47,7 +48,7 @@ test("inline controls expose only exhaustive catalog values and reject invented 
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "invented" }), /not in the exhaustive value set/);
 });
 
-test("bundled suggestions remain searchable and explicitly non-exhaustive", () => {
+test("bundled canonical options render as one label-only dropdown", () => {
   const external = requireNemsisDataElement("eHistory.06");
   const bundled = { ...external, valueSource: { kind: "bundled-list", exhaustive: false, bundledListIds: external.valueSource.kind === "external-code-system" ? external.valueSource.bundledListIds : [] } } as NemsisDataElement;
   const field = stationaryCodedField(bundled);
@@ -56,12 +57,21 @@ test("bundled suggestions remain searchable and explicitly non-exhaustive", () =
   assert.ok(field.options.length > 0);
   assert.doesNotThrow(() => validateStationaryCodedSelection(field, { kind: "coded", code: "valid-code-not-in-suggestions" }));
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
-  assert.match(html, /type="search"/);
-  assert.match(html, /aria-autocomplete="list"/);
-  assert.match(html, /Suggestions are not exhaustive/);
+  assert.equal((html.match(/<select/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /type="search"|>Display<|Apply coded value/);
+  assert.match(html, />Analgesic</);
 });
 
-test("external suggestions retain code system, display, and terminology version", () => {
+test("a populated coded dropdown presents deletion as its first option", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const value = targetValue(document, patientTarget);
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, {
+    field: stationaryCodedField(patientTarget.elementId), value, onChange() {},
+  }));
+  assert.match(html, /<option value="">Delete<\/option>/);
+});
+
+test("external canonical options retain metadata behind one dropdown", () => {
   const field = stationaryCodedField("eScene.09");
   assert.equal(field.controlKind, "external-search");
   assert.equal(field.exhaustive, false);
@@ -71,7 +81,9 @@ test("external suggestions retain code system, display, and terminology version"
     kind: "coded", code: option.code, display: option.label,
     system: option.system, terminologyVersion: option.terminologyVersion,
   });
-  assert.match(renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} })), /Code system/);
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
+  assert.equal((html.match(/<select/g) ?? []).length, 1);
+  assert.doesNotMatch(html, /Code system|>Display<|type="search"/);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "Y92.03" }), /requires a code system/);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "Y92.03", system: "invented" }), /not a supported code system/);
 });
@@ -87,6 +99,19 @@ test("only catalog-permitted NV and PN choices are offered, including nillabilit
   const nonNillable = stationaryCodedField("eAirway.09");
   assert.deepEqual(nonNillable.exceptionalChoices, []);
   assert.throws(() => exceptionalSelection(patient, "pertinent-negative:invented"), /not permitted/);
+  const airway = stationaryCodedField("eAirway.01");
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field: airway, onChange() {} }));
+  assert.match(html, /Set unavailable or pertinent-negative value for/);
+  assert.doesNotMatch(html, />Exceptional value</);
+});
+
+test("repeatable coded pickers offer each pertinent-negative value only once", () => {
+  const field = stationaryCodedField("ePatient.14");
+  const pertinentNegative = field.exceptionalChoices.find(({ kind }) => kind === "pertinent-negative")!;
+  assert.ok("code" in pertinentNegative);
+  const selected = { kind: "pertinent-negative" as const, occurrenceId: "pn-1", code: pertinentNegative.code };
+  assert.equal(repeatableExceptionalChoices(field, [selected]).some(({ key }) => key === pertinentNegative.key), false);
+  assert.equal(repeatableExceptionalChoices(field, [selected], selected).some(({ key }) => key === pertinentNegative.key), true);
 });
 
 test("ordinary and exceptional selections replace one another without changing occurrence identity", () => {
@@ -102,6 +127,18 @@ test("ordinary and exceptional selections replace one another without changing o
   assert.equal(targetValue(ordinary, patientTarget)?.kind, "coded");
   assert.equal(targetValue(ordinary, patientTarget)?.occurrenceId, patientTarget.occurrenceId);
   assert.equal(encounterDocumentDiagnostics(ordinary).length, 0);
+});
+
+test("adding repeatable coded values appends instead of replacing an existing occurrence", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const target = { groupId: "ePatientSection", instanceId: "synthetic-patient-1", elementId: "ePatient.14" } as const;
+  const field = stationaryCodedField(target.elementId);
+  const before = document.groups.find(({ id }) => id === target.groupId)!.instances[0]!.elements.find(({ id }) => id === target.elementId)?.values ?? [];
+  const edited = editStationaryCodedValue(document, target, codedSelectionFromOption(field.options[1]!), () => "second-race");
+  const after = edited.groups.find(({ id }) => id === target.groupId)!.instances[0]!.elements.find(({ id }) => id === target.elementId)!.values;
+  assert.equal(after.length, before.length + 1);
+  assert.deepEqual(after.slice(0, before.length), before);
+  assert.equal(after.at(-1)?.occurrenceId, "second-race");
 });
 
 test("coded metadata and exceptional variants survive the local-document and draft API representations", () => {

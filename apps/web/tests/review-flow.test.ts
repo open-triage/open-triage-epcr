@@ -32,7 +32,7 @@ test("consolidates timeline-entry errors and warnings", () => {
 });
 
 test("a finding opens its exact canonical timeline event", () => {
-  const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
+  const badNote: EncounterEvent = { id: "bad-note", time: "09:00", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
   let state = withEvent(INITIAL_SHELL_STATE, badNote);
   const finding = reviewEncounter(state).find((candidate) => candidate.target.eventId === "bad-note")!;
   state = transitionShell(state, { type: "review-finding-selected", id: finding.id });
@@ -46,7 +46,7 @@ test("review can be opened directly from capture views", () => {
 });
 
 test("errors and unacknowledged warnings block signing", () => {
-  const badNote: EncounterEvent = { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: "Needs a valid time", reference: "eNarrative.01" };
+  const badNote: EncounterEvent = { id: "bad-note", time: "09:00", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
   assert.ok(reviewEncounter(withEvent(INITIAL_SHELL_STATE, badNote)).some((finding) => finding.severity === "error"));
   let complete = INITIAL_SHELL_STATE;
   assert.ok(reviewEncounter(complete).some((finding) => finding.severity === "warning" && !finding.acknowledged));

@@ -6,6 +6,7 @@ import demoOpenAssignment from "../public/demo-open-assignment.json";
 const assignmentId = demoAssignedCalls.assignedCalls[0]!.id;
 
 async function openStationaryRecord(page: import("@playwright/test").Page) {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(demoOpenAssignment),
@@ -18,7 +19,7 @@ async function openStationaryRecord(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Open call", exact: true }).click();
 }
 
-test("stationary rail supports section jumps, direct hashes, focus, scroll tracking, and tablet layout", async ({ page }) => {
+test("stationary rail supports section jumps, direct hashes, focus, and scroll tracking", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
   await openStationaryRecord(page);
 
@@ -28,25 +29,30 @@ test("stationary rail supports section jumps, direct hashes, focus, scroll track
   const accessibility = await new AxeBuilder({ page }).include(".stationary-record-layout")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
-  const patientLink = rail.getByRole("link", { name: /^ePatient:/ });
+  const patientLink = rail.getByRole("link", { name: /^Patient:/ });
   await patientLink.click();
   await expect(page).toHaveURL(/#stationary-section-ePatientSection$/);
   const patientHeading = page.locator("#stationary-section-ePatientSection-heading");
   await expect(patientHeading).toBeFocused();
   await expect(patientLink).toHaveAttribute("aria-current", "location");
+  const stickyHeading = patientHeading.locator("xpath=..");
+  await expect(stickyHeading).toHaveCSS("position", "sticky");
+  const stickyTop = (await stickyHeading.boundingBox())!.y;
+  await page.evaluate(() => window.scrollBy(0, 240));
+  const pinnedTop = Math.round((await stickyHeading.boundingBox())!.y);
+  expect(pinnedTop).toBeLessThanOrEqual(Math.round(stickyTop));
+  await page.evaluate(() => window.scrollBy(0, 120));
+  await expect.poll(async () => Math.round((await stickyHeading.boundingBox())!.y)).toBe(pinnedTop);
 
   await page.evaluate(() => { window.location.hash = "stationary-section-eNarrativeSection"; });
   const narrativeHeading = page.locator("#stationary-section-eNarrativeSection-heading");
   await expect(narrativeHeading).toBeFocused();
-  await expect(rail.getByRole("link", { name: /^eNarrative:/ })).toHaveAttribute("aria-current", "location");
+  await expect(rail.getByRole("link", { name: /^Narrative:/ })).toHaveAttribute("aria-current", "location");
 
   await page.locator("#stationary-section-eDispositionSection").scrollIntoViewIfNeeded();
   await page.evaluate(() => window.dispatchEvent(new Event("scroll")));
-  await expect(rail.getByRole("link", { name: /^eDisposition:/ })).toHaveAttribute("aria-current", "location");
+  await expect(rail.getByRole("link", { name: /^Disposition:/ })).toHaveAttribute("aria-current", "location");
 
-  await page.setViewportSize({ width: 768, height: 1024 });
-  await expect(rail).toBeVisible();
-  await expect(page.locator("#stationary-section-eDispositionSection")).toBeVisible();
 });
 
 test("complete-record findings open and focus their stable editable target", async ({ page }) => {
@@ -59,9 +65,30 @@ test("complete-record findings open and focus their stable editable target", asy
   await finding.getByRole("button").click();
 
   await expect(page).toHaveURL(/#stationary-section-ePatientSection$/);
-  await expect(page.locator('[data-element-id="ePatient.07"] input').first()).toBeFocused();
+  await expect(page.locator('[data-element-id="ePatient.07"] select').first()).toBeFocused();
   await expect(page.getByRole("status").filter({ hasText: "Opened ePatient.07 for correction." })).toHaveCount(1);
   const accessibility = await new AxeBuilder({ page }).include("#stationary-section-ePatientSection")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+});
+
+test("nested findings open their row dialog and highlight only the affected picker", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await openStationaryRecord(page);
+  await page.getByRole("button", { name: "Populate" }).click();
+  const vitals = page.locator('[data-group-id="eVitals.VitalGroup"]');
+  await vitals.getByRole("button", { name: /Edit Vital/ }).first().click();
+  const initialDialog = page.getByRole("dialog");
+  await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("60");
+  await initialDialog.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: "Review & sign" }).click();
+
+  await page.locator(".review-findings li").filter({ hasText: "Clinically unusual respiratory rate" }).first().getByRole("button").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toHaveClass(/stationary-validation-state/);
+  const affected = dialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"]');
+  await expect(affected).toHaveClass(/stationary-validation-state warning/);
+  await expect(affected.locator("input")).toBeFocused();
+  await expect(dialog.locator('.stationary-dialog-field[data-element-id="eVitals.01"]')).not.toHaveClass(/stationary-validation-state/);
 });

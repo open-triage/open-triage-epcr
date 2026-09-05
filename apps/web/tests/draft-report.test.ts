@@ -157,14 +157,14 @@ test("timeline edits become typed revisioned API mutations without changing thei
   shell = transitionShell(shell, { type: "note-saved" });
   const first = shellStateToDraftMutations(reportId, shell);
   const note = first.occurrences.find(({ elementId }) => elementId === "eNarrative.01");
-  assert.deepEqual(note?.value, { kind: "text", value: "Patient reassessed" });
+  assert.deepEqual(note?.value, { kind: "text", value: "Patient reassessed\n2026-09-03T12:01:00-04:00" });
 
   shell = transitionShell(shell, { type: "note-opened", id: "note-1" });
   shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Patient reassessed; pain improved" });
   shell = transitionShell(shell, { type: "note-saved" });
   const updated = shellStateToDraftMutations(reportId, shell).occurrences.find(({ elementId }) => elementId === "eNarrative.01");
   assert.equal(updated?.id, note?.id);
-  assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved" });
+  assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved\n2026-09-03T12:01:00-04:00" });
 });
 
 test("workspace mutation deltas include only changed targets and advance the accepted baseline", () => {

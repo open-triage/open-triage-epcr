@@ -21,6 +21,7 @@ export function StationaryPatientName({ document, onDocumentChange }: {
 }) {
   const values = stationaryScalarValues(document);
   const [findings, setFindings] = useState<Readonly<Record<string, ReadonlyArray<ScalarValidationFinding>>>>({});
+  const [raw, setRaw] = useState<Readonly<Record<string, string | boolean>>>({});
   const patient = document.groups.find(({ id }) => id === "ePatientSection")?.instances[0];
   const sex = patient?.elements.find(({ id }) => id === sexField.elementId)?.values[0];
   return (
@@ -40,11 +41,19 @@ export function StationaryPatientName({ document, onDocumentChange }: {
             value={values[field.id] === undefined ? undefined : {
               kind: "scalar", occurrenceId: field.id, value: values[field.id]!,
             }}
+            inputValue={raw[field.id]}
             findings={findings[field.id]}
             onInput={(input) => {
+              setRaw((current) => ({ ...current, [field.id]: input }));
+              setFindings((current) => ({ ...current, [field.id]: [] }));
+            }}
+            onBlur={(input) => {
               const nextFindings = validateScalarInput(requireNemsisDataElement(field.id), input);
               setFindings((current) => ({ ...current, [field.id]: nextFindings }));
-              if (!nextFindings.length) onDocumentChange(editStationaryScalarValue(document, field.id, String(input)));
+              if (!nextFindings.length) {
+                setRaw((current) => { const next = { ...current }; delete next[field.id]; return next; });
+                onDocumentChange(editStationaryScalarValue(document, field.id, String(input)));
+              }
             }}
           />
         ))}

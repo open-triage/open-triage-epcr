@@ -1,7 +1,7 @@
 "use client";
 
 import type { EncounterDocument } from "@open-triage/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activeStationarySection,
   configuredStationarySections,
@@ -12,6 +12,7 @@ import {
 import { STATIONARY_NON_REPEATING_GROUPS } from "../app/stationary-non-repeating";
 import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record";
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
+import { stationaryDisplayLabel } from "../app/stationary-label";
 
 function statusText(errors: number, warnings: number, incomplete: number): string {
   return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}, ${incomplete} required ${incomplete === 1 ? "field" : "fields"} incomplete`;
@@ -43,7 +44,8 @@ export function StationaryRecord({ document, findings = [], onDocumentChange }: 
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
         const positions = sections.map((section) => ({ id: section.id, top: window.document.getElementById(section.hash)?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY }));
-        const active = activeStationarySection(positions);
+        const headerBottom = window.document.querySelector<HTMLElement>(".encounter-header")?.getBoundingClientRect().bottom ?? 136;
+        const active = activeStationarySection(positions, headerBottom + 24);
         if (active) setActiveId(active);
       });
     };
@@ -67,14 +69,14 @@ export function StationaryRecord({ document, findings = [], onDocumentChange }: 
 
   return <div className="stationary-record-layout">
     <nav className="stationary-section-rail" aria-label="Stationary record sections">
-      <p className="eyebrow">NEMSIS sections</p>
       <ul>{sections.map((section) => {
         const status = statuses.get(section.id)!;
         const summary = statusText(status.errors, status.warnings, status.incomplete);
+        const label = stationaryDisplayLabel(section.label);
         return <li key={section.id}>
           <a
             aria-current={activeId === section.id ? "location" : undefined}
-            aria-label={`${section.label}: ${summary}`}
+            aria-label={`${label}: ${summary}`}
             className={activeId === section.id ? "active" : undefined}
             href={`#${section.hash}`}
             onClick={(event) => {
@@ -83,28 +85,22 @@ export function StationaryRecord({ document, findings = [], onDocumentChange }: 
               moveToSection(section.id, true, true);
             }}
           >
-            <span>{section.label}</span>
+            <span>{label}</span>
             <span className="stationary-section-counts" aria-hidden="true">
-              <span className="error-count" title="Blocking errors">{status.errors}</span>
-              <span className="warning-count" title="Warnings">{status.warnings}</span>
-              <span className="incomplete-count" title="Incomplete required fields">{status.incomplete}</span>
+              <span className={`error-count${status.errors ? "" : " zero-count"}`} title="Blocking errors">{status.errors}</span>
+              <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title="Warnings">{status.warnings}</span>
+              <span className={`incomplete-count${status.incomplete ? "" : " zero-count"}`} title="Incomplete required fields">{status.incomplete}</span>
             </span>
           </a>
         </li>;
       })}</ul>
-      <span className="visually-hidden" aria-live="polite">Current section: {sections.find(({ id }) => id === activeId)?.label}</span>
+      <span className="visually-hidden" aria-live="polite">Current section: {stationaryDisplayLabel(sections.find(({ id }) => id === activeId)?.label ?? "")}</span>
     </nav>
 
     <div className="stationary-record-page" aria-label="Complete stationary NEMSIS record">
-      <div className="stationary-record-structure" aria-label="Canonical record structure">
-        <span data-group-id="EMSDataSet">EMSDataSet</span>
-        <span aria-hidden="true"> / </span>
-        <span data-group-id="HeaderGroup">Header</span>
-        <span aria-hidden="true"> / </span>
-        <span data-group-id="PatientCareReportGroup">PatientCareReport</span>
-      </div>
       {sections.map((section) => {
         const status = statuses.get(section.id)!;
+        const label = stationaryDisplayLabel(section.label);
         return <section
           className="stationary-record-section"
           data-stationary-section={section.id}
@@ -114,16 +110,17 @@ export function StationaryRecord({ document, findings = [], onDocumentChange }: 
           aria-labelledby={`${section.hash}-heading`}
         >
           <header className="stationary-record-section-heading">
-            <div><p className="eyebrow">NEMSIS section</p><h1 id={`${section.hash}-heading`} data-stationary-section-heading tabIndex={-1}>{section.label}</h1></div>
-            <p aria-label={statusText(status.errors, status.warnings, status.incomplete)}>
-              <span className="error-count">{status.errors} errors</span>
-              <span className="warning-count">{status.warnings} warnings</span>
-              <span className="incomplete-count">{status.incomplete} incomplete</span>
+            <h1 id={`${section.hash}-heading`} data-stationary-section-heading tabIndex={-1}>{label}</h1>
+            <p>
+              <span className="visually-hidden">{statusText(status.errors, status.warnings, status.incomplete)}</span>
+              <span className={`error-count${status.errors ? "" : " zero-count"}`}>{status.errors} errors</span>
+              <span className={`warning-count${status.warnings ? "" : " zero-count"}`}>{status.warnings} warnings</span>
+              <span className={`incomplete-count${status.incomplete ? "" : " zero-count"}`}>{status.incomplete} incomplete</span>
             </p>
           </header>
           {stationarySectionBlocks(section).map((block) => block.kind === "inline"
-            ? <StationaryNonRepeatingRecord key={block.group.id} document={document} groups={[inlineGroups.get(block.group.id)!]} onDocumentChange={onDocumentChange} />
-            : <StationaryRepeatingGroups key={block.group.id} document={document} groups={[block.group]} onDocumentChange={onDocumentChange} />)}
+            ? <StationaryNonRepeatingRecord key={block.group.id} document={document} groups={[inlineGroups.get(block.group.id)!]} findings={findings} onDocumentChange={onDocumentChange} />
+            : <StationaryRepeatingGroups key={block.group.id} document={document} groups={[block.group]} findings={findings} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

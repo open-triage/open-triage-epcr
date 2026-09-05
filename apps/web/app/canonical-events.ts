@@ -1,4 +1,5 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import { hasDemoProvenance } from "./demo-provenance";
 import type { EncounterDefinition, VitalField } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent, MedicationAdministration, VitalValues } from "./standard-encounter";
@@ -28,6 +29,20 @@ function scalar(instance: EncounterGroupInstance, id: string): string {
   return value?.kind === "scalar" ? String(value.value) : "";
 }
 
+function instanceForElement(document: EncounterDocument, root: EncounterGroupInstance, elementId: string): EncounterGroupInstance | undefined {
+  const targetGroupId = getNemsisDataElement(elementId)?.groupPath.at(-1) ?? "eVitals.VitalGroup";
+  if (!targetGroupId || targetGroupId === "eVitals.VitalGroup") return root;
+  const byId = new Map(document.groups.flatMap(({ instances }) => instances.map((instance) => [instance.instanceId, instance] as const)));
+  return document.groups.find(({ id }) => id === targetGroupId)?.instances.find((candidate) => {
+    let parentId = candidate.parentInstanceId;
+    while (parentId) {
+      if (parentId === root.instanceId) return true;
+      parentId = byId.get(parentId)?.parentInstanceId;
+    }
+    return false;
+  });
+}
+
 function coded(instance: EncounterGroupInstance, id: string): { code: string; display: string; system?: string; attributes?: Readonly<Record<string, string | number | boolean | null>> } | null {
   const value = element(instance, id)?.values[0];
   return value?.kind === "coded" ? { code: value.code, display: value.display ?? value.code, system: value.system, attributes: value.attributes } : null;
@@ -35,6 +50,10 @@ function coded(instance: EncounterGroupInstance, id: string): { code: string; di
 
 function clinician(instance: EncounterGroupInstance): boolean {
   return instance.attributes?.[OWNER] === "clinician";
+}
+
+function documented(instance: EncounterGroupInstance): boolean {
+  return clinician(instance) || hasDemoProvenance(instance.attributes);
 }
 
 function owned(instanceId: string, documentedTime: string, elements: EncounterGroupInstance["elements"], parentInstanceId?: string): EncounterGroupInstance {
@@ -67,19 +86,22 @@ function vitalDetail(values: VitalValues, definition: EncounterDefinition): stri
   }).filter(Boolean).join(" · ");
 }
 
-function eventInstances(event: EncounterEvent, definition: EncounterDefinition): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
+function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
   const observedAt = timestamp(event.date, event.time);
   if (event.kind === "note") return [{
     groupId: "eNarrativeSection",
     instance: owned(event.id, observedAt, [{ id: "eNarrative.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:narrative`, value: event.detail }] }]),
   }];
   if (event.vitals) {
-    const elements: Array<{ id: string; values: EncounterValue[] }> = [{
+    const rootElements: Array<{ id: string; values: EncounterValue[] }> = [{
       id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: observedAt }],
     }];
+    const nestedElements = new Map<string, Array<{ id: string; values: EncounterValue[] }>>();
     definition.events.vitals.fields.forEach((field) => {
       const raw = event.vitals![field.id];
       const absence = event.vitals!.nullValues?.[field.id];
+      const targetGroupId = getNemsisDataElement(field.reference)?.groupPath.at(-1) ?? "eVitals.VitalGroup";
+      const elements = targetGroupId === "eVitals.VitalGroup" ? rootElements : nestedElements.get(targetGroupId) ?? [];
       if (raw) elements.push({ id: field.reference, values: [{ kind: "scalar", occurrenceId: `${event.id}:${field.reference}`, value: scalarValue(field.reference, raw) }] });
       else if (absence) {
         const pertinent = field.absenceStates.find((item) => item.code === absence)?.kind === "PN";
@@ -87,8 +109,16 @@ function eventInstances(event: EncounterEvent, definition: EncounterDefinition):
           ? { kind: "pertinent-negative", occurrenceId: `${event.id}:${field.reference}`, code: absence }
           : { kind: "null", occurrenceId: `${event.id}:${field.reference}`, notValue: { code: absence } }] });
       }
+      if (targetGroupId !== "eVitals.VitalGroup") nestedElements.set(targetGroupId, elements);
     });
-    return [{ groupId: "eVitals.VitalGroup", instance: owned(event.id, observedAt, elements) }];
+    const sectionId = document.groups.find(({ id }) => id === "eVitalsSection")?.instances[0]?.instanceId;
+    return [
+      { groupId: "eVitals.VitalGroup", instance: owned(event.id, observedAt, rootElements, sectionId) },
+      ...[...nestedElements].map(([groupId, elements]) => ({
+        groupId,
+        instance: owned(`${event.id}:${groupId}`, observedAt, elements, event.id),
+      })),
+    ];
   }
   if (event.procedure) {
     const procedure = event.procedure;
@@ -126,12 +156,41 @@ function eventInstances(event: EncounterEvent, definition: EncounterDefinition):
   return [];
 }
 
+function withoutTrailingNarrativeTimestamp(value: string): string {
+  return value.replace(/(?:^|\n)(?:Recorded )?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\s*$/, "").trimEnd();
+}
+
+function saveNarrative(document: EncounterDocument, event: EncounterEvent): EncounterDocument {
+  const observedAt = timestamp(event.date, event.time);
+  const group = document.groups.find(({ id }) => id === "eNarrativeSection");
+  const instances = group?.instances ?? [];
+  const existing = instances.find(({ instanceId }) => instanceId === event.id) ?? instances[0];
+  const previous = instances.flatMap((instance) => {
+    const value = element(instance, "eNarrative.01")?.values[0];
+    return value?.kind === "scalar" && String(value.value).trim() ? [String(value.value).trim()] : [];
+  }).join("\n\n");
+  const summary = event.detail.trim();
+  const narrative = existing?.instanceId === event.id
+    ? `${withoutTrailingNarrativeTimestamp(summary)}\n${observedAt}`.trimStart()
+    : `${previous}${previous ? "\n\n" : ""}${summary}\n${observedAt}`.trimStart();
+  const instanceId = existing?.instanceId ?? event.id;
+  const occurrenceId = element(existing ?? { instanceId, elements: [] }, "eNarrative.01")?.values[0]?.occurrenceId ?? `${instanceId}:narrative`;
+  const instance = owned(instanceId, observedAt, [{
+    id: "eNarrative.01",
+    values: [{ kind: "scalar", occurrenceId, value: narrative }],
+  }], existing?.parentInstanceId ?? document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.instanceId);
+  const groups = group
+    ? document.groups.map((candidate) => candidate.id === group.id ? { ...candidate, instances: [instance] } : candidate)
+    : [...document.groups, { id: "eNarrativeSection", instances: [instance] }];
+  return { ...document, encounter: { ...document.encounter, updatedAt: observedAt }, groups };
+}
+
 export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): EncounterDocument {
+  if (event.kind === "note") return saveNarrative(document, event);
   const updatedAt = timestamp(event.date, event.time);
-  let groups = document.groups.map((group) => eventGroups.has(group.id)
-    ? { ...group, instances: group.instances.filter((instance) => !(clinician(instance) && (instance.instanceId === event.id || instance.parentInstanceId === event.id))) }
-    : group);
-  for (const { groupId, instance } of eventInstances(event, definition)) {
+  const removedIds = eventSubtreeIds(document, event.id);
+  let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
+  for (const { groupId, instance } of eventInstances(document, event, definition)) {
     const existing = groups.find((group) => group.id === groupId);
     groups = existing
       ? groups.map((group) => group === existing ? { ...group, instances: [...group.instances, instance] } : group)
@@ -141,28 +200,47 @@ export function saveCanonicalEvent(document: EncounterDocument, event: Encounter
 }
 
 export function removeCanonicalEvent(document: EncounterDocument, eventId: string): EncounterDocument {
+  const removedIds = eventSubtreeIds(document, eventId);
   return {
     ...document,
     encounter: { ...document.encounter },
     groups: document.groups.map((group) => ({
       ...group,
-      instances: group.instances.filter((instance) => !(clinician(instance) && (instance.instanceId === eventId || instance.parentInstanceId === eventId))),
+      instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)),
     })).filter((group) => group.instances.length > 0),
   };
+}
+
+function eventSubtreeIds(document: EncounterDocument, eventId: string): Set<string> {
+  const removed = new Set(document.groups.flatMap(({ id, instances }) => eventGroups.has(id)
+    ? instances.filter((instance) => instance.instanceId === eventId && documented(instance)).map(({ instanceId }) => instanceId)
+    : []));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const instance of document.groups.flatMap(({ instances }) => instances)) {
+      if (instance.parentInstanceId && removed.has(instance.parentInstanceId) && !removed.has(instance.instanceId)) {
+        removed.add(instance.instanceId);
+        changed = true;
+      }
+    }
+  }
+  return removed;
 }
 
 export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition): ReadonlyArray<EncounterEvent> {
   const events: EncounterEvent[] = [];
   const dosage = new Map(document.groups.find((group) => group.id === "eMedications.DosageGroup")?.instances
-    .filter(clinician).map((instance) => [instance.parentInstanceId ?? instance.instanceId.replace(/:dosage$/, ""), instance]) ?? []);
+    .filter(documented).map((instance) => [instance.parentInstanceId ?? instance.instanceId.replace(/:dosage$/, ""), instance]) ?? []);
   for (const group of document.groups) for (const instance of group.instances) {
-    if (!clinician(instance) || group.id === "eMedications.DosageGroup") continue;
+    if (!documented(instance) || group.id === "eMedications.DosageGroup") continue;
     const observed = dateAndTime(instance.attributes?.[DOCUMENTED_TIME] ?? scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01"));
-    if (group.id === "eNarrativeSection") events.push({ id: instance.instanceId, ...observed, time: observed.time, kind: "note", title: definition.events.note.labels.timelineTitle, detail: scalar(instance, "eNarrative.01"), reference: definition.events.note.references.summary, visitorEntered: true });
+    if (group.id === "eNarrativeSection") events.push({ id: instance.instanceId, ...observed, time: observed.time, kind: "note", title: definition.events.note.labels.timelineTitle, detail: withoutTrailingNarrativeTimestamp(scalar(instance, "eNarrative.01")), reference: definition.events.note.references.summary, visitorEntered: true });
     if (group.id === "eVitals.VitalGroup") {
       const values = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} } as VitalValues;
       definition.events.vitals.fields.forEach((field) => {
-        const value = element(instance, field.reference)?.values[0];
+        const fieldInstance = instanceForElement(document, instance, field.reference);
+        const value = fieldInstance ? element(fieldInstance, field.reference)?.values[0] : undefined;
         if (value?.kind === "scalar") values[field.id] = String(value.value);
         else if (value?.kind === "null" && value.notValue) values.nullValues[field.id] = value.notValue.code;
         else if (value?.kind === "pertinent-negative") values.nullValues[field.id] = value.code;

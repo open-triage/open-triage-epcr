@@ -7,7 +7,7 @@ import {
   type NemsisCodeValue,
   type NemsisDataElement,
 } from "./nemsis-data-model";
-import { withoutDemoProvenance } from "./demo-provenance";
+import { clinicianOwnedAttributes, withoutDemoProvenance } from "./demo-provenance";
 
 export type StationaryCodedControlKind = "select" | "combobox" | "external-search";
 export type StationaryCodedOption = NemsisCodeValue & {
@@ -110,6 +110,14 @@ export function exceptionalSelection(field: StationaryCodedField, key: string): 
   return { kind: "null", ...(choice.key === "null" ? {} : { code: choice.code, display: choice.label }) };
 }
 
+/** A repeatable element may carry each pertinent-negative assertion only once. */
+export function repeatableExceptionalChoices(field: StationaryCodedField, values: ReadonlyArray<EncounterValue>, current?: EncounterValue): ReadonlyArray<StationaryExceptionalChoice> {
+  const used = new Set(values.flatMap((value) => value.kind === "pertinent-negative" && value !== current
+    ? [`pertinent-negative:${value.code}`]
+    : []));
+  return field.exceptionalChoices.filter((choice) => choice.kind !== "pertinent-negative" || !used.has(choice.key));
+}
+
 function canonicalValue(selection: StationaryCodedSelection, occurrenceId: string, attributes?: EncounterValue["attributes"]): EncounterValue {
   const common = { occurrenceId, ...(attributes ? { attributes } : {}) };
   if (selection.kind === "null") return { ...common, kind: "null", ...(selection.code ? { notValue: { code: selection.code, ...(selection.display ? { display: selection.display } : {}) } } : {}) };
@@ -135,6 +143,7 @@ export function editStationaryCodedValue(
   now = new Date(),
 ): EncounterDocument {
   const field = stationaryCodedField(target.elementId);
+  const elementDefinition = requireNemsisDataElement(target.elementId);
   if (selection) validateStationaryCodedSelection(field, selection);
   const groupIndex = document.groups.findIndex(({ id }) => id === target.groupId);
   const group = document.groups[groupIndex];
@@ -142,13 +151,14 @@ export function editStationaryCodedValue(
   const instanceIndex = group.instances.findIndex(({ instanceId }) => instanceId === target.instanceId);
   const instance = group.instances[instanceIndex];
   if (!instance) throw new Error(`${target.groupId} is missing instance ${target.instanceId}`);
-  const expectedGroup = requireNemsisDataElement(target.elementId).groupPath.at(-1);
+  const expectedGroup = elementDefinition.groupPath.at(-1);
   if (expectedGroup !== target.groupId) throw new Error(`${target.elementId} belongs to ${expectedGroup}, not ${target.groupId}`);
   const elementIndex = instance.elements.findIndex(({ id }) => id === target.elementId);
   const existingElement = instance.elements[elementIndex];
+  const repeatable = elementDefinition.occurrence.max === "unbounded" || elementDefinition.occurrence.max > 1;
   const valueIndex = target.occurrenceId
     ? existingElement?.values.findIndex(({ occurrenceId }) => occurrenceId === target.occurrenceId) ?? -1
-    : 0;
+    : repeatable ? -1 : 0;
   const existingValue = valueIndex >= 0 ? existingElement?.values[valueIndex] : undefined;
   if (target.occurrenceId && !existingValue) throw new Error(`${target.elementId} is missing occurrence ${target.occurrenceId}`);
   const values = [...existingElement?.values ?? []];
@@ -164,7 +174,7 @@ export function editStationaryCodedValue(
   if (existingElement) elements[elementIndex] = { ...existingElement, values };
   else if (selection) elements.push({ id: target.elementId, values });
   const instances = [...group.instances];
-  instances[instanceIndex] = { ...instance, attributes: withoutDemoProvenance(instance.attributes), elements };
+  instances[instanceIndex] = { ...instance, attributes: clinicianOwnedAttributes(instance.attributes), elements };
   const groups = [...document.groups];
   groups[groupIndex] = { ...group, instances };
   return { ...document, encounter: { ...document.encounter, updatedAt: now.toISOString() }, groups };

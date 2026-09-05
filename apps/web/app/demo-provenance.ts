@@ -6,6 +6,7 @@ export const DEMO_GROUP_CORRELATION_PREFIX = `demo:${DEMO_PROVENANCE_VALUE}:`;
 
 export const DEMO_POPULATE_EVENT = "open-triage:demo-populate";
 export const DEMO_CLEAR_EVENT = "open-triage:demo-clear";
+export const CLINICIAN_OWNER_ATTRIBUTE = "x-open-triage-owner";
 
 export function demoAttributes(extra: EncounterAttributes = {}): EncounterAttributes {
   return { ...extra, [DEMO_PROVENANCE_ATTRIBUTE]: DEMO_PROVENANCE_VALUE };
@@ -19,4 +20,8 @@ export function withoutDemoProvenance(attributes: EncounterAttributes | undefine
   if (!attributes || !hasDemoProvenance(attributes)) return attributes;
   const { [DEMO_PROVENANCE_ATTRIBUTE]: _demo, ...remaining } = attributes;
   return Object.keys(remaining).length ? remaining : undefined;
+}
+
+export function clinicianOwnedAttributes(attributes: EncounterAttributes | undefined): EncounterAttributes {
+  return { ...withoutDemoProvenance(attributes), [CLINICIAN_OWNER_ATTRIBUTE]: "clinician" };
 }

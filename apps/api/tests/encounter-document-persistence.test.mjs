@@ -52,15 +52,29 @@ test("stored scalar values rehydrate lexical, precision, offset, binary, and sou
     source_attributes: { source: "monitor" }, provenance_kind: "clinician", provenance_detail: null,
   };
   assert.deepEqual(storedEncounterValue(common), {
-    kind: "scalar", occurrenceId: common.id, value: "2026-09-04T16:30:45.120Z",
+    kind: "scalar", occurrenceId: common.id, value: "2026-09-04T12:30:45.120-04:00",
     attributes: { source: "monitor" }, utcOffsetMinutes: -240, precision: "fractional-3",
   });
+  assert.equal(storedEncounterValue({
+    ...common, value_datetime: new Date("2026-09-04T16:30:45Z"), value_utc_offset_minutes: 0,
+    value_precision: "second",
+  }).value, "2026-09-04T16:30:45+00:00");
   assert.deepEqual(storedEncounterValue({
     ...common, value_kind: "numeric", value_datetime: null, value_numeric: "001.20", value_lexical: "001.20",
     value_utc_offset_minutes: null, value_precision: null,
   }), {
     kind: "scalar", occurrenceId: common.id, value: 1.2, lexical: "001.20", attributes: { source: "monitor" },
   });
+  assert.deepEqual(storedEncounterValue({
+    ...common, value_kind: "date", value_date: new Date("2000-01-01T00:00:00.000Z"), value_datetime: null,
+    value_utc_offset_minutes: null, value_precision: "day",
+  }), {
+    kind: "scalar", occurrenceId: common.id, value: "2000-01-01", precision: "day", attributes: { source: "monitor" },
+  });
+  assert.equal(storedEncounterValue({
+    ...common, value_kind: "date", value_date: "2000-01-01T00:00:00.000Z", value_datetime: null,
+    value_utc_offset_minutes: null, value_precision: "day",
+  }).value, "2000-01-01");
   assert.deepEqual(storedEncounterValue({
     ...common, value_kind: "binary", value_datetime: null, value_binary: "AAEC/w==",
     value_utc_offset_minutes: null, value_precision: null,

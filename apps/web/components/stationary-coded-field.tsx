@@ -5,68 +5,60 @@ import type { EncounterValue } from "@open-triage/contracts";
 import {
   codedSelectionFromOption,
   exceptionalSelection,
+  repeatableExceptionalChoices,
   type StationaryCodedField,
   type StationaryCodedSelection,
 } from "../app/stationary-coded-value";
+import { StationaryPickerLegend } from "./stationary-picker-label";
 
 function currentExceptionalKey(value: EncounterValue | undefined): string {
   if (value?.kind === "null") return value.notValue ? `not-value:${value.notValue.code}` : "null";
   return value?.kind === "pertinent-negative" ? `pertinent-negative:${value.code}` : "";
 }
 
-function TerminologySearch({ id, field, coded, disabled, onChange }: {
-  readonly id: string;
+function CodedPickerControl({ field, value, disabled, exceptionalChoices = field.exceptionalChoices, onChange }: {
   readonly field: StationaryCodedField;
-  readonly coded?: Extract<EncounterValue, { kind: "coded" }>;
+  readonly value?: EncounterValue;
   readonly disabled: boolean;
+  readonly exceptionalChoices?: StationaryCodedField["exceptionalChoices"];
   readonly onChange: (selection: StationaryCodedSelection | undefined) => void;
 }) {
-  const [code, setCode] = useState(coded?.code ?? "");
-  const [display, setDisplay] = useState(coded?.display ?? "");
-  const [system, setSystem] = useState(coded?.system ?? field.systems[0]?.id ?? "");
-  const selectOption = (selectedCode: string) => {
-    const option = field.options.find((candidate) => candidate.code === selectedCode);
-    if (!option) return setCode(selectedCode);
-    setCode(option.code);
-    setDisplay(option.label);
-    if (option.system) setSystem(option.system);
-    onChange(codedSelectionFromOption(option));
-  };
-  const commit = () => {
-    if (!code.trim()) return onChange(undefined);
-    const option = field.options.find((candidate) => candidate.code === code);
-    onChange(option ? codedSelectionFromOption(option) : {
-      kind: "coded", code: code.trim(), ...(display.trim() ? { display: display.trim() } : {}), ...(system ? { system } : {}),
-    });
-  };
-  return (
-    <div className="stationary-terminology-search" role="group" aria-label={`${field.label} terminology search`}>
-      <label>
-        <span>Search or enter code</span>
-        <input type="search" list={`${id}-options`} value={code} aria-autocomplete="list" disabled={disabled} onChange={(event) => selectOption(event.target.value)} />
-        <datalist id={`${id}-options`}>
-          {field.options.map((option) => <option key={`${option.system ?? ""}:${option.code}`} value={option.code}>{option.label}</option>)}
-        </datalist>
-      </label>
-      {field.controlKind === "external-search" && (
-        <label>
-          <span>Code system</span>
-          <select value={system} disabled={disabled} onChange={(event) => setSystem(event.target.value)} required>
-            {field.systems.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
-          </select>
-        </label>
-      )}
-      <label>
-        <span>Display</span>
-        <input type="text" value={display} disabled={disabled} onChange={(event) => setDisplay(event.target.value)} />
-      </label>
-      <button type="button" disabled={disabled} onClick={commit}>Apply coded value</button>
-      {field.options.length > 0 && <small>Suggestions are not exhaustive; another valid terminology code may be entered.</small>}
+  const coded = value?.kind === "coded" ? value : undefined;
+  const [exceptionalOpen, setExceptionalOpen] = useState(false);
+  const exceptionalKey = currentExceptionalKey(value);
+  const exceptionalLabel = field.exceptionalChoices.find(({ key }) => key === exceptionalKey)?.label;
+
+  return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
+    <div className="stationary-coded-main-control">
+      <select aria-label={field.label} value={coded?.code ?? ""} disabled={disabled} onChange={(event) => {
+        const option = field.options.find(({ code }) => code === event.target.value);
+        onChange(option ? codedSelectionFromOption(option) : undefined);
+      }}>
+        <option value="">{coded ? "Delete" : exceptionalLabel ?? "Choose a value"}</option>
+        {field.options.map((option) => <option key={`${option.system ?? ""}:${option.code}`} value={option.code}>{option.label}</option>)}
+      </select>
     </div>
-  );
+    {field.exceptionalChoices.length > 0 && <div className="stationary-exceptional-picker">
+      <button
+        className={`null-value-trigger ${exceptionalKey ? "active" : ""}`}
+        type="button"
+        aria-label={`Set unavailable or pertinent-negative value for ${field.label}`}
+        aria-expanded={exceptionalOpen}
+        disabled={disabled}
+        onClick={() => setExceptionalOpen((open) => !open)}
+      >×</button>
+      {exceptionalOpen && <div className="null-value-menu" role="menu" aria-label={`${field.label} unavailable or pertinent-negative values`}>
+        {exceptionalChoices.map((choice) => <button key={choice.key} type="button" role="menuitem" onClick={() => {
+          onChange(exceptionalSelection(field, choice.key));
+          setExceptionalOpen(false);
+        }}>{choice.label}</button>)}
+        {exceptionalKey && <button type="button" role="menuitem" onClick={() => { onChange(undefined); setExceptionalOpen(false); }}>Clear exceptional value</button>}
+      </div>}
+    </div>}
+  </div>;
 }
 
-/** Accessible catalog-driven editor shared by inline, bundled, and external coded fields. */
+/** Catalog-driven coded picker. Codes stay canonical while people choose labels. */
 export function StationaryCodedValueField({ field, value, disabled = false, onChange }: {
   readonly field: StationaryCodedField;
   readonly value?: EncounterValue;
@@ -74,39 +66,27 @@ export function StationaryCodedValueField({ field, value, disabled = false, onCh
   readonly onChange: (selection: StationaryCodedSelection | undefined) => void;
 }) {
   const id = useId();
-  const coded = value?.kind === "coded" ? value : undefined;
+  return <fieldset className="stationary-field-control stationary-coded-field" aria-describedby={`${id}-help`} data-element-id={field.elementId} {...(value ? { "data-occurrence-id": value.occurrenceId } : {})}>
+    <StationaryPickerLegend label={field.label} tooltipId={`${id}-help`} tooltip={<>{field.elementId}: {field.help}</>} />
+    <CodedPickerControl field={field} value={value} disabled={disabled} onChange={onChange} />
+  </fieldset>;
+}
 
-  return (
-    <fieldset className="stationary-coded-field" aria-describedby={`${id}-help`} data-element-id={field.elementId} {...(value ? { "data-occurrence-id": value.occurrenceId } : {})}>
-      <legend>{field.label} <small>{field.elementId}</small></legend>
-      <small id={`${id}-help`}>{field.help}</small>
-      {field.controlKind === "select" ? (
-        <label>
-          <span>Value</span>
-          <select value={coded?.code ?? ""} disabled={disabled} onChange={(event) => {
-            const option = field.options.find(({ code }) => code === event.target.value);
-            onChange(option ? codedSelectionFromOption(option) : undefined);
-          }}>
-            <option value="">Choose a value</option>
-            {field.options.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
-          </select>
-        </label>
-      ) : (
-        <TerminologySearch key={`${coded?.code ?? ""}:${coded?.system ?? ""}:${coded?.display ?? ""}`} id={id} field={field} coded={coded} disabled={disabled} onChange={onChange} />
-      )}
-      {field.exceptionalChoices.length > 0 && (
-        <label>
-          <span>Exceptional value</span>
-          <select
-            value={currentExceptionalKey(value)}
-            disabled={disabled}
-            onChange={(event) => onChange(exceptionalSelection(field, event.target.value))}
-          >
-            <option value="">No exceptional value</option>
-            {field.exceptionalChoices.map((choice) => <option key={choice.key} value={choice.key}>{choice.label}</option>)}
-          </select>
-        </label>
-      )}
-    </fieldset>
-  );
+/** One through-border picker that owns every occurrence of a repeatable coded element. */
+export function StationaryCodedOccurrencesField({ field, values, disabled = false, onChange }: {
+  readonly field: StationaryCodedField;
+  readonly values: ReadonlyArray<EncounterValue>;
+  readonly disabled?: boolean;
+  readonly onChange: (value: EncounterValue | undefined, selection: StationaryCodedSelection | undefined) => void;
+}) {
+  const id = useId();
+  return <fieldset className="stationary-field-control stationary-coded-field stationary-multiple-picker" aria-describedby={`${id}-help`} data-element-id={field.elementId}>
+    <StationaryPickerLegend label={field.label} tooltipId={`${id}-help`} tooltip={<>{field.elementId}: {field.help}</>} />
+    {values.map((value) => <CodedPickerControl key={value.occurrenceId} field={field} value={value} disabled={disabled}
+      exceptionalChoices={repeatableExceptionalChoices(field, values, value)}
+      onChange={(selection) => onChange(value, selection)} />)}
+    <CodedPickerControl key={`new-${values.length}`} field={field} disabled={disabled} exceptionalChoices={repeatableExceptionalChoices(field, values)} onChange={(selection) => {
+      if (selection) onChange(undefined, selection);
+    }} />
+  </fieldset>;
 }

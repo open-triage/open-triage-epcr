@@ -37,7 +37,7 @@ type StoredOccurrenceRow = {
   value_integer: string | number | null;
   value_numeric: string | number | null;
   value_boolean: boolean | null;
-  value_date: string | null;
+  value_date: Date | string | null;
   value_datetime: Date | string | null;
   value_time: string | null;
   value_duration: string | null;
@@ -58,6 +58,27 @@ type StoredOccurrenceRow = {
 
 function record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function catalogDateTime(value: Date | string, utcOffsetMinutes: string | number | null, precision: string | null): string {
+  const instant = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(instant.getTime())) return String(value);
+  const offset = utcOffsetMinutes == null ? 0 : Number(utcOffsetMinutes);
+  const shifted = new Date(instant.getTime() + offset * 60_000);
+  const iso = shifted.toISOString();
+  const fractionDigits = precision?.match(/^fractional-(\d+)$/)?.[1];
+  const local = fractionDigits
+    ? `${iso.slice(0, 19)}.${iso.slice(20, 20 + Math.min(Number(fractionDigits), 3)).padEnd(Number(fractionDigits), "0")}`
+    : iso.slice(0, 19);
+  const sign = offset < 0 ? "-" : "+";
+  const absolute = Math.abs(offset);
+  return `${local}${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
+}
+
+function catalogDate(value: Date | string): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? String(value) : value.toISOString().slice(0, 10);
+  const calendarDate = /^(\d{4}-\d{2}-\d{2})(?:T|$)/.exec(value)?.[1];
+  return calendarDate ?? value;
 }
 
 /** Stable UUID with the schema-required v4 shape, derived from a report and vendor-owned opaque identity. */
@@ -209,7 +230,9 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   if (row.value_kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: row.absence_code!, ...(row.absence_display ? { display: row.absence_display } : {}) } as EncounterValue;
   if (row.value_kind === "absent") return { ...common, kind: "absent" } as EncounterValue;
   const raw = row.value_text ?? row.value_integer ?? row.value_numeric ?? row.value_boolean ?? row.value_date ?? row.value_datetime ?? row.value_time ?? row.value_duration ?? row.value_binary ?? "";
-  const value = row.value_datetime instanceof Date ? row.value_datetime.toISOString() : raw;
+  const value = row.value_kind === "datetime" && row.value_datetime != null
+    ? catalogDateTime(row.value_datetime, row.value_utc_offset_minutes, row.value_precision)
+    : row.value_kind === "date" && row.value_date != null ? catalogDate(row.value_date) : raw;
   return {
     ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean,
     ...(row.value_lexical != null ? { lexical: row.value_lexical } : {}),

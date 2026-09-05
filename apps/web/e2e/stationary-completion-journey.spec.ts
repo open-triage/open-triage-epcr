@@ -34,20 +34,23 @@ test("mobile capture reconciles into a complete stationary record that alone can
   const presentation = page.getByRole("group", { name: "Documentation presentation" });
   await presentation.getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Reopen call" }).click();
-  await expect(page.getByText("Captured on the mobile presentation", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-element-id="eNarrative.01"] textarea')).toHaveValue(/^Captured on the mobile presentation\n\d{4}-\d{2}-\d{2}T/);
 
-  await page.getByLabel(/^First Name ePatient\.03/).fill("STATIONARY");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STATIONARY");
   const sex = page.locator('[data-element-id="ePatient.25"]').first();
   await sex.locator("select").nth(0).selectOption({ index: 1 });
-  await sex.locator("select").nth(1).selectOption({ label: "Not Reporting" });
-  await sex.locator("select").nth(1).selectOption({ label: "Unable to Complete" });
+  await sex.locator(".null-value-trigger").click();
+  await sex.getByRole("menuitem", { name: "Not Reporting" }).click();
+  await sex.locator(".null-value-trigger").click();
+  await sex.getByRole("menuitem", { name: "Unable to Complete" }).click();
   const responder = page.locator('[data-group-id="eScene.ResponderGroup"]');
-  await responder.getByRole("button", { name: "Add eScene.ResponderGroup" }).click();
-  await page.getByRole("dialog", { name: "Add eScene.ResponderGroup" }).getByLabel(/Other EMS or Public Safety Agencies at Scene/).fill("Mutual Aid 7");
-  await page.getByRole("dialog", { name: "Add eScene.ResponderGroup" }).getByRole("button", { name: "Add row" }).click();
+  await responder.getByRole("button", { name: "Add Responder" }).click();
+  await page.getByRole("dialog", { name: "Add Responder" }).getByLabel(/Other EMS or Public Safety Agencies at Scene/).fill("Mutual Aid 7");
+  await page.getByRole("dialog", { name: "Add Responder" }).getByRole("button", { name: "Add row" }).click();
 
   await context.setOffline(true);
-  await page.getByLabel(/^Last Name ePatient\.02/).fill("OFFLINE");
+  await page.getByRole("textbox", { name: "Last Name", exact: true }).fill("OFFLINE");
+  await page.getByRole("textbox", { name: "Last Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 4_000 });
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
@@ -61,8 +64,8 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await page.getByRole("button", { name: "Populate" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
-  await expect(page.getByText("0 errors · 1 warnings")).toBeVisible();
-  await page.getByLabel("I reviewed and acknowledge this warning").check();
+  await expect(page.getByText("0 errors · 5 warnings")).toBeVisible();
+  for (const acknowledgement of await page.getByLabel("I reviewed and acknowledge this warning").all()) await acknowledgement.check();
   const audit = await new AxeBuilder({ page }).include(".review-panel").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
   await page.getByRole("button", { name: "Sign record" }).click();

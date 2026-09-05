@@ -19,10 +19,13 @@ import {
   moveRepeatingGroupOccurrence,
   removeRepeatingGroupOccurrence,
   removeNestedGroupOccurrence,
+  repeatingDialogPath,
   repeatingGroupInstances,
   repeatingGroupSummary,
+  sortRepeatingGroupInstancesByTimestamp,
 } from "../app/stationary-repeating-group";
 import { StationaryRepeatingGroups } from "../components/stationary-repeating-groups";
+import { stationaryActionLabel } from "../app/stationary-label";
 
 const reportId = "42000000-0000-4000-8000-000000000063";
 
@@ -41,14 +44,14 @@ test("every root repeating group has a table while nested tables stay in their p
   const html = renderToStaticMarkup(createElement(StationaryRepeatingGroups, { document, onDocumentChange() {} }));
   for (const placement of roots) {
     assert.match(html, new RegExp(`data-group-id="${placement.id.replaceAll(".", "\\.")}"`));
-    if (placement.mode !== "read-only") assert.ok(html.includes(placement.presentation.dialog!.addLabel));
+    if (placement.mode !== "read-only") assert.ok(html.includes(`Add ${stationaryActionLabel(placement.presentation.label ?? placement.id)}`));
   }
   assert.ok(!html.includes('data-group-id="eLabs.LabResultGroup"'));
   assert.match(html, /role="region"/);
   assert.match(html, /tabindex="0"/);
 });
 
-test("rows add, edit, reorder, remove, and project stable canonical identities", () => {
+test("rows add, edit, remove, and project stable canonical identities", () => {
   let document = documentWithSceneResponderParent();
   const parentId = "synthetic-scene-1";
   const first = addRepeatingGroupOccurrence(document, "eScene.ResponderGroup", parentId, () => "responder-row-1", new Date("2026-09-04T12:00:00Z"));
@@ -90,6 +93,23 @@ test("rows add, edit, reorder, remove, and project stable canonical identities",
   if (!removed.ok) return;
   assert.deepEqual(repeatingGroupInstances(removed.document, placement.id, parentId).map(({ instanceId }) => instanceId), ["responder-row-1"]);
   assert.deepEqual(encounterDocumentDiagnostics(removed.document), []);
+});
+
+test("table rows sort chronologically by their canonical timestamp with untimed rows last", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const document: EncounterDocument = { ...baseline, groups: [
+    ...baseline.groups.filter(({ id }) => id !== "eVitalsSection" && id !== "eVitals.VitalGroup"),
+    { id: "eVitalsSection", instances: [{ instanceId: "vitals-section", parentInstanceId: "synthetic-pcr-1", elements: [] }] },
+    { id: "eVitals.VitalGroup", instances: [
+      { instanceId: "late", parentInstanceId: "vitals-section", elements: [{ id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: "late-time", value: "2026-09-04T12:15:00-04:00" }] }] },
+      { instanceId: "untimed", parentInstanceId: "vitals-section", elements: [] },
+      { instanceId: "early", parentInstanceId: "vitals-section", elements: [{ id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: "early-time", value: "2026-09-04T11:45:00-04:00" }] }] },
+    ] },
+  ] };
+  const instances = repeatingGroupInstances(document, "eVitals.VitalGroup", "vitals-section");
+  assert.deepEqual(sortRepeatingGroupInstancesByTimestamp(document, instances).map(({ instanceId }) => instanceId), ["early", "late", "untimed"]);
+  const placement = configuredRepeatingGroups().find(({ id }) => id === "eVitals.VitalGroup")!;
+  assert.equal(repeatingGroupSummary(document, placement, instances.find(({ instanceId }) => instanceId === "early")!)[0]?.values[0]?.text, "11:45");
 });
 
 test("group cardinality, duplicate identity, and parent ownership are enforced", () => {
@@ -135,6 +155,25 @@ test("removing a parent row removes nested canonical group occurrences without o
   assert.equal(removed.document.groups.some(({ id }) => id === "eLabs.LabGroup" || id === "eLabs.LabResultGroup"), false);
 });
 
+test("finding navigation resolves every table dialog needed to expose a nested field", () => {
+  const baseline = documentWithSceneResponderParent();
+  const withLabs = {
+    ...baseline,
+    groups: [...baseline.groups, { id: "eLabsSection", instances: [{ instanceId: "labs-section", parentInstanceId: "synthetic-pcr-1", elements: [] }] }],
+  } satisfies EncounterDocument;
+  const lab = addRepeatingGroupOccurrence(withLabs, "eLabs.LabGroup", "labs-section", () => "lab-row");
+  assert.equal(lab.ok, true);
+  if (!lab.ok) return;
+  const result = addRepeatingGroupOccurrence(lab.document, "eLabs.LabResultGroup", "lab-row", () => "result-row");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(repeatingDialogPath(result.document, "eLabs.LabResultGroup", "result-row"), [
+    { groupId: "eLabs.LabGroup", instanceId: "lab-row" },
+    { groupId: "eLabs.LabResultGroup", instanceId: "result-row" },
+  ]);
+  assert.deepEqual(repeatingDialogPath(result.document, "eLabsSection", "labs-section"), []);
+});
+
 test("multiple parent rows keep independent nested children and enforce single cardinality per parent", () => {
   const baseline = documentWithSceneResponderParent();
   const withLabs = {
@@ -176,7 +215,9 @@ test("multiple parent rows keep independent nested children and enforce single c
   const rhythm = ensureNestedSingleGroupOccurrence(temperatureTwo.document, "eVitals.CardiacRhythmGroup", "vital-one", () => "rhythm-one");
   assert.equal(rhythm.ok, true);
   if (!rhythm.ok) return;
-  assert.equal(removeNestedGroupOccurrence(rhythm.document, "eVitals.CardiacRhythmGroup", "rhythm-one").ok, false, "a required single child cannot be removed");
+  const removedRhythm = removeNestedGroupOccurrence(rhythm.document, "eVitals.CardiacRhythmGroup", "rhythm-one");
+  assert.equal(removedRhythm.ok, true, "editing may remove the final row so document validation can present the missing requirement");
+  if (removedRhythm.ok) assert.equal(repeatingGroupInstances(removedRhythm.document, "eVitals.CardiacRhythmGroup", "vital-one").length, 0);
   assert.equal(ensureNestedSingleGroupOccurrence(temperatureTwo.document, "eVitals.TemperatureGroup", "not-a-vital").ok, false);
 });
 

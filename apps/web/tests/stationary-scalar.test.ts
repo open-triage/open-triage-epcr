@@ -11,6 +11,7 @@ import {
   scalarControlPresentation,
   scalarEncounterValue,
   scalarOccurrences,
+  stationaryDateTimeDefault,
   STATIONARY_SCALAR_PRESENTATIONS,
   validateScalarInput,
 } from "../app/stationary-scalar";
@@ -34,6 +35,8 @@ test("the pinned stationary catalog generates a usable control for every represe
   assert.equal(STATIONARY_SCALAR_PRESENTATIONS.find(({ elementId }) => elementId === "ePatient.17")?.inputType, "date");
   assert.equal(STATIONARY_SCALAR_PRESENTATIONS.find(({ elementId }) => elementId === "eVitals.16")?.step, "0.1");
   assert.equal(STATIONARY_SCALAR_PRESENTATIONS.find(({ elementId }) => elementId === "eOther.11")?.inputType, "file");
+  assert.equal(STATIONARY_SCALAR_PRESENTATIONS.find(({ elementId }) => elementId === "ePatient.18")?.inputType, "tel");
+  assert.equal(STATIONARY_SCALAR_PRESENTATIONS.find(({ elementId }) => elementId === "ePatient.19")?.inputType, "email");
 
   assert.equal(scalarControlPresentation(definition("boolean")).inputType, "checkbox");
   assert.equal(scalarControlPresentation(definition("time")).family, "time");
@@ -61,6 +64,12 @@ test("all scalar datatype families reject unsupported input with element-associa
   }
 });
 
+test("an empty nillable scalar editor defers occurrence requirements to document validation", () => {
+  const etco2 = requireNemsisDataElement("eVitals.16");
+  assert.equal(etco2.nillable, true);
+  assert.deepEqual(validateScalarInput(etco2, ""), []);
+});
+
 test("typed values retain lexical, precision, offset, and source attribute metadata", () => {
   assert.deepEqual(scalarEncounterValue(definition("decimal"), "001.20", "numeric"), {
     kind: "scalar", occurrenceId: "numeric", value: "001.20", lexical: "001.20",
@@ -72,6 +81,20 @@ test("typed values retain lexical, precision, offset, and source attribute metad
   assert.deepEqual(scalarEncounterValue(definition("boolean"), false, "boolean"), {
     kind: "scalar", occurrenceId: "boolean", value: false,
   });
+});
+
+test("stationary date-times default to the latest sibling timestamp, then arrived on scene", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const document: EncounterDocument = { ...baseline, groups: [
+    ...baseline.groups.filter(({ id }) => id !== "eTimesSection" && id !== "eVitals.VitalGroup"),
+    { id: "eTimesSection", instances: [{ instanceId: "times", parentInstanceId: "synthetic-pcr-1", elements: [{ id: "eTimes.06", values: [{ kind: "scalar", occurrenceId: "arrival", value: "2026-09-04T10:30:00-04:00" }] }] }] },
+    { id: "eVitals.VitalGroup", instances: [
+      { instanceId: "vital-one", parentInstanceId: "vitals", elements: [{ id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: "first", value: "2026-09-04T10:45:00-04:00" }] }] },
+      { instanceId: "vital-two", parentInstanceId: "vitals", elements: [{ id: "eVitals.01", values: [{ kind: "scalar", occurrenceId: "second", value: "2026-09-04T11:00:00-04:00" }] }] },
+    ] },
+  ] };
+  assert.equal(stationaryDateTimeDefault(document, { groupId: "eVitals.VitalGroup", groupInstanceId: "vital-two", excludedOccurrenceId: "second" }), "2026-09-04T10:45:00-04:00");
+  assert.equal(stationaryDateTimeDefault(document, { groupId: "eProcedures.ProcedureGroup" }), "2026-09-04T10:30:00-04:00");
 });
 
 test("repeatable scalar occurrences add, edit, order, remove, and project stable draft identities", () => {

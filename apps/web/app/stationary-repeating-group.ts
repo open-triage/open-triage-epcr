@@ -1,6 +1,6 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup } from "./stationary-layout";
-import { getNemsisGroup, NEMSIS_DATA_MODEL } from "./nemsis-data-model";
+import { getNemsisDataElement, getNemsisGroup, NEMSIS_DATA_MODEL } from "./nemsis-data-model";
 import { ensureNonRepeatingInstance } from "./stationary-non-repeating";
 
 export type RepeatingGroupFinding = {
@@ -42,6 +42,35 @@ export function configuredRepeatingGroupRoots(): ReadonlyArray<CompiledStationar
   return groups;
 }
 
+export type RepeatingDialogTarget = { readonly groupId: string; readonly instanceId: string };
+
+/** Ordered table rows that must be opened to expose a nested finding target. */
+export function repeatingDialogPath(
+  document: EncounterDocument,
+  groupId: string,
+  instanceId: string,
+): ReadonlyArray<RepeatingDialogTarget> {
+  const recordBoundaries = new Set(["HeaderGroup", "PatientCareReportGroup"]);
+  const tableGroups = new Set(configuredRepeatingGroups().filter((group) => !recordBoundaries.has(group.id)).map((group) => group.id));
+  const rootGroups = new Set(configuredRepeatingGroupRoots().map((group) => group.id));
+  const path: RepeatingDialogTarget[] = [];
+  const visited = new Set<string>();
+  let currentGroupId: string | undefined = groupId;
+  let currentInstanceId: string | undefined = instanceId;
+  while (currentGroupId && currentInstanceId && !visited.has(`${currentGroupId}:${currentInstanceId}`)) {
+    visited.add(`${currentGroupId}:${currentInstanceId}`);
+    if (tableGroups.has(currentGroupId)) path.push({ groupId: currentGroupId, instanceId: currentInstanceId });
+    const instance = document.groups.find(({ id }) => id === currentGroupId)?.instances
+      .find(({ instanceId: candidate }) => candidate === currentInstanceId);
+    const parentGroupId: string | null | undefined = getNemsisGroup(currentGroupId)?.parentId;
+    currentGroupId = parentGroupId ?? undefined;
+    currentInstanceId = instance?.parentInstanceId;
+  }
+  const ordered = path.reverse();
+  const outermostVisibleRow = ordered.findLastIndex(({ groupId }) => rootGroups.has(groupId));
+  return outermostVisibleRow < 0 ? [] : ordered.slice(outermostVisibleRow);
+}
+
 export function repeatingGroupInstances(
   document: EncounterDocument,
   groupId: string,
@@ -49,6 +78,46 @@ export function repeatingGroupInstances(
 ): ReadonlyArray<EncounterGroupInstance> {
   const instances = document.groups.find(({ id }) => id === groupId)?.instances ?? [];
   return parentInstanceId === undefined ? instances : instances.filter((instance) => instance.parentInstanceId === parentInstanceId);
+}
+
+function descendantIds(document: EncounterDocument, rootId: string): Set<string> {
+  const ids = new Set([rootId]);
+  let size = 0;
+  while (size !== ids.size) {
+    size = ids.size;
+    for (const group of document.groups) for (const instance of group.instances) {
+      if (instance.parentInstanceId && ids.has(instance.parentInstanceId)) ids.add(instance.instanceId);
+    }
+  }
+  return ids;
+}
+
+/** Finds the clinical timestamp owned by a row, including its nested groups. */
+export function repeatingGroupTimestamp(document: EncounterDocument, instance: EncounterGroupInstance): number | undefined {
+  const owned = descendantIds(document, instance.instanceId);
+  const values = document.groups.flatMap((group) => group.instances
+    .filter((candidate) => owned.has(candidate.instanceId))
+    .flatMap((candidate) => candidate.elements.flatMap((element) => {
+      if (getNemsisDataElement(element.id)?.datatype.base !== "dateTime") return [];
+      return element.values.flatMap((value) => value.kind === "scalar" && typeof value.value === "string"
+        && Number.isFinite(Date.parse(value.value)) ? [Date.parse(value.value)] : []);
+    })));
+  return values.length ? Math.min(...values) : undefined;
+}
+
+/** Tables are chronological; rows without a timestamp follow timestamped rows. */
+export function sortRepeatingGroupInstancesByTimestamp(
+  document: EncounterDocument,
+  instances: ReadonlyArray<EncounterGroupInstance>,
+): ReadonlyArray<EncounterGroupInstance> {
+  return instances.map((instance, index) => ({ instance, index, timestamp: repeatingGroupTimestamp(document, instance) }))
+    .toSorted((left, right) => {
+      if (left.timestamp === undefined && right.timestamp === undefined) return left.index - right.index;
+      if (left.timestamp === undefined) return 1;
+      if (right.timestamp === undefined) return -1;
+      return left.timestamp - right.timestamp || left.index - right.index;
+    })
+    .map(({ instance }) => instance);
 }
 
 export function eligibleRepeatingGroupParents(document: EncounterDocument, groupId: string): ReadonlyArray<EncounterGroupInstance> {
@@ -161,10 +230,6 @@ export function removeNestedGroupOccurrence(
   const group = document.groups.find(({ id }) => id === groupId);
   const instance = group?.instances.find((candidate) => candidate.instanceId === instanceId);
   if (!group || !instance) return failure(document, "identity", `${catalogGroup.name} occurrence ${instanceId} does not exist.`);
-  const siblings = group.instances.filter(({ parentInstanceId }) => parentInstanceId === instance.parentInstanceId);
-  if (siblings.length <= catalogGroup.occurrence.min) {
-    return failure(document, "cardinality", `${catalogGroup.name} requires ${catalogGroup.occurrence.min} occurrence${catalogGroup.occurrence.min === 1 ? "" : "s"} per parent.`);
-  }
   const removedIds = descendantInstanceIds(document, instanceId);
   const groups = document.groups.flatMap((candidate) => {
     const instances = candidate.instances.filter(({ instanceId: id }) => !removedIds.has(id));
@@ -219,6 +284,11 @@ export function encounterValueSummary(value: EncounterValue): string {
   return "Not recorded";
 }
 
+function tableValueSummary(value: EncounterValue, dateTime: boolean): string {
+  const summary = encounterValueSummary(value);
+  return dateTime && value.kind === "scalar" ? /T(\d{2}:\d{2})/.exec(summary)?.[1] ?? summary : summary;
+}
+
 /** Resolves configured columns through descendant elements while retaining occurrence ids. */
 export function repeatingGroupSummary(
   document: EncounterDocument,
@@ -234,7 +304,10 @@ export function repeatingGroupSummary(
     return {
       elementId: column.elementId,
       label: column.label ?? element?.name ?? column.elementId,
-      values: values.map((value) => ({ occurrenceId: value.occurrenceId, text: encounterValueSummary(value) })),
+      values: values.map((value) => ({
+        occurrenceId: value.occurrenceId,
+        text: tableValueSummary(value, element?.datatype.base === "dateTime"),
+      })),
     };
   });
 }

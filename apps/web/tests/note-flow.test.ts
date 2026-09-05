@@ -5,6 +5,7 @@ import { standardEncounterDefinition } from "../app/standard-encounter-definitio
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
+import { requireNemsisDataElement } from "../app/nemsis-data-model";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -19,6 +20,13 @@ function memoryStorage(): LocalStoragePort & { values: Map<string, string> } {
     removeItem: (key) => { values.delete(key); },
   };
 }
+
+test("the canonical narrative is one text value and does not invent a clinical-time requirement", () => {
+  const narrative = requireNemsisDataElement("eNarrative.01");
+  assert.equal(narrative.datatype.base, "string");
+  assert.deepEqual(narrative.occurrence, { min: 0, max: 1 });
+  assert.equal("time" in standardEncounterDefinition.events.note.required, false);
+});
 
 test("a quick-action note is timestamped and inserted newest first", () => {
   let state = beginNote();
@@ -52,6 +60,22 @@ test("opening and revising a note updates the canonical event without duplicatio
   assert.equal(matching.length, 1);
   assert.equal(matching[0]?.detail, "Corrected note");
   assert.equal(matching[0]?.time, "08:31");
+});
+
+test("additional mobile notes append timestamped text to one eNarrative.01 occurrence", () => {
+  let state = beginNote("08:35");
+  state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Initial assessment" });
+  state = transitionShell(state, { type: "note-saved" });
+  state = transitionShell(state, { type: "note-started", id: "visitor-note-2", time: "09:10" });
+  state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Reassessment" });
+  state = transitionShell(state, { type: "note-saved" });
+
+  const group = state.encounter.document.groups.find(({ id }) => id === "eNarrativeSection")!;
+  assert.equal(group.instances.length, 1);
+  const narrative = group.instances[0]!.elements.find(({ id }) => id === "eNarrative.01")!;
+  assert.equal(narrative.values.length, 1);
+  assert.equal(narrative.values[0]?.kind === "scalar" ? narrative.values[0].value : "", "Initial assessment\n2026-04-18T08:35:00-04:00\n\nReassessment\n2026-04-18T09:10:00-04:00");
+  assert.equal(encounterEvents(state.encounter.document, standardEncounterDefinition).length, 1);
 });
 
 test("remove deletes an existing note and discards a new note draft", () => {

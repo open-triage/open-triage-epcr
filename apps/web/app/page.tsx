@@ -6,6 +6,7 @@ import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
+import { DialogValidationMessage } from "../components/dialog-validation-message";
 import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
@@ -39,6 +40,7 @@ import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
 import { validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
+import { repeatingDialogPath } from "./stationary-repeating-group";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 
@@ -127,7 +129,6 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
-  const noteTimeFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.invalidTime;
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
 
@@ -223,15 +224,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       const section = stationarySectionForGroup(target.groupId);
       if (section) window.history.pushState(null, "", `#${section.hash}`);
       const escape = (value: string) => CSS.escape(value);
-      const group = document.querySelector<HTMLElement>(`[data-group-id="${escape(target.groupId)}"]`);
       const instanceId = "groupInstanceId" in target ? target.groupInstanceId : target.instanceId;
-      const instance = instanceId ? group?.querySelector<HTMLElement>(`[data-group-instance-id="${escape(instanceId)}"]`) : null;
-      const row = instance?.closest("tr");
-      const edit = row?.querySelector<HTMLButtonElement>("button");
-      if (edit) edit.click();
-      else if (!instanceId) group?.querySelector<HTMLButtonElement>(".stationary-group-add-controls button, button")?.click();
       const focusTarget = () => {
-        const scope = document.querySelector<HTMLElement>("[role='dialog']") ?? group ?? instance;
+        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog']");
+        const group = document.querySelector<HTMLElement>(`[data-group-id="${escape(target.groupId)}"]`);
+        const scope = dialogs.item(dialogs.length - 1) ?? group;
         const elementId = "fieldId" in target ? target.fieldId : target.elementId;
         const occurrenceId = "occurrenceId" in target ? target.occurrenceId : undefined;
         const occurrence = occurrenceId ? scope?.querySelector<HTMLElement>(`[data-occurrence-id="${escape(occurrenceId)}"]`) : null;
@@ -241,7 +238,25 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         (destination?.matches("button, input, select, textarea") ? destination : destination?.querySelector<HTMLElement>("button, input, select, textarea, [tabindex]"))?.focus();
         setNavigationMessage(`Opened ${finding.reference} for correction.`);
       };
-      window.requestAnimationFrame(focusTarget);
+      const dialogPath = instanceId ? repeatingDialogPath(shell.encounter.document, target.groupId, instanceId) : [];
+      const openDialog = (index: number) => {
+        if (index >= dialogPath.length) return window.requestAnimationFrame(focusTarget);
+        const step = dialogPath[index]!;
+        const dialogs = document.querySelectorAll<HTMLElement>("[role='dialog']");
+        const scope: ParentNode = dialogs.item(dialogs.length - 1) ?? document;
+        const group = scope.querySelector<HTMLElement>(`[data-group-id="${escape(step.groupId)}"]`);
+        const row = group?.querySelector<HTMLElement>(`[data-group-instance-id="${escape(step.instanceId)}"]`)?.closest("tr");
+        const edit = row?.querySelector<HTMLButtonElement>("button.stationary-icon-action.edit, button");
+        if (!edit) return focusTarget();
+        edit.click();
+        window.requestAnimationFrame(() => openDialog(index + 1));
+      };
+      if (dialogPath.length) openDialog(0);
+      else {
+        const group = document.querySelector<HTMLElement>(`[data-group-id="${escape(target.groupId)}"]`);
+        if (!instanceId) group?.querySelector<HTMLButtonElement>(".stationary-group-add-controls button, button")?.click();
+        window.requestAnimationFrame(focusTarget);
+      }
     });
   }
 
@@ -327,27 +342,33 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
 
       <header className="encounter-header">
-        {report && <div className="draft-actions">
-          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
-          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
-        </div>}
-        <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
-        <div className="incident-line">
-          <div>
+        {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
+          <span><small>Response</small><strong>{incident.responseNumber || "Not provided"}</strong></span>
+          <span><small>Unit</small><strong>{incident.callSign || "Not provided"}</strong></span>
+          <span><small>Priority</small><strong>{incident.dispatchPriority || "Not provided"}</strong></span>
+          <span className="encounter-location"><small>Location</small><strong>{incident.location || "Not provided"}</strong></span>
+        </div> : <>
+          <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
+          <div className="incident-line"><div>
             <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
             <span>Response {incident.responseNumber}</span>
             <span>Unit {incident.callSign}</span>
             <span>Priority {incident.dispatchPriority || "Not provided"}</span>
             <strong>{incident.location}</strong>
-          </div>
-        </div>
+          </div></div>
+        </>}
+        {report && <div className="draft-actions">
+          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
+          {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => dispatch(shell.view === "review" ? { type: "view-selected", view: "timeline" } : { type: "review-opened" })}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
+          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
+        </div>}
       </header>
 
-      <nav className="quick-actions" aria-label="Quick documentation">
+      {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
         {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
-      </nav>
+      </nav>}
 
-      <nav className="view-switcher" aria-label="Encounter views">
+      {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
         {tabs.map((tab) => (
           <button
             aria-pressed={shell.view === tab.id}
@@ -361,28 +382,24 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
             {tab.label}
             {tab.id === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
             {tab.id === "checklist" && <span className="checklist-counts" aria-hidden="true">
-              <span className="error-count">{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
-              <span className="warning-count">{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
+              <span className={`error-count${reviewErrors.length ? "" : " zero-count"}`}>{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
+              <span className={`warning-count${reviewWarnings.length ? "" : " zero-count"}`}>{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
             </span>}
           </button>
         ))}
-      </nav>
+      </nav>}
 
-      {presentationMode === "stationary" && (shell.view === "timeline" || shell.view === "checklist") && (
-        <div className="sign-action-bar">
-          <button className={validationClear ? "validation-clear" : undefined} type="button" onClick={() => dispatch({ type: "review-opened" })}>Review &amp; sign</button>
+      {presentationMode === "stationary" && (
+        <div hidden={shell.view === "review"}>
+          <StationaryRecord
+            document={encounter.document}
+            findings={signingFindings}
+            onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
+          />
         </div>
       )}
 
-      {presentationMode === "stationary" && shell.view === "timeline" && (
-        <StationaryRecord
-          document={encounter.document}
-          findings={signingFindings}
-          onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
-        />
-      )}
-
-      {shell.view === "timeline" && (
+      {presentationMode === "mobile" && shell.view === "timeline" && (
         <section className="content-panel" aria-labelledby="timeline-heading">
           <div className="section-heading">
             <div>
@@ -441,7 +458,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           </ol>
         </section>
       )}
-      {shell.view === "checklist" && (
+      {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
             <div>
@@ -504,8 +521,6 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               </div>
               <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
             </div>
-            <TimePicker className={noteTimeFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined} label={noteDefinition.labels.time} date={shell.noteDraft.date} onDateChange={(value) => dispatch({ type: "note-draft-changed", field: "date", value })} describedBy="clinical-time-help" value={shell.noteDraft.time} onChange={(value) => dispatch({ type: "note-draft-changed", field: "time", value })} />
-            <small id="clinical-time-help">{noteDefinition.labels.timeHelp}</small>
             <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
               {noteDefinition.labels.summary}
               <textarea
@@ -517,6 +532,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                 value={shell.noteDraft.summary}
                 onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
               />
+              <DialogValidationMessage finding={noteSummaryFindingActive ? editingFinding : undefined} />
             </label>
             <div className="note-dialog-actions">
               <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
@@ -539,6 +555,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
             <TimePicker className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
@@ -576,6 +593,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                       </div>
                     )}
                   </div>
+                  <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingFinding : undefined} />
                 </div>
               );})}
             </div>
@@ -671,7 +689,7 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
 }) {
   return (
     <section className="review-group">
-      <h2>{title} <span>{findings.length}</span></h2>
+      <h2>{title} <span className={findings.length ? undefined : "zero-count"}>{findings.length}</span></h2>
       {!findings.length ? <p className="review-empty">✓ {empty}</p> : (
         <ul className="review-findings">
           {findings.map((finding) => (

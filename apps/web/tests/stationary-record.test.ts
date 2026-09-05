@@ -13,9 +13,17 @@ import {
   stationarySectionStatuses,
 } from "../app/stationary-record";
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
+import { stationaryActionLabel, stationaryDisplayLabel } from "../app/stationary-label";
 import { StationaryRecord } from "../components/stationary-record";
 
 const document = structuredClone(synthetic) as EncounterDocument;
+
+test("technical section and group identifiers become concise display labels", () => {
+  assert.equal(stationaryDisplayLabel("eResponse"), "Response");
+  assert.equal(stationaryDisplayLabel("eCustomConfigurationSection"), "Custom Configuration Section");
+  assert.equal(stationaryDisplayLabel("eLabs.LabResultGroup"), "Lab Result Group");
+  assert.equal(stationaryActionLabel("eLabs.LabResultGroup"), "Lab Result");
+});
 
 test("the complete record exposes configured sections and blocks in canonical hierarchy order", () => {
   const sections = configuredStationarySections();
@@ -74,7 +82,9 @@ test("section status projects errors, warnings, and incomplete catalog requireme
     findings: [{ severity: "error", target: { groupId: "eVitals.VitalGroup" } }],
     onDocumentChange() {},
   }));
-  assert.match(html, /eVitals: 1 error, 0 warnings,/);
+  assert.match(html, /Vitals: 1 error, 0 warnings,/);
+  assert.match(html, /warning-count zero-count/);
+  assert.doesNotMatch(html, /NEMSIS section/);
   assert.match(html, /data-section-status="error"/);
 });
 

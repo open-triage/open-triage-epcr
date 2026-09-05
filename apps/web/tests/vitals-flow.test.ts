@@ -3,7 +3,7 @@ import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
-import { EMPTY_VITALS, INITIAL_SHELL_STATE, encounterEventDetail, encounterEventPresentation, reviewEncounter, bundledEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/standard-encounter";
+import { EMPTY_VITALS, INITIAL_SHELL_STATE, MISSING_VITALS_FINDING_ID, encounterEventDetail, encounterEventPresentation, reviewEncounter, bundledEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/standard-encounter";
 import { nullOptionsFor, validateVitals } from "../app/vital-validation";
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 
@@ -24,6 +24,25 @@ test("repeatable vital sets save as distinct chronological NEMSIS timeline event
   assert.deepEqual(entries.map((event) => event.time), ["09:00", "08:45"]);
   assert.equal(entries[0]?.reference, "eVitals.VitalGroup");
   assert.match(entries[0]?.detail ?? "", /BP 120\/80 · HR 72 · SpO₂ 98%/);
+  const vitalRoots = state.encounter.document.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances;
+  assert.ok(vitalRoots.every((instance) => !instance.elements.some(({ id }) => ["eVitals.06", "eVitals.07", "eVitals.10", "eVitals.27"].includes(id))));
+  for (const nestedGroupId of ["eVitals.BloodPressureGroup", "eVitals.HeartRateGroup", "eVitals.PainScaleGroup"]) {
+    const nested = state.encounter.document.groups.find(({ id }) => id === nestedGroupId)!.instances;
+    assert.equal(nested.length, 2);
+    assert.ok(nested.every(({ parentInstanceId }) => vitalRoots.some(({ instanceId }) => instanceId === parentInstanceId)));
+  }
+});
+
+test("review recognizes a canonical vital set without timeline ownership metadata", () => {
+  const saved = transitionShell(fill(started()), { type: "vitals-saved" });
+  const document = {
+    ...saved.encounter.document,
+    groups: saved.encounter.document.groups.map((group) => group.id === "eVitals.VitalGroup"
+      ? { ...group, instances: group.instances.map((instance) => ({ ...instance, attributes: undefined })) }
+      : group),
+  };
+  const state = { ...saved, encounter: { ...saved.encounter, document } };
+  assert.equal(reviewEncounter(state).some(({ id }) => id === MISSING_VITALS_FINDING_ID), false);
 });
 
 test("editing a vital set corrects the canonical entry and its clinical time", () => {
