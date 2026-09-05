@@ -6,6 +6,11 @@
 {{- if .Values.fullnameOverride }}{{ .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}{{ else }}{{ include "open-triage.name" . }}{{ end }}
 {{- end }}
 
+{{/* Use a cluster-owned database Secret when one is configured. */}}
+{{- define "open-triage.databaseSecretName" -}}
+{{- default (printf "%s-database" (include "open-triage.fullname" .)) .Values.secrets.existingSecret -}}
+{{- end }}
+
 {{- define "open-triage.labels" -}}
 app.kubernetes.io/name: {{ include "open-triage.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
