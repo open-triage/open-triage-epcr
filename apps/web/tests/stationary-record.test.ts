@@ -27,11 +27,10 @@ test("technical section and group identifiers become concise display labels", ()
 
 test("the complete record exposes configured sections and blocks in canonical hierarchy order", () => {
   const sections = configuredStationarySections();
-  assert.equal(sections[0]?.id, "DemographicGroup");
-  assert.equal(sections[1]?.id, "eCustomConfigurationSection");
-  assert.equal(sections[2]?.id, "eRecordSection");
+  assert.equal(sections[0]?.id, "eRecordSection");
   assert.equal(sections.at(-1)?.id, "eOtherSection");
-  assert.equal(sections.length, 27);
+  assert.equal(sections.length, 25);
+  assert.equal(sections.some(({ id }) => id === "DemographicGroup" || id === "eCustomConfigurationSection"), false);
 
   const payment = sections.find(({ id }) => id === "ePaymentSection")!;
   assert.deepEqual(stationarySectionBlocks(payment).map(({ group }) => group.id), [
@@ -52,6 +51,8 @@ test("the complete record exposes configured sections and blocks in canonical hi
     assert.ok(html.includes(`href="#${section.hash}"`));
   }
   assert.match(html, /aria-label="Stationary record sections"/);
+  assert.doesNotMatch(html, /data-stationary-section="(?:DemographicGroup|eCustomConfigurationSection)"/);
+  assert.doesNotMatch(html, /href="#stationary-section-(?:DemographicGroup|eCustomConfigurationSection)"/);
   assert.match(html, /aria-current="location"/);
   assert.match(html, /tabindex="-1"/);
 });

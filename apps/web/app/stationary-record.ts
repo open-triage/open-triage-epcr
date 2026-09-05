@@ -34,6 +34,7 @@ export type StationaryRenderBlock = {
 };
 
 const EMPTY_STATUS: StationarySectionStatus = { errors: 0, warnings: 0, incomplete: 0 };
+const HIDDEN_STATIONARY_SECTION_IDS = new Set(["DemographicGroup", "eCustomConfigurationSection"]);
 const layoutGroups = new Map<string, CompiledStationaryGroup>();
 
 function indexGroup(group: CompiledStationaryGroup): void {
@@ -49,14 +50,16 @@ export function stationarySectionHash(groupId: string): string {
 }
 
 /**
- * The rail represents the two Header payload sections followed by every PCR
- * section, preserving their checked-in configuration order.
+ * The rail represents clinician-facing PCR sections in checked-in configuration
+ * order. System-owned demographic and custom-configuration metadata remain in
+ * the canonical document but are not presented in the stationary workflow.
  */
 export function configuredStationarySections(): ReadonlyArray<StationarySection> {
   const header = layoutGroups.get("HeaderGroup");
   const report = layoutGroups.get("PatientCareReportGroup");
   if (!header || !report) throw new Error("The stationary layout is missing its Header or PatientCareReport boundary");
-  const roots = [...header.children.filter(({ id }) => id !== report.id), ...report.children];
+  const roots = [...header.children.filter(({ id }) => id !== report.id), ...report.children]
+    .filter(({ id }) => !HIDDEN_STATIONARY_SECTION_IDS.has(id));
   return roots.map((root) => ({
     id: root.id,
     hash: stationarySectionHash(root.id),

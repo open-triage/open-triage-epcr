@@ -25,7 +25,9 @@ test("stationary rail supports section jumps, direct hashes, focus, and scroll t
 
   const rail = page.getByRole("navigation", { name: "Stationary record sections" });
   await expect(rail).toBeVisible();
-  await expect(rail.getByRole("link")).toHaveCount(27);
+  await expect(rail.getByRole("link")).toHaveCount(25);
+  await expect(rail.getByRole("link", { name: /Demographic/ })).toHaveCount(0);
+  await expect(rail.getByRole("link", { name: /Custom Configuration/ })).toHaveCount(0);
   const accessibility = await new AxeBuilder({ page }).include(".stationary-record-layout")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
