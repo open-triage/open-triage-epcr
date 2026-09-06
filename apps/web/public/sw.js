@@ -6,9 +6,11 @@
   var appShell = [
     appRoot,
     new URL("manifest.webmanifest", appRoot).toString(),
-    new URL("demo-assigned-calls.json", appRoot).toString(),
-    new URL("demo-open-calls.json", appRoot).toString(),
-    new URL("demo-open-assignment.json", appRoot).toString()
+    ...true ? [
+      new URL("demo-assigned-calls.json", appRoot).toString(),
+      new URL("demo-open-calls.json", appRoot).toString(),
+      new URL("demo-open-assignment.json", appRoot).toString()
+    ] : []
   ];
   async function cacheStaticShell() {
     const cache = await caches.open(cacheName);

@@ -9,6 +9,7 @@ Build the web image with the public API hostname embedded at build time:
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
   --build-arg NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org \
+  --build-arg NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo \
   -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .

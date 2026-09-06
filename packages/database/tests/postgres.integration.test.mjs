@@ -324,8 +324,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   await t.test("bootstraps and safely replays a complete synthetic installation", async () => {
     const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
     const environment = { ...process.env, ...patientKeyEnvironment, DATABASE_URL: databaseUrl };
-    const first = await execFileAsync(process.execPath, [bootstrap], { env: environment });
-    const second = await execFileAsync(process.execPath, [bootstrap], { env: environment });
+    const settings = path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json");
+    const first = await execFileAsync(process.execPath, [bootstrap, "--settings", settings], { env: environment });
+    const second = await execFileAsync(process.execPath, [bootstrap, "--settings", settings], { env: environment });
     assert.equal(JSON.parse(first.stdout).status, "ready");
     assert.equal(JSON.parse(second.stdout).status, "ready");
 

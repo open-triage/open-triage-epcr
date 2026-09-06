@@ -33,6 +33,8 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export { parseInstallationSettings, type InstallationSettings } from "./installation-settings.js";
+
 export interface CreateClinicianSessionCommand {
   username: string;
   password: string;

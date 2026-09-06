@@ -19,6 +19,7 @@ import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 import { loadPresentationMode, storePresentationMode, type PresentationMode } from "../app/presentation-mode";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
+import { selectedInstallationSettings } from "../app/installation-settings";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -30,6 +31,8 @@ export function ClinicianSessionGate({ children }: {
     presentationMode: PresentationMode;
   }) => ReactNode);
 }) {
+  const installationSettings = selectedInstallationSettings();
+  const banner = installationSettings.syntheticDataBanner;
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -145,22 +148,22 @@ export function ClinicianSessionGate({ children }: {
   if (!session) {
     return (
       <main className="login-shell">
-        <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-          <strong>Synthetic data only</strong>
-          <span>Usability prototype — not for clinical use</span>
-        </aside>
+        {banner.enabled && <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
+          <strong>{banner.heading}</strong>
+          <span>{banner.message}</span>
+        </aside>}
         <form className="login-card" onSubmit={signIn}>
-          <p className="eyebrow">Demo unit</p>
+          <p className="eyebrow">{installationSettings.syntheticFixtures.enabled ? "Demo unit" : "Clinical documentation"}</p>
           <h1>Sign in for your shift</h1>
-          <p>Use the prefilled synthetic clinician account to begin.</p>
+          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic clinician account to begin." : "Enter your organization credentials to begin."}</p>
           {message && <p className="login-message" role="status">{message}</p>}
           <label>
             Username
-            <input name="username" autoComplete="username" defaultValue={DEMO_CLINICIAN_USERNAME} required />
+            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? DEMO_CLINICIAN_USERNAME : ""} required />
           </label>
           <label>
             Password
-            <input name="password" type="password" autoComplete="current-password" defaultValue={DEMO_CLINICIAN_PASSWORD} required />
+            <input name="password" type="password" autoComplete="current-password" defaultValue={installationSettings.syntheticFixtures.enabled ? DEMO_CLINICIAN_PASSWORD : ""} required />
           </label>
           <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
         </form>
@@ -193,14 +196,14 @@ export function ClinicianSessionGate({ children }: {
         </div>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
-      <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-        <strong>Synthetic data only</strong>
-        <span>Usability prototype — not for clinical use</span>
-        {activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
+      {banner.enabled && <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
+        <strong>{banner.heading}</strong>
+        <span>{banner.message}</span>
+        {installationSettings.syntheticFixtures.enabled && activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
           <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}>Populate</button>
           <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
         </span>}
-      </aside>
+      </aside>}
       <div hidden={activeReport !== null}>
         {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
         <AssignedCalls session={session} refreshRequest={refreshRequest} suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {

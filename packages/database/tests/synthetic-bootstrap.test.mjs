@@ -17,12 +17,19 @@ const [databasePackage, bootstrap, apiMain, apiModule, migration] = await Promis
 test("exposes the synthetic installation only through an explicit command", () => {
   assert.equal(
     databasePackage.scripts["bootstrap:synthetic"],
-    "npm run build -w @open-triage/api && node scripts/bootstrap-synthetic-installation.mjs"
+    "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && node scripts/bootstrap-synthetic-installation.mjs --settings ../contracts/config/installation.synthetic-demo.json"
   );
   for (const productionEntryPoint of [apiMain, apiModule, migration]) {
     assert.ok(!productionEntryPoint.includes("bootstrap-synthetic-installation"));
     assert.ok(!productionEntryPoint.includes("open-triage-synthetic-installation-v1"));
   }
+});
+
+test("fixture and initial assignment creation are independently selected settings", () => {
+  assert.match(bootstrap, /--settings <installation-settings\.json> is required/);
+  assert.match(bootstrap, /installationSettings\.syntheticFixtures\.enabled/);
+  assert.match(bootstrap, /installationSettings\.sampleDispatchAssignment\.enabled/);
+  assert.match(bootstrap, /if \(dispatchSourceBytes && dispatchCatalog && dispatchProjection\)/);
 });
 
 test("uses deterministic synthetic identities and contains no patient identity fixture", () => {

@@ -12,6 +12,8 @@ permissions:
 
 env:
   NEXT_PUBLIC_BASE_PATH: /open-triage-epcr-demo
+  NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE: synthetic-demo
+  NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "true"
 
 jobs:
   build-and-test:

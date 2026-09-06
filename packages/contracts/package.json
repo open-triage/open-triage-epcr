@@ -13,6 +13,8 @@
     "./quality-normalization-policy.json": "./quality-normalization-policy.json",
     "./encounter-document.schema-1.0.0.json": "./encounter-document.schema-1.0.0.json",
     "./dispatch-message.schema-1.0.0.json": "./dispatch-message.schema-1.0.0.json",
+    "./installation-settings.schema-1.0.0.json": "./installation-settings.schema-1.0.0.json",
+    "./config/*.json": "./config/*.json",
     "./examples/dispatch/*.json": "./examples/dispatch/*.json"
   },
   "scripts": {

@@ -1,5 +1,6 @@
 import type { ClinicianSession, CreateClinicianSessionCommand } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
+import { selectedInstallationSettings } from "./installation-settings";
 
 export const DEMO_CLINICIAN_USERNAME = "demo.clinician";
 export const DEMO_CLINICIAN_PASSWORD = "open-triage-demo";
@@ -43,7 +44,7 @@ export function clearClinicianSession(storage: Pick<Storage, "removeItem">): voi
 }
 
 function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
+  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 }
 
@@ -60,7 +61,10 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     return response.json() as Promise<ClinicianSession>;
   }
 
-  // The static synthetic build has no server. It mirrors the seeded demo
+  if (!selectedInstallationSettings().syntheticFixtures.enabled) {
+    throw new Error("Local sign-in is disabled unless synthetic fixtures are selected.");
+  }
+  // The explicitly selected static synthetic build has no server. It mirrors the seeded demo
   // organization so the published, non-clinical artifact remains usable.
   if (command.username !== DEMO_CLINICIAN_USERNAME || command.password !== DEMO_CLINICIAN_PASSWORD) {
     throw new Error("The username or password is incorrect.");
@@ -69,7 +73,7 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     accessToken: crypto.randomUUID(),
     ...localDemoIdentity,
     startedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + 14 * 60 * 60 * 1_000).toISOString()
+    expiresAt: new Date(now.getTime() + selectedInstallationSettings().authentication.sessionDurationMinutes * 60 * 1_000).toISOString()
   };
 }
 

@@ -105,8 +105,10 @@ test("active polling and draft saves identify a report completed by another clie
 
 test("the browser-only static build considers its durable local write synchronized", async () => {
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   const originalFetch = globalThis.fetch;
   process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
   globalThis.fetch = (async () => { throw new Error("the static build must not call a report API"); }) as typeof fetch;
   try {
     const result = await saveDraftReport("token", reportId, {
@@ -119,6 +121,8 @@ test("the browser-only static build considers its durable local write synchroniz
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
   }
 });
 

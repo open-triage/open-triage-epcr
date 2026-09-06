@@ -6,6 +6,8 @@ import { AssignedCallsController } from "../dist/calls/assigned-calls.controller
 import { AssignedCallsService, syntheticReplacementPayload } from "../dist/calls/assigned-calls.service.js";
 import { randomSyntheticDispatchPayload, SYNTHETIC_DISPATCH_PAYLOAD_COUNT, syntheticDispatchPayloads } from "../dist/calls/synthetic-dispatch-payloads.js";
 
+process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+
 const dispatchSample = JSON.parse(readFileSync(new URL("../../../packages/contracts/examples/dispatch/synthetic-assignment-01.json", import.meta.url), "utf8"));
 
 const session = {

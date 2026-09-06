@@ -10,6 +10,7 @@ web:
     limits: { cpu: 250m, memory: 128Mi }
 
 api:
+  installationSettingsBaseline: synthetic-demo
   image:
     repository: ghcr.io/open-triage/open-triage-api
     tag: latest
