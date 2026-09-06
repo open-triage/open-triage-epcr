@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
@@ -255,12 +256,13 @@ export class AssignedCallsService {
 
       const patientId = randomUUID();
       const reportId = randomUUID();
-      const patientKey = createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex");
+      const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
+      const patientKey = derivePatientKey(patientKeyConfig, session.organization.id, patientId);
       await manager.query(`
         insert into clinical.patient
-          (id, organization_id, identity_state, pseudonymous_key)
-        values ($1, $2, 'unknown', $3)
-      `, [patientId, session.organization.id, patientKey]);
+          (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
+        values ($1, $2, 'unknown', $3, $4)
+      `, [patientId, session.organization.id, patientKey, patientKeyConfig.keyVersion]);
       await manager.query(`
         insert into clinical.report
           (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
