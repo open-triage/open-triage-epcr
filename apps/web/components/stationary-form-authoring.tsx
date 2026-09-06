@@ -1,8 +1,9 @@
 "use client";
 
-import type { FormDraftDefinition, StationaryFormDraft } from "@open-triage/contracts";
+import type { FormCatalogElement, FormDraftDefinition, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
-import { cloneStationaryFormDraft, loadStationaryFormDraft, saveStationaryFormDraft } from "../app/admin-context";
+import { cloneStationaryFormDraft, loadStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 
 type FormSection = FormDraftDefinition["sections"][number];
 
@@ -83,7 +84,12 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [pendingRemoval, setPendingRemoval] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<FormCatalogElement[]>([]);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [targetSection, setTargetSection] = useState("");
   const confirmationRef = useRef<HTMLDivElement>(null);
+  const draftId = draft?.id;
 
   useEffect(() => {
     let current = true;
@@ -95,6 +101,17 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
+  useEffect(() => {
+    if (!draftId) return;
+    let current = true;
+    const timeout = window.setTimeout(() => {
+      searchFormCatalog(csrfToken, draftId, query).then((page) => { if (current) {
+        setResults(page.items); setNextOffset(page.nextOffset);
+      } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
+    }, 150);
+    return () => { current = false; window.clearTimeout(timeout); };
+  }, [csrfToken, draftId, query]);
+
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
     try { await work(); } catch (reason) { setError(operationErrorMessage(reason)); } finally { setBusy(false); }
@@ -102,6 +119,20 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
   function change(next: FormDraftDefinition, announcement: string) {
     setDraft((current) => current ? { ...current, definition: next } : current);
     setDirty(true); setStatus(`Unsaved changes. ${announcement}`); setError(""); setPendingRemoval(null);
+  }
+  function add(element: FormCatalogElement) {
+    if (!draft) return;
+    try {
+      change(addFormElement(draft.definition, targetSection || draft.definition.sections[0]?.key || "", element),
+        `Added ${element.elementId}.`);
+    } catch (reason) { setError(operationErrorMessage(reason)); }
+  }
+  async function loadMore() {
+    if (!draft || nextOffset === null) return;
+    await action(async () => {
+      const page = await searchFormCatalog(csrfToken, draft.id, query, nextOffset);
+      setResults((current) => [...current, ...page.items]); setNextOffset(page.nextOffset);
+    });
   }
 
   if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
@@ -121,6 +152,11 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
       <strong>Resolve cloned catalog references before saving:</strong>
       <ul>{draft.diagnostics.map((finding) => <li key={`${finding.code}:${finding.path}`}>{finding.message} ({finding.path})</li>)}</ul>
     </div>}
+    <FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
+      onQueryChange={(value) => { setQuery(value); setResults([]); setNextOffset(null); }}
+      onSectionChange={setTargetSection} onAdd={add} />
+    {nextOffset !== null && <button type="button" disabled={busy} onClick={loadMore}>Load more catalog elements</button>}
+    <FormSectionElements definition={draft.definition} onChange={change} />
     <StationarySectionControls definition={draft.definition} pendingRemoval={pendingRemoval} busy={busy}
       confirmationRef={confirmationRef} onMove={(from, to) => change(moveFormSection(draft.definition, from, to),
         `Moved ${draft.definition.sections[from]!.key} ${to < from ? "up" : "down"}.`)}
@@ -135,7 +171,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
     <div className="form-actions">
       <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
         const saved = await saveStationaryFormDraft(csrfToken, draft);
-        setDraft(saved); setDirty(false); setStatus(`Saved section ordering in revision ${saved.revision}.`);
+        setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
       })}>Save form draft</button>
     </div>
     {error && <p role="alert">{error}</p>}

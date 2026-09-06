@@ -3,9 +3,10 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ClinicianSession } from "@open-triage/contracts";
-import { loadAdminContext, saveCatalogDraft, saveStationaryFormDraft } from "../app/admin-context";
+import { loadAdminContext, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
+import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
 
 const session: ClinicianSession = {
@@ -68,15 +69,20 @@ test("accessible move controls reorder values without changing code identity", (
 });
 
 const formDefinition = { schemaVersion: 1 as const, sections: [
-  { key: "patient", fields: [{ key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } }] },
+  { key: "patient", fields: [
+    { key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
+    { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" } }
+  ] },
   { key: "assessment", fields: [{ key: "impression", source: { kind: "nemsis" as const, elementId: "eSituation.11" } }] }
 ] };
+const catalogElement = { elementId: "ePatient.01", name: "Patient Care Report Number",
+  description: "The patient care report number.", baseDatatype: "string", groupPath: ["ePatient"] };
 
 test("section operations preserve canonical content while changing only section scope and sequence", () => {
   const moved = moveFormSection(formDefinition, 1, 0);
   assert.deepEqual(moved.sections.map(({ key }) => key), ["assessment", "patient"]);
   assert.deepEqual(moved.sections[0]?.fields, formDefinition.sections[1]?.fields);
-  assert.deepEqual(affectedFieldNames(formDefinition.sections[0]!), ["name (ePatient.02)"]);
+  assert.deepEqual(affectedFieldNames(formDefinition.sections[0]!), ["name (ePatient.02)", "age (ePatient.15)"]);
   const removed = removeFormSection(formDefinition, 0);
   assert.deepEqual(removed.sections.map(({ key }) => key), ["assessment"]);
   assert.throws(() => removeFormSection(removed, 0), /at least one section/);
@@ -90,7 +96,7 @@ test("Stationary section controls are named, keyboard-operable buttons with affe
   assert.match(controls, /aria-label="Move patient down"/);
   assert.match(controls, /aria-label="Move assessment up"/);
   assert.match(controls, /role="alertdialog"/);
-  assert.match(controls, /1 affected field/);
+  assert.match(controls, /2 affected fields/);
   assert.match(controls, /name \(ePatient\.02\)/);
   assert.match(controls, /Confirm removal/);
 });
@@ -108,4 +114,44 @@ test("form saves send section order with the current revision and CSRF proof", a
     return Response.json({ ...draft, revision: 5 });
   };
   assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
+});
+
+test("form catalog picker is searchable, labels duplicates, and exposes an add control", () => {
+  const markup = renderToStaticMarkup(createElement(FormElementPicker, { definition: formDefinition,
+    results: [catalogElement, { ...catalogElement, elementId: "ePatient.02", name: "Last Name" }], query: "patient",
+    targetSection: "patient", onQueryChange() {}, onSectionChange() {}, onAdd() {} }));
+  assert.match(markup, /type="search"/);
+  assert.match(markup, /aria-label="Add ePatient.01"/);
+  assert.match(markup, /ePatient.02 is already in the form/);
+  assert.match(markup, /Already added/);
+});
+
+test("form element helpers prevent duplicates and add, remove, and reorder immutably", () => {
+  const original = structuredClone(formDefinition);
+  const added = addFormElement(formDefinition, "patient", catalogElement);
+  assert.deepEqual(added.sections[0]!.fields.map((field) => field.source.kind === "nemsis" && field.source.elementId),
+    ["ePatient.02", "ePatient.15", "ePatient.01"]);
+  assert.throws(() => addFormElement(added, "patient", catalogElement), /already in the form/);
+  const moved = moveFormElement(added, "patient", 2, 0);
+  assert.equal(moved.sections[0]!.fields[0]!.key, "ePatient.01");
+  assert.deepEqual(removeFormElement(moved, "patient", "ePatient.01"), formDefinition);
+  assert.deepEqual(formDefinition, original);
+});
+
+test("form element rows provide keyboard-operable move and confirmed remove controls", () => {
+  const markup = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition, onChange() {} }));
+  assert.match(markup, /aria-label="Move ePatient.02 up"/);
+  assert.match(markup, /aria-label="Move ePatient.15 down"/);
+  assert.match(markup, /aria-label="Remove ePatient.02"/);
+  assert.match(markup, /<details open=""/);
+});
+
+test("form search uses bounded query parameters", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input) => {
+    assert.match(String(input), /catalog-elements\?query=patient%20name&offset=40$/);
+    return Response.json({ items: [], nextOffset: null });
+  };
+  await searchFormCatalog("csrf-proof", "draft-id", "patient name", 40);
 });

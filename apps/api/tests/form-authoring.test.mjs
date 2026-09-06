@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -110,5 +110,37 @@ test("form authoring rejects removal that leaves an invalid section structure", 
   await assert.rejects(service.save("owner-session", draftId, {
     expectedRevision: 1, definition: { schemaVersion: 1, sections: [] }
   }), (error) => error.getStatus?.() === 422 && error.getResponse().findings.includes("sections must be a non-empty array"));
+  assert.equal(queried, false);
+});
+
+test("catalog search is bounded to an authorized editable draft and returns pagination", async () => {
+  const calls = [];
+  const service = new FormAuthoringService({ query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("select fv.catalog_release_id")) return [{ catalog_release_id: catalogId }];
+    if (sql.includes("from catalog.element_definition")) return Array.from({ length: 41 }, (_, index) => ({
+      element_id: `ePatient.${String(index + 1).padStart(2, "0")}`, name: `Patient ${index + 1}`,
+      description: "Patient catalog element", base_datatype: "string", group_path: ["ePatient"]
+    }));
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } }, { requireCapability: async () => session });
+  const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
+  assert.equal(page.items.length, 40);
+  assert.equal(page.nextOffset, 80);
+  assert.deepEqual(calls[1].parameters, [catalogId, "patient", 41, 40]);
+});
+
+test("duplicate element placement fails API validation before persistence", async () => {
+  let queried = false;
+  const duplicate = { schemaVersion: 1, sections: [
+    { key: "one", fields: [{ key: "first", source: { kind: "nemsis", elementId: "ePatient.01" } }] },
+    { key: "two", fields: [{ key: "second", source: { kind: "nemsis", elementId: "ePatient.01" } }] }
+  ] };
+  const service = new FormAuthoringService({ transaction: async () => { queried = true; } }, {
+    requireCapability: async () => session
+  });
+  await assert.rejects(service.save("owner-session", draftId, { expectedRevision: 1, definition: duplicate }),
+    (error) => error instanceof UnprocessableEntityException &&
+      error.getResponse().findings.includes("sections[1].fields[0].source is duplicated"));
   assert.equal(queried, false);
 });

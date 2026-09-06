@@ -1,4 +1,4 @@
-import type { AdminContext, CatalogDraft, CatalogValidationResult, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
 
 function apiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
@@ -34,6 +34,9 @@ export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: st
 export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, definition: draft.definition })
 });
+
+export const searchFormCatalog = (csrfToken: string, id: string, query: string, offset = 0) =>
+  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}&offset=${offset}`, csrfToken);
 
 export async function loadAdminContext(): Promise<AdminContext> {
   const response = await fetch(`${apiBaseUrl()}/api/admin/context`, { credentials: "include" });
