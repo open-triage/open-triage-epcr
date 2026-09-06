@@ -106,13 +106,14 @@ export const NEMSIS_DATA_MODEL = source as unknown as NemsisDataModel;
 export const NEMSIS_ELEMENT_IDS: ReadonlySet<string> = new Set(NEMSIS_DATA_MODEL.elements.map((element) => element.id));
 const bundledListsById = new Map(NEMSIS_DATA_MODEL.bundledLists.map((list) => [list.id, list]));
 const groupsById = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
+const elementsById = new Map(NEMSIS_DATA_MODEL.elements.map((element) => [element.id, element]));
 
 if (NEMSIS_DATA_MODEL.elementCount !== NEMSIS_ELEMENT_IDS.size) throw new Error("Bundled NEMSIS data model contains duplicate or missing elements");
 if (bundledListsById.size !== NEMSIS_DATA_MODEL.bundledLists.length) throw new Error("Bundled NEMSIS data model contains duplicate list identifiers");
 if (groupsById.size !== NEMSIS_DATA_MODEL.groups.length) throw new Error("Bundled NEMSIS data model contains duplicate structural group identifiers");
 
 export function getNemsisDataElement(id: string): NemsisDataElement | undefined {
-  return NEMSIS_DATA_MODEL.elements.find((element) => element.id === id);
+  return elementsById.get(id);
 }
 
 export function getNemsisGroup(id: string): NemsisGroup | undefined {
