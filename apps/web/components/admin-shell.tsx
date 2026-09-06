@@ -1,7 +1,7 @@
 "use client";
 
 import type { AdminContext, ClinicianSession } from "@open-triage/contracts";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
 import { CatalogAuthoring } from "./catalog-authoring";
 

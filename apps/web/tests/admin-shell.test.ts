@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ClinicianSession } from "@open-triage/contracts";
 import { loadAdminContext, saveCatalogDraft } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
+import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -34,7 +35,7 @@ test("catalog saves send the current revision and CSRF proof", async (t) => {
   t.after(() => { globalThis.fetch = originalFetch; });
   const draft = { id: "draft-id", sourceReleaseId: "release-id", revision: 7,
     definitionSha256: "a".repeat(64), updatedAt: "2026-09-06T12:00:00.000Z",
-    definition: { schemaVersion: 1 as const, sourceReleaseId: "release-id", elements: [] } };
+    definition: { schemaVersion: 1 as const, sourceReleaseId: "release-id", elements: [], codeLists: [] } };
   globalThis.fetch = async (_input, init) => {
     assert.equal(init?.method, "PUT");
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
@@ -42,4 +43,25 @@ test("catalog saves send the current revision and CSRF proof", async (t) => {
     return Response.json({ ...draft, revision: 8 });
   };
   assert.equal((await saveCatalogDraft("csrf-proof", draft)).revision, 8);
+});
+
+const codeList = { listId: "activity", name: "Patient Activity", classification: "suggested" as const,
+  defaultValue: null, values: [
+    { code: "ONE", codeSystem: "LOCAL", label: "First", sourceLabel: "First", category: null, enabled: true },
+    { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
+  ] };
+
+test("code-list controls expose labeled editing, state, default, and keyboard-operable ordering", () => {
+  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, { list: codeList, onChange: () => {} }));
+  assert.match(markup, /<legend>Add value<\/legend>/);
+  assert.match(markup, /aria-label="Move First up"/);
+  assert.match(markup, /aria-label="Move Second down"/);
+  assert.equal((markup.match(/Enabled<\/label>/g) ?? []).length, 2);
+  assert.equal((markup.match(/Default<\/label>/g) ?? []).length, 2);
+});
+
+test("accessible move controls reorder values without changing code identity", () => {
+  const moved = moveCodeValue(codeList, 1, 0);
+  assert.deepEqual(moved.values.map(({ code }) => code), ["TWO", "ONE"]);
+  assert.equal(moveCodeValue(codeList, 0, -1), codeList);
 });

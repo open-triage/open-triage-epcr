@@ -51,6 +51,11 @@ async function ensureFoundation(client) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8");
     await client.query(migration);
   }
+  const codeListConfiguration = await client.query("select to_regclass('catalog.value_set_option_configuration') as configuration");
+  if (!codeListConfiguration.rows[0].configuration) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8");
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -176,8 +181,17 @@ integrationTest("authorized Admin context resolves only the session organization
   const draft = await authoring.cloneActive(active.sessionToken);
   assert.equal(draft.revision, 1);
   const changedElement = draft.definition.elements[0];
+  const changedList = draft.definition.codeLists[0];
+  assert.ok(changedList, "the NEMSIS catalog should expose a recommended list");
+  const disabledValue = changedList.values[0];
+  const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
+    sourceLabel: "Locally managed choice", category: null, enabled: true };
   const changedDefinition = { ...draft.definition, elements: draft.definition.elements.map((element) =>
-    element.elementId === changedElement.elementId ? { ...element, agencyRequired: !element.agencyRequired } : element) };
+    element.elementId === changedElement.elementId ? { ...element, agencyRequired: !element.agencyRequired } : element),
+    codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
+      values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
+        ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value)],
+      defaultValue: { code: localValue.code, codeSystem: localValue.codeSystem } } : list) };
   const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition });
   await assert.rejects(authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition }),
     /revision is stale/i);
@@ -195,11 +209,29 @@ integrationTest("authorized Admin context resolves only the session organization
   [release.rows[0].id, published.id, changedElement.elementId]);
   assert.equal(requiredness.rows[0].source_required, null);
   assert.equal(requiredness.rows[0].published_required, !changedElement.agencyRequired);
+  const sourceCode = await client.query(`select o.display, coalesce(c.enabled, true) enabled from catalog.value_set_option o
+    left join catalog.value_set_option_configuration c using (release_id, value_set_id, code_system, code)
+    where o.release_id=$1 and o.value_set_id=$2 and o.code_system=$3 and o.code=$4`,
+  [release.rows[0].id, changedList.listId, disabledValue.codeSystem, disabledValue.code]);
+  const publishedCodes = await client.query(`select o.code, o.display, c.enabled, c.sort_order, c.is_default
+    from catalog.value_set_option o join catalog.value_set_option_configuration c using (release_id, value_set_id, code_system, code)
+    where o.release_id=$1 and o.value_set_id=$2 and ((o.code_system=$3 and o.code=$4) or o.code=$5) order by c.sort_order`,
+  [published.id, changedList.listId, disabledValue.codeSystem, disabledValue.code, localValue.code]);
+  assert.equal(sourceCode.rows[0].display, disabledValue.label);
+  assert.equal(sourceCode.rows[0].enabled, true);
+  assert.deepEqual(publishedCodes.rows, [
+    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: true },
+    { code: disabledValue.code, display: `${disabledValue.label} (agency label)`, enabled: false, sort_order: 1, is_default: false }
+  ]);
   await assert.rejects(client.query("update catalog.element_definition set name='mutated' where release_id=$1 and element_id=$2",
     [published.id, changedElement.elementId]), /immutable/);
   await assert.rejects(client.query(`insert into catalog.element_option
     (release_id, element_id, source_kind, code, display, code_system) values ($1,$2,'inline','late-code','Late','')`,
     [published.id, changedElement.elementId]), /sealed and immutable/);
+  await assert.rejects(client.query("update catalog.value_set_option set display='mutated' where release_id=$1 and value_set_id=$2",
+    [published.id, changedList.listId]), /immutable/);
+  await assert.rejects(client.query("update catalog.value_set_option_configuration set enabled=true where release_id=$1 and value_set_id=$2",
+    [published.id, changedList.listId]), /immutable/);
   const event = await client.query("select result, change_note from catalog.publication_event where release_id=$1", [published.id]);
   assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
 });

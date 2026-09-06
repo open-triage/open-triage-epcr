@@ -107,10 +107,28 @@ export interface CatalogDraftElement {
   };
 }
 
+export interface CatalogDraftCodeValue {
+  code: string;
+  codeSystem: string;
+  label: string;
+  sourceLabel: string;
+  category: string | null;
+  enabled: boolean;
+}
+
+export interface CatalogDraftCodeList {
+  listId: string;
+  name: string;
+  classification: "suggested" | "agency";
+  values: CatalogDraftCodeValue[];
+  defaultValue: { code: string; codeSystem: string } | null;
+}
+
 export interface CatalogDraftDefinition {
   schemaVersion: 1;
   sourceReleaseId: string;
   elements: CatalogDraftElement[];
+  codeLists: CatalogDraftCodeList[];
 }
 
 export interface CatalogDraft {
