@@ -4,6 +4,7 @@ import type { FormCatalogElement, FormDraftDefinition, StationaryFormDraft } fro
 import React, { useEffect, useRef, useState } from "react";
 import { cloneStationaryFormDraft, loadStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
+import { StationaryFormPreview } from "./stationary-form-preview";
 
 type FormSection = FormDraftDefinition["sections"][number];
 
@@ -88,6 +89,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
   const [results, setResults] = useState<FormCatalogElement[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [targetSection, setTargetSection] = useState("");
+  const [previewing, setPreviewing] = useState(false);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const draftId = draft?.id;
 
@@ -146,6 +148,11 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
+  if (previewing) return <StationaryFormPreview draft={draft} onReturn={() => {
+    setPreviewing(false);
+    setStatus("Returned to the unchanged form draft.");
+  }} />;
+
   return <div className="form-editor">
     <p>Draft revision {draft.revision}. Published forms remain immutable and existing reports keep their pinned form version.</p>
     {draft.diagnostics.length > 0 && <div className="form-findings" role="alert">
@@ -169,6 +176,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId }: {
         setPendingRemoval(null); setStatus(section ? `Kept ${section.key}.` : "Removal canceled.");
       }} />
     <div className="form-actions">
+      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => setPreviewing(true)}>Preview Stationary form</button>
       <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
         const saved = await saveStationaryFormDraft(csrfToken, draft);
         setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);

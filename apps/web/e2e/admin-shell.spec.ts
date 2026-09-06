@@ -82,3 +82,43 @@ test("a forged browser capability cannot bypass direct Admin API authorization",
   await expect(page.locator(".admin-error")).toHaveText("Your account is not authorized to administer this installation.");
   await expect(page.getByRole("heading", { name: "Active configuration" })).toHaveCount(0);
 });
+
+test("owner previews the unsaved form through Stationary without creating a clinical record", async ({ page }) => {
+  const definition = { schemaVersion: 1, sections: [
+    { key: "patient", presentation: { title: "Patient preview" }, fields: [
+      { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" }, required: true },
+      { key: "age", source: { kind: "nemsis", elementId: "ePatient.15" } }
+    ] },
+    { key: "assessment", fields: [{ key: "impression", source: { kind: "nemsis", elementId: "eSituation.11" } }] }
+  ] };
+  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "version-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition, diagnostics: [], updatedAt: new Date().toISOString() };
+  const clinicalMutations: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && /\/api\/(reports|calls\/[^/]+\/open)/.test(request.url())) clinicalMutations.push(request.url());
+  });
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    activeConfiguration: { catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }
+  }) }));
+  await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ contentType: "application/json", body: "null" }));
+  await page.route("**/api/admin/form-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(draft) }));
+  await page.route("**/api/admin/form-drafts/draft-id/catalog-elements**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], nextOffset: null }) }));
+  await signInAsCombinedOwner(page);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Preview Stationary form" }).click();
+
+  await expect(page.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
+  await expect(page.locator('[data-element-id="ePatient.01"]')).toHaveCount(0);
+  await page.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
+  await page.getByRole("button", { name: "Return to form draft" }).click();
+
+  await expect(page.getByRole("button", { name: "Preview Stationary form" })).toBeVisible();
+  await expect(page.getByText("Returned to the unchanged form draft.")).toBeVisible();
+  await expect(page.locator(".form-fields").getByText("ePatient.02", { exact: true })).toBeVisible();
+  expect(clinicalMutations).toEqual([]);
+});

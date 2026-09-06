@@ -86,6 +86,9 @@ input, select, textarea { touch-action: manipulation; }
 .form-section-summary > div:first-child { display: grid; gap: 3px; }
 .form-section-summary small { color: var(--muted); }
 .form-section-actions, .form-remove-confirmation > div, .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.stationary-form-preview { border: 1px solid var(--line); border-radius: 14px; overflow: clip; background: #fff; }
+.stationary-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px; border-bottom: 1px solid var(--line); }
+.stationary-preview-heading h3, .stationary-preview-heading p { margin: 0; }
 .form-remove-confirmation { display: grid; gap: 10px; border: 2px solid #8b3a22; border-radius: 7px; padding: 14px; background: #fff7f4; }
 .form-remove-confirmation h3, .form-remove-confirmation p, .form-remove-confirmation ul { margin: 0; }
 .form-findings { border-left: 4px solid #9a6417; padding: 10px 12px; background: #fff8e8; }
@@ -402,6 +405,7 @@ input, select, textarea { touch-action: manipulation; }
   .stationary-record-section-heading > p { justify-content: flex-start; }
 }
 @media (max-width: 640px) {
+  .stationary-preview-heading { flex-direction: column; }
   .stationary-record-layout { display: block; padding: 8px; }
   .stationary-section-rail { position: relative; top: auto; max-height: none; margin-bottom: 12px; }
   .stationary-section-rail ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }

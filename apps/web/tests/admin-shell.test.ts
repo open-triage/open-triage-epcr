@@ -8,6 +8,9 @@ import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
+import { configuredStationaryPreviewSections } from "../app/stationary-record";
+import { syntheticEncounter } from "../app/standard-encounter";
+import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -99,6 +102,45 @@ test("Stationary section controls are named, keyboard-operable buttons with affe
   assert.match(controls, /2 affected fields/);
   assert.match(controls, /name \(ePatient\.02\)/);
   assert.match(controls, /Confirm removal/);
+});
+
+test("draft preview projects only configured sections and fields through Stationary groups", () => {
+  const sections = configuredStationaryPreviewSections(formDefinition);
+  assert.deepEqual(sections.map(({ label }) => label), ["patient", "assessment"]);
+  assert.deepEqual(sections[0]!.blocks.flatMap(({ elementIds }) => elementIds), ["ePatient.02", "ePatient.15"]);
+  assert.deepEqual(sections[1]!.blocks.flatMap(({ elementIds }) => elementIds), ["eSituation.11"]);
+  const included = sections.flatMap(({ blocks }) => blocks.flatMap(({ elementIds }) => elementIds));
+  assert.equal(included.includes("ePatient.01"), false);
+});
+
+test("Stationary preview is interactive, explicitly ephemeral, and leaves the fixture detached", () => {
+  const baseline = structuredClone(syntheticEncounter.document);
+  const previewDocument = createStationaryPreviewDocument();
+  assert.notStrictEqual(previewDocument, syntheticEncounter.document);
+  assert.deepEqual(syntheticEncounter.document, baseline);
+  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    updatedAt: "2026-09-07T01:00:00.000Z" };
+  const markup = renderToStaticMarkup(createElement(StationaryFormPreview, { draft, onReturn() {} }));
+  assert.match(markup, /Interactive fictional data only/);
+  assert.match(markup, /Return to form draft/);
+  assert.match(markup, /aria-label="Complete stationary NEMSIS record"/);
+  assert.match(markup, /data-element-id="ePatient\.02"/);
+  assert.match(markup, /Acute pain/);
+  assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
+});
+
+test("preview validation is scoped to included fields and honors an explicit optional override", () => {
+  const document = createStationaryPreviewDocument();
+  const groups = document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
+    ...instance,
+    elements: instance.elements.map((element) => element.id === "ePatient.15" ? { ...element, values: [] } : element),
+  })) }));
+  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
+      { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" }, required: false }
+    ] }] }, diagnostics: [], updatedAt: "2026-09-07T01:00:00.000Z" };
+  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), false);
 });
 
 test("form saves send section order with the current revision and CSRF proof", async (t) => {
