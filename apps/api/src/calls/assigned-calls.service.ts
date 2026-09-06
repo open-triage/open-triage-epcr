@@ -176,7 +176,7 @@ export class AssignedCallsService {
   ) {}
 
   async list(accessToken: string, now = new Date()): Promise<AssignedCallsResponse> {
-    const session = this.sessions.get(accessToken, now);
+    const session = await this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<AssignedCallRow[]>(`
       select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
              organization.deployment_timezone as agency_time_zone,
@@ -207,7 +207,7 @@ export class AssignedCallsService {
   }
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     return this.dataSource.transaction(async (manager) => {
       const assignments = await manager.query<OpenableAssignmentRow[]>(`
         select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,

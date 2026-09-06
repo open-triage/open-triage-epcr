@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
+import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
@@ -38,7 +39,7 @@ export function AssignedCalls({
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetchAssignedCalls(session.accessToken);
+      const response = await fetchAssignedCalls(sessionRequestToken(session));
       const visible = response.assignedCalls.filter((call) => !suppressedCallNumbers.includes(call.callNumber));
       callsRef.current = visible;
       setCalls(visible);
@@ -53,7 +54,7 @@ export function AssignedCalls({
     setOpeningId(call.id);
     setError(null);
     try {
-      const opened = await openAssignedCall(session.accessToken, call.id);
+      const opened = await openAssignedCall(sessionRequestToken(session), call.id);
       const nextCalls = callsRef.current.filter((candidate) => candidate.id !== call.id);
       if (opened.replacementAssignment && !nextCalls.some((candidate) => candidate.id === opened.replacementAssignment!.id)) {
         nextCalls.unshift(opened.replacementAssignment);

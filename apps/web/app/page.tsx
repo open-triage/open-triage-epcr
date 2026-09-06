@@ -33,6 +33,7 @@ import {
   dispatchCancellationNotice,
 } from "./draft-report";
 import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { sessionRequestToken } from "./clinician-session";
 import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
@@ -317,7 +318,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     try {
-      await signDraftReport(session.accessToken, report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
+      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
       purgeCompletedReportCaches(window.localStorage, [report.id]);
       removeSignedOfflineReport(window.localStorage, report.id);
       onReportCompleted();

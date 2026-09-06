@@ -19,7 +19,7 @@ export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeI
   if (!encoded) return null;
   try {
     const session = JSON.parse(encoded) as ClinicianSession;
-    if (!session.accessToken || !session.user?.id || !session.organization?.id || !sessionIsActive(session, now)) {
+    if ((!session.csrfToken && !session.accessToken) || !session.user?.id || !session.organization?.id || !sessionIsActive(session, now)) {
       storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
       return null;
     }
@@ -28,6 +28,10 @@ export function loadClinicianSession(storage: Pick<Storage, "getItem" | "removeI
     storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
     return null;
   }
+}
+
+export function sessionRequestToken(session: ClinicianSession): string {
+  return session.csrfToken ?? session.accessToken ?? "";
 }
 
 export function storeClinicianSession(storage: Pick<Storage, "setItem">, session: ClinicianSession): void {
@@ -48,6 +52,7 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
   if (baseUrl) {
     const response = await fetch(`${baseUrl}/api/sessions`, {
       method: "POST",
+      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(command)
     });
@@ -68,11 +73,25 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
   };
 }
 
-export async function endClinicianSession(accessToken: string): Promise<void> {
+export async function endClinicianSession(csrfToken: string): Promise<void> {
   const baseUrl = apiBaseUrl();
   if (!baseUrl) return;
   await fetch(`${baseUrl}/api/sessions/current`, {
     method: "DELETE",
-    headers: { authorization: `Bearer ${accessToken}` }
+    credentials: "include",
+    headers: { "x-csrf-token": csrfToken }
   });
+}
+
+export async function changeClinicianPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<ClinicianSession> {
+  const baseUrl = apiBaseUrl();
+  if (!baseUrl) throw new Error("Password replacement is unavailable in the static demonstration.");
+  const response = await fetch(`${baseUrl}/api/sessions/password`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+    body: JSON.stringify({ currentPassword, newPassword, csrfToken })
+  });
+  if (!response.ok) throw new Error(response.status === 401 ? "The current password is incorrect." : "The password could not be changed.");
+  return response.json() as Promise<ClinicianSession>;
 }

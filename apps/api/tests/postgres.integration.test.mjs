@@ -7,6 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
+import { UnauthorizedException } from "@nestjs/common";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -16,6 +17,7 @@ import {
   DEMO_CLINICIAN_USERNAME,
   ClinicianSessionService
 } from "../dist/sessions/clinician-session.service.js";
+import { AccountService } from "../dist/identity/account.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +39,11 @@ async function ensureFoundation(client) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8");
     await client.query(migration);
   }
+  const identitySessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
+  if (!identitySessions.rows[0].app_session) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8");
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -44,6 +51,67 @@ async function ensureFoundation(client) {
     });
   }
 }
+
+integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Local identity', 'UTC')", [organizationId]);
+
+  const provisioned = await accounts.provision({
+    organizationId, username: `owner.${randomUUID()}`, displayName: "Installation Owner",
+    role: "owner", temporaryPassword: "Temporary!Password-253"
+  });
+  const credential = await client.query(
+    "select username, password_verifier, must_change_password from app_identity.local_credential where user_id = $1",
+    [provisioned.userId]
+  );
+  assert.equal(credential.rows[0].must_change_password, true);
+  assert.doesNotMatch(credential.rows[0].password_verifier, /Temporary!Password-253/);
+
+  const limited = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" });
+  assert.equal(limited.session.passwordChangeRequired, true);
+  assert.equal(limited.session.accessToken, undefined);
+  assert.ok(limited.session.capabilities.includes("installation:administer"));
+  await assert.rejects(sessions.get(limited.sessionToken), /password change is required/i);
+
+  const active = await sessions.changePassword(limited.sessionToken, {
+    currentPassword: "Temporary!Password-253", newPassword: "Permanent!Password-253",
+    csrfToken: limited.session.csrfToken
+  });
+  assert.equal(active.session.passwordChangeRequired, false);
+  await assert.rejects(sessions.get(limited.sessionToken), UnauthorizedException);
+  assert.equal((await sessions.get(active.sessionToken)).organization.id, organizationId);
+  assert.equal((await sessions.requireCapability(active.sessionToken, "installation:administer")).user.id, provisioned.userId);
+  await assert.rejects(sessions.get(active.sessionToken, new Date(active.session.expiresAt)), UnauthorizedException);
+  await assert.rejects(sessions.end(active.sessionToken, "forged-csrf"), /CSRF/);
+  await sessions.end(active.sessionToken, active.session.csrfToken);
+  await assert.rejects(sessions.get(active.sessionToken), UnauthorizedException);
+
+  const beforeReset = await sessions.create({ username: provisioned.username, password: "Permanent!Password-253" });
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "wrong password value" }), UnauthorizedException);
+  await accounts.resetPassword(provisioned.username, "Reset!Temporary-Password-253");
+  await assert.rejects(sessions.get(beforeReset.sessionToken), UnauthorizedException);
+  const reset = await sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" });
+  assert.equal(reset.session.passwordChangeRequired, true);
+  await client.query("update app_identity.app_user set active = false, deactivated_at = now() where id = $1", [provisioned.userId]);
+  await assert.rejects(sessions.get(reset.sessionToken, new Date(), true), UnauthorizedException);
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" }), UnauthorizedException);
+
+  const audit = await client.query(
+    "select action, result, details::text from app_identity.authentication_event where target_user_id = $1 order by id",
+    [provisioned.userId]
+  );
+  assert.ok(audit.rows.some(({ action, result }) => action === "authentication.password_change" && result === "succeeded"));
+  assert.ok(audit.rows.some(({ action }) => action === "account.reset_password"));
+  assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
+  await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
@@ -384,8 +452,11 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   });
   assert.equal(signIn.status, 201);
   const session = await signIn.json();
+  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
+  assert.match(signIn.headers.get("set-cookie") ?? "", /HttpOnly.*Secure.*SameSite=Strict/i);
+  assert.equal(session.accessToken, undefined);
   const response = await fetch(`${baseUrl}/calls/assigned`, {
-    headers: { authorization: `Bearer ${session.accessToken}` }
+    headers: { cookie: sessionCookie }
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
@@ -407,7 +478,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   try {
     await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
     const canceled = await fetch(`${baseUrl}/calls/assigned`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: { cookie: sessionCookie }
     });
     const canceledPayload = await canceled.json();
     assert.deepEqual(canceledPayload.assignedCalls, []);
@@ -438,6 +509,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
   });
   const session = await signIn.json();
+  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
   const assignmentId = (await client.query(`
     select id from clinical.call_assignment
     where organization_id = '32000000-0000-4000-8000-000000000001'
@@ -455,7 +527,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     const requestOpen = async () => {
       const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
         method: "POST",
-        headers: { authorization: `Bearer ${session.accessToken}` }
+        headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
       });
       const payload = await response.json();
       assert.equal(response.status, 200, JSON.stringify(payload));

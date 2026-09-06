@@ -9,6 +9,7 @@ import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/
 import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.validation.js";
 import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
 import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
+import { createPasswordVerifier } from "../../../apps/api/dist/identity/password.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -83,13 +84,23 @@ const formDefinition = {
 
 async function ensureFoundation(client) {
   const existing = await client.query("select to_regclass('app_identity.organization') as organization");
-  if (existing.rows[0].organization) return false;
-  const migration = await readFile(
-    path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"),
-    "utf8"
-  );
-  await client.query(migration);
-  return true;
+  let migrated = false;
+  if (!existing.rows[0].organization) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"
+    );
+    await client.query(migration);
+    migrated = true;
+  }
+  const sessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
+  if (!sessions.rows[0].app_session) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8"
+    );
+    await client.query(migration);
+    migrated = true;
+  }
+  return migrated;
 }
 
 async function ensureCatalog() {
@@ -106,6 +117,7 @@ const dispatchWriter = {
 try {
   const migrated = await ensureFoundation(client);
   const catalogLoad = await ensureCatalog();
+  const demoPasswordVerifier = await createPasswordVerifier("open-triage-demo");
 
   await client.query("begin");
   try {
@@ -138,6 +150,13 @@ try {
         ($2, $4, 'synthetic-bootstrap', 'clinician')
       on conflict do nothing
     `, [ids.administratorIdentity, ids.clinicianIdentity, ids.administrator, ids.clinician]);
+
+    await client.query(`
+      insert into app_identity.local_credential
+        (user_id, username, password_verifier, must_change_password, password_changed_at)
+      values ($1, 'demo.clinician', $2, false, now())
+      on conflict (user_id) do nothing
+    `, [ids.clinician, demoPasswordVerifier]);
 
     await client.query(`
       insert into app_identity.capability (key, description)

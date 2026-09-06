@@ -4,12 +4,14 @@ import type { ClinicianSession } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
+  changeClinicianPassword,
   createClinicianSession,
   DEMO_CLINICIAN_PASSWORD,
   DEMO_CLINICIAN_USERNAME,
   endClinicianSession,
   loadClinicianSession,
-  storeClinicianSession
+  storeClinicianSession,
+  sessionRequestToken
 } from "../app/clinician-session";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
@@ -93,8 +95,33 @@ export function ClinicianSessionGate({ children }: {
     }
   }
 
+  async function replacePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session) return;
+    setSubmitting(true);
+    setMessage(null);
+    const form = new FormData(event.currentTarget);
+    const next = String(form.get("newPassword") ?? "");
+    if (next !== String(form.get("confirmPassword") ?? "")) {
+      setMessage("The new passwords do not match.");
+      setSubmitting(false);
+      return;
+    }
+    try {
+      const changed = await changeClinicianPassword(
+        String(form.get("currentPassword") ?? ""), next, sessionRequestToken(session)
+      );
+      storeClinicianSession(window.localStorage, changed);
+      setSession(changed);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "The password could not be changed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   function logOut() {
-    const accessToken = session?.accessToken;
+    const accessToken = session ? sessionRequestToken(session) : "";
     clearClinicianSession(window.localStorage);
     setSession(null);
     setActiveReport(null);
@@ -139,6 +166,20 @@ export function ClinicianSessionGate({ children }: {
         </form>
       </main>
     );
+  }
+  if (session.passwordChangeRequired) {
+    return <main className="login-shell">
+      <form className="login-card" onSubmit={replacePassword}>
+        <p className="eyebrow">Account security</p>
+        <h1>Replace temporary password</h1>
+        <p>Your temporary password can only open this password-replacement screen.</p>
+        {message && <p className="login-message" role="status">{message}</p>}
+        <label>Temporary password<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+        <label>New password<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
+        <label>Confirm new password<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
+        <button type="submit" disabled={submitting}>{submitting ? "Replacing…" : "Replace password"}</button>
+      </form>
+    </main>;
   }
 
   return (
