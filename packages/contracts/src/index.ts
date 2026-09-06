@@ -87,6 +87,57 @@ export interface AdminContext {
   } | null;
 }
 
+export interface CatalogDraftElement {
+  elementId: string;
+  identityId: string;
+  baseDatatype: string;
+  storageSemantics: {
+    sourceDatatype: string;
+    groupPath: string[];
+    analyticalLocation: "wide" | "repeatable" | "unmapped";
+    sqlType: string;
+  };
+  agencyRequired: boolean;
+  constraints: {
+    minOccurs: number;
+    maxOccurs: number | null;
+    nillable: boolean;
+    supportsNotValues: boolean;
+    supportsPertinentNegatives: boolean;
+  };
+}
+
+export interface CatalogDraftDefinition {
+  schemaVersion: 1;
+  sourceReleaseId: string;
+  elements: CatalogDraftElement[];
+}
+
+export interface CatalogDraft {
+  id: string;
+  sourceReleaseId: string;
+  revision: number;
+  definitionSha256: string;
+  definition: CatalogDraftDefinition;
+  updatedAt: string;
+}
+
+export interface CatalogValidationResult {
+  valid: boolean;
+  findings: string[];
+  definitionSha256: string;
+  projectionsVerified: boolean;
+}
+
+export interface PublishedCatalog {
+  id: string;
+  status: "published";
+  version: string;
+  definitionSha256: string;
+  publishedAt: string;
+  projectionsVerified: true;
+}
+
 export type AssignmentStatus = "assigned";
 
 export interface DispatchPriority {

@@ -44,7 +44,7 @@ test("direct admin access fails before configuration is queried without the capa
   const service = new AdminService({ query: async () => { queried = true; return []; } }, {
     requireCapability: async () => { throw new UnauthorizedException("The requested capability is required"); }
   });
-  const controller = new AdminController(service);
+  const controller = new AdminController(service, {});
 
   await assert.rejects(
     controller.context({ headers: {} }, "Bearer clinician-session"),
