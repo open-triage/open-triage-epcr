@@ -56,6 +56,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     "utf8"
   );
   await client.query(migration);
+  const catalogAuthoringMigration = await readFile(
+    path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"),
+    "utf8"
+  );
+  await client.query(catalogAuthoringMigration);
 
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };

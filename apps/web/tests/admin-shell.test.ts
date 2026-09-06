@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ClinicianSession } from "@open-triage/contracts";
-import { loadAdminContext } from "../app/admin-context";
+import { loadAdminContext, saveCatalogDraft } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 
 const session: ClinicianSession = {
@@ -27,4 +27,19 @@ test("Admin context reports direct authorization failures without trusting clien
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response("Unauthorized", { status: 401 });
   await assert.rejects(loadAdminContext(), /not authorized/);
+});
+
+test("catalog saves send the current revision and CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", sourceReleaseId: "release-id", revision: 7,
+    definitionSha256: "a".repeat(64), updatedAt: "2026-09-06T12:00:00.000Z",
+    definition: { schemaVersion: 1 as const, sourceReleaseId: "release-id", elements: [] } };
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "PUT");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, definition: draft.definition });
+    return Response.json({ ...draft, revision: 8 });
+  };
+  assert.equal((await saveCatalogDraft("csrf-proof", draft)).revision, 8);
 });

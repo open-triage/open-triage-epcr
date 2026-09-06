@@ -14,7 +14,7 @@ const repoRoot = path.resolve(packageRoot, "../..");
 const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
-  operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier] = await Promise.all([
+  operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -33,8 +33,18 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(packageRoot, "config/database-operations-policy.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "docs/runbooks/database-operations.md"), "utf8"),
   readFile(path.join(packageRoot, "scripts/verify-recovery.mjs"), "utf8"),
-  readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8")
+  readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8")
 ]);
+
+test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
+  assert.match(catalogAuthoringMigration, /create table catalog\.authoring_draft/);
+  assert.match(catalogAuthoringMigration, /revision integer not null/);
+  assert.match(catalogAuthoringMigration, /catalog_one_editable_draft_per_organization/);
+  assert.match(catalogAuthoringMigration, /prevent_sealed_projection_mutation/);
+  assert.match(catalogAuthoringMigration, /before insert or update or delete on catalog\.element_option/);
+  assert.match(catalogAuthoringMigration, /catalog_publication_event_append_only/);
+});
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
   const boundary = evaluateQualityAndNormalization([

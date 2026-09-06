@@ -19,6 +19,7 @@ import {
 } from "../dist/sessions/clinician-session.service.js";
 import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
+import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -43,6 +44,11 @@ async function ensureFoundation(client) {
   const identitySessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
   if (!identitySessions.rows[0].app_session) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8");
+    await client.query(migration);
+  }
+  const catalogDrafts = await client.query("select to_regclass('catalog.authoring_draft') as authoring_draft");
+  if (!catalogDrafts.rows[0].authoring_draft) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8");
     await client.query(migration);
   }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
@@ -155,6 +161,47 @@ integrationTest("authorized Admin context resolves only the session organization
     catalog: { id: release.rows[0].id, standard: "NEMSIS", version: "3.5.1" },
     stationaryForm: { id: formVersionId, formId, name: "Agency Stationary", version: 3 }
   });
+
+  const manager = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const transactionalDatabase = {
+    manager,
+    query: manager.query,
+    transaction: async (_isolation, work) => {
+      await client.query("begin");
+      try { const result = await work(manager); await client.query("commit"); return result; }
+      catch (error) { await client.query("rollback"); throw error; }
+    }
+  };
+  const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
+  const draft = await authoring.cloneActive(active.sessionToken);
+  assert.equal(draft.revision, 1);
+  const changedElement = draft.definition.elements[0];
+  const changedDefinition = { ...draft.definition, elements: draft.definition.elements.map((element) =>
+    element.elementId === changedElement.elementId ? { ...element, agencyRequired: !element.agencyRequired } : element) };
+  const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition });
+  await assert.rejects(authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition }),
+    /revision is stale/i);
+  const validation = await authoring.validate(active.sessionToken, draft.id);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.projectionsVerified, true);
+  const published = await authoring.publish(active.sessionToken, draft.id, {
+    expectedRevision: saved.revision, definitionSha256: saved.definitionSha256,
+    changeNote: "Agency validation acceptance journey"
+  });
+  assert.equal(published.projectionsVerified, true);
+  const requiredness = await client.query(`select
+    (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
+    (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,
+  [release.rows[0].id, published.id, changedElement.elementId]);
+  assert.equal(requiredness.rows[0].source_required, null);
+  assert.equal(requiredness.rows[0].published_required, !changedElement.agencyRequired);
+  await assert.rejects(client.query("update catalog.element_definition set name='mutated' where release_id=$1 and element_id=$2",
+    [published.id, changedElement.elementId]), /immutable/);
+  await assert.rejects(client.query(`insert into catalog.element_option
+    (release_id, element_id, source_kind, code, display, code_system) values ($1,$2,'inline','late-code','Late','')`,
+    [published.id, changedElement.elementId]), /sealed and immutable/);
+  const event = await client.query("select result, change_note from catalog.publication_event where release_id=$1", [published.id]);
+  assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
 });
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {

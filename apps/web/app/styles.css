@@ -78,6 +78,13 @@ input, select, textarea { touch-action: manipulation; }
 .admin-placeholder h3 { margin: 0 0 10px; font-size: var(--text-control); }
 .admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
 .admin-placeholder strong { display: block; color: #454944; }
+.catalog-empty, .catalog-editor { display: grid; gap: 12px; padding: 18px; }
+.catalog-editor input[type="search"], .catalog-editor input[type="number"], .catalog-editor textarea { border: 1px solid #87928a; border-radius: 5px; padding: 8px; font: inherit; }
+.catalog-elements { display: grid; gap: 10px; max-height: 520px; overflow: auto; }
+.catalog-elements fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.catalog-elements label { display: grid; gap: 5px; }
+.catalog-actions { display: grid; gap: 10px; align-items: start; }
+.catalog-actions button, .catalog-empty button { justify-self: start; }
 @media (max-width: 640px) {
   .admin-shell > .admin-shell { padding: 16px 12px 32px; }
   .admin-configuration dl { grid-template-columns: 1fr; }

@@ -3,6 +3,7 @@
 import type { AdminContext, ClinicianSession } from "@open-triage/contracts";
 import { useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
+import { CatalogAuthoring } from "./catalog-authoring";
 
 const deferredPanels = [
   "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
@@ -60,6 +61,11 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
         <div><dt>Element catalog</dt><dd>{context.activeConfiguration.catalog.standard} {context.activeConfiguration.catalog.version}</dd></div>
         <div><dt>Stationary form</dt><dd>{context.activeConfiguration.stationaryForm.name}, version {context.activeConfiguration.stationaryForm.version}</dd></div>
       </dl> : <p role="status">No active Stationary configuration is assigned to an operational unit.</p>}
+    </section>}
+
+    {context && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
+      <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="catalog-authoring-heading">Element catalog</h2></div></div>
+      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
     </section>}
 
     <section className="admin-panels" aria-labelledby="admin-panels-heading">
