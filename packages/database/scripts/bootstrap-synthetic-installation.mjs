@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
+import { parseInstallationSettings } from "@open-triage/contracts";
 import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.validation.js";
 import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
 import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
@@ -13,6 +14,16 @@ import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
+const settingsFlag = process.argv.indexOf("--settings");
+if (settingsFlag < 0 || !process.argv[settingsFlag + 1]) {
+  throw new Error("--settings <installation-settings.json> is required");
+}
+const settingsPath = path.resolve(process.cwd(), process.argv[settingsFlag + 1]);
+const installationSettings = parseInstallationSettings(JSON.parse(await readFile(settingsPath, "utf8")));
+if (!installationSettings.syntheticFixtures.enabled) {
+  console.log(JSON.stringify({ status: "skipped", reason: "syntheticFixtures.enabled is false" }));
+  process.exit(0);
+}
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to bootstrap the synthetic installation");
@@ -20,14 +31,17 @@ const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
 const dispatchSamplePath = path.join(
   repoRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"
 );
-const dispatchSourceBytes = await readFile(dispatchSamplePath);
-const dispatchPayload = JSON.parse(dispatchSourceBytes.toString("utf8"));
-const dispatchCatalog = JSON.parse(await readFile(
-  path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"
-));
-const validatedDispatch = validateDispatchAssignment(dispatchPayload, dispatchCatalog);
-if (!validatedDispatch.canonical) throw new Error("The committed initial dispatch sample is invalid");
-const dispatchProjection = projectDispatchAssignment(validatedDispatch.canonical);
+const dispatchSourceBytes = installationSettings.sampleDispatchAssignment.enabled
+  ? await readFile(dispatchSamplePath)
+  : null;
+const dispatchCatalog = installationSettings.sampleDispatchAssignment.enabled
+  ? JSON.parse(await readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"))
+  : null;
+const validatedDispatch = dispatchSourceBytes && dispatchCatalog
+  ? validateDispatchAssignment(JSON.parse(dispatchSourceBytes.toString("utf8")), dispatchCatalog)
+  : null;
+if (validatedDispatch && !validatedDispatch.canonical) throw new Error("The committed initial dispatch sample is invalid");
+const dispatchProjection = validatedDispatch?.canonical ? projectDispatchAssignment(validatedDispatch.canonical) : null;
 
 // Stable UUIDs make this fixture an idempotent installation baseline. Every clinical
 // UUID is v4-shaped so the same constraints used for offline-created records apply.
@@ -224,36 +238,38 @@ try {
         (id, organization_id, call_sign, name, default_form_id, synthetic)
       values ($1, $2, $3, 'Demo dispatch unit', $4, true)
       on conflict do nothing
-    `, [ids.unit, ids.organization, dispatchProjection.callSign, ids.form]);
+    `, [ids.unit, ids.organization, dispatchProjection?.callSign ?? "SYNTHETIC-UNIT-1", ids.form]);
     await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
       values ($3, $1, $2)
       on conflict do nothing
     `, [ids.unit, ids.clinician, ids.organization]);
 
-    const dispatchIngestion = await ingestDispatchDelivery(dispatchWriter, {
-      organizationId: ids.organization,
-      sourceId: "synthetic-bootstrap",
-      sourceBytes: dispatchSourceBytes
-    }, dispatchCatalog);
-    if (!["applied", "replayed", "applied_with_findings"].includes(dispatchIngestion.status)) {
-      throw new Error(`Initial dispatch sample was not applied: ${dispatchIngestion.status}`);
-    }
-    await client.query(`
-      update clinical.call_assignment ca
-      set synthetic = true
-      where ca.organization_id = $1 and ca.dispatch_source_id = 'synthetic-bootstrap'
-        and ca.dispatch_source_record_id = $2
-    `, [ids.organization, dispatchProjection.sourceRecordId]);
-    await client.query(`
-      update clinical.incident i
-      set synthetic = true, baseline = true
-      where i.id = (
-        select ca.incident_id from clinical.call_assignment ca
+    if (dispatchSourceBytes && dispatchCatalog && dispatchProjection) {
+      const dispatchIngestion = await ingestDispatchDelivery(dispatchWriter, {
+        organizationId: ids.organization,
+        sourceId: "synthetic-bootstrap",
+        sourceBytes: dispatchSourceBytes
+      }, dispatchCatalog);
+      if (!["applied", "replayed", "applied_with_findings"].includes(dispatchIngestion.status)) {
+        throw new Error(`Initial dispatch sample was not applied: ${dispatchIngestion.status}`);
+      }
+      await client.query(`
+        update clinical.call_assignment ca
+        set synthetic = true
         where ca.organization_id = $1 and ca.dispatch_source_id = 'synthetic-bootstrap'
           and ca.dispatch_source_record_id = $2
-      )
-    `, [ids.organization, dispatchProjection.sourceRecordId]);
+      `, [ids.organization, dispatchProjection.sourceRecordId]);
+      await client.query(`
+        update clinical.incident i
+        set synthetic = true, baseline = true
+        where i.id = (
+          select ca.incident_id from clinical.call_assignment ca
+          where ca.organization_id = $1 and ca.dispatch_source_id = 'synthetic-bootstrap'
+            and ca.dispatch_source_record_id = $2
+        )
+      `, [ids.organization, dispatchProjection.sourceRecordId]);
+    }
 
     await client.query(`
       insert into clinical.incident

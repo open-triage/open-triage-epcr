@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-triage.org/schemas/installation-settings-1.0.0.json",
+  "title": "OpenTriage installation settings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "syntheticFixtures",
+    "sampleDispatchAssignment",
+    "syntheticDataBanner",
+    "clinicalRetention",
+    "authentication",
+    "administration",
+    "exports"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "syntheticFixtures": { "$ref": "#/$defs/toggle" },
+    "sampleDispatchAssignment": { "$ref": "#/$defs/toggle" },
+    "syntheticDataBanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "heading", "message"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "heading": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "clinicalRetention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["durationHours", "automaticDeletionEnabled"],
+      "properties": {
+        "durationHours": { "type": "integer", "minimum": 1 },
+        "automaticDeletionEnabled": { "type": "boolean" }
+      }
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength"],
+      "properties": {
+        "sessionDurationMinutes": { "type": "integer", "minimum": 15 },
+        "idleTimeoutMinutes": { "type": "integer", "minimum": 5 },
+        "minimumPasswordLength": { "type": "integer", "minimum": 8 }
+      }
+    },
+    "administration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readOnly"],
+      "properties": { "readOnly": { "type": "boolean" } }
+    },
+    "exports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"],
+      "properties": {
+        "downloadsAllowed": { "type": "boolean" },
+        "auditExportsAllowed": { "type": "boolean" },
+        "configurationExportsAllowed": { "type": "boolean" }
+      }
+    }
+  },
+  "$defs": {
+    "toggle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": { "enabled": { "type": "boolean" } }
+    }
+  }
+}

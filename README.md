@@ -61,6 +61,10 @@ an explicit **Sign in** action. The seeded organization fixes that session at 14
 hours from login; the API automatically rejects it at that deadline, and **Log out**
 ends it immediately. Deployments can change `shift_session_duration_hours` on the
 organization until the stationary administration interface is available.
+Select `OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the API and
+`NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the web app when
+running this fixture. With no selection, both applications use the safe production
+baseline and synthetic fixtures, sample assignment generation, and the banner stay off.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. The API derives the analytical patient
@@ -84,7 +88,10 @@ The web app exports to static files and does not require the API, PostgreSQL,
 Supabase, authentication, or runtime terminology access:
 
 ```sh
-NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo npm run build -w @open-triage/web
+NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo \
+NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo \
+NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION=true \
+  npm run build -w @open-triage/web
 npm run test:deployment -w @open-triage/web
 ```
 

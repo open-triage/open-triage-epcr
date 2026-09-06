@@ -366,7 +366,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
@@ -422,7 +422,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 

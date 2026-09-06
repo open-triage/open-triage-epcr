@@ -7,11 +7,12 @@ import type {
   OpenCallsResponse,
   ReopenOpenCallResponse
 } from "@open-triage/contracts";
+import { selectedInstallationSettings } from "./installation-settings";
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
 
 function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
+  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 }
 
@@ -40,6 +41,9 @@ export function assignedCallsUrl(): string {
 }
 
 export async function fetchAssignedCalls(accessToken: string): Promise<AssignedCallsResponse> {
+  if (!apiBaseUrl() && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
+    return { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() };
+  }
   const response = await fetch(assignedCallsUrl(), {
     cache: "no-store",
     headers: { authorization: `Bearer ${accessToken}` }
@@ -63,7 +67,10 @@ export function staticOpenAssignmentUrl(): string {
 export async function openAssignedCall(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
   let response: Response;
   try {
-    const staticExport = Boolean(process.env.NEXT_PUBLIC_BASE_PATH);
+    const staticExport = apiBaseUrl() === null;
+    if (staticExport && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
+      throw new Error("Sample dispatch assignments are disabled for this installation.");
+    }
     response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), {
       method: staticExport ? "GET" : "POST",
       cache: "no-store",

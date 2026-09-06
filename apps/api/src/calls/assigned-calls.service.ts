@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
+import type { AssignedCall, AssignedCallsResponse, InstallationSettings, OpenAssignmentResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 type AssignedCallRow = {
   id: string;
@@ -168,6 +169,13 @@ function assignedCall(row: AssignedCallRow): AssignedCall {
   };
 }
 
+export function shouldCreateSampleReplacement(
+  syntheticAssignment: boolean,
+  settings: InstallationSettings = selectedInstallationSettings(),
+): boolean {
+  return syntheticAssignment && settings.sampleDispatchAssignment.enabled;
+}
+
 @Injectable()
 export class AssignedCallsService {
   constructor(
@@ -282,7 +290,7 @@ export class AssignedCallsService {
         where id = $1
       `, [assignment.id, reportId]);
 
-      const replacement = assignment.synthetic
+      const replacement = shouldCreateSampleReplacement(assignment.synthetic)
         ? await this.createReplacement(manager, assignment)
         : null;
       return this.openResult(manager, assignment, reportId, session.user.id, replacement);
