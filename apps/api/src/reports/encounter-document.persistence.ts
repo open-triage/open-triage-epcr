@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import type { DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import {
+  ENCOUNTER_DOCUMENT_SCHEMA,
+  ENCOUNTER_DOCUMENT_TYPE,
+  ENCOUNTER_MODEL_VERSION,
+  type DispatchConflict,
+  type EncounterDocument,
+  type EncounterValue,
+} from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type JsonRecord = Record<string, unknown>;
@@ -289,9 +296,9 @@ export async function encounterDocument(manager: EntityManager, reportId: string
     target.instances.push(instance); byGroup.set(group.group_id, target);
   }
   return {
-    $schema: "./encounter-document.schema-1.0.0.json",
-    documentType: "open-triage.encounter",
-    modelVersion: "1.1.0",
+    $schema: ENCOUNTER_DOCUMENT_SCHEMA,
+    documentType: ENCOUNTER_DOCUMENT_TYPE,
+    modelVersion: ENCOUNTER_MODEL_VERSION,
     dataModel: { standard: "NEMSIS", version: report.catalog_version, dataset: "EMSDataSet" },
     formProfile: { id: report.form_id, version: String(report.form_version) },
     encounter: { id: report.id, createdAt: new Date(report.created_at).toISOString(), updatedAt: new Date(report.updated_at).toISOString() },

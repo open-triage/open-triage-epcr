@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import type { AssignedCallsResponse, EncounterDocument, OpenAssignmentResponse, OpenCallsResponse } from "@open-triage/contracts";
+import {
+  ENCOUNTER_DOCUMENT_SCHEMA,
+  ENCOUNTER_DOCUMENT_TYPE,
+  ENCOUNTER_MODEL_VERSION,
+  type AssignedCallsResponse,
+  type EncounterDocument,
+  type OpenAssignmentResponse,
+  type OpenCallsResponse,
+} from "@open-triage/contracts";
 import { projectDispatchAssignment } from "../../api/src/dispatch/dispatch-assignment.projection.js";
 import {
   validateDispatchAssignment,
@@ -63,9 +71,9 @@ export function buildDemoFixtures(
     },
   ];
   const encounterDocument: EncounterDocument = {
-    $schema: "./encounter-document.schema-1.0.0.json",
-    documentType: "open-triage.encounter",
-    modelVersion: "1.1.0",
+    $schema: ENCOUNTER_DOCUMENT_SCHEMA,
+    documentType: ENCOUNTER_DOCUMENT_TYPE,
+    modelVersion: ENCOUNTER_MODEL_VERSION,
     dataModel: canonical.dataModel as EncounterDocument["dataModel"],
     formProfile: { id: "standard-encounter-v1", version: "1" },
     encounter: { id: reportId, createdAt: sentAt, updatedAt: sentAt, synthetic: true },
