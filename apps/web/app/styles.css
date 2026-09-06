@@ -103,13 +103,6 @@ input, select, textarea { touch-action: manipulation; }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 :where(button, input, select, textarea):focus-visible { outline: 3px solid #725f00; outline-offset: 3px; }
 .content-panel { background: var(--paper); }
-.stationary-scalar-group { margin: 18px; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 3px 14px rgb(20 39 27 / 7%); }
-.stationary-scalar-group .section-heading { border-bottom: 1px solid var(--line); }
-.stationary-scalar-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); align-items: start; gap: 12px; padding: 14px; }
-.stationary-scalar-fields label { display: grid; align-content: start; gap: 7px; color: #454944; font-size: var(--text-caption); font-weight: 750; }
-.stationary-scalar-fields label > span small { margin-left: 5px; color: var(--muted); font-weight: 600; }
-.stationary-scalar-fields input { width: 100%; min-height: 48px; padding: 0 12px; border: 1px solid #bfc3bc; border-radius: 6px; color: #1a1c1a; background: white; font: inherit; font-size: var(--text-control); }
-.stationary-scalar-fields label > small { color: var(--muted); font-weight: 500; line-height: 1.35; }
 .stationary-scalar-occurrences { display: grid; gap: 8px; }
 .stationary-scalar-occurrence { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; }
 .stationary-occurrence-actions { display: flex; flex-wrap: wrap; gap: 8px; }

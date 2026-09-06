@@ -5,7 +5,7 @@ import synthetic from "../app/data/synthetic-encounter-document.json";
 import { pendingDraftTargets, reconcileActiveReportDocument } from "../app/active-report-reconciliation";
 import { encounterEvents } from "../app/canonical-events";
 import { encounterDocumentToDraftMutations, stableDraftId } from "../app/draft-report";
-import { editStationaryScalarValue } from "../app/stationary-scalar-group";
+import { editNonRepeatingScalarValue } from "../app/stationary-non-repeating";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
@@ -48,8 +48,14 @@ test("pending clinician removals stay removed while a clean report accepts the s
 
 test("target-aware reconciliation keeps a stationary field edit and a disjoint server field edit", () => {
   const baseline = structuredClone(synthetic) as EncounterDocument;
-  const local = editStationaryScalarValue(baseline, "ePatient.03", "Local first name", () => "unused");
-  const server = editStationaryScalarValue(baseline, "ePatient.02", "Server last name", () => "unused");
+  const nameElements = baseline.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  const occurrenceId = (elementId: string) => nameElements.find((element) => element.id === elementId)!.values[0]!.occurrenceId;
+  const localEdit = editNonRepeatingScalarValue(baseline, { groupId: "ePatient.PatientNameGroup", elementId: "ePatient.03", occurrenceId: occurrenceId("ePatient.03") }, "Local first name", () => "unused");
+  const serverEdit = editNonRepeatingScalarValue(baseline, { groupId: "ePatient.PatientNameGroup", elementId: "ePatient.02", occurrenceId: occurrenceId("ePatient.02") }, "Server last name", () => "unused");
+  assert.ok(localEdit.ok, "expected the local scalar edit to succeed");
+  assert.ok(serverEdit.ok, "expected the server scalar edit to succeed");
+  const local = localEdit.document;
+  const server = serverEdit.document;
   const persisted = encounterDocumentToDraftMutations(reportId, baseline);
   const command = encounterDocumentToDraftMutations(reportId, local, persisted);
   const targets = pendingDraftTargets(command, persisted);
