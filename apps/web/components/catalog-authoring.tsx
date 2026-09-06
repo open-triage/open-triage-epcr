@@ -4,7 +4,7 @@ import type { CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@o
 import React, { useEffect, useMemo, useState } from "react";
 import { cloneCatalogDraft, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 
-export function CatalogAuthoring({ csrfToken }: { readonly csrfToken: string }) {
+export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToken: string; readonly onPublished?: (catalogReleaseId: string) => void }) {
   const [draft, setDraft] = useState<CatalogDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
@@ -89,6 +89,7 @@ export function CatalogAuthoring({ csrfToken }: { readonly csrfToken: string }) 
       <button type="button" disabled={busy || dirty || !note.trim() || status !== "Catalog is valid and projections are verified."}
         onClick={() => action(async () => {
           const published = await publishCatalogDraft(csrfToken, draft, note);
+          onPublished?.(published.id);
           setDraft(null); setDirty(false); setNote(""); setStatus(`Published immutable catalog ${published.version}.`);
         })}>Publish immutable catalog</button>
     </div>

@@ -3,9 +3,10 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ClinicianSession } from "@open-triage/contracts";
-import { loadAdminContext, saveCatalogDraft } from "../app/admin-context";
+import { loadAdminContext, saveCatalogDraft, saveStationaryFormDraft } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
+import { affectedFieldNames, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -64,4 +65,47 @@ test("accessible move controls reorder values without changing code identity", (
   const moved = moveCodeValue(codeList, 1, 0);
   assert.deepEqual(moved.values.map(({ code }) => code), ["TWO", "ONE"]);
   assert.equal(moveCodeValue(codeList, 0, -1), codeList);
+});
+
+const formDefinition = { schemaVersion: 1 as const, sections: [
+  { key: "patient", fields: [{ key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } }] },
+  { key: "assessment", fields: [{ key: "impression", source: { kind: "nemsis" as const, elementId: "eSituation.11" } }] }
+] };
+
+test("section operations preserve canonical content while changing only section scope and sequence", () => {
+  const moved = moveFormSection(formDefinition, 1, 0);
+  assert.deepEqual(moved.sections.map(({ key }) => key), ["assessment", "patient"]);
+  assert.deepEqual(moved.sections[0]?.fields, formDefinition.sections[1]?.fields);
+  assert.deepEqual(affectedFieldNames(formDefinition.sections[0]!), ["name (ePatient.02)"]);
+  const removed = removeFormSection(formDefinition, 0);
+  assert.deepEqual(removed.sections.map(({ key }) => key), ["assessment"]);
+  assert.throws(() => removeFormSection(removed, 0), /at least one section/);
+});
+
+test("Stationary section controls are named, keyboard-operable buttons with affected-field confirmation", () => {
+  const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, { csrfToken: "csrf", catalogReleaseId: "catalog-id" }));
+  assert.match(markup, /Loading Stationary form draft/);
+  const controls = renderToStaticMarkup(createElement(StationarySectionControls, { definition: formDefinition, pendingRemoval: 0,
+    onMove: () => {}, onRequestRemoval: () => {}, onConfirmRemoval: () => {}, onCancelRemoval: () => {} }));
+  assert.match(controls, /aria-label="Move patient down"/);
+  assert.match(controls, /aria-label="Move assessment up"/);
+  assert.match(controls, /role="alertdialog"/);
+  assert.match(controls, /1 affected field/);
+  assert.match(controls, /name \(ePatient\.02\)/);
+  assert.match(controls, /Confirm removal/);
+});
+
+test("form saves send section order with the current revision and CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: moveFormSection(formDefinition, 1, 0), diagnostics: [],
+    updatedAt: "2026-09-07T01:00:00.000Z" };
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "PUT");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4, definition: draft.definition });
+    return Response.json({ ...draft, revision: 5 });
+  };
+  assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
 });

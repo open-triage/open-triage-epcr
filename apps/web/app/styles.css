@@ -79,6 +79,16 @@ input, select, textarea { touch-action: manipulation; }
 .admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
 .admin-placeholder strong { display: block; color: #454944; }
 .catalog-empty, .catalog-editor { display: grid; gap: 12px; padding: 18px; }
+.form-empty, .form-editor { display: grid; gap: 12px; padding: 18px; }
+.form-sections { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.form-sections > li { border: 1px solid var(--line); border-radius: 7px; padding: 12px; background: #fff; }
+.form-section-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.form-section-summary > div:first-child { display: grid; gap: 3px; }
+.form-section-summary small { color: var(--muted); }
+.form-section-actions, .form-remove-confirmation > div, .form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.form-remove-confirmation { display: grid; gap: 10px; border: 2px solid #8b3a22; border-radius: 7px; padding: 14px; background: #fff7f4; }
+.form-remove-confirmation h3, .form-remove-confirmation p, .form-remove-confirmation ul { margin: 0; }
+.form-findings { border-left: 4px solid #9a6417; padding: 10px 12px; background: #fff8e8; }
 .catalog-editor input[type="search"], .catalog-editor input[type="number"], .catalog-editor input:not([type]), .catalog-editor select, .catalog-editor textarea { border: 1px solid #87928a; border-radius: 5px; padding: 8px; font: inherit; }
 .catalog-elements { display: grid; gap: 10px; max-height: 520px; overflow: auto; }
 .catalog-elements fieldset { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
