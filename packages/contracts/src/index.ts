@@ -69,6 +69,24 @@ export interface EndClinicianSessionResponse {
   ended: true;
 }
 
+export interface AdminContext {
+  owner: ClinicianSession["user"];
+  organization: ClinicianSession["organization"];
+  activeConfiguration: {
+    catalog: {
+      id: string;
+      standard: string;
+      version: string;
+    };
+    stationaryForm: {
+      id: string;
+      formId: string;
+      name: string;
+      version: number;
+    };
+  } | null;
+}
+
 export type AssignmentStatus = "assigned";
 
 export interface DispatchPriority {

@@ -18,6 +18,7 @@ import {
   ClinicianSessionService
 } from "../dist/sessions/clinician-session.service.js";
 import { AccountService } from "../dist/identity/account.service.js";
+import { AdminService } from "../dist/admin/admin.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,6 +112,49 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.ok(audit.rows.some(({ action }) => action === "account.reset_password"));
   assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const admin = new AdminService(database, sessions);
+  const organizationId = randomUUID();
+  const formId = randomUUID();
+  const formVersionId = randomUUID();
+  const unitId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Admin shell', 'UTC')", [organizationId]);
+  const owner = await accounts.provision({
+    organizationId, username: `admin.${randomUUID()}`, displayName: "Installation Owner",
+    role: "owner", temporaryPassword: "Temporary!Password-254"
+  });
+  const temporary = await sessions.create({ username: owner.username, password: "Temporary!Password-254" });
+  const active = await sessions.changePassword(temporary.sessionToken, {
+    currentPassword: "Temporary!Password-254", newPassword: "Permanent!Password-254",
+    csrfToken: temporary.session.csrfToken
+  });
+  const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
+  await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'stationary', 'Agency Stationary')", [formId, organizationId]);
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+     change_note, created_by, published_by, published_at)
+    values ($1, $2, $3, 3, 'published', '{}'::jsonb, $4, 'Admin shell fixture', $5, $5, now())`,
+  [formVersionId, formId, release.rows[0].id, "0".repeat(64), owner.userId]);
+  await client.query(`insert into app_identity.operational_unit
+    (id, organization_id, call_sign, name, default_form_id)
+    values ($1, $2, 'ADMIN-254', 'Admin shell unit', $3)`, [unitId, organizationId, formId]);
+
+  const context = await admin.context(active.sessionToken);
+  assert.equal(context.owner.id, owner.userId);
+  assert.equal(context.organization.id, organizationId);
+  assert.deepEqual(context.activeConfiguration, {
+    catalog: { id: release.rows[0].id, standard: "NEMSIS", version: "3.5.1" },
+    stationaryForm: { id: formVersionId, formId, name: "Agency Stationary", version: 3 }
+  });
 });
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {

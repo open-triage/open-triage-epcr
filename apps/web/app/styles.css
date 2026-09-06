@@ -33,7 +33,7 @@ input, select, textarea { touch-action: manipulation; }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
 .session-identity { min-width: 0; text-align: center; }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
-.presentation-selector { display: grid; grid-template-columns: 1fr 1fr; padding: 2px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; }
+.presentation-selector { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; }
 .session-bar .presentation-selector button { min-height: 34px; padding: 3px 9px; border: 0; }
 .session-bar .presentation-selector button[aria-pressed="true"] { color: #123b52; background: #fff; }
 .authenticated-shell .safety-notice { top: 48px; }
@@ -58,6 +58,30 @@ input, select, textarea { touch-action: manipulation; }
 .assignment-empty { color: var(--muted); padding-inline: 0; }
 .assignment-error { border-left: 3px solid #a5342d; color: #812b26; background: #fff1f0; }
 .active-report-notice { margin: 0; padding: 9px 16px; background: #e8f3ee; color: #195b3b; font-size: var(--text-caption); font-weight: 700; }
+.admin-entry-blocked, .admin-error { margin: 0; padding: 12px 18px; border-left: 4px solid #a5342d; color: #812b26; background: #fff1f0; font-size: var(--text-body); font-weight: 700; }
+.authenticated-shell.admin-shell { max-width: 1440px; }
+.admin-shell > .admin-shell { display: grid; gap: 18px; max-width: 1200px; margin: 0 auto; padding: 28px 24px 48px; }
+.admin-heading { padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: 0 3px 14px rgb(20 39 27 / 7%); }
+.admin-heading h1 { margin: 4px 0 8px; font-size: 32px; }
+.admin-heading > p:last-child { margin: 0; color: var(--muted); }
+.admin-loading { margin: 0; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.admin-configuration, .admin-panels { border: 1px solid var(--line); border-radius: 10px; background: #f8faf8; box-shadow: 0 3px 14px rgb(20 39 27 / 7%); }
+.admin-configuration .section-heading, .admin-panels .section-heading { align-items: center; border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; background: #fff; }
+.admin-configuration h2, .admin-panels h2 { margin: 3px 0 0; font-size: var(--text-heading); }
+.admin-configuration dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 18px; }
+.admin-configuration dl > div { display: grid; gap: 5px; padding: 16px; border: 1px solid #cfd7d0; border-left: 4px solid var(--green); border-radius: 7px; background: #fff; }
+.admin-configuration dt { color: var(--muted); font-size: var(--text-caption); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.admin-configuration dd { margin: 0; font-size: var(--text-control); font-weight: 750; }
+.admin-configuration > p { margin: 18px; color: var(--muted); }
+.admin-placeholder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; padding: 18px; }
+.admin-placeholder { min-height: 130px; padding: 16px; border: 1px dashed #aeb4ac; border-radius: 8px; color: #454944; background: #f2f4f1; }
+.admin-placeholder h3 { margin: 0 0 10px; font-size: var(--text-control); }
+.admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
+.admin-placeholder strong { display: block; color: #454944; }
+@media (max-width: 640px) {
+  .admin-shell > .admin-shell { padding: 16px 12px 32px; }
+  .admin-configuration dl { grid-template-columns: 1fr; }
+}
 .draft-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .mobile-presentation .draft-actions { justify-content: space-between; margin: -2px 0 12px; }
 .draft-actions button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }
