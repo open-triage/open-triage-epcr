@@ -39,7 +39,10 @@ export interface CreateClinicianSessionCommand {
 }
 
 export interface ClinicianSession {
-  accessToken: string;
+  /** Present only in the static, serverless demonstration build. */
+  accessToken?: string;
+  /** Non-secret token echoed on cookie-authenticated state changes. */
+  csrfToken?: string;
   user: {
     id: string;
     displayName: string;
@@ -50,6 +53,14 @@ export interface ClinicianSession {
   };
   startedAt: string;
   expiresAt: string;
+  passwordChangeRequired?: boolean;
+  capabilities?: string[];
+}
+
+export interface ChangePasswordCommand {
+  currentPassword: string;
+  newPassword: string;
+  csrfToken: string;
 }
 
 export interface EndClinicianSessionResponse {

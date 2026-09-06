@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition } from "@open-triage/contracts";
+import { sessionRequestToken } from "./clinician-session";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
 import {
@@ -137,7 +138,7 @@ export function useReportWorkspace({
       markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
       const attempt = (async () => {
         try {
-          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
+          const saved = await saveDraftReport(sessionRequestToken(session), report.id, queued.command);
           if (saved.status === "signed") {
             completeReport();
             return;
@@ -245,7 +246,7 @@ export function useReportWorkspace({
       if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
       const previousEtag = activeEtag.current;
       try {
-        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
+        const response = await fetchActiveReport(sessionRequestToken(session), report.id, previousEtag);
         if (!response || stopped) return;
         activeEtag.current = response.etag || previousEtag;
         const local = shellRef.current.encounter.document;
@@ -296,7 +297,7 @@ export function useReportWorkspace({
     if (!report) return;
     setConflictError(null);
     try {
-      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
+      const resolved = await resolveDispatchConflict(sessionRequestToken(session), report.id, conflict.id, disposition);
       setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
       revision.current += 1;
     } catch (error) {

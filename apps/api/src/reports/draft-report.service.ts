@@ -138,7 +138,7 @@ export class DraftReportService {
   ) {}
 
   async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
@@ -238,7 +238,7 @@ export class DraftReportService {
   }
 
   async save(accessToken: string, reportId: string, input: unknown): Promise<SaveDraftReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -507,7 +507,7 @@ export class DraftReportService {
   }
 
   async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     return this.dataSource.transaction(async (manager) => {
       const report = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const groups = await manager.query<Array<Record<string, unknown>>>(`
@@ -541,7 +541,7 @@ export class DraftReportService {
   }
 
   async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
-    const session = this.sessions.get(accessToken, now);
+    const session = await this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<OpenCallRow[]>(`
       select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
              ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
@@ -593,7 +593,7 @@ export class DraftReportService {
   }
 
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     const details = await this.get(accessToken, reportId);
     const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
     const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
@@ -664,7 +664,7 @@ export class DraftReportService {
     readonly etag: string;
     readonly resource: ActiveReportResource | null;
   }> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     const rows = await this.dataSource.query<Array<{
       revision: string | number;
       dispatch_revision: string | number | null;
@@ -710,7 +710,7 @@ export class DraftReportService {
     conflictId: string,
     input: unknown
   ): Promise<DispatchConflict> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     if (!input || typeof input !== "object" || !uuidV4.test(String((input as ResolveDispatchConflictCommand).commandId)) ||
         !["keep", "accept", "acknowledge"].includes(String((input as ResolveDispatchConflictCommand).disposition))) {
       throw new UnprocessableEntityException("A UUIDv4 commandId and keep, accept, or acknowledge disposition are required");

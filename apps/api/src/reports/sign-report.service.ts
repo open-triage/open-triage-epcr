@@ -105,7 +105,7 @@ export class SignReportService {
   ) {}
 
   async sign(accessToken: string, reportId: string, input: unknown): Promise<SignedReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: SignReportCommand;
     try {
       command = validateSignReportCommand(input);

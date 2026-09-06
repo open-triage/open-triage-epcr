@@ -202,7 +202,7 @@ test("removing a persisted timeline event emits explicit group and occurrence to
   });
 });
 
-test("the web adapter sends bearer-authenticated commands to the report draft endpoint", async () => {
+test("the web adapter sends cookie credentials and a CSRF proof to the report draft endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let request: { input: string; init?: RequestInit } | undefined;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -218,7 +218,8 @@ test("the web adapter sends bearer-authenticated commands to the report draft en
     assert.equal(result.revision, 8);
     assert.equal(request?.input, draftChangesUrl(reportId));
     assert.equal(request?.init?.method, "POST");
-    assert.equal((request?.init?.headers as Record<string, string>).authorization, "Bearer token");
+    assert.equal(request?.init?.credentials, "include");
+    assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "token");
   } finally {
     globalThis.fetch = originalFetch;
   }

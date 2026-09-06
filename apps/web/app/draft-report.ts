@@ -237,7 +237,7 @@ export function draftChangesUrl(reportId: string): string {
   return base ? `${base}${path}` : `${process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? ""}${path}`;
 }
 
-export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
+export async function saveDraftReport(csrfToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
   // The static prototype's durable browser cache is its only backing store. A
   // successful local write is therefore synchronized; no nonexistent HTTP API
   // should leave the browser-only workflow permanently pending.
@@ -246,7 +246,7 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   }
   let response: Response;
   try {
-    response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(command) });
+    response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken, "content-type": "application/json" }, body: JSON.stringify(command) });
   } catch {
     throw new Error("offline");
   }
@@ -256,7 +256,7 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
 }
 
 export async function fetchActiveReport(
-  accessToken: string,
+  _csrfToken: string,
   reportId: string,
   etag?: string,
 ): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
@@ -266,7 +266,8 @@ export async function fetchActiveReport(
   try {
     response = await fetch(`${base}/api/reports/${reportId}/active`, {
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}`, ...(etag ? { "if-none-match": etag } : {}) },
+      credentials: "include",
+      headers: { ...(etag ? { "if-none-match": etag } : {}) },
     });
   } catch {
     throw new Error("offline");
@@ -278,7 +279,7 @@ export async function fetchActiveReport(
 }
 
 export async function signDraftReport(
-  accessToken: string,
+  csrfToken: string,
   reportId: string,
   expectedRevision: number,
   signerId: string,
@@ -291,7 +292,8 @@ export async function signDraftReport(
     response = await fetch(`${base}/api/reports/${reportId}/sign`, {
       method: "POST",
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      credentials: "include",
+      headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
         expectedRevision,

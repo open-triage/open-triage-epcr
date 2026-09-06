@@ -16,7 +16,7 @@ function apiBaseUrl(): string | null {
 }
 
 export async function resolveDispatchConflict(
-  accessToken: string,
+  csrfToken: string,
   reportId: string,
   conflictId: string,
   disposition: DispatchConflictDisposition
@@ -25,7 +25,8 @@ export async function resolveDispatchConflict(
   if (!baseUrl) throw new Error("Conflict dispositions require a connection to the report server.");
   const response = await fetch(`${baseUrl}/api/reports/${reportId}/dispatch-conflicts/${conflictId}`, {
     method: "POST", cache: "no-store",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    credentials: "include",
+    headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
     body: JSON.stringify({ commandId: crypto.randomUUID(), disposition })
   });
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The dispatch difference could not be resolved.");
@@ -42,7 +43,7 @@ export function assignedCallsUrl(): string {
 export async function fetchAssignedCalls(accessToken: string): Promise<AssignedCallsResponse> {
   const response = await fetch(assignedCallsUrl(), {
     cache: "no-store",
-    headers: { authorization: `Bearer ${accessToken}` }
+    credentials: "include"
   });
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Assigned calls could not be refreshed.");
   return response.json() as Promise<AssignedCallsResponse>;
@@ -60,14 +61,15 @@ export function staticOpenAssignmentUrl(): string {
   return `${basePath}/demo-open-assignment.json`;
 }
 
-export async function openAssignedCall(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
+export async function openAssignedCall(csrfToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
   let response: Response;
   try {
     const staticExport = Boolean(process.env.NEXT_PUBLIC_BASE_PATH);
     response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), {
       method: staticExport ? "GET" : "POST",
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}` }
+      credentials: "include",
+      headers: staticExport ? {} : { "x-csrf-token": csrfToken }
     });
   } catch {
     throw new Error("The call could not be opened. Check your connection and try again.");
@@ -89,10 +91,10 @@ export function openCallsUrl(): string {
   return `${basePath}/demo-open-calls.json`;
 }
 
-export async function fetchOpenCalls(accessToken: string): Promise<OpenCallsResponse> {
+export async function fetchOpenCalls(_csrfToken: string): Promise<OpenCallsResponse> {
   const response = await fetch(openCallsUrl(), {
     cache: "no-store",
-    headers: { authorization: `Bearer ${accessToken}` }
+    credentials: "include"
   });
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Open calls could not be refreshed.");
   return response.json() as Promise<OpenCallsResponse>;
@@ -105,13 +107,14 @@ export function reopenReportUrl(reportId: string): string {
   return `${basePath}/api/reports/${reportId}/reopen`;
 }
 
-export async function reopenOpenCall(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
+export async function reopenOpenCall(csrfToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
   let response: Response;
   try {
     response = await fetch(reopenReportUrl(reportId), {
       method: "POST",
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}` }
+      credentials: "include",
+      headers: { "x-csrf-token": csrfToken }
     });
   } catch {
     throw new Error("The report could not be reopened. Check your connection and try again.");

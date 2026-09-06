@@ -15,6 +15,7 @@ async function bootstrap() {
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
     exposedHeaders: ["ETag"],
+    credentials: true,
   });
   await app.listen(Number(process.env.PORT ?? 3001));
 }
