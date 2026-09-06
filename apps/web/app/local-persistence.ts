@@ -2,6 +2,7 @@ import type { EncounterDefinition } from "./encounter-definition";
 import { EncounterDocumentError, loadEncounterDocument } from "./encounter-document";
 import { migrateLegacyIncidentDocument } from "./incident-document";
 import { saveCanonicalEvent } from "./canonical-events";
+import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { bundledEncounterDefinition, createInitialShellState, type EncounterEvent, type ShellState } from "./standard-encounter";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
@@ -156,7 +157,7 @@ export function loadShellStateResult(
       throw new Error("saved state contains parallel legacy incident timeline data");
     }
     for (const event of persistedEvents.filter((event) => !baselineIds.has(event.id))) {
-      document = saveCanonicalEvent(document, { ...event, date: event.date ?? "2026-04-18" } as EncounterEvent, definition);
+      document = saveCanonicalEvent(document, { ...event, date: event.date ?? DEMO_FALLBACK_DATE } as EncounterEvent, definition);
     }
     const state = {
       ...candidate,
@@ -164,10 +165,10 @@ export function loadShellStateResult(
         ...(isCurrentEnvelope || isCanonicalEventsEnvelope ? { definitionId: definition.id, definitionVersion: definition.version, synthetic: true, ...(extension?.customData ? { customData: extension.customData } : {}) } : encounterWithoutLegacy),
         document,
       },
-      noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? "2026-04-18" } : null,
-      procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? "2026-04-18" } : null,
-      vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? "2026-04-18", values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} } } : null,
-      medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? "2026-04-18" } : null,
+      noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? DEMO_FALLBACK_DATE } : null,
+      procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? DEMO_FALLBACK_DATE } : null,
+      vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? DEMO_FALLBACK_DATE, values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} } } : null,
+      medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? DEMO_FALLBACK_DATE } : null,
       acknowledgedWarnings: Array.isArray(isCurrentEnvelope || isCanonicalEventsEnvelope ? extension?.acknowledgedWarnings : candidate.acknowledgedWarnings) ? (isCurrentEnvelope || isCanonicalEventsEnvelope ? extension!.acknowledgedWarnings : candidate.acknowledgedWarnings) : [],
     } as unknown as ShellState;
     return { status: "restored", state, migrated };

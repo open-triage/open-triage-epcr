@@ -4,6 +4,7 @@ import { INITIAL_SHELL_STATE, syntheticEncounter, bundledEncounterDefinition, tr
 import { documentTimeline, incidentSummary } from "../app/incident-document";
 import { encounterEvents } from "../app/canonical-events";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
+import { DEMO_FALLBACK_DATE } from "../app/demo-provenance";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 
 test("opens directly into the fictional neutral standard encounter", () => {
@@ -30,4 +31,25 @@ test("Timeline and Checklist navigation preserves the encounter", () => {
   assert.equal(timelineState.view, "timeline");
   assert.strictEqual(checklistState.encounter, syntheticEncounter);
   assert.strictEqual(timelineState.encounter, syntheticEncounter);
+});
+
+test("drafts started without an explicit date fall back to the shared demo fallback date", () => {
+  const noteState = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "no-date-note", time: "09:01" });
+  assert.equal(noteState.noteDraft?.date, DEMO_FALLBACK_DATE);
+
+  const procedureState = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "no-date-procedure", time: "09:02" });
+  assert.equal(procedureState.procedureDraft?.date, DEMO_FALLBACK_DATE);
+
+  const medicationState = transitionShell(INITIAL_SHELL_STATE, { type: "medication-started", id: "no-date-medication", time: "09:03" });
+  assert.equal(medicationState.medicationDraft?.date, DEMO_FALLBACK_DATE);
+
+  const vitalsState = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "no-date-vitals", time: "09:04" });
+  assert.equal(vitalsState.vitalDraft?.date, DEMO_FALLBACK_DATE);
+
+  const savedNoteState = transitionShell(
+    transitionShell(noteState, { type: "note-draft-changed", field: "summary", value: "Undated note" }),
+    { type: "note-saved" },
+  );
+  const savedEvent = encounterEvents(savedNoteState.encounter.document, standardEncounterDefinition).find(({ id }) => id === "no-date-note");
+  assert.equal(savedEvent?.date, DEMO_FALLBACK_DATE);
 });

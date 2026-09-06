@@ -1,5 +1,5 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
-import { hasDemoProvenance } from "./demo-provenance";
+import { DEMO_FALLBACK_DATE, hasDemoProvenance } from "./demo-provenance";
 import type { EncounterDefinition, VitalField } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent, MedicationAdministration, VitalValues } from "./standard-encounter";
@@ -12,11 +12,11 @@ const eventGroups = new Set([
 ]);
 
 function timestamp(date: string | undefined, time: string): string {
-  return `${date ?? "2026-04-18"}T${time.slice(0, 5)}:00-04:00`;
+  return `${date ?? DEMO_FALLBACK_DATE}T${time.slice(0, 5)}:00-04:00`;
 }
 
 function dateAndTime(value: unknown): { date: string; time: string } {
-  const lexical = typeof value === "string" ? value : "2026-04-18T00:00:00Z";
+  const lexical = typeof value === "string" ? value : `${DEMO_FALLBACK_DATE}T00:00:00Z`;
   return { date: lexical.slice(0, 10), time: lexical.slice(11, 16) };
 }
 

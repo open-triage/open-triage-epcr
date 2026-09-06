@@ -36,7 +36,7 @@ import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, E
 import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
-import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { DEMO_CLEAR_EVENT, DEMO_FALLBACK_DATE, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
 import { validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
@@ -414,7 +414,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
               const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
               return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={event.dateTime ?? `${event.date ?? "2026-04-18"}T${event.time}:00`}>{event.time}</time>
+                <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
                 <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
                 {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
                   <button
@@ -432,7 +432,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                     <small>{presentation.reference} · Tap to edit</small>
                     {event.procedure && validateProcedure({
                       id: event.id,
-                      date: event.date ?? "2026-04-18",
+                      date: event.date ?? DEMO_FALLBACK_DATE,
                       time: event.time,
                       procedureCode: event.procedure.code,
                       procedureLabel: event.procedure.label,
