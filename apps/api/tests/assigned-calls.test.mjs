@@ -150,7 +150,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("for update of ca")) return [assignment];
     if (normalized.includes("from forms.form_version")) {
-      assert.match(normalized, /status = 'published'.*order by fv\.version desc/s);
+      assert.match(normalized, /agency_stationary_default.*status = 'published'/s);
       return [{ id: "latest-published-version", catalog_release_id: "catalog-release" }];
     }
     if (normalized.includes("from app_identity.agency_demographic_version")) return [{ id: "agency-version" }];

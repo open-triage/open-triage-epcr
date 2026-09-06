@@ -29,14 +29,10 @@ export class AdminService {
              cr.standard as catalog_standard, cr.version as catalog_version
       from forms.form f
       join forms.form_version fv on fv.form_id = f.id and fv.status = 'published'
+      join forms.agency_stationary_default active on active.organization_id = f.organization_id
+        and active.form_version_id = fv.id
       join catalog.release cr on cr.id = fv.catalog_release_id
       where f.organization_id = $1
-        and exists (
-          select 1 from app_identity.operational_unit ou
-          where ou.organization_id = f.organization_id
-            and ou.default_form_id = f.id and ou.active
-        )
-      order by fv.published_at desc, fv.version desc, f.id
       limit 1
     `, [session.organization.id]);
     const active = rows[0];

@@ -1,4 +1,4 @@
-import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 
 function apiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
@@ -34,6 +34,15 @@ export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: st
 export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, definition: draft.definition })
 });
+export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft, changeNote: string) =>
+  catalogRequest<PublishedStationaryForm>(`form-drafts/${draft.id}/publish`, csrfToken, {
+    method: "POST", body: JSON.stringify({ expectedRevision: draft.revision,
+      definitionSha256: draft.definitionSha256, changeNote })
+  });
+export const activateStationaryForm = (csrfToken: string, formVersionId: string, changeNote: string) =>
+  catalogRequest<StationaryFormActivation>(`form-versions/${formVersionId}/activate`, csrfToken, {
+    method: "POST", body: JSON.stringify({ changeNote })
+  });
 
 export const searchFormCatalog = (csrfToken: string, id: string, query: string, offset = 0) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}&offset=${offset}`, csrfToken);

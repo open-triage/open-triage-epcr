@@ -27,7 +27,6 @@ type OpenableAssignmentRow = AssignedCallRow & {
   incident_id: string;
   report_id: string | null;
   synthetic: boolean;
-  default_form_id: string;
   dispatch_receipt_id: string | null;
 };
 
@@ -221,7 +220,7 @@ export class AssignedCallsService {
         select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                organization.deployment_timezone as agency_time_zone,
                ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-               ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
+               ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign
         from clinical.call_assignment ca
         join app_identity.operational_unit ou
           on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
@@ -246,12 +245,13 @@ export class AssignedCallsService {
         select fv.id, fv.catalog_release_id
         from forms.form_version fv
         join forms.form f on f.id = fv.form_id
-        where fv.form_id = $1 and f.organization_id = $2 and fv.status = 'published'
-        order by fv.version desc
+        join forms.agency_stationary_default active on active.form_version_id = fv.id
+          and active.organization_id = f.organization_id
+        where f.organization_id = $1 and fv.status = 'published'
         limit 1
-      `, [assignment.default_form_id, session.organization.id]);
+      `, [session.organization.id]);
       const version = versions[0];
-      if (!version) throw new ConflictException("The unit default form has no published version");
+      if (!version) throw new ConflictException("The agency Stationary default is unavailable");
 
       const agencyVersions = await manager.query<Array<{ id: string }>>(`
         select id from app_identity.agency_demographic_version

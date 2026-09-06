@@ -73,7 +73,9 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
     {context?.activeConfiguration && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="form-authoring-heading">Stationary form</h2></div></div>
       <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
-        catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id} />
+        catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
+        onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
+          setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section>}
 
     <section className="admin-panels" aria-labelledby="admin-panels-heading">

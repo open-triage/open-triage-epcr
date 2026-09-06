@@ -55,7 +55,7 @@ type CustomGroupRow = {
 export class FormPublicationService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async publish(formVersionId: string, input: unknown): Promise<PublishedFormVersion> {
+  async publish(formVersionId: string, input: unknown, organizationId?: string): Promise<PublishedFormVersion> {
     let command: PublishFormVersionCommand;
     try {
       command = validatePublishCommand(input);
@@ -73,7 +73,9 @@ export class FormPublicationService {
         for update
       `, [formVersionId]);
       const version = rows[0];
-      if (!version) throw new NotFoundException(`Form version ${formVersionId} was not found`);
+      if (!version || organizationId && version.organization_id !== organizationId) {
+        throw new NotFoundException(`Form version ${formVersionId} was not found`);
+      }
 
       const digest = canonicalDefinitionSha256(version.canonical_definition);
       if (version.status === "published") {
@@ -165,6 +167,14 @@ export class FormPublicationService {
       `, [version.id, command.changeNote.trim(), command.publishedBy,
         JSON.stringify(command.warningAcknowledgements ?? {})]);
       if (!published[0]) throw new ConflictException("Form version is no longer a draft");
+      const counts = await this.projectionCounts(manager, version.id);
+      await manager.query(`
+        insert into app_identity.configuration_event
+          (organization_id, actor_id, action, result, form_version_id, catalog_release_id,
+           change_note, content_sha256, details)
+        values ($1,$2,'form.publish','succeeded',$3,$4,$5,$6,$7::jsonb)
+      `, [version.organization_id, command.publishedBy, version.id, version.catalog_release_id,
+        command.changeNote.trim(), digest, JSON.stringify({ structuralSummary: counts })]);
       return this.publishedResult(manager, version.id, digest, published[0].published_at);
     });
   }
@@ -275,6 +285,20 @@ export class FormPublicationService {
     definitionSha256: string,
     publishedAt: Date | string | null
   ): Promise<PublishedFormVersion> {
+    const counts = await this.projectionCounts(manager, id);
+    return {
+      id,
+      status: "published",
+      definitionSha256,
+      publishedAt: new Date(publishedAt!).toISOString(),
+      projections: counts
+    };
+  }
+
+  private async projectionCounts(
+    manager: EntityManager,
+    id: string
+  ): Promise<{ sections: number; fields: number; rules: number; locales: number }> {
     const counts = await manager.query<Array<{ sections: number; fields: number; rules: number; locales: number }>>(`
       select
         (select count(*)::integer from forms.form_section where form_version_id = $1) as sections,
@@ -282,13 +306,7 @@ export class FormPublicationService {
         (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules,
         (select count(*)::integer from forms.form_locale where form_version_id = $1) as locales
     `, [id]);
-    return {
-      id,
-      status: "published",
-      definitionSha256,
-      publishedAt: new Date(publishedAt!).toISOString(),
-      projections: counts[0]!
-    };
+    return counts[0]!;
   }
 
   private rethrowValidation(error: unknown): never {

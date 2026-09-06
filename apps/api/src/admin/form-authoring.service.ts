@@ -1,9 +1,10 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, StationaryFormDraft } from "@open-triage/contracts";
+import type { ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { FormPublicationService } from "../forms/form-publication.service.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -18,7 +19,8 @@ type ElementRow = {
 
 @Injectable()
 export class FormAuthoringService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource, private readonly sessions: ClinicianSessionService) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource, private readonly sessions: ClinicianSessionService,
+    private readonly publication: FormPublicationService) {}
 
   async current(token: string): Promise<StationaryFormDraft | null> {
     const session = await this.admin(token);
@@ -42,10 +44,9 @@ export class FormAuthoringService {
       if (!target[0]) throw new NotFoundException("The selected published catalog was not found for this organization");
       const source = await manager.query<Array<VersionRow & { version: number }>>(`
         select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-        where f.organization_id=$1 and fv.status='published'
-          and exists (select 1 from app_identity.operational_unit ou
-            where ou.organization_id=f.organization_id and ou.default_form_id=f.id and ou.active)
-        order by fv.published_at desc, fv.version desc limit 1
+        join forms.agency_stationary_default active on active.organization_id=f.organization_id
+          and active.form_version_id=fv.id
+        where f.organization_id=$1 and fv.status='published' limit 1
       `, [session.organization.id]);
       if (!source[0]) throw new NotFoundException("No active Stationary form is available to clone");
       const existing = await manager.query<VersionRow[]>(`
@@ -121,6 +122,65 @@ export class FormAuthoringService {
     });
   }
 
+  async publish(token: string, id: string, input: unknown): Promise<PublishedStationaryForm> {
+    const session = await this.admin(token);
+    const body = this.publicationBody(input);
+    const rows = await this.dataSource.query<Array<VersionRow & { version: number }>>(`
+      select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
+      where fv.id=$1 and f.organization_id=$2 and fv.status='draft'
+    `, [id, session.organization.id]);
+    const draft = rows[0];
+    if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
+    if (draft.revision !== body.expectedRevision) throw new ConflictException({
+      message: "Form draft revision is stale", expectedRevision: body.expectedRevision, actualRevision: draft.revision
+    });
+    const published = await this.publication.publish(id, {
+      publishedBy: session.user.id, changeNote: body.changeNote,
+      definitionSha256: body.definitionSha256
+    }, session.organization.id);
+    return { id: published.id, formId: draft.form_id, catalogReleaseId: draft.catalog_release_id,
+      version: draft.version, status: "published", definitionSha256: published.definitionSha256,
+      publishedAt: published.publishedAt, structuralSummary: published.projections };
+  }
+
+  async activate(token: string, id: string, input: unknown): Promise<StationaryFormActivation> {
+    const session = await this.admin(token);
+    const changeNote = this.changeNote(input);
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-activation:${session.organization.id}`]);
+      const target = await manager.query<Array<{ form_id: string; catalog_release_id: string; definition_sha256: string }>>(`
+        select fv.form_id,fv.catalog_release_id,fv.definition_sha256
+        from forms.form_version fv join forms.form f on f.id=fv.form_id
+        where fv.id=$1 and f.organization_id=$2 and fv.status='published'
+      `, [id, session.organization.id]);
+      if (!target[0]) throw new NotFoundException(`Published form version ${id} was not found`);
+      const previous = await manager.query<Array<{ form_version_id: string; catalog_release_id: string }>>(`
+        select d.form_version_id,fv.catalog_release_id
+        from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
+        where d.organization_id=$1 for update
+      `, [session.organization.id]);
+      const activated = await manager.query<Array<{ activated_at: Date | string }>>(`
+        insert into forms.agency_stationary_default (organization_id,form_version_id,activated_by)
+        values ($1,$2,$3)
+        on conflict (organization_id) do update set form_version_id=excluded.form_version_id,
+          activated_by=excluded.activated_by,activated_at=now()
+        returning activated_at
+      `, [session.organization.id, id, session.user.id]);
+      await manager.query(`insert into app_identity.configuration_event
+        (organization_id,actor_id,action,result,form_version_id,catalog_release_id,
+         previous_form_version_id,previous_catalog_release_id,change_note,content_sha256)
+        values ($1,$2,'form.activate','succeeded',$3,$4,$5,$6,$7,$8)`,
+      [session.organization.id, session.user.id, id, target[0].catalog_release_id,
+        previous[0]?.form_version_id ?? null, previous[0]?.catalog_release_id ?? null,
+        changeNote, target[0].definition_sha256]);
+      return { organizationId: session.organization.id, formVersionId: id, formId: target[0].form_id,
+        catalogReleaseId: target[0].catalog_release_id,
+        activatedAt: new Date(activated[0]!.activated_at).toISOString(),
+        previousFormVersionId: previous[0]?.form_version_id ?? null,
+        previousCatalogReleaseId: previous[0]?.catalog_release_id ?? null };
+    });
+  }
+
   private async compatibleClone(manager: Pick<EntityManager, "query">, sourceReleaseId: string, targetReleaseId: string,
     definition: FormDraftDefinition): Promise<{ definition: FormDraftDefinition; diagnostics: FormCloneDiagnostic[] }> {
     const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
@@ -185,6 +245,23 @@ export class FormAuthoringService {
     if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
       throw new UnprocessableEntityException("catalogReleaseId must be a UUID");
     return id;
+  }
+
+  private publicationBody(input: unknown): { expectedRevision: number; definitionSha256: string; changeNote: string } {
+    if (!input || typeof input !== "object") throw new UnprocessableEntityException("Publication details are required");
+    const body = input as Record<string, unknown>;
+    if (!Number.isInteger(body.expectedRevision) || Number(body.expectedRevision) < 1)
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    if (typeof body.definitionSha256 !== "string" || !/^[a-f0-9]{64}$/.test(body.definitionSha256))
+      throw new UnprocessableEntityException("definitionSha256 must be a lowercase SHA-256 digest");
+    return { expectedRevision: Number(body.expectedRevision), definitionSha256: body.definitionSha256,
+      changeNote: this.changeNote(input) };
+  }
+
+  private changeNote(input: unknown): string {
+    const note = input && typeof input === "object" ? (input as Record<string, unknown>).changeNote : undefined;
+    if (typeof note !== "string" || !note.trim()) throw new UnprocessableEntityException("changeNote is required");
+    return note.trim().slice(0, 2_000);
   }
 
   private async result(manager: Pick<EntityManager, "query">, row: VersionRow,

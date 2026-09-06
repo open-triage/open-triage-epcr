@@ -63,6 +63,11 @@ async function ensureFoundation(client) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8");
     await client.query(migration);
   }
+  const agencyDefault = await client.query("select to_regclass('forms.agency_stationary_default') as agency_default");
+  if (!agencyDefault.rows[0].agency_default) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8");
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -171,6 +176,8 @@ integrationTest("authorized Admin context resolves only the session organization
   await client.query(`insert into app_identity.operational_unit
     (id, organization_id, call_sign, name, default_form_id)
     values ($1, $2, 'ADMIN-254', 'Admin shell unit', $3)`, [unitId, organizationId, formId]);
+  await client.query(`insert into forms.agency_stationary_default
+    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, owner.userId]);
 
   const context = await admin.context(active.sessionToken);
   assert.equal(context.owner.id, owner.userId);
@@ -190,6 +197,19 @@ integrationTest("authorized Admin context resolves only the session organization
       catch (error) { await client.query("rollback"); throw error; }
     }
   };
+  const activationForms = new FormAuthoringService(transactionalDatabase, sessions, {});
+  const activation = await activationForms.activate(active.sessionToken, formVersionId, { changeNote: "Confirm agency default" });
+  assert.equal(activation.formVersionId, formVersionId);
+  assert.equal(activation.previousFormVersionId, formVersionId);
+  const activationAudit = await client.query(`select action,actor_id,form_version_id,catalog_release_id,
+    previous_form_version_id,change_note,content_sha256 from app_identity.configuration_event
+    where organization_id=$1 order by id desc limit 1`, [organizationId]);
+  assert.deepEqual(activationAudit.rows[0], { action: "form.activate", actor_id: owner.userId,
+    form_version_id: formVersionId, catalog_release_id: release.rows[0].id,
+    previous_form_version_id: formVersionId, change_note: "Confirm agency default",
+    content_sha256: activeFormDigest });
+  await assert.rejects(client.query("update app_identity.configuration_event set change_note='changed' where organization_id=$1",
+    [organizationId]));
   const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
   const draft = await authoring.cloneActive(active.sessionToken);
   assert.equal(draft.revision, 1);
@@ -405,6 +425,12 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Publisher')", [userId, organizationId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  app.get(ClinicianSessionService).requireCapability = async () => ({
+    user: { id: userId, displayName: "Publisher" }, organization: { id: organizationId, name: "Publication API" },
+    startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    capabilities: ["installation:administer"]
+  });
+  app.get(ClinicianSessionService).assertCsrf = async () => {};
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -414,7 +440,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   async function publish(versionId, body) {
     const response = await fetch(`${baseUrl}/form-versions/${versionId}/publish`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer publication-owner", "x-csrf-token": "csrf" },
       body: JSON.stringify(body)
     });
     const payload = await response.json();
@@ -453,6 +479,12 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     });
     assert.equal(response.status, 201, JSON.stringify(payload));
     assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1, locales: 1 });
+    const event = await client.query(`select action,actor_id,form_version_id,catalog_release_id,change_note,content_sha256
+      from app_identity.configuration_event where form_version_id=$1`, [draft.versionId]);
+    assert.equal(event.rows[0].action, "form.publish");
+    assert.equal(event.rows[0].actor_id, userId);
+    assert.equal(event.rows[0].change_note, "Initial publication");
+    assert.equal(event.rows[0].content_sha256, draft.digest);
 
     const stored = await client.query(`
       select fv.status, fv.catalog_release_id, fv.canonical_definition,
@@ -817,6 +849,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     values ($1, $2, $3, 1, 'published', '{"schemaVersion":1,"sections":[]}', $4,
             'Draft API integration fixture', $5, $5, now())`,
   [formVersionId, formId, releaseId, "b".repeat(64), userId]);
+  await client.query(`insert into forms.agency_stationary_default
+    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, userId]);
 
   const selected = await client.query(`
     select

@@ -3,11 +3,11 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ClinicianSession } from "@open-triage/contracts";
-import { loadAdminContext, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, loadAdminContext, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
-import { affectedFieldNames, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
+import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
@@ -156,6 +156,31 @@ test("form saves send section order with the current revision and CSRF proof", a
     return Response.json({ ...draft, revision: 5 });
   };
   assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
+});
+
+test("form review summarizes structure and publication stays separate from activation", async (t) => {
+  assert.equal(formStructuralSummary(formDefinition), "2 sections and 3 elements");
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const paths: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    paths.push(String(input));
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    if (String(input).endsWith("/form-drafts/draft-id/publish")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4,
+        definitionSha256: "a".repeat(64), changeNote: "Reviewed" });
+      return Response.json({ id: "draft-id", status: "published" });
+    }
+    assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Deploy" });
+    return Response.json({ formVersionId: "draft-id" });
+  };
+  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    updatedAt: "2026-09-07T01:00:00.000Z" };
+  await publishStationaryFormDraft("csrf-proof", draft, "Reviewed");
+  assert.equal(paths.length, 1, "publication did not activate the form");
+  await activateStationaryForm("csrf-proof", "draft-id", "Deploy");
+  assert.match(paths[1]!, /form-versions\/draft-id\/activate$/);
 });
 
 test("form catalog picker is searchable, labels duplicates, and exposes an add control", () => {

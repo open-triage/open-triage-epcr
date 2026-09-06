@@ -36,7 +36,7 @@ test("admin context is resolved from the authorized session organization", async
     }
   });
   assert.deepEqual(calls[0].parameters, [session.organization.id]);
-  assert.match(calls[0].sql, /operational_unit[\s\S]*default_form_id/);
+  assert.match(calls[0].sql, /agency_stationary_default[\s\S]*active\.form_version_id = fv\.id/);
 });
 
 test("direct admin access fails before configuration is queried without the capability", async () => {

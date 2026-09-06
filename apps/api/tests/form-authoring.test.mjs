@@ -42,7 +42,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
     async query(sql, parameters) {
       if (sql.includes("pg_advisory_xact_lock")) return [];
       if (sql.includes("join catalog.authoring_draft")) return [{ id: catalogId }];
-      if (sql.includes("exists (select 1 from app_identity.operational_unit")) return [{
+      if (sql.includes("join forms.agency_stationary_default active")) return [{
         id: sourceFormId, form_id: formId, catalog_release_id: sourceCatalogId, version: 1,
         canonical_definition: definition
       }];
@@ -143,4 +143,54 @@ test("duplicate element placement fails API validation before persistence", asyn
     (error) => error instanceof UnprocessableEntityException &&
       error.getResponse().findings.includes("sections[1].fields[0].source is duplicated"));
   assert.equal(queried, false);
+});
+
+test("publishing requires a saved revision and note without changing the agency default", async () => {
+  const calls = [];
+  const publication = { publish: async (id, body, organization) => {
+    calls.push({ id, body, organization });
+    return { id, status: "published", definitionSha256: body.definitionSha256,
+      publishedAt: "2026-09-07T02:00:00.000Z", projections: { sections: 1, fields: 4, rules: 0, locales: 0 } };
+  } };
+  const service = new FormAuthoringService({ query: async (sql) => {
+    assert.doesNotMatch(sql, /agency_stationary_default/);
+    return [{ id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
+      version: 2, revision: 3, canonical_definition: definition, definition_sha256: "a".repeat(64), updated_at: new Date() }];
+  } }, { requireCapability: async () => session }, publication);
+  await assert.rejects(service.publish("owner-session", draftId, {
+    expectedRevision: 3, definitionSha256: "a".repeat(64), changeNote: " "
+  }), UnprocessableEntityException);
+  const result = await service.publish("owner-session", draftId, {
+    expectedRevision: 3, definitionSha256: "a".repeat(64), changeNote: "Reviewed structure"
+  });
+  assert.equal(result.status, "published");
+  assert.equal(result.structuralSummary.fields, 4);
+  assert.deepEqual(calls[0], { id: draftId, organization: organizationId, body: {
+    publishedBy: session.user.id, changeNote: "Reviewed structure", definitionSha256: "a".repeat(64)
+  } });
+});
+
+test("activation pins one exact version and appends previous/new audit evidence", async () => {
+  const queries = [];
+  const manager = { query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("from forms.form_version fv join forms.form f")) return [{
+      form_id: formId, catalog_release_id: catalogId, definition_sha256: "b".repeat(64)
+    }];
+    if (sql.includes("from forms.agency_stationary_default")) return [{
+      form_version_id: sourceFormId, catalog_release_id: sourceCatalogId
+    }];
+    if (sql.includes("insert into forms.agency_stationary_default")) return [{ activated_at: "2026-09-07T02:05:00.000Z" }];
+    if (sql.includes("insert into app_identity.configuration_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ transaction: async (_level, work) => work(manager) },
+    { requireCapability: async () => session }, {});
+  const activation = await service.activate("owner-session", draftId, { changeNote: "Deploy reviewed form" });
+  assert.equal(activation.formVersionId, draftId);
+  assert.equal(activation.previousFormVersionId, sourceFormId);
+  const audit = queries.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
+  assert.deepEqual(audit.parameters.slice(0, 8), [organizationId, session.user.id, draftId, catalogId,
+    sourceFormId, sourceCatalogId, "Deploy reviewed form", "b".repeat(64)]);
 });

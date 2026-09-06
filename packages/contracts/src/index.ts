@@ -195,6 +195,27 @@ export interface StationaryFormDraft {
   updatedAt: string;
 }
 
+export interface PublishedStationaryForm {
+  id: string;
+  formId: string;
+  catalogReleaseId: string;
+  version: number;
+  status: "published";
+  definitionSha256: string;
+  publishedAt: string;
+  structuralSummary: { sections: number; fields: number; rules: number; locales: number };
+}
+
+export interface StationaryFormActivation {
+  organizationId: string;
+  formVersionId: string;
+  formId: string;
+  catalogReleaseId: string;
+  activatedAt: string;
+  previousFormVersionId: string | null;
+  previousCatalogReleaseId: string | null;
+}
+
 export interface FormCatalogElement {
   elementId: string;
   name: string;
