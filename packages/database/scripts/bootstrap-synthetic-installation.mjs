@@ -259,6 +259,12 @@ try {
       on conflict do nothing
     `, [ids.unit, ids.organization, dispatchProjection?.callSign ?? "SYNTHETIC-UNIT-1", ids.form]);
     await client.query(`
+      insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
+      values ($1, $2, $3)
+      on conflict (organization_id) do update set form_version_id=excluded.form_version_id,
+        activated_by=excluded.activated_by,activated_at=now()
+    `, [ids.organization, ids.formVersion, ids.administrator]);
+    await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
       values ($3, $1, $2)
       on conflict do nothing

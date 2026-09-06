@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -70,5 +70,17 @@ export class AdminController {
   saveForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormDraft> {
     return this.forms.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("form-drafts/:id/publish")
+  publishForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<PublishedStationaryForm> {
+    return this.forms.publish(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("form-versions/:id/activate")
+  activateForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormActivation> {
+    return this.forms.activate(sessionToken(request, authorization), id, body);
   }
 }

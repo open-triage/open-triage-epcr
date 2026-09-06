@@ -71,10 +71,9 @@ export class CatalogAuthoringService {
       const releases = await manager.query<Array<{ id: string }>>(`
         select fv.catalog_release_id as id from forms.form_version fv
         join forms.form f on f.id = fv.form_id
-        where f.organization_id = $1 and fv.status = 'published'
-          and exists (select 1 from app_identity.operational_unit ou
-            where ou.organization_id = f.organization_id and ou.default_form_id = f.id and ou.active)
-        order by fv.published_at desc, fv.version desc limit 1
+        join forms.agency_stationary_default active on active.organization_id=f.organization_id
+          and active.form_version_id=fv.id
+        where f.organization_id = $1 and fv.status = 'published' limit 1
       `, [session.organization.id]);
       if (!releases[0]) throw new NotFoundException("No active catalog is available to clone");
       const definition = await this.cloneDefinition(manager, releases[0].id);

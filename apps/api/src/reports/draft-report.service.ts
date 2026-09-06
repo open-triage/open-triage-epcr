@@ -176,14 +176,10 @@ export class DraftReportService {
                     and adv.catalog_release_id = fv.catalog_release_id
                     and adv.effective_from <= now()
                   order by adv.effective_from desc, adv.version desc limit 1) as agency_demographic_version_id
-          from forms.form f
-          join lateral (
-            select candidate.id, candidate.catalog_release_id
-            from forms.form_version candidate
-            where candidate.form_id = f.id and candidate.status = 'published'
-            order by candidate.version desc limit 1
-          ) fv on true
-          where f.id = $1 and f.organization_id = $2
+          from forms.agency_stationary_default active
+          join forms.form_version fv on fv.id = active.form_version_id and fv.status = 'published'
+          join forms.form f on f.id = fv.form_id and f.organization_id = active.organization_id
+          where active.organization_id = $2 and f.id = $1
         `, [command.formId, command.organizationId]);
         if (!active[0]) throw new NotFoundException("No active published form version was found for the organization");
         if (!active[0].agency_demographic_version_id) {
