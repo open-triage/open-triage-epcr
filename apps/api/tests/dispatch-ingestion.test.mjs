@@ -126,3 +126,70 @@ test("post-signature revisions retain proposed differences without routing or mu
   assert.ok(sqlSeen.some((sql) => sql.includes("post_signature_dispatch_delivery")));
   assert.ok(!sqlSeen.some((sql) => /update clinical\.(report|element_occurrence|signed_snapshot)/.test(sql)));
 });
+
+test("report selection for the signed/unsigned branch is deterministic regardless of row order", async () => {
+  const later = structuredClone(source);
+  later.messageId = "10000000-0000-4000-8000-000000000010";
+  later.revision = 10;
+
+  // Candidate call_assignment/report rows that could, in principle, all match the same
+  // (organization_id, dispatch_source_id, dispatch_source_record_id) lookup. The most recently
+  // dispatched row (by dispatched_at, tie-broken by id) must always win, no matter what physical
+  // order the rows are produced in.
+  const candidates = [
+    { id: "report-old-draft", status: "draft", dispatched_at: "2026-09-01T10:00:00Z" },
+    { id: "report-mid-draft", status: "draft", dispatched_at: "2026-09-02T12:00:00Z" },
+    { id: "report-latest-signed", status: "signed", dispatched_at: "2026-09-03T08:00:00Z" }
+  ];
+  const expectedWinnerId = "report-latest-signed";
+
+  // Mirrors the SQL contract asserted below: order by dispatched_at desc, id desc, limit 1.
+  function applyDocumentedOrdering(rows) {
+    return [...rows].sort((a, b) => {
+      if (a.dispatched_at !== b.dispatched_at) return a.dispatched_at < b.dispatched_at ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    }).slice(0, 1);
+  }
+
+  // Deliberately scramble the insertion/row order across repeated runs and confirm the same
+  // report is chosen every time.
+  const scrambledOrders = [
+    [0, 1, 2],
+    [2, 1, 0],
+    [1, 2, 0],
+    [2, 0, 1],
+    [1, 0, 2]
+  ];
+  for (const order of scrambledOrders) {
+    const scrambledRows = order.map((index) => candidates[index]);
+    let sawReportSelectionQuery = false;
+    const writer = { query: async (sql, parameters = []) => {
+      const normalized = sql.replace(/\s+/g, " ").trim();
+      if (normalized.includes("pg_advisory_xact_lock")) return [];
+      if (normalized.includes("from clinical.dispatch_receipt")) return [];
+      if (normalized.includes("join clinical.report r")) {
+        sawReportSelectionQuery = true;
+        assert.ok(normalized.includes("order by ca.dispatched_at desc, ca.id desc"),
+          "report-selection query must declare an explicit, documented ordering");
+        assert.ok(/\blimit 1\b/.test(normalized),
+          "report-selection query must cap results with limit 1 as a safety net");
+        // Simulate what PostgreSQL returns when honoring that ORDER BY / LIMIT clause,
+        // independent of the scrambled physical row order supplied here.
+        return applyDocumentedOrdering(scrambledRows);
+      }
+      if (normalized.includes("insert into clinical.dispatch_receipt")) {
+        const result = JSON.parse(parameters[9]);
+        assert.equal(result.reportId, expectedWinnerId);
+        return [{ ...receipt(later, "post_signature"), organization_id: context.organizationId,
+          source_id: context.sourceId, received_at: "2026-09-04T00:00:00Z",
+          exact_sha256: "a".repeat(64), canonical_sha256: "b".repeat(64), result }];
+      }
+      if (normalized.includes("from clinical.element_occurrence")) return [];
+      if (normalized.includes("insert into clinical_audit.post_signature_dispatch_delivery")) return [];
+      throw new Error(`Unexpected SQL: ${normalized}`);
+    } };
+    const result = await ingestDispatchDelivery(writer, input(later), catalog);
+    assert.ok(sawReportSelectionQuery);
+    assert.equal(result.status, "post_signature");
+  }
+});
