@@ -17,9 +17,17 @@ import { AssignedCalls } from "./assigned-calls";
 import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
-import { loadPresentationMode, storePresentationMode, type PresentationMode } from "../app/presentation-mode";
+import {
+  defaultPresentationMode,
+  hasAdminMode,
+  hasClinicalMode,
+  loadPresentationMode,
+  storePresentationMode,
+  type PresentationMode
+} from "../app/presentation-mode";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 import { selectedInstallationSettings } from "../app/installation-settings";
+import { AdminShell } from "./admin-shell";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -43,6 +51,7 @@ export function ClinicianSessionGate({ children }: {
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
+  const [modeMessage, setModeMessage] = useState<string | null>(null);
   const completionNoticeRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
@@ -51,8 +60,9 @@ export function ClinicianSessionGate({ children }: {
 
   useEffect(() => {
     queueMicrotask(() => {
-      setSession(loadClinicianSession(window.localStorage));
-      setPresentationMode(loadPresentationMode(window.localStorage));
+      const loadedSession = loadClinicianSession(window.localStorage);
+      setSession(loadedSession);
+      setPresentationMode(loadPresentationMode(window.localStorage, loadedSession?.capabilities));
       setReady(true);
     });
   }, []);
@@ -91,6 +101,9 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, created);
       setActiveReport(null);
       setSession(created);
+      const initialMode = defaultPresentationMode(created.capabilities);
+      storePresentationMode(window.localStorage, initialMode);
+      setPresentationMode(initialMode);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Sign in is unavailable.");
     } finally {
@@ -133,6 +146,11 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function selectPresentationMode(mode: PresentationMode) {
+    if (mode === "admin" && activeReport) {
+      setModeMessage("Save and close the open report before entering Admin mode.");
+      return;
+    }
+    setModeMessage(null);
     storePresentationMode(window.localStorage, mode);
     setPresentationMode(mode);
   }
@@ -188,14 +206,18 @@ export function ClinicianSessionGate({ children }: {
   return (
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
-        <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
+        {presentationMode !== "admin" && <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>}
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
         <div className="presentation-selector" role="group" aria-label="Documentation presentation">
-          <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
-          <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
+          {hasClinicalMode(session.capabilities) && <>
+            <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
+            <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
+          </>}
+          {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"} onClick={() => selectPresentationMode("admin")}>Admin</button>}
         </div>
         <button type="button" onClick={logOut}>Log out</button>
       </header>
+      {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
       {banner.enabled && <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
         <strong>{banner.heading}</strong>
         <span>{banner.message}</span>
@@ -204,7 +226,7 @@ export function ClinicianSessionGate({ children }: {
           <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
         </span>}
       </aside>}
-      <div hidden={activeReport !== null}>
+      {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
         <AssignedCalls session={session} refreshRequest={refreshRequest} suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
           setCompletionNotice(null);
@@ -217,7 +239,7 @@ export function ClinicianSessionGate({ children }: {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
           setActiveReport(cached.report);
         }} />
-      </div>
+      </div>}
       {activeReport &&
         <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
@@ -232,6 +254,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} />}
     </div>
   );
 }

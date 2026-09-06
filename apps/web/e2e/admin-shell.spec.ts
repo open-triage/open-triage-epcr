@@ -1,0 +1,84 @@
+import { expect, test, type Page, type Route } from "@playwright/test";
+import type { AssignedCall } from "@open-triage/contracts";
+import demoAssignedCalls from "../public/demo-assigned-calls.json";
+import demoOpenAssignment from "../public/demo-open-assignment.json";
+
+const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
+
+function assignedCalls(route: Route) {
+  return route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ assignedCalls: [assignedCall], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() })
+  });
+}
+
+async function signInAsCombinedOwner(page: Page) {
+  await page.goto("/");
+  await page.evaluate(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify({
+      accessToken: "synthetic-browser-session",
+      user: { id: "owner-id", displayName: "Installation Owner" },
+      organization: { id: "organization-id", name: "Example EMS" },
+      startedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+      capabilities: ["clinical:document", "installation:administer"]
+    }));
+    window.localStorage.removeItem("open-triage.presentation-mode.v1");
+  });
+  await page.reload();
+}
+
+test("combined owners start clinically and can enter the authorized Admin shell by keyboard", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      owner: { id: "owner-id", displayName: "Installation Owner" },
+      organization: { id: "organization-id", name: "Example EMS" },
+      activeConfiguration: {
+        catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
+        stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 }
+      }
+    })
+  }));
+  await signInAsCombinedOwner(page);
+
+  const selector = page.getByRole("group", { name: "Documentation presentation" });
+  await expect(selector.getByRole("button", { name: "Mobile" })).toHaveAttribute("aria-pressed", "true");
+  const admin = selector.getByRole("button", { name: "Admin" });
+  await admin.focus();
+  await admin.press("Enter");
+
+  await expect(admin).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "Active configuration" })).toBeVisible();
+  await expect(page.getByText("NEMSIS 3.5.1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Agency Stationary, version 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unavailable in this release.")).toHaveCount(11);
+  await expect(page.locator(".admin-placeholder").getByRole("button")).toHaveCount(0);
+  await expect(page.locator(".admin-placeholder").locator("input, select, textarea, a")).toHaveCount(0);
+});
+
+test("an open clinical report blocks entry into Admin until Save and close", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(demoOpenAssignment)
+  }));
+  await signInAsCombinedOwner(page);
+
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Admin" }).click();
+  await expect(page.locator(".admin-entry-blocked")).toHaveText("Save and close the open report before entering Admin mode.");
+  await expect(page.locator(".app-shell")).toHaveAttribute("data-presentation-mode", "mobile");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toHaveCount(0);
+});
+
+test("a forged browser capability cannot bypass direct Admin API authorization", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({ status: 401, body: "Unauthorized" }));
+  await signInAsCombinedOwner(page);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await expect(page.locator(".admin-error")).toHaveText("Your account is not authorized to administer this installation.");
+  await expect(page.getByRole("heading", { name: "Active configuration" })).toHaveCount(0);
+});
