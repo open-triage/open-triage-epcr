@@ -1,4 +1,4 @@
-import type { AdminContext, CatalogDraft, CatalogValidationResult, PublishedCatalog } from "@open-triage/contracts";
+import type { AdminContext, CatalogDraft, CatalogValidationResult, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
 
 function apiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
@@ -26,6 +26,13 @@ export const saveCatalogDraft = (csrfToken: string, draft: CatalogDraft) => cata
 export const validateCatalogDraft = (csrfToken: string, id: string) => catalogRequest<CatalogValidationResult>(`catalog-drafts/${id}/validate`, csrfToken, { method: "POST" });
 export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
   method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, changeNote })
+});
+export const loadStationaryFormDraft = (csrfToken: string) => catalogRequest<StationaryFormDraft | null>("form-draft", csrfToken);
+export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
+  method: "POST", body: JSON.stringify({ catalogReleaseId })
+});
+export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
+  method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, definition: draft.definition })
 });
 
 export async function loadAdminContext(): Promise<AdminContext> {

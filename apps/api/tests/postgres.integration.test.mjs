@@ -156,9 +156,11 @@ integrationTest("authorized Admin context resolves only the session organization
     csrfToken: temporary.session.csrfToken
   });
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
-  const activeFormDefinition = { schemaVersion: 1, sections: [{ key: "dispatch", fields: [
-    { key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" } }
-  ] }] };
+  const activeFormDefinition = { schemaVersion: 1, sections: [
+    { key: "dispatch", fields: [{ key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" } }] },
+    { key: "patient", fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.01" } }] },
+    { key: "situation", fields: [{ key: "situation-date", source: { kind: "nemsis", elementId: "eSituation.01" } }] }
+  ] };
   const activeFormDigest = canonicalDefinitionSha256(activeFormDefinition);
   await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'stationary', 'Agency Stationary')", [formId, organizationId]);
   await client.query(`insert into forms.form_version
@@ -252,10 +254,16 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.equal(formDraft.clonedFromId, formVersionId);
   assert.deepEqual(formDraft.definition, activeFormDefinition);
   assert.deepEqual(formDraft.diagnostics, []);
+  const editedFormDefinition = { ...formDraft.definition,
+    sections: [formDraft.definition.sections[2], formDraft.definition.sections[0]] };
   const formSaved = await forms.save(active.sessionToken, formDraft.id, {
-    expectedRevision: formDraft.revision, definition: formDraft.definition
+    expectedRevision: formDraft.revision, definition: editedFormDefinition
   });
   assert.equal(formSaved.revision, formDraft.revision + 1);
+  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  const persistedFormDraft = await forms.current(active.sessionToken);
+  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.equal(persistedFormDraft.definition.sections.some(({ key }) => key === "patient"), false);
   await assert.rejects(forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: formDraft.definition
   }), /revision is stale/i);

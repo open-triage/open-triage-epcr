@@ -4,6 +4,7 @@ import type { AdminContext, ClinicianSession } from "@open-triage/contracts";
 import React, { useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
 import { CatalogAuthoring } from "./catalog-authoring";
+import { StationaryFormAuthoring } from "./stationary-form-authoring";
 
 const deferredPanels = [
   "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
@@ -13,6 +14,7 @@ const deferredPanels = [
 export function AdminShell({ session }: { readonly session: ClinicianSession }) {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
 
   useEffect(() => {
     let current = true;
@@ -65,7 +67,13 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
 
     {context && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="catalog-authoring-heading">Element catalog</h2></div></div>
-      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} />
+      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} onPublished={setFormCatalogReleaseId} />
+    </section>}
+
+    {context?.activeConfiguration && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
+      <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="form-authoring-heading">Stationary form</h2></div></div>
+      <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id} />
     </section>}
 
     <section className="admin-panels" aria-labelledby="admin-panels-heading">

@@ -101,3 +101,14 @@ test("form authoring rejects callers without Admin capability before querying", 
   await assert.rejects(service.clone("clinician-session", { catalogReleaseId: catalogId }), UnauthorizedException);
   assert.equal(queried, false);
 });
+
+test("form authoring rejects removal that leaves an invalid section structure", async () => {
+  let queried = false;
+  const service = new FormAuthoringService({ transaction: async () => { queried = true; } }, {
+    requireCapability: async () => session
+  });
+  await assert.rejects(service.save("owner-session", draftId, {
+    expectedRevision: 1, definition: { schemaVersion: 1, sections: [] }
+  }), (error) => error.getStatus?.() === 422 && error.getResponse().findings.includes("sections must be a non-empty array"));
+  assert.equal(queried, false);
+});
