@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ClinicianSession, FormCloneDiagnostic, FormDraftDefinition, StationaryFormDraft } from "@open-triage/contracts";
+import type { ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -67,6 +67,30 @@ export class FormAuthoringService {
       `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id]);
       return this.result(manager, inserted[0]!, cloned.diagnostics);
     });
+  }
+
+  async searchCatalog(token: string, id: string, input: Record<string, unknown>): Promise<FormCatalogElementPage> {
+    const session = await this.admin(token);
+    const query = typeof input.query === "string" ? input.query.trim().slice(0, 100).toLowerCase() : "";
+    const requestedOffset = typeof input.offset === "string" && /^\d+$/.test(input.offset) ? Number(input.offset) : 0;
+    const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? Math.min(requestedOffset, 10_000) : 0;
+    const drafts = await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
+      select fv.catalog_release_id from forms.form_version fv join forms.form f on f.id=fv.form_id
+      where fv.id=$1 and f.organization_id=$2 and fv.status='draft'
+    `, [id, session.organization.id]);
+    if (!drafts[0]) throw new NotFoundException(`Form draft ${id} was not found`);
+    const limit = 40;
+    const rows = await this.dataSource.query<Array<{
+      element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
+    }>>(`
+      select element_id,name,description,base_datatype,group_path
+      from catalog.element_definition
+      where release_id=$1 and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
+      order by section,group_path,element_id limit $3 offset $4
+    `, [drafts[0].catalog_release_id, query, limit + 1, offset]);
+    return { items: rows.slice(0, limit).map((row) => ({ elementId: row.element_id, name: row.name,
+      description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path })),
+      nextOffset: rows.length > limit ? offset + limit : null };
   }
 
   async save(token: string, id: string, input: unknown): Promise<StationaryFormDraft> {

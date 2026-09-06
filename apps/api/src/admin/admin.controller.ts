@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Req } from "@nestjs/common";
-import type { AdminContext, CatalogDraft, CatalogValidationResult, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
+import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -57,6 +57,13 @@ export class AdminController {
   cloneForm(@Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<StationaryFormDraft> {
     return this.forms.clone(sessionToken(request, authorization), body);
+  }
+
+  @Get("form-drafts/:id/catalog-elements")
+  formCatalogElements(@Param("id", new ParseUUIDPipe()) id: string,
+    @Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<FormCatalogElementPage> {
+    return this.forms.searchCatalog(sessionToken(request, authorization), id, query);
   }
 
   @Put("form-drafts/:id")

@@ -195,6 +195,19 @@ export interface StationaryFormDraft {
   updatedAt: string;
 }
 
+export interface FormCatalogElement {
+  elementId: string;
+  name: string;
+  description: string;
+  baseDatatype: string;
+  groupPath: string[];
+}
+
+export interface FormCatalogElementPage {
+  items: FormCatalogElement[];
+  nextOffset: number | null;
+}
+
 export type AssignmentStatus = "assigned";
 
 export interface DispatchPriority {
