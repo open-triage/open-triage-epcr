@@ -156,6 +156,45 @@ export interface PublishedCatalog {
   projectionsVerified: true;
 }
 
+export interface FormDraftRule {
+  kind: "visibility" | "requiredness";
+  expression: Record<string, unknown>;
+}
+
+export interface FormDraftField {
+  key: string;
+  source: { kind: "nemsis"; elementId: string } |
+    { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
+  required?: boolean;
+  allowedAbsenceStates?: string[];
+  configuration?: Record<string, unknown>;
+  rules?: FormDraftRule[];
+}
+
+export interface FormDraftDefinition {
+  schemaVersion: 1;
+  sections: Array<{ key: string; presentation?: Record<string, unknown>; fields: FormDraftField[] }>;
+  locales?: Array<{ locale: string; translations: Record<string, unknown> }>;
+}
+
+export interface FormCloneDiagnostic {
+  code: "missing-reference" | "disabled-reference" | "incompatible-reference";
+  path: string;
+  message: string;
+}
+
+export interface StationaryFormDraft {
+  id: string;
+  formId: string;
+  catalogReleaseId: string;
+  clonedFromId: string;
+  revision: number;
+  definitionSha256: string;
+  definition: FormDraftDefinition;
+  diagnostics: FormCloneDiagnostic[];
+  updatedAt: string;
+}
+
 export type AssignmentStatus = "assigned";
 
 export interface DispatchPriority {

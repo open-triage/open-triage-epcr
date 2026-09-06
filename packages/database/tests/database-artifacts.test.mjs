@@ -15,7 +15,7 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
-  codeListAuthoringMigration] = await Promise.all([
+  codeListAuthoringMigration, formAuthoringMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -36,7 +36,8 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(packageRoot, "scripts/verify-recovery.mjs"), "utf8"),
   readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8")
 ]);
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
@@ -55,6 +56,14 @@ test("code-list projections retain disabled values, deterministic order, and one
   assert.match(codeListAuthoringMigration, /catalog_value_set_option_order_unique/);
   assert.match(codeListAuthoringMigration, /catalog_value_set_option_one_default[\s\S]*where is_default/);
   assert.match(codeListAuthoringMigration, /catalog_value_set_option_configuration_immutable/);
+});
+
+test("form authoring uses revision preconditions while retaining immutable published versions", () => {
+  assert.match(formAuthoringMigration, /revision integer not null default 1/);
+  assert.match(formAuthoringMigration, /forms_one_editable_version_per_form/);
+  assert.match(formAuthoringMigration, /where status = 'draft'/);
+  assert.match(migration, /prevent_published_form_version_mutation/);
+  assert.match(migration, /children of published form version .* are immutable/);
 });
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {

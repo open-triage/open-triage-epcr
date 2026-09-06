@@ -20,6 +20,7 @@ import {
 import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
+import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,6 +55,12 @@ async function ensureFoundation(client) {
   const codeListConfiguration = await client.query("select to_regclass('catalog.value_set_option_configuration') as configuration");
   if (!codeListConfiguration.rows[0].configuration) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8");
+    await client.query(migration);
+  }
+  const formRevision = await client.query(`select 1 from information_schema.columns
+    where table_schema='forms' and table_name='form_version' and column_name='revision'`);
+  if (!formRevision.rows[0]) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8");
     await client.query(migration);
   }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
@@ -149,12 +156,16 @@ integrationTest("authorized Admin context resolves only the session organization
     csrfToken: temporary.session.csrfToken
   });
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
+  const activeFormDefinition = { schemaVersion: 1, sections: [{ key: "dispatch", fields: [
+    { key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" } }
+  ] }] };
+  const activeFormDigest = canonicalDefinitionSha256(activeFormDefinition);
   await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'stationary', 'Agency Stationary')", [formId, organizationId]);
   await client.query(`insert into forms.form_version
     (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
      change_note, created_by, published_by, published_at)
-    values ($1, $2, $3, 3, 'published', '{}'::jsonb, $4, 'Admin shell fixture', $5, $5, now())`,
-  [formVersionId, formId, release.rows[0].id, "0".repeat(64), owner.userId]);
+    values ($1, $2, $3, 3, 'published', $4::jsonb, $5, 'Admin shell fixture', $6, $6, now())`,
+  [formVersionId, formId, release.rows[0].id, JSON.stringify(activeFormDefinition), activeFormDigest, owner.userId]);
   await client.query(`insert into app_identity.operational_unit
     (id, organization_id, call_sign, name, default_form_id)
     values ($1, $2, 'ADMIN-254', 'Admin shell unit', $3)`, [unitId, organizationId, formId]);
@@ -234,6 +245,27 @@ integrationTest("authorized Admin context resolves only the session organization
     [published.id, changedList.listId]), /immutable/);
   const event = await client.query("select result, change_note from catalog.publication_event where release_id=$1", [published.id]);
   assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
+
+  const forms = new FormAuthoringService(transactionalDatabase, sessions);
+  const formDraft = await forms.clone(active.sessionToken, { catalogReleaseId: published.id });
+  assert.equal(formDraft.catalogReleaseId, published.id);
+  assert.equal(formDraft.clonedFromId, formVersionId);
+  assert.deepEqual(formDraft.definition, activeFormDefinition);
+  assert.deepEqual(formDraft.diagnostics, []);
+  const formSaved = await forms.save(active.sessionToken, formDraft.id, {
+    expectedRevision: formDraft.revision, definition: formDraft.definition
+  });
+  assert.equal(formSaved.revision, formDraft.revision + 1);
+  await assert.rejects(forms.save(active.sessionToken, formDraft.id, {
+    expectedRevision: formDraft.revision, definition: formDraft.definition
+  }), /revision is stale/i);
+  const sourceAfterClone = await client.query(`select catalog_release_id,canonical_definition,status
+    from forms.form_version where id=$1`, [formVersionId]);
+  assert.deepEqual(sourceAfterClone.rows[0], {
+    catalog_release_id: release.rows[0].id, canonical_definition: activeFormDefinition, status: "published"
+  });
+  await assert.rejects(client.query("update forms.form_version set canonical_definition='{}' where id=$1", [formVersionId]),
+    /immutable/);
 });
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {
