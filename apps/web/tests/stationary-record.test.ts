@@ -57,6 +57,23 @@ test("the complete record exposes configured sections and blocks in canonical hi
   assert.match(html, /tabindex="-1"/);
 });
 
+test("a pinned form controls Stationary section and element order", () => {
+  const formDefinition = { schemaVersion: 1 as const, sections: [{
+    key: "patient-first", presentation: { title: "Patient first" }, fields: [
+      { key: "sex", source: { kind: "nemsis" as const, elementId: "ePatient.25" } },
+      { key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
+    ],
+  }, {
+    key: "record-second", presentation: { title: "Record second" }, fields: [
+      { key: "record", source: { kind: "nemsis" as const, elementId: "eRecord.01" } },
+    ],
+  }] };
+  const html = renderToStaticMarkup(createElement(StationaryRecord, { document, formDefinition, onDocumentChange() {} }));
+  assert.ok(html.indexOf("Patient first") < html.indexOf("Record second"));
+  assert.ok(html.indexOf('data-element-id="ePatient.25"') < html.indexOf('data-element-id="ePatient.02"'));
+  assert.doesNotMatch(html, /data-element-id="eVitals\.06"/);
+});
+
 test("every compiled group and catalog element has exactly one renderer presentation route", () => {
   const coverage = stationaryPresentationCoverage();
   assert.equal(coverage.groups.size, COMPILED_STATIONARY_LAYOUT.groups.length);

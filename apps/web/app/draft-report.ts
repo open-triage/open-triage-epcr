@@ -1,4 +1,4 @@
-import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -21,6 +21,7 @@ export interface ActiveDraftReport {
   readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
   readonly document?: EncounterDocument;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;

@@ -1,6 +1,6 @@
 "use client";
 
-import type { EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activeStationarySection,
@@ -21,10 +21,11 @@ function statusText(errors: number, warnings: number, incomplete: number): strin
 }
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
-export function StationaryRecord({ document, findings = [], formDefinition, onDocumentChange }: {
+export function StationaryRecord({ document, findings = [], formDefinition, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   readonly formDefinition?: FormDraftDefinition;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultSections = useMemo(() => configuredStationarySections(), []);
@@ -42,8 +43,9 @@ export function StationaryRecord({ document, findings = [], formDefinition, onDo
       const incomplete = section.fields.filter((field) => {
         if (field.source.kind !== "nemsis") return false;
         const elementId = field.source.elementId;
-        const catalogRequired = (getNemsisDataElement(elementId)?.occurrence.min ?? 0) > 0;
-        if (!(field.required ?? catalogRequired)) return false;
+        const catalogRequired = catalogFields[elementId]?.agencyRequired ||
+          (catalogFields[elementId]?.minOccurs ?? getNemsisDataElement(elementId)?.occurrence.min ?? 0) > 0;
+        if (!(field.required === true || catalogRequired)) return false;
         return !document.groups.some((group) => group.instances.some((instance) => instance.elements.some((element) =>
           element.id === elementId && element.values.length > 0)));
       }).length;
@@ -53,7 +55,7 @@ export function StationaryRecord({ document, findings = [], formDefinition, onDo
         incomplete,
       }];
     }));
-  }, [defaultSections, document, findings, previewSections]);
+  }, [catalogFields, defaultSections, document, findings, previewSections]);
   const [activeId, setActiveId] = useState(sections[0]?.id ?? "");
 
   const moveToSection = useCallback((sectionId: string, focus: boolean, smooth = false) => {
@@ -150,8 +152,9 @@ export function StationaryRecord({ document, findings = [], formDefinition, onDo
               { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
                 ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
                 : inlineGroups.get(block.group.id)!.fields }
-            ]} findings={findings} onDocumentChange={onDocumentChange} />
-            : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings} onDocumentChange={onDocumentChange} />)}
+            ]} findings={findings} catalogFields={catalogFields} onDocumentChange={onDocumentChange} />
+            : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields } : undefined} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

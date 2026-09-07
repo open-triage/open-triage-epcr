@@ -96,11 +96,12 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const medicationDefinition = bundledEncounterDefinition.events.medication;
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
-  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document), [encounter.document]);
+  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm), [encounter.document, report?.clinicalForm]);
   const signingFindings: ReadonlyArray<SigningFinding> = useMemo(
     () => [...stationaryFindings, ...reviewFindings], [reviewFindings, stationaryFindings],
   );
-  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? signingFindings : reviewFindings;
+  const configuredStationaryFindings: ReadonlyArray<SigningFinding> = report?.clinicalForm ? stationaryFindings : signingFindings;
+  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
@@ -394,7 +395,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <div hidden={shell.view === "review"}>
           <StationaryRecord
             document={encounter.document}
-            findings={signingFindings}
+            findings={configuredStationaryFindings}
+            formDefinition={report?.clinicalForm?.definition}
+            catalogFields={report?.clinicalForm?.catalogFields}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
           />
         </div>
@@ -490,7 +493,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       {presentationMode === "stationary" && shell.view === "review" && (
         <>
         <ReviewPanel
-          findings={signingFindings}
+          findings={configuredStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}

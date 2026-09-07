@@ -149,10 +149,13 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("for update of ca")) return [assignment];
-    if (normalized.includes("from forms.form_version")) {
+    if (normalized.includes("agency_stationary_default")) {
       assert.match(normalized, /agency_stationary_default.*status = 'published'/s);
       return [{ id: "latest-published-version", catalog_release_id: "catalog-release" }];
     }
+    if (normalized.includes("select canonical_definition from forms.form_version")) return [{ canonical_definition: {
+      schemaVersion: 1, sections: [{ key: "response", fields: [{ key: "record", source: { kind: "nemsis", elementId: "eRecord.01" }, required: true }] }]
+    } }];
     if (normalized.includes("from app_identity.agency_demographic_version")) return [{ id: "agency-version" }];
     if (normalized.includes("insert into clinical.report")) {
       writes.push("report");
@@ -163,6 +166,14 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
       return [];
     }
     if (normalized.includes("insert into clinical.group_instance")) return [];
+    if (normalized.includes("select element_id, agency_required")) return [{
+      element_id: "eRecord.01", agency_required: true, min_occurs: 0, max_occurs: 1,
+      nillable: false, supports_not_values: false, supports_pertinent_negatives: false
+    }];
+    if (normalized.includes("from catalog.value_set_element")) return [{
+      element_id: "eRecord.01", code: "configured", code_system: "urn:test", label: "Configured choice",
+      terminology_version: "2026-09-03T00:00:00.000Z"
+    }];
     if (normalized.includes("from catalog.element_definition")) return [{
       element_id: "eRecord.01", element_identity_id: "record-identity", base_datatype: "string", analytical_repeatable: false, identifying: false
     }];
@@ -199,6 +210,11 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.id, retried.report.id);
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
+  assert.equal(opened.report.clinicalForm.definition.sections[0].fields[0].source.elementId, "eRecord.01");
+  assert.equal(opened.report.clinicalForm.catalogFields["eRecord.01"].agencyRequired, true);
+  assert.deepEqual(opened.report.clinicalForm.catalogFields["eRecord.01"].codeChoices.map(({ code, label }) => ({ code, label })), [
+    { code: "configured", label: "Configured choice" }
+  ]);
   assert.equal(opened.report.document.encounter.id, opened.report.id);
   assert.equal(opened.report.agencyTimeZone, "America/New_York");
   assert.deepEqual(opened.report.dispatchConflicts, []);

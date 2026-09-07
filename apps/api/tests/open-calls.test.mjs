@@ -102,6 +102,14 @@ test("reopening restores the creator's report with its pinned form and saved con
     const normalized = sql.replace(/\s+/g, " ");
     queries.push({ sql: normalized, parameters });
     if (normalized.includes("from clinical.report where id")) return [report];
+    if (normalized.includes("select canonical_definition from forms.form_version")) return [{ canonical_definition: {
+      schemaVersion: 1, sections: [{ key: "patient", fields: [{ key: "birth-date", source: { kind: "nemsis", elementId: "ePatient.17" } }] }]
+    } }];
+    if (normalized.includes("select element_id, agency_required")) return [{
+      element_id: "ePatient.17", agency_required: false, min_occurs: 0, max_occurs: 1,
+      nillable: true, supports_not_values: true, supports_pertinent_negatives: false
+    }];
+    if (normalized.includes("from catalog.value_set_element")) return [];
     if (normalized.includes("join forms.form_version")) return [{
       id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:05:00.000Z",
       form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -145,6 +153,7 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.agencyTimeZone, "America/New_York");
   assert.equal(reopened.report.formVersionId, "pinned-form");
+  assert.equal(reopened.report.clinicalForm.definition.sections[0].fields[0].source.elementId, "ePatient.17");
   assert.deepEqual(reopened.report.dispatchCancellation, {
     canceledAt: "2026-09-03T12:18:31.000Z", dispatchRevision: 3, receiptId: "dispatch-receipt"
   });

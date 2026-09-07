@@ -1,4 +1,5 @@
 import type { CodedEncounterValue, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 import {
   NEMSIS_DATA_MODEL,
   requireNemsisDataElement,
@@ -77,6 +78,22 @@ export function stationaryCodedField(elementOrId: NemsisDataElement | string): S
   };
 }
 
+/** Applies the report-pinned catalog labels, ordering, additions, and disabled choices. */
+export function configuredStationaryCodedField(
+  elementOrId: NemsisDataElement | string,
+  configured?: ClinicalFormConfiguration["catalogFields"][string],
+): StationaryCodedField {
+  const base = stationaryCodedField(elementOrId);
+  if (!configured?.codeChoices) return base;
+  return { ...base, options: configured.codeChoices.map((choice) => ({
+    code: choice.code,
+    label: choice.label,
+    ...(choice.codeSystem ? { system: choice.codeSystem } : {}),
+    ...(choice.terminologyVersion ? { terminologyVersion: choice.terminologyVersion } : {}),
+    suggested: true,
+  })) };
+}
+
 /** Rejects values that a generated control must never persist for this element. */
 export function validateStationaryCodedSelection(field: StationaryCodedField, selection: StationaryCodedSelection): void {
   if (selection.kind === "coded") {
@@ -137,12 +154,12 @@ function compatibleValueExtensions(value: EncounterValue | undefined): Readonly<
 /** Atomically replaces an ordinary or exceptional value, so incompatible states cannot coexist. */
 export function editStationaryCodedValue(
   document: EncounterDocument,
-  target: { readonly groupId: string; readonly instanceId: string; readonly elementId: string; readonly occurrenceId?: string },
+  target: { readonly groupId: string; readonly instanceId: string; readonly elementId: string; readonly occurrenceId?: string; readonly codedField?: StationaryCodedField },
   selection: StationaryCodedSelection | undefined,
   createId: () => string = () => crypto.randomUUID(),
   now = new Date(),
 ): EncounterDocument {
-  const field = stationaryCodedField(target.elementId);
+  const field = target.codedField ?? stationaryCodedField(target.elementId);
   const elementDefinition = requireNemsisDataElement(target.elementId);
   if (selection) validateStationaryCodedSelection(field, selection);
   const groupIndex = document.groups.findIndex(({ id }) => id === target.groupId);
