@@ -9,6 +9,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import type { ActiveReportResource, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import type {
   CreateDraftReportCommand,
   DraftGroupMutation,
@@ -593,6 +594,9 @@ export class DraftReportService {
     const details = await this.get(accessToken, reportId);
     const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
     const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
+    const clinicalForm = await this.dataSource.transaction((manager) => clinicalFormConfiguration(
+      manager, String(details.formVersionId), String(details.catalogReleaseId)
+    ));
     const calls = await this.dataSource.query<Array<{
       call_number: string;
       dispatched_at: Date | string;
@@ -640,6 +644,7 @@ export class DraftReportService {
         documentingUserId: String(details.documentingUserId),
         formVersionId: String(details.formVersionId),
         catalogReleaseId: String(details.catalogReleaseId),
+        clinicalForm,
         revision: Number(details.revision),
         status: "draft",
         document,

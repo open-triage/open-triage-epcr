@@ -11,6 +11,7 @@ import { NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } f
 import { INITIAL_SHELL_STATE } from "../app/standard-encounter";
 import {
   codedSelectionFromOption,
+  configuredStationaryCodedField,
   editStationaryCodedValue,
   exceptionalSelection,
   repeatableExceptionalChoices,
@@ -46,6 +47,22 @@ test("inline controls expose only exhaustive catalog values and reject invented 
   assert.equal(field.controlKind, "select");
   assert.deepEqual(field.options.map(({ code, label }) => ({ code, label })), element.valueSource.kind === "inline-enumerated" ? element.valueSource.values : []);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "invented" }), /not in the exhaustive value set/);
+});
+
+test("report-pinned catalog choices replace generated labels, ordering, and availability", () => {
+  const field = configuredStationaryCodedField("ePatient.25", {
+    agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: true,
+    codeChoices: [
+      { code: "9906003", codeSystem: "", label: "Configured unknown" },
+      { code: "9906001", codeSystem: "", label: "Configured female" },
+    ],
+  });
+  assert.deepEqual(field.options.map(({ code, label }) => ({ code, label })), [
+    { code: "9906003", label: "Configured unknown" },
+    { code: "9906001", label: "Configured female" },
+  ]);
+  assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "9906005" }), /not in the exhaustive value set/);
 });
 
 test("bundled canonical options render as one label-only dropdown", () => {

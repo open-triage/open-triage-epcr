@@ -1,6 +1,6 @@
 "use client";
 
-import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { useId, useState, type CSSProperties } from "react";
 import {
   editNonRepeatingCodedValue,
@@ -11,7 +11,7 @@ import {
   type StationaryNonRepeatingGroup,
 } from "../app/stationary-non-repeating";
 import { scalarOccurrences, stationaryDateTimeDefault, type ScalarValidationFinding } from "../app/stationary-scalar";
-import { stationaryCodedField } from "../app/stationary-coded-value";
+import { configuredStationaryCodedField } from "../app/stationary-coded-value";
 import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./stationary-coded-field";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
@@ -91,17 +91,18 @@ function EditableScalarField({ document, group, field, instance, parentInstanceI
   </div>;
 }
 
-function EditableCodedField({ document, group, field, instance, parentInstanceId, disabled, onDocumentChange }: {
+function EditableCodedField({ document, group, field, instance, parentInstanceId, disabled, catalogField, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly group: StationaryNonRepeatingGroup;
   readonly field: StationaryNonRepeatingField;
   readonly instance?: EncounterGroupInstance;
   readonly parentInstanceId?: string;
   readonly disabled: boolean;
+  readonly catalogField?: ClinicalFormConfiguration["catalogFields"][string];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const values = instance?.elements.find(({ id }) => id === field.id)?.values ?? [];
-  const codedField = stationaryCodedField(field.catalog);
+  const codedField = configuredStationaryCodedField(field.catalog, catalogField);
   const repeatable = field.catalog.occurrence.max === "unbounded" || field.catalog.occurrence.max > 1;
   if (repeatable) return <StationaryCodedOccurrencesField
     field={codedField}
@@ -114,6 +115,7 @@ function EditableCodedField({ document, group, field, instance, parentInstanceId
         ...(instance ? { groupInstanceId: instance.instanceId } : {}),
         ...(parentInstanceId ? { parentInstanceId } : {}),
         ...(value ? { occurrenceId: value.occurrenceId } : {}),
+        codedField,
       }, selection));
     }}
   />;
@@ -131,6 +133,7 @@ function EditableCodedField({ document, group, field, instance, parentInstanceId
           ...(instance ? { groupInstanceId: instance.instanceId } : {}),
           ...(parentInstanceId ? { parentInstanceId } : {}),
           ...(value ? { occurrenceId: value.occurrenceId } : {}),
+          codedField,
         }, selection));
       }}
     />)}
@@ -147,11 +150,12 @@ function renderContexts(document: EncounterDocument, group: StationaryNonRepeati
 }
 
 /** Full inline stationary projection. Fields stay in the DOM even when optional or not applicable. */
-export function StationaryNonRepeatingRecord({ document, applicability = {}, groups = STATIONARY_NON_REPEATING_GROUPS, findings = [], onDocumentChange }: {
+export function StationaryNonRepeatingRecord({ document, applicability = {}, groups = STATIONARY_NON_REPEATING_GROUPS, findings = [], catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly applicability?: Readonly<Record<string, StationaryApplicability>>;
   readonly groups?: ReadonlyArray<StationaryNonRepeatingGroup>;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const visibleGroups = groups.filter(({ fields }) => fields.length > 0);
@@ -188,7 +192,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
                 ? <ReadOnlyField field={field} instance={instance} />
                 : field.scalar
                   ? <EditableScalarField document={document} group={group} field={field} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />
-                  : <EditableCodedField document={document} group={group} field={field} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />}
+                : <EditableCodedField document={document} group={group} field={field} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
               <StationaryValidationMessages findings={fieldFindings} />
             </div>;
           })}

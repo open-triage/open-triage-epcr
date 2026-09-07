@@ -4,6 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignedCall, AssignedCallsResponse, InstallationSettings, OpenAssignmentResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 import { selectedInstallationSettings } from "../config/installation-settings.js";
@@ -384,6 +385,7 @@ export class AssignedCallsService {
     if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
     const document = await encounterDocument(manager, report.id);
     const conflicts = await dispatchConflicts(manager, report.id);
+    const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id);
     return {
       assignmentId: assignment.id,
       report: {
@@ -391,6 +393,7 @@ export class AssignedCallsService {
         documentingUserId: report.documenting_user_id,
         formVersionId: report.form_version_id,
         catalogReleaseId: report.catalog_release_id,
+        clinicalForm,
         revision: Number(report.revision),
         status: "draft",
         document,

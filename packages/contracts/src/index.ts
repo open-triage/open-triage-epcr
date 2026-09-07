@@ -177,6 +177,25 @@ export interface FormDraftDefinition {
   locales?: Array<{ locale: string; translations: Record<string, unknown> }>;
 }
 
+/** Runtime projection of the immutable form and catalog versions pinned to a report. */
+export interface ClinicalFormConfiguration {
+  definition: FormDraftDefinition;
+  catalogFields: Record<string, {
+    agencyRequired: boolean;
+    minOccurs: number;
+    maxOccurs: number | null;
+    nillable: boolean;
+    supportsNotValues: boolean;
+    supportsPertinentNegatives: boolean;
+    codeChoices?: Array<{
+      code: string;
+      codeSystem: string;
+      label: string;
+      terminologyVersion?: string;
+    }>;
+  }>;
+}
+
 export interface FormCloneDiagnostic {
   code: "missing-reference" | "disabled-reference" | "incompatible-reference";
   path: string;
@@ -265,6 +284,8 @@ export interface OpenAssignmentResponse {
     documentingUserId: string;
     formVersionId: string;
     catalogReleaseId: string;
+    /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
+    clinicalForm?: ClinicalFormConfiguration;
     revision: number;
     status: "draft";
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
