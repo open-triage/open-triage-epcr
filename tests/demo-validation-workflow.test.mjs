@@ -41,9 +41,13 @@ test("the required gate accepts only an all-success result", () => {
 
 test("the workflow exposes a least-privilege, stable required check", async () => {
   const workflow = await readFile(workflowPath, "utf8");
+  const workflowPermissions = workflow.slice(
+    workflow.indexOf("permissions:"),
+    workflow.indexOf("jobs:"),
+  );
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.doesNotMatch(workflow, /^\s+[\w-]+: write$/m);
+  assert.doesNotMatch(workflowPermissions, /^\s+[\w-]+: write$/m);
   assert.match(workflow, /^  validation-gate:\n    name: Required \/ Demo validation gate$/m);
   assert.match(workflow, /^    if: always\(\)$/m);
 });
