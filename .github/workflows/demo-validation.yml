@@ -1,0 +1,128 @@
+name: Demo validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, feature/ci-cd-deployment]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application-validation:
+    name: Validate / Application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+      - name: Lint all workspaces
+        run: npm run lint
+      - name: Run unit and workflow tests
+        run: npm test
+      - name: Build database artifacts, contracts, API, and web
+        run: npm run build
+
+  database-validation:
+    name: Validate / PostgreSQL 15
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: open_triage_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d open_triage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify generated database artifacts
+        run: npm run check:database
+      - name: Run database integration tests
+        run: npm run test:integration -w @open-triage/database
+      - name: Run API integration tests
+        run: npm run test:integration -w @open-triage/api
+      - name: Run CI scale checks
+        run: npm run scale:test:ci -w @open-triage/database
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: database-scale-test-ci
+          path: packages/database/artifacts/scale-test-ci.json
+
+  web-deployment-validation:
+    name: Validate / Web deployment
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_BASE_PATH: /open-triage-epcr-demo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build deployable web application
+        run: npm run build -w @open-triage/web
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test the deployed web artifact
+        run: npm run test:deployment -w @open-triage/web
+
+  helm-validation:
+    name: Validate / Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Lint chart
+        run: >-
+          helm lint deploy/helm/open-triage
+          --set-string secrets.databaseUrl=postgresql://validation.invalid/open_triage
+          --set-string secrets.patientKeyInstallationId=00000000-0000-0000-0000-000000000000
+          --set-string secrets.patientKeySecretBase64=dmFsaWRhdGlvbi1vbmx5
+      - name: Render Kubernetes manifests
+        run: >-
+          helm template open-triage deploy/helm/open-triage
+          --set-string secrets.databaseUrl=postgresql://validation.invalid/open_triage
+          --set-string secrets.patientKeyInstallationId=00000000-0000-0000-0000-000000000000
+          --set-string secrets.patientKeySecretBase64=dmFsaWRhdGlvbi1vbmx5
+          > /dev/null
+
+  validation-gate:
+    name: Required / Demo validation gate
+    if: always()
+    needs:
+      - application-validation
+      - database-validation
+      - web-deployment-validation
+      - helm-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every validation job to pass
+        env:
+          VALIDATION_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/require-demo-validation.mjs
