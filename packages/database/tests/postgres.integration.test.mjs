@@ -76,6 +76,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     "utf8"
   );
   await client.query(formActivationMigration);
+  const reportConfigurationPinMigration = await readFile(
+    path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"),
+    "utf8"
+  );
+  await client.query(reportConfigurationPinMigration);
 
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
@@ -177,8 +182,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         [agencyId, organizationId, release.rows[0].id, userId]);
       await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'integration', 'Integration')", [formId, organizationId]);
       await client.query(`insert into forms.form_version
-        (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
-        values ($1, $2, $3, 1, '{}', repeat('c', 64), $4)`,
+        (id, form_id, catalog_release_id, version, status, canonical_definition,
+         definition_sha256, change_note, created_by, published_by, published_at)
+        values ($1, $2, $3, 1, 'published', '{}', repeat('c', 64),
+          'Integration fixture', $4, $4, now())`,
         [formVersionId, formId, release.rows[0].id, userId]);
       await client.query(`insert into clinical.report
         (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
@@ -414,6 +421,48 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await rejectsSql(client,
         "update forms.form_version set change_note = 'changed' where id = $1",
         [fixture.rows[0].form_version_id], "P0001");
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
+  await t.test("activation cannot rewrite an older report's configuration pins", async () => {
+    const reportId = "32000000-0000-4000-8000-00000000000e";
+    const original = (await client.query(`select organization_id, incident_id, patient_id,
+      agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id
+      from clinical.report where id = $1`, [reportId])).rows[0];
+
+    await client.query("begin");
+    try {
+      const nextVersion = await client.query(`insert into forms.form_version
+        (form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+         change_note, created_by, published_by, published_at)
+        select form_id, catalog_release_id, version + 1, 'published',
+          '{"schemaVersion":1,"sections":[]}'::jsonb, repeat('e', 64),
+          'Integration activation', created_by, created_by, now()
+        from forms.form_version where id = $1 returning id, catalog_release_id`,
+      [original.form_version_id]);
+      await client.query(`update forms.agency_stationary_default
+        set form_version_id = $2, activated_by = $3, activated_at = now()
+        where organization_id = $1`,
+      [original.organization_id, nextVersion.rows[0].id, original.documenting_user_id]);
+
+      assert.deepEqual((await client.query(`select organization_id, incident_id, patient_id,
+        agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id
+        from clinical.report where id = $1`, [reportId])).rows[0], original);
+      await rejectsSql(client, "update clinical.report set form_version_id = $2 where id = $1",
+        [reportId, nextVersion.rows[0].id], "P0001");
+
+      await client.query(`update clinical.report set status = 'signed', revision = revision + 1,
+        reporting_date = current_date, reporting_date_source = 'signing-time'
+        where id = $1`, [reportId]);
+      const signed = (await client.query(`select status, form_version_id, catalog_release_id
+        from clinical.report where id = $1`, [reportId])).rows[0];
+      assert.deepEqual(signed, {
+        status: "signed",
+        form_version_id: original.form_version_id,
+        catalog_release_id: original.catalog_release_id
+      });
     } finally {
       await client.query("rollback");
     }

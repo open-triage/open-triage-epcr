@@ -68,6 +68,16 @@ async function ensureFoundation(client) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8");
     await client.query(migration);
   }
+  const reportPinValidator = await client.query(
+    "select to_regprocedure('clinical.validate_report_configuration_pin()') as validator"
+  );
+  if (!reportPinValidator.rows[0].validator) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"),
+      "utf8"
+    );
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -788,6 +798,9 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
       { code: "2305003", display: "Emergent" });
 
     const laterVersionId = randomUUID();
+    const laterDefinition = { schemaVersion: 1, sections: [{
+      key: "replacement", presentation: { title: "Replacement configuration" }, fields: []
+    }] };
     await client.query(`
       insert into forms.form_version
         (id, form_id, catalog_release_id, version, status, canonical_definition,
@@ -795,13 +808,29 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
          publication_acknowledgements)
       select $1, fv.form_id, fv.catalog_release_id,
              (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
-             'published', fv.canonical_definition, fv.definition_sha256,
+             'published', $3::jsonb, repeat('f', 64),
              'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
       from forms.form_version fv where fv.id = $2
-    `, [laterVersionId, latestBeforeOpen]);
-    assert.equal((await client.query("select form_version_id from clinical.report where id = $1", [opened.report.id])).rows[0].form_version_id,
-      latestBeforeOpen);
+    `, [laterVersionId, latestBeforeOpen, JSON.stringify(laterDefinition)]);
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = $2, activated_by = $3, activated_at = now()
+      where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
+
+    const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
+      method: "POST", headers: { cookie: sessionCookie }
+    });
+    assert.equal(reopenedAfterActivationResponse.status, 200);
+    const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
+    assert.equal(reopenedAfterActivation.report.formVersionId, latestBeforeOpen);
+    assert.equal(reopenedAfterActivation.report.catalogReleaseId, opened.report.catalogReleaseId);
+    assert.deepEqual(reopenedAfterActivation.report.clinicalForm, opened.report.clinicalForm);
+    assert.deepEqual(reopenedAfterActivation.report.document, opened.report.document);
+    await assert.rejects(client.query("update clinical.report set form_version_id = $2 where id = $1",
+      [opened.report.id, laterVersionId]), /identity and pinned configuration are immutable/);
   } finally {
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = $2, activated_by = $3, activated_at = now()
+      where organization_id = $1`, [session.organization.id, latestBeforeOpen, session.user.id]);
     if (opened) {
       await client.query("begin");
       try {
@@ -843,15 +872,6 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   [agencyVersionId, organizationId, releaseId, "a".repeat(64), userId]);
   await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, $3, 'Draft command form')",
     [formId, organizationId, `draft-${formId}`]);
-  await client.query(`insert into forms.form_version
-    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
-     change_note, created_by, published_by, published_at)
-    values ($1, $2, $3, 1, 'published', '{"schemaVersion":1,"sections":[]}', $4,
-            'Draft API integration fixture', $5, $5, now())`,
-  [formVersionId, formId, releaseId, "b".repeat(64), userId]);
-  await client.query(`insert into forms.agency_stationary_default
-    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, userId]);
-
   const selected = await client.query(`
     select
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
@@ -882,6 +902,42 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.ok(coded, "catalog fixture requires an inline coded value");
   const notValue = await option(ids.null_id, "not-value");
   const negative = await option(ids.negative_id, "pertinent-negative");
+  const signingSectionId = randomUUID();
+  const presentFieldId = randomUUID();
+  const requiredFieldId = randomUUID();
+  const requiredElement = (await client.query(`select e.element_id, e.element_identity_id,
+      (m.analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.element_definition e join catalog.analytics_element_mapping m
+      on m.release_id = e.release_id and m.element_id = e.element_id
+    where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
+      and e.element_id <> $2 order by e.element_id limit 1`, [releaseId, ids.text_id])).rows[0];
+  assert.ok(requiredElement, "catalog fixture requires a second singleton text element");
+  const presentIdentity = (await client.query(`select element_identity_id,
+      (analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.analytics_element_mapping where release_id = $1 and element_id = $2`,
+  [releaseId, ids.text_id])).rows[0];
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
+    values ($1, $2, $3, 1, '{"schemaVersion":1,"sections":[]}', $4, $5)`,
+  [formVersionId, formId, releaseId, "d".repeat(64), userId]);
+  await client.query(`insert into forms.form_section (id, form_version_id, stable_key, position)
+    values ($1, $2, 'signing', 0)`, [signingSectionId, formVersionId]);
+  await client.query(`insert into forms.form_field
+    (id, form_version_id, section_id, stable_key, position, source_kind,
+     catalog_element_identity_id, required, analytical_repeatable)
+    values ($1, $3, $4, 'present', 0, 'nemsis', $5, false, $6),
+           ($2, $3, $4, 'required-when-present', 1, 'nemsis', $7, true, $8)`,
+  [presentFieldId, requiredFieldId, formVersionId, signingSectionId,
+    presentIdentity.element_identity_id, presentIdentity.analytical_repeatable,
+    requiredElement.element_identity_id, requiredElement.analytical_repeatable]);
+  await client.query(`insert into forms.form_rule
+    (form_version_id, target_field_id, rule_kind, expression)
+    values ($1, $2, 'requiredness', '{"operator":"exists","field":"present"}')`,
+  [formVersionId, requiredFieldId]);
+  await client.query(`update forms.form_version set status = 'published', change_note = 'Signing fixture',
+    published_by = $2, published_at = now() where id = $1`, [formVersionId, userId]);
+  await client.query(`insert into forms.agency_stationary_default
+    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, userId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   const integrationAccessToken = "draft-api-owner-token";
@@ -1217,43 +1273,6 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(Number(skewAudit.losing_base_revision), 7);
   await assert.rejects(client.query("update clinical_audit.draft_reconciliation set resolution = resolution where report_id = $1",
     [mergeReportId]), /append-only/);
-
-  const signingFormVersionId = randomUUID();
-  const signingSectionId = randomUUID();
-  const presentFieldId = randomUUID();
-  const requiredFieldId = randomUUID();
-  const requiredElement = (await client.query(`select e.element_id, e.element_identity_id,
-      (m.analytical_location = 'repeatable') as analytical_repeatable
-    from catalog.element_definition e join catalog.analytics_element_mapping m
-      on m.release_id = e.release_id and m.element_id = e.element_id
-    where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
-      and e.element_id <> $2 order by e.element_id limit 1`, [releaseId, ids.text_id])).rows[0];
-  assert.ok(requiredElement, "catalog fixture requires a second singleton text element");
-  const presentIdentity = (await client.query(`select element_identity_id,
-      (analytical_location = 'repeatable') as analytical_repeatable
-    from catalog.analytics_element_mapping where release_id = $1 and element_id = $2`,
-  [releaseId, ids.text_id])).rows[0];
-  await client.query(`insert into forms.form_version
-    (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
-    values ($1, $2, $3, 2, '{"schemaVersion":1,"sections":[]}', $4, $5)`,
-  [signingFormVersionId, formId, releaseId, "d".repeat(64), userId]);
-  await client.query(`insert into forms.form_section (id, form_version_id, stable_key, position)
-    values ($1, $2, 'signing', 0)`, [signingSectionId, signingFormVersionId]);
-  await client.query(`insert into forms.form_field
-    (id, form_version_id, section_id, stable_key, position, source_kind,
-     catalog_element_identity_id, required, analytical_repeatable)
-    values ($1, $3, $4, 'present', 0, 'nemsis', $5, false, $6),
-           ($2, $3, $4, 'required-when-present', 1, 'nemsis', $7, true, $8)`,
-  [presentFieldId, requiredFieldId, signingFormVersionId, signingSectionId,
-    presentIdentity.element_identity_id, presentIdentity.analytical_repeatable,
-    requiredElement.element_identity_id, requiredElement.analytical_repeatable]);
-  await client.query(`insert into forms.form_rule
-    (form_version_id, target_field_id, rule_kind, expression)
-    values ($1, $2, 'requiredness', '{"operator":"exists","field":"present"}')`,
-  [signingFormVersionId, requiredFieldId]);
-  await client.query(`update forms.form_version set status = 'published', change_note = 'Signing fixture',
-    published_by = $2, published_at = now() where id = $1`, [signingFormVersionId, userId]);
-  await client.query("update clinical.report set form_version_id = $2 where id = $1", [reportId, signingFormVersionId]);
 
   const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
   const missingRequired = await sign({
