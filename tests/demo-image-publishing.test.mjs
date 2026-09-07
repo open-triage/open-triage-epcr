@@ -67,9 +67,12 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   assert.match(publishing, /^          push: true$/m);
   assert.match(
     publishing,
-    /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-\$\{\{ matrix\.component \}\}:\$\{\{ github\.sha \}\}/,
+    /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-\$\{\{ matrix\.component \}\}:\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
   );
   assert.match(publishing, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf("jobs:")), /packages: write/);
-  assert.match(publishing, /name: demo-deployment-images-\$\{\{ github\.sha \}\}/);
+  assert.match(
+    publishing,
+    /name: demo-deployment-images-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
+  );
 });
