@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "node scripts/generate-nemsis-analytics.mjs",
     "check": "node scripts/generate-nemsis-analytics.mjs --check",
+    "migrate": "node scripts/migrate.mjs",
     "bootstrap:synthetic": "npm run build -w @open-triage/api && node scripts/bootstrap-synthetic-installation.mjs",
     "load:catalog": "node scripts/load-nemsis-catalog.mjs",
     "project": "node scripts/project-analytics.mjs",

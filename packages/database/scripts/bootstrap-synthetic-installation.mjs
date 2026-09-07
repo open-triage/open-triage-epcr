@@ -9,6 +9,7 @@ import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/
 import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.validation.js";
 import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
 import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
+import { applyMigrations, readMigrations } from "./migrate.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,12 +85,13 @@ const formDefinition = {
 async function ensureFoundation(client) {
   const existing = await client.query("select to_regclass('app_identity.organization') as organization");
   if (existing.rows[0].organization) return false;
-  const migration = await readFile(
-    path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"),
-    "utf8"
+  const migrations = await readMigrations(path.join(repoRoot, "supabase/migrations"));
+  const applied = await applyMigrations(
+    client,
+    migrations,
+    { info() {} },
   );
-  await client.query(migration);
-  return true;
+  return applied > 0;
 }
 
 async function ensureCatalog() {

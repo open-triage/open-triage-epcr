@@ -12,6 +12,7 @@ COPY apps/api apps/api
 COPY apps/web/app/data apps/web/app/data
 COPY packages/contracts packages/contracts
 COPY packages/database packages/database
+COPY supabase supabase
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 
 ENV NODE_ENV=production

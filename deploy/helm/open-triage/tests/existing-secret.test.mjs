@@ -18,8 +18,8 @@ test("existing-Secret mode references the cluster-owned Secret without rendering
   assert.doesNotMatch(output, /stringData:/);
   assert.equal(
     output.match(/secretRef: \{ name: open-triage-database \}/g)?.length,
-    3,
-    "the API and both analytics workloads must reference the existing Secret",
+    4,
+    "the migration, API, and both analytics workloads must reference the existing Secret",
   );
 });
 
@@ -40,11 +40,13 @@ test("an explicitly named existing Secret is used by every workload", () => {
   const output = render("--set", "secrets.existingSecret=installation-database");
 
   assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|stringData:/);
-  assert.equal(output.match(/secretRef: \{ name: installation-database \}/g)?.length, 3);
+  assert.equal(output.match(/secretRef: \{ name: installation-database \}/g)?.length, 4);
 });
 
 test("managed-Secret mode remains available", () => {
   const output = render(
+    "--set",
+    "migration.enabled=false",
     "--set",
     "secrets.existingSecret=",
     "--set-string",
