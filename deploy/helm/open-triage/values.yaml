@@ -31,6 +31,9 @@ ingress:
   tls: []
 
 secrets:
+  # The demo Secret is cluster-owned. When this is set, the chart only
+  # references it and ignores the managed Secret values below.
+  existingSecret: open-triage-database
   databaseUrl: ""
   supabaseUrl: ""
   supabaseSecretKey: ""

@@ -18,6 +18,7 @@
     "check:nemsis-catalog-guardrails": "node apps/web/scripts/check-nemsis-catalog-guardrails.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test:workflow && npm run test --workspaces --if-present",
+    "test:helm": "node --test deploy/helm/open-triage/tests/*.test.mjs",
     "test:workflow": "node --test tests/*.test.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },

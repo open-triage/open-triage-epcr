@@ -23,7 +23,7 @@ spec:
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           ports: [{ name: http, containerPort: 3001 }]
-          envFrom: [{ secretRef: { name: {{ include "open-triage.fullname" . }}-database } }]
+          envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
           env:
             - name: PORT
               value: "3001"
