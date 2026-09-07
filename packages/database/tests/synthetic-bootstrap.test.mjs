@@ -44,6 +44,12 @@ test("uses deterministic synthetic identities and contains no patient identity f
   }
 });
 
+test("seeds usable local credentials for both demo roles", () => {
+  assert.match(bootstrap, /'demo\.admin'/);
+  assert.match(bootstrap, /'demo\.clinician'/);
+  assert.match(bootstrap, /createPasswordVerifier\("open-triage-demo"\)/);
+});
+
 test("seeds the demo organization with a fixed fourteen-hour shift session", () => {
   assert.match(bootstrap, /shift_session_duration_hours, deployment_timezone/);
   assert.match(bootstrap, /OpenTriage Synthetic EMS', 14, 'UTC'/);
@@ -63,14 +69,18 @@ test("associates the demo clinician and unit, then ingests only the committed in
   assert.match(bootstrap, /dispatchWriter = \{[\s\S]*client\.query\(sql, parameters\)\)\.rows/);
   assert.match(bootstrap, /ingestDispatchDelivery\(dispatchWriter/);
   assert.match(bootstrap, /projectDispatchAssignment\(validatedDispatch\.canonical\)/);
-  assert.match(bootstrap, /dispatch-priority[\s\S]*eDispatch\.05/);
-  assert.doesNotMatch(bootstrap, /dispatch-priority[\s\S]{0,120}eDispatch\.02/);
+  assert.match(bootstrap, /stationary-layout-1\.0\.0\.json/);
+  assert.match(bootstrap, /fullStationaryFormDefinition\(stationaryLayout\)/);
+  assert.match(bootstrap, /fieldElementIds = formDefinition\.sections\.flatMap/);
+  assert.match(bootstrap, /synthetic-stationary-section:/);
+  assert.match(bootstrap, /synthetic-stationary-field:/);
   assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
   assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
   assert.ok(!bootstrap.includes("SYN-20260903-001"));
   assert.ok(!bootstrap.includes("Medical assistance requested"));
   assert.match(bootstrap, /fv\.status as form_status/);
   assert.match(bootstrap, /expected\.form_status !== "published"/);
+  assert.match(bootstrap, /insert into forms\.agency_stationary_default[\s\S]*on conflict \(organization_id\) do nothing/);
 });
 
 test("normal application startup and bootstrap never delete existing data", () => {

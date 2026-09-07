@@ -38,6 +38,9 @@ const dispatchSourceBytes = installationSettings.sampleDispatchAssignment.enable
 const dispatchCatalog = installationSettings.sampleDispatchAssignment.enabled
   ? JSON.parse(await readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"))
   : null;
+const stationaryLayout = JSON.parse(await readFile(
+  path.join(repoRoot, "apps/web/app/data/stationary-layout-1.0.0.json"), "utf8"
+));
 const validatedDispatch = dispatchSourceBytes && dispatchCatalog
   ? validateDispatchAssignment(JSON.parse(dispatchSourceBytes.toString("utf8")), dispatchCatalog)
   : null;
@@ -55,9 +58,6 @@ const ids = Object.freeze({
   agencyVersion: "32000000-0000-4000-8000-000000000006",
   form: "32000000-0000-4000-8000-000000000007",
   formVersion: "32000000-0000-4000-8000-000000000008",
-  formSection: "32000000-0000-4000-8000-000000000009",
-  dispatchField: "32000000-0000-4000-8000-00000000000a",
-  responseField: "32000000-0000-4000-8000-00000000000b",
   incident: "32000000-0000-4000-8000-00000000000c",
   patient: "32000000-0000-4000-8000-00000000000d",
   report: "32000000-0000-4000-8000-00000000000e",
@@ -74,6 +74,49 @@ function sha256(value) {
   return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
 }
 
+function deterministicUuid(seed) {
+  const digest = createHash("sha256").update(seed).digest("hex").slice(0, 32).split("");
+  digest[12] = "4";
+  digest[16] = "8";
+  const value = digest.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
+
+function fullStationaryFormDefinition(layout) {
+  const children = new Map();
+  for (const group of layout.groups) {
+    const siblings = children.get(group.parentId) ?? [];
+    siblings.push(group);
+    children.set(group.parentId, siblings);
+  }
+  const roots = [
+    ...(children.get("HeaderGroup") ?? []).filter((group) => group.id !== "PatientCareReportGroup"),
+    ...(children.get("PatientCareReportGroup") ?? [])
+  ].filter((group) => !["DemographicGroup", "eCustomConfigurationSection"].includes(group.id));
+  const descendantIds = (group) => {
+    const result = new Set([group.id]);
+    for (const child of children.get(group.id) ?? []) {
+      for (const id of descendantIds(child)) result.add(id);
+    }
+    return result;
+  };
+  return {
+    schemaVersion: 1,
+    locales: [{ locale: "en-US", translations: { title: "Synthetic full stationary encounter" } }],
+    sections: roots.map((group) => {
+      const groups = descendantIds(group);
+      return {
+        key: group.id,
+        presentation: { title: group.presentation?.label ?? group.id },
+        fields: layout.elements.filter((element) => groups.has(element.groupId)).map((element) => ({
+          key: element.id,
+          source: { kind: "nemsis", elementId: element.id }
+        }))
+      };
+    })
+  };
+}
+
 const agencyDefinition = {
   fixture: "open-triage-synthetic-installation-v1",
   values: {
@@ -83,18 +126,7 @@ const agencyDefinition = {
   }
 };
 
-const formDefinition = {
-  schemaVersion: 1,
-  locales: [{ locale: "en-US", translations: { title: "Synthetic standard encounter" } }],
-  sections: [{
-    key: "dispatch",
-    presentation: { title: "Dispatch" },
-    fields: [
-      { key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" }, required: false },
-      { key: "dispatch-priority", source: { kind: "nemsis", elementId: "eDispatch.05" }, required: false }
-    ]
-  }]
-};
+const formDefinition = fullStationaryFormDefinition(stationaryLayout);
 
 async function ensureFoundation(client) {
   const existing = await client.query("select to_regclass('app_identity.organization') as organization");
@@ -168,9 +200,11 @@ try {
     await client.query(`
       insert into app_identity.local_credential
         (user_id, username, password_verifier, must_change_password, password_changed_at)
-      values ($1, 'demo.clinician', $2, false, now())
+      values
+        ($1, 'demo.admin', $3, false, now()),
+        ($2, 'demo.clinician', $3, false, now())
       on conflict (user_id) do nothing
-    `, [ids.clinician, demoPasswordVerifier]);
+    `, [ids.administrator, ids.clinician, demoPasswordVerifier]);
 
     await client.query(`
       insert into app_identity.capability (key, description)
@@ -204,14 +238,19 @@ try {
       values ($1, $2, 'synthetic-standard-encounter', 'Synthetic standard encounter')
       on conflict do nothing
     `, [ids.form, ids.organization]);
+    const fieldElementIds = formDefinition.sections.flatMap((section) =>
+      section.fields.map((field) => field.source.elementId));
     const fields = await client.query(`
       select e.element_id, e.element_identity_id, m.analytical_location
       from catalog.element_definition e
       join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
       where e.release_id = $1 and e.element_id = any($2::text[])
-    `, [releaseId, ["eDispatch.01", "eDispatch.05"]]);
-    if (fields.rowCount !== 2) throw new Error("The synthetic form fields are missing from the pinned catalog");
+    `, [releaseId, fieldElementIds]);
+    if (fields.rowCount !== fieldElementIds.length) {
+      throw new Error("The full synthetic Stationary form fields are missing from the pinned catalog");
+    }
+    const fieldsByElementId = new Map(fields.rows.map((field) => [field.element_id, field]));
 
     const existingFormVersion = await client.query(
       "select id from forms.form_version where id = $1 or (form_id = $2 and version = 1)",
@@ -225,25 +264,28 @@ try {
           (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
         values ($1, $2, $3, 1, $4::jsonb, $5, $6)
       `, [ids.formVersion, ids.form, releaseId, JSON.stringify(formDefinition), sha256(formDefinition), ids.administrator]);
-      await client.query(`
-        insert into forms.form_section (id, form_version_id, stable_key, position, presentation)
-        values ($1, $2, 'dispatch', 0, '{"title":"Dispatch"}')
-      `, [ids.formSection, ids.formVersion]);
-      for (const [position, field] of formDefinition.sections[0].fields.entries()) {
-        const metadata = fields.rows.find((row) => row.element_id === field.source.elementId);
+      for (const [sectionPosition, section] of formDefinition.sections.entries()) {
+        const sectionId = deterministicUuid(`synthetic-stationary-section:${section.key}`);
         await client.query(`
-          insert into forms.form_field
-            (id, form_version_id, section_id, stable_key, position, source_kind,
-             catalog_element_identity_id, required, analytical_repeatable)
-          values ($1, $2, $3, $4, $5, 'nemsis', $6, $7, $8)
-        `, [position === 0 ? ids.dispatchField : ids.responseField, ids.formVersion, ids.formSection,
-          field.key, position, metadata.element_identity_id, field.required,
-          metadata.analytical_location === "repeatable"]);
+          insert into forms.form_section (id, form_version_id, stable_key, position, presentation)
+          values ($1, $2, $3, $4, $5::jsonb)
+        `, [sectionId, ids.formVersion, section.key, sectionPosition, JSON.stringify(section.presentation ?? {})]);
+        for (const [fieldPosition, field] of section.fields.entries()) {
+          const metadata = fieldsByElementId.get(field.source.elementId);
+          await client.query(`
+            insert into forms.form_field
+              (id, form_version_id, section_id, stable_key, position, source_kind,
+               catalog_element_identity_id, required, analytical_repeatable)
+            values ($1, $2, $3, $4, $5, 'nemsis', $6, $7, $8)
+          `, [deterministicUuid(`synthetic-stationary-field:${field.source.elementId}`), ids.formVersion,
+            sectionId, field.key, fieldPosition, metadata.element_identity_id, field.required ?? false,
+            metadata.analytical_location === "repeatable"]);
+        }
       }
       await client.query(`
         insert into forms.form_locale (form_version_id, locale, translations)
-        values ($1, 'en-US', '{"title":"Synthetic standard encounter"}')
-      `, [ids.formVersion]);
+        values ($1, 'en-US', $2::jsonb)
+      `, [ids.formVersion, JSON.stringify(formDefinition.locales[0].translations)]);
       await client.query(`
         update forms.form_version
         set status = 'published', change_note = 'Synthetic installation baseline', published_by = $2,
@@ -261,8 +303,7 @@ try {
     await client.query(`
       insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
       values ($1, $2, $3)
-      on conflict (organization_id) do update set form_version_id=excluded.form_version_id,
-        activated_by=excluded.activated_by,activated_at=now()
+      on conflict (organization_id) do nothing
     `, [ids.organization, ids.formVersion, ids.administrator]);
     await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)

@@ -103,9 +103,12 @@ export class CatalogAuthoringService {
       const validation = await this.validateDefinition(manager, draft.source_release_id, body.definition);
       if (!validation.valid) throw new UnprocessableEntityException({ message: "Catalog validation failed", findings: validation.findings });
       const updated = await manager.query<DraftRow[]>(`
-        update catalog.authoring_draft set revision = revision + 1, canonical_definition = $3::jsonb,
-          definition_sha256 = $4, updated_at = now()
-        where id = $1 and organization_id = $2 and revision = $5 and published_release_id is null returning *
+        with updated as (
+          update catalog.authoring_draft set revision = revision + 1, canonical_definition = $3::jsonb,
+            definition_sha256 = $4, updated_at = now()
+          where id = $1 and organization_id = $2 and revision = $5 and published_release_id is null returning *
+        )
+        select * from updated
       `, [draftId, session.organization.id, JSON.stringify(body.definition), validation.definitionSha256, body.expectedRevision]);
       if (!updated[0]) throw new ConflictException("Catalog draft revision is stale");
       return this.result(updated[0]);
@@ -184,8 +187,11 @@ export class CatalogAuthoringService {
       }
       await manager.query("update catalog.release set sealed = true where id = $1", [releaseId]);
       const published = await manager.query<Array<{ published_at: Date | string }>>(`
-        update catalog.authoring_draft set published_release_id = $2, published_at = now(), updated_at = now()
-        where id = $1 and revision = $3 and published_release_id is null returning published_at
+        with updated as (
+          update catalog.authoring_draft set published_release_id = $2, published_at = now(), updated_at = now()
+          where id = $1 and revision = $3 and published_release_id is null returning published_at
+        )
+        select published_at from updated
       `, [draft.id, releaseId, body.expectedRevision]);
       if (!published[0]) throw new ConflictException("Catalog draft revision is stale");
       await manager.query(`insert into catalog.publication_event

@@ -113,9 +113,12 @@ export class FormAuthoringService {
       });
       const digest = canonicalDefinitionSha256(body.definition);
       const updated = await manager.query<VersionRow[]>(`
-        update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
-          revision=revision+1,updated_at=now()
-        where id=$1 and revision=$2 and status='draft' returning *
+        with updated as (
+          update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
+            revision=revision+1,updated_at=now()
+          where id=$1 and revision=$2 and status='draft' returning *
+        )
+        select * from updated
       `, [id, body.expectedRevision, JSON.stringify(body.definition), digest]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
       return this.result(manager, updated[0]);
