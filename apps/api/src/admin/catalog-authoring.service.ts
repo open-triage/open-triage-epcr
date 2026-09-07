@@ -154,6 +154,8 @@ export class CatalogAuthoringService {
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           organizationId: session.organization.id, changeNote: body.changeNote }),]);
       await this.project(manager, draft, releaseId);
+      await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
+        releaseId, session.user.id);
       const editableOptionCount = draft.canonical_definition.codeLists.reduce((total, list) => total + list.values.length, 0);
       const counts = await manager.query<Array<{ source_counts: number[]; published_counts: number[]; expected_option_count: number }>>(`select
         array[
@@ -205,6 +207,28 @@ export class CatalogAuthoringService {
 
   private async admin(token: string): Promise<ClinicianSession> {
     return this.sessions.requireCapability(token, "installation:administer");
+  }
+
+  private async cloneAgencyDemographics(manager: Pick<EntityManager, "query">, organizationId: string,
+    sourceReleaseId: string, targetReleaseId: string, createdBy: string): Promise<void> {
+    const cloned = await manager.query<Array<{ id: string }>>(`
+      insert into app_identity.agency_demographic_version
+        (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
+         dagency_04_display,dagency_04_system,dagency_04_terminology_version,
+         definition_sha256,effective_from,created_by)
+      select $1,$3,
+        (select coalesce(max(version),0)+1 from app_identity.agency_demographic_version where organization_id=$1),
+        source.dagency_01,source.dagency_02,source.dagency_04,source.dagency_04_display,
+        source.dagency_04_system,source.dagency_04_terminology_version,
+        source.definition_sha256,now(),$4
+      from app_identity.agency_demographic_version source
+      where source.organization_id=$1 and source.catalog_release_id=$2 and source.effective_from<=now()
+      order by source.effective_from desc,source.version desc limit 1
+      returning id
+    `, [organizationId, sourceReleaseId, targetReleaseId, createdBy]);
+    if (!cloned[0]) {
+      throw new UnprocessableEntityException("No effective agency demographics match the source catalog");
+    }
   }
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {

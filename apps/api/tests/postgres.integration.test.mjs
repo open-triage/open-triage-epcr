@@ -171,6 +171,11 @@ integrationTest("authorized Admin context resolves only the session organization
     csrfToken: temporary.session.csrfToken
   });
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
+  await client.query(`insert into app_identity.agency_demographic_version
+    (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
+     definition_sha256,effective_from,created_by)
+    values ($1,$2,1,'INTEGRATION-AGENCY','INTEGRATION-AGENCY-ID','00',$3,now(),$4)`,
+  [organizationId, release.rows[0].id, "c".repeat(64), owner.userId]);
   const activeFormDefinition = { schemaVersion: 1, sections: [
     { key: "dispatch", fields: [{ key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" } }] },
     { key: "patient", fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.01" } }] },
@@ -252,6 +257,16 @@ integrationTest("authorized Admin context resolves only the session organization
   [release.rows[0].id, published.id, changedElement.elementId]);
   assert.equal(requiredness.rows[0].source_required, null);
   assert.equal(requiredness.rows[0].published_required, !changedElement.agencyRequired);
+  const carriedDemographics = await client.query(`select catalog_release_id,dagency_01,dagency_02,dagency_04,created_by
+    from app_identity.agency_demographic_version
+    where organization_id=$1 and catalog_release_id=$2`, [organizationId, published.id]);
+  assert.deepEqual(carriedDemographics.rows, [{
+    catalog_release_id: published.id,
+    dagency_01: "INTEGRATION-AGENCY",
+    dagency_02: "INTEGRATION-AGENCY-ID",
+    dagency_04: "00",
+    created_by: owner.userId
+  }]);
   const sourceCode = await client.query(`select o.display, coalesce(c.enabled, true) enabled from catalog.value_set_option o
     left join catalog.value_set_option_configuration c using (release_id, value_set_id, code_system, code)
     where o.release_id=$1 and o.value_set_id=$2 and o.code_system=$3 and o.code=$4`,

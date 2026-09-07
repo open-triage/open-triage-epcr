@@ -58,6 +58,28 @@ test("publication requires a human change note before database access", async ()
   }), UnprocessableEntityException);
 });
 
+test("catalog publication carries forward one effective agency demographic version", async () => {
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    return [{ id: "demographic-version-2" }];
+  } };
+  const service = serviceWith(manager);
+  await service.cloneAgencyDemographics(manager, "org-1", "release-1", "release-2", "owner-1");
+  assert.match(calls[0].sql, /insert into app_identity\.agency_demographic_version/);
+  assert.match(calls[0].sql, /source\.catalog_release_id=\$2/);
+  assert.deepEqual(calls[0].parameters, ["org-1", "release-1", "release-2", "owner-1"]);
+});
+
+test("catalog publication fails when its source has no effective agency demographics", async () => {
+  const manager = { query: async () => [] };
+  const service = serviceWith(manager);
+  await assert.rejects(
+    service.cloneAgencyDemographics(manager, "org-1", "release-1", "release-2", "owner-1"),
+    (error) => error instanceof UnprocessableEntityException && /No effective agency demographics/.test(error.message)
+  );
+});
+
 test("direct catalog authoring requires the administrator capability", async () => {
   const service = serviceWith({ query: async () => [] }, {
     requireCapability: async (_token, capability) => {
