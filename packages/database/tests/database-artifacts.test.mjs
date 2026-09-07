@@ -15,7 +15,8 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
-  codeListAuthoringMigration, formAuthoringMigration, formActivationMigration] = await Promise.all([
+  codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
+  reportConfigurationPinMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -38,7 +39,8 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"), "utf8")
 ]);
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
@@ -74,6 +76,14 @@ test("form publication and agency activation are separate, pinned, and append-on
   assert.match(formActivationMigration, /'form\.publish', 'form\.activate'/);
   assert.match(formActivationMigration, /previous_form_version_id/);
   assert.match(formActivationMigration, /configuration_event_append_only/);
+});
+
+test("reports retain immutable, tenant-matched published configuration pins", () => {
+  assert.match(reportConfigurationPinMigration, /foreign key \(form_version_id, catalog_release_id\)/);
+  assert.match(reportConfigurationPinMigration, /fv\.status = 'published'/);
+  assert.match(reportConfigurationPinMigration, /f\.organization_id = new\.organization_id/);
+  assert.match(reportConfigurationPinMigration, /report .* identity and pinned configuration are immutable/);
+  assert.doesNotMatch(reportConfigurationPinMigration, /agency_stationary_default/);
 });
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
