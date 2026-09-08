@@ -10,11 +10,14 @@ const deferredPanels = [
   "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
   "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
 ] as const;
+type AdminPanel = "Dashboard" | "Element catalog" | "Stationary form" | typeof deferredPanels[number];
+const adminPanels: readonly AdminPanel[] = ["Dashboard", "Element catalog", "Stationary form", ...deferredPanels];
 
 export function AdminShell({ session }: { readonly session: ClinicianSession }) {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
+  const [activePanel, setActivePanel] = useState<AdminPanel>("Dashboard");
 
   useEffect(() => {
     let current = true;
@@ -53,9 +56,16 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
       <p>Signed in as {owner.displayName} for {organization.name}.</p>
     </header>
 
+    <div className="admin-workspace">
+      <nav className="admin-tabs" aria-label="Administration panels">
+        {adminPanels.map((panel) => <button type="button" key={panel}
+          className={panel === activePanel ? "active" : ""} aria-current={panel === activePanel ? "page" : undefined}
+          onClick={() => setActivePanel(panel)}>{panel}</button>)}
+      </nav>
+      <div className="admin-panel" aria-live="polite">
     {error && <p className="admin-error" role="alert">{error}</p>}
     {!context && !error && <p className="admin-loading" role="status">Loading active configuration…</p>}
-    {context && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
+    {context && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
         <div><p className="eyebrow">Used by new reports</p><h2 id="active-configuration-heading">Active configuration</h2></div>
       </div>
@@ -65,12 +75,12 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
       </dl> : <p role="status">No active Stationary configuration is assigned to an operational unit.</p>}
     </section>}
 
-    {context && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
+    {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="catalog-authoring-heading">Element catalog</h2></div></div>
       <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} onPublished={setFormCatalogReleaseId} />
     </section>}
 
-    {context?.activeConfiguration && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
+    {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><div><p className="eyebrow">Configuration journey</p><h2 id="form-authoring-heading">Stationary form</h2></div></div>
       <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
@@ -78,16 +88,11 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section>}
 
-    <section className="admin-panels" aria-labelledby="admin-panels-heading">
-      <div className="section-heading">
-        <div><p className="eyebrow">Administration structure</p><h2 id="admin-panels-heading">Other panels</h2></div>
+    {deferredPanels.includes(activePanel as typeof deferredPanels[number]) && <div className="admin-placeholder">
+      <h2>{activePanel}</h2>
+      <p>Unavailable in this release. This panel is a placeholder for the planned administration tools.</p>
+    </div>}
       </div>
-      <div className="admin-placeholder-grid">
-        {deferredPanels.map((panel) => <section className="admin-placeholder" aria-labelledby={`admin-${panel.toLowerCase().replaceAll(" ", "-")}`} key={panel}>
-          <h3 id={`admin-${panel.toLowerCase().replaceAll(" ", "-")}`}>{panel}</h3>
-          <p><strong>Unavailable in this release.</strong> This panel is a non-interactive preview of the planned administration structure.</p>
-        </section>)}
-      </div>
-    </section>
+    </div>
   </main>;
 }

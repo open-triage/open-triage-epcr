@@ -12,11 +12,16 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [selectedListId, setSelectedListId] = useState("");
+  const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
   useEffect(() => { loadCatalogDraft(csrfToken).then(setDraft).catch(showError).finally(() => setLoaded(true)); }, [csrfToken]);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     element.elementId.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 40) ?? [], [draft, query]);
+  const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
+    (list.elementIds.length ? list.elementIds : [list.name]).map((elementId) => ({
+      key: `${list.listId}\u0000${elementId}`, elementId, list
+    }))) ?? [], [draft]);
+  const selectedList = listOptions.find(({ key }) => key === selectedListKey)?.list ?? listOptions[0]?.list;
 
   function showError(reason: unknown) { setError(reason instanceof Error ? reason.message : "Catalog operation failed."); }
   function edit(elementId: string, update: (element: CatalogDraftElement) => CatalogDraftElement) {
@@ -50,31 +55,34 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
     <label htmlFor="catalog-search">Find element</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     <div className="catalog-elements" aria-label="Editable catalog elements">
-      {visible.map((element) => <fieldset key={element.elementId}>
-        <legend>{element.elementId}</legend>
-        <p>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</p>
-        <label><input type="checkbox" checked={element.agencyRequired} onChange={(event) => edit(element.elementId,
-          (value) => ({ ...value, agencyRequired: event.target.checked }))} /> Agency required</label>
-        <label>Minimum occurrences <input type="number" min={0} value={element.constraints.minOccurs}
+      <p className="catalog-table-warning" role="note"><strong>Occurrence limit:</strong> a blank maximum means unbounded only when the source catalog supports it.</p>
+      <table>
+        <thead><tr><th>Element</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
+        <tbody>{visible.map((element) => <tr key={element.elementId}>
+        <th scope="row">{element.elementId}</th>
+        <td>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</td>
+        <td><label><span className="visually-hidden">Requiredness for {element.elementId}</span><select
+          value={element.requirednessSeverity ?? "optional"} onChange={(event) => edit(element.elementId,
+            (value) => ({ ...value, requirednessSeverity: event.target.value === "optional" ? null : event.target.value as "warning" | "error" }))}>
+          <option value="optional">Optional</option><option value="warning">Warning</option><option value="error">Error</option>
+        </select></label></td>
+        <td><label><span className="visually-hidden">Minimum occurrences for {element.elementId}</span><input type="number" min={0} value={element.constraints.minOccurs}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
-            minOccurs: Number(event.target.value) } }))} /></label>
-        <label>Maximum occurrences <input type="number" min={1} value={element.constraints.maxOccurs ?? ""}
-          aria-describedby={`${element.elementId}-maximum-help`}
+            minOccurs: Number(event.target.value) } }))} /></label></td>
+        <td><label><span className="visually-hidden">Maximum occurrences for {element.elementId}</span><input type="number" min={1} value={element.constraints.maxOccurs ?? ""}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
-            maxOccurs: event.target.value === "" ? null : Number(event.target.value) } }))} /></label>
-        <small id={`${element.elementId}-maximum-help`}>Blank means unbounded when supported by the source catalog.</small>
-      </fieldset>)}
+            maxOccurs: event.target.value === "" ? null : Number(event.target.value) } }))} /></label></td>
+      </tr>)}</tbody></table>
     </div>
     {draft.definition.codeLists.length > 0 && <section className="code-list-editor" aria-labelledby="code-list-heading">
       <h3 id="code-list-heading">Recommended and agency-maintained code lists</h3>
       <p>Codes remain permanently resolvable after publication. Disable a value to hide it from future selection.</p>
       <label htmlFor="code-list-select">Code list</label>
-      <select id="code-list-select" value={selectedListId || draft.definition.codeLists[0]!.listId}
-        onChange={(event) => setSelectedListId(event.target.value)}>
-        {draft.definition.codeLists.map((list) => <option key={list.listId} value={list.listId}>{list.name}</option>)}
+      <select id="code-list-select" value={selectedListKey || listOptions[0]?.key}
+        onChange={(event) => setSelectedListKey(event.target.value)}>
+        {listOptions.map(({ key, elementId, list }) => <option key={key} value={key}>{elementId} — {list.name}</option>)}
       </select>
-      <CatalogCodeListEditor list={draft.definition.codeLists.find((list) => list.listId === selectedListId) ?? draft.definition.codeLists[0]!}
-        onChange={editCodeList} />
+      {selectedList && <CatalogCodeListEditor list={selectedList} onChange={editCodeList} />}
     </section>}
     <div className="catalog-actions">
       <button type="button" disabled={busy} onClick={() => action(async () => {
@@ -151,8 +159,10 @@ export function CatalogCodeListEditor({ list, onChange }: {
           <label><input type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
             (current) => ({ ...current, enabled: event.target.checked }), `${event.target.checked ? "Enabled" : "Disabled"} ${value.label}.`)} /> Enabled</label>
           <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={!value.enabled}
-            onChange={() => onChange({ ...list, defaultValue: { code: value.code, codeSystem: value.codeSystem } },
-              `Set ${value.label} as the default.`)} /> Default</label>
+            onChange={() => {
+              onChange({ ...list, defaultValue: { code: value.code, codeSystem: value.codeSystem } },
+                `Set ${value.label} as the default.`);
+            }} /> Default</label>
           <div className="code-list-order" aria-label={`Reorder ${value.label}`}>
             <button type="button" disabled={index === 0} aria-label={`Move ${value.label} up`} onClick={() => onChange(
               moveCodeValue(list, index, index - 1), `Moved ${value.label} up.`)}>Move up</button>

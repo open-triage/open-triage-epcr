@@ -4,6 +4,7 @@ import type { EntityManager } from "typeorm";
 type FieldRow = {
   element_id: string;
   agency_required: boolean | null;
+  agency_required_severity: "warning" | "error" | null;
   min_occurs: number;
   max_occurs: number | null;
   nillable: boolean;
@@ -35,12 +36,12 @@ export async function clinicalFormConfiguration(
     section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
 
   const fields = elementIds.length ? await manager.query<FieldRow[]>(`
-    select element_id, agency_required, min_occurs, max_occurs, nillable,
+    select element_id, agency_required, agency_required_severity, min_occurs, max_occurs, nillable,
            supports_not_values, supports_pertinent_negatives
     from catalog.element_definition where release_id = $1 and element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
-    select vse.element_id, option.code, option.code_system, option.display as label,
+    select * from (select vse.element_id, option.code, option.code_system, option.display as label,
            value_set.published_at as terminology_version
     from catalog.value_set_element vse
     join catalog.value_set value_set on value_set.release_id = vse.release_id
@@ -51,7 +52,17 @@ export async function clinicalFormConfiguration(
       on configured.release_id = option.release_id and configured.value_set_id = option.value_set_id
       and configured.code_system = option.code_system and configured.code = option.code
     where vse.release_id = $1 and vse.element_id = any($2::text[]) and coalesce(configured.enabled, true)
-    order by vse.element_id, configured.sort_order nulls last, option.display, option.code_system, option.code
+    union all
+    select option.element_id, option.code, option.code_system, option.display as label,
+           null::text as terminology_version
+    from catalog.element_option option
+    left join catalog.element_option_configuration configured
+      on configured.release_id=option.release_id and configured.element_id=option.element_id
+      and configured.source_kind=option.source_kind and configured.code_system=option.code_system
+      and configured.code=option.code
+    where option.release_id=$1 and option.element_id=any($2::text[])
+      and option.source_kind='inline' and coalesce(configured.enabled, true)) choices
+    order by element_id, label, code_system, code
   `, [catalogReleaseId, elementIds]) : [];
   const choicesByElement = new Map<string, ClinicalFormConfiguration["catalogFields"][string]["codeChoices"]>();
   for (const choice of choices) {
@@ -64,6 +75,7 @@ export async function clinicalFormConfiguration(
     definition: versions[0].canonical_definition,
     catalogFields: Object.fromEntries(fields.map((field) => [field.element_id, {
       agencyRequired: field.agency_required === true,
+      requirednessSeverity: field.agency_required_severity,
       minOccurs: Number(field.min_occurs),
       maxOccurs: field.max_occurs === null ? null : Number(field.max_occurs),
       nillable: field.nillable,

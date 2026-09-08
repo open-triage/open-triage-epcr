@@ -7,12 +7,12 @@ const sourceElement = {
   element_id: "ePatient.01", element_identity_id: "11111111-1111-4111-8111-111111111111",
   base_datatype: "string", source_datatype: "xs:string", group_path: ["Patient"], min_occurs: 0,
   max_occurs: 1, nillable: true, supports_not_values: true, supports_pertinent_negatives: false,
-  usage: "Recommended", analytical_location: "wide", sql_type: "text"
+  usage: "Recommended", agency_required_severity: null, analytical_location: "wide", sql_type: "text"
 };
 const element = {
   elementId: sourceElement.element_id, identityId: sourceElement.element_identity_id, baseDatatype: "string",
   storageSemantics: { sourceDatatype: "xs:string", groupPath: ["Patient"], analyticalLocation: "wide", sqlType: "text" },
-  agencyRequired: false,
+  requirednessSeverity: null,
   constraints: { minOccurs: 0, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: false }
 };
 const definition = { schemaVersion: 1, sourceReleaseId: "release-1", elements: [element], codeLists: [] };
@@ -43,6 +43,7 @@ test("identity, datatype, storage, and unsupported constraint changes are reject
       definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
+    if (sql.includes("select 'inline:'")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const changed = { ...definition, elements: [{ ...element, baseDatatype: "integer",
@@ -90,7 +91,8 @@ test("direct catalog authoring requires the administrator capability", async () 
   await assert.rejects(service.current("clinician-session"), UnauthorizedException);
 });
 
-const sourceCodeList = { list_id: "patient-activity", name: "Patient Activity", classification: "suggested", values: [
+const sourceCodeList = { list_id: "patient-activity", name: "Patient Activity", classification: "suggested",
+  element_ids: ["ePatient.01"], default_value: null, values: [
   { code: "Y93.K", codeSystem: "ICD-10-CM", label: "Animal care activity",
     sourceLabel: "Activities involving animal care", category: "Animal Care", enabled: true },
   { code: "Y93.01", codeSystem: "ICD-10-CM", label: "Walking",
@@ -104,6 +106,7 @@ function listManager(currentDefinition) {
       definition_sha256: catalogDefinitionSha256(currentDefinition), updated_at: new Date(), published_release_id: null }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [sourceCodeList];
+    if (sql.includes("select 'inline:'")) return [];
     if (sql.includes("update catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
       source_release_id: "release-1", revision: 2, canonical_definition: currentDefinition,
       definition_sha256: catalogDefinitionSha256(currentDefinition), updated_at: new Date(), published_release_id: null }];
@@ -113,7 +116,7 @@ function listManager(currentDefinition) {
 
 test("recommended code lists support labels, enabled state, ordering, additions, and an enabled default", async () => {
   const changed = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
-    classification: "suggested", values: [
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: [
       { ...sourceCodeList.values[1], label: "Walking or hiking", enabled: false },
       sourceCodeList.values[0],
       { code: "LOCAL-1", codeSystem: "Example EMS", label: "Local activity", sourceLabel: "Local activity",
@@ -123,9 +126,28 @@ test("recommended code lists support labels, enabled state, ordering, additions,
   assert.equal(saved.revision, 2);
 });
 
+test("inline enumerations are exposed as element-selectable editable code lists", async () => {
+  const inline = { list_id: "inline:eAirway.03", name: "Airway Device Being Confirmed", classification: "inline",
+    element_ids: ["eAirway.03"], default_value: null, values: [
+      { code: "4003001", codeSystem: "", label: "Combitube", sourceLabel: "Combitube", category: null, enabled: true }
+    ] };
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
+    if (sql.includes("select 'inline:'")) return [inline];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const cloned = await serviceWith(manager).cloneDefinition(manager, "release-1");
+  assert.deepEqual(cloned.codeLists[0], {
+    listId: inline.list_id, name: inline.name, classification: "inline", elementIds: ["eAirway.03"],
+    defaultValue: null, values: inline.values
+  });
+});
+
 test("duplicate codes and removed published values fail validation", async () => {
   const invalid = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
-    classification: "suggested", values: [sourceCodeList.values[0], { ...sourceCodeList.values[0], label: "Duplicate", enabled: false }],
+    classification: "suggested", elementIds: sourceCodeList.element_ids,
+    values: [sourceCodeList.values[0], { ...sourceCodeList.values[0], label: "Duplicate", enabled: false }],
     defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
   await assert.rejects(serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid }),
     (error) => error instanceof UnprocessableEntityException && /duplicate code/.test(JSON.stringify(error.getResponse())) &&
@@ -134,7 +156,8 @@ test("duplicate codes and removed published values fail validation", async () =>
 
 test("a disabled code cannot be the list default", async () => {
   const invalid = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
-    classification: "suggested", values: sourceCodeList.values.map((value, index) => index === 0 ? { ...value, enabled: false } : value),
+    classification: "suggested", elementIds: sourceCodeList.element_ids,
+    values: sourceCodeList.values.map((value, index) => index === 0 ? { ...value, enabled: false } : value),
     defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
   await assert.rejects(serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid }),
     (error) => error instanceof UnprocessableEntityException && /default must reference an enabled value/.test(JSON.stringify(error.getResponse())));

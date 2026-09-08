@@ -4,9 +4,17 @@ import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, 
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
-import { StationaryFormPreview } from "./stationary-form-preview";
 
 type FormSection = FormDraftDefinition["sections"][number];
+
+export function openStationaryFormPreview(draft: StationaryFormDraft): boolean {
+  const key = `open-triage:stationary-form-preview:${crypto.randomUUID()}`;
+  localStorage.setItem(key, JSON.stringify(draft));
+  const preview = window.open(`/admin-preview?draft=${encodeURIComponent(key)}`, "_blank");
+  if (preview) preview.opener = null;
+  if (!preview) localStorage.removeItem(key);
+  return Boolean(preview);
+}
 
 function operationErrorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "Stationary form operation failed.";
@@ -95,7 +103,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   const [results, setResults] = useState<FormCatalogElement[]>([]);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [targetSection, setTargetSection] = useState("");
-  const [previewing, setPreviewing] = useState(false);
   const [publicationNote, setPublicationNote] = useState("");
   const [activationNote, setActivationNote] = useState("");
   const [published, setPublished] = useState<PublishedStationaryForm | null>(null);
@@ -174,11 +181,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
-  if (previewing) return <StationaryFormPreview draft={draft} onReturn={() => {
-    setPreviewing(false);
-    setStatus("Returned to the unchanged form draft.");
-  }} />;
-
   return <div className="form-editor">
     <p>Draft revision {draft.revision}. Published forms remain immutable and existing reports keep their pinned form version.</p>
     {draft.diagnostics.length > 0 && <div className="form-findings" role="alert">
@@ -189,20 +191,31 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       onQueryChange={(value) => { setQuery(value); setResults([]); setNextOffset(null); }}
       onSectionChange={setTargetSection} onAdd={add} />
     {nextOffset !== null && <button type="button" disabled={busy} onClick={loadMore}>Load more catalog elements</button>}
-    <FormSectionElements definition={draft.definition} onChange={change} />
-    <StationarySectionControls definition={draft.definition} pendingRemoval={pendingRemoval} busy={busy}
-      confirmationRef={confirmationRef} onMove={(from, to) => change(moveFormSection(draft.definition, from, to),
+    <FormSectionElements definition={draft.definition} busy={busy} onChange={change}
+      onMoveSection={(from, to) => change(moveFormSection(draft.definition, from, to),
         `Moved ${draft.definition.sections[from]!.key} ${to < from ? "up" : "down"}.`)}
-      onRequestRemoval={setPendingRemoval} onConfirmRemoval={(index) => {
+      onRequestRemoveSection={setPendingRemoval} />
+    {pendingRemoval !== null && draft.definition.sections[pendingRemoval] && <div className="form-remove-confirmation"
+      role="alertdialog" aria-modal="false" aria-labelledby="remove-section-heading"
+      aria-describedby="remove-section-description" tabIndex={-1} ref={confirmationRef}>
+      <h3 id="remove-section-heading">Remove {draft.definition.sections[pendingRemoval]!.key}?</h3>
+      <p id="remove-section-description">This removes the section and its {affectedFieldNames(draft.definition.sections[pendingRemoval]!).length} affected fields from this draft.</p>
+      <ul>{affectedFieldNames(draft.definition.sections[pendingRemoval]!).map((field) => <li key={field}>{field}</li>)}</ul>
+      <div><button type="button" onClick={() => {
+        const index = pendingRemoval;
         const section = draft.definition.sections[index]!; const affected = affectedFieldNames(section);
         change(removeFormSection(draft.definition, index),
           `Removed ${section.key} and ${affected.length} affected ${affected.length === 1 ? "field" : "fields"}.`);
-      }} onCancelRemoval={() => {
+      }}>Confirm removal</button><button type="button" onClick={() => {
         const section = pendingRemoval === null ? undefined : draft.definition.sections[pendingRemoval];
         setPendingRemoval(null); setStatus(section ? `Kept ${section.key}.` : "Removal canceled.");
-      }} />
+      }}>Keep section</button></div>
+    </div>}
     <div className="form-actions">
-      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => setPreviewing(true)}>Preview Stationary form</button>
+      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+        if (openStationaryFormPreview(draft)) setStatus("Opened Stationary form preview in a new window.");
+        else setError("The preview window was blocked. Allow pop-ups and try again.");
+      }}>Preview Stationary form</button>
       <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
         const saved = await saveStationaryFormDraft(csrfToken, draft);
         setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);

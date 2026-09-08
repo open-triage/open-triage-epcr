@@ -54,9 +54,11 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByRole("heading", { name: "Active configuration" })).toBeVisible();
   await expect(page.getByText("NEMSIS 3.5.1", { exact: true })).toBeVisible();
   await expect(page.getByText("Agency Stationary, version 3", { exact: true })).toBeVisible();
-  await expect(page.getByText("Unavailable in this release.")).toHaveCount(11);
-  await expect(page.locator(".admin-placeholder").getByRole("button")).toHaveCount(0);
-  await expect(page.locator(".admin-placeholder").locator("input, select, textarea, a")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
+  await page.getByRole("button", { name: "Users", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
+  await expect(page.locator(".admin-placeholder")).toHaveText(/Unavailable in this release/);
+  await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
 });
 
 test("an open clinical report blocks entry into Admin until Save and close", async ({ page }) => {
@@ -108,17 +110,21 @@ test("owner previews the unsaved form through Stationary without creating a clin
   await page.route("**/api/admin/form-drafts/draft-id/catalog-elements**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], nextOffset: null }) }));
   await signInAsCombinedOwner(page);
   await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  const popupPromise = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Preview Stationary form" }).click();
+  const preview = await popupPromise;
 
-  await expect(page.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
-  await expect(page.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
-  await expect(page.locator('[data-element-id="ePatient.01"]')).toHaveCount(0);
-  await page.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
-  await page.getByRole("button", { name: "Return to form draft" }).click();
+  await expect(preview.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible();
+  await expect(preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
+  await expect(preview.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
+  await expect(preview.locator('[data-element-id="ePatient.01"]')).toHaveCount(0);
+  await preview.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
+  await preview.getByRole("button", { name: "Return to form draft" }).click();
+  await expect.poll(() => preview.isClosed()).toBe(true);
 
   await expect(page.getByRole("button", { name: "Preview Stationary form" })).toBeVisible();
-  await expect(page.getByText("Returned to the unchanged form draft.")).toBeVisible();
+  await expect(page.getByText("Opened Stationary form preview in a new window.")).toBeVisible();
   await expect(page.locator(".form-fields").getByText("ePatient.02", { exact: true })).toBeVisible();
   expect(clinicalMutations).toEqual([]);
 });

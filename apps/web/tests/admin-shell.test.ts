@@ -21,11 +21,14 @@ const session: ClinicianSession = {
   capabilities: ["installation:administer", "clinical:document"]
 };
 
-test("every deferred Admin panel is labeled as a non-interactive unavailable placeholder", () => {
+test("Admin panels use one persistent side-tab navigator", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
-  assert.equal((markup.match(/Unavailable in this release\./g) ?? []).length, 11);
-  assert.doesNotMatch(markup, /<(button|input|select|textarea)\b/);
+  assert.match(markup, /class="admin-tabs"/);
+  assert.match(markup, />Element catalog<\/button>/);
+  assert.match(markup, />Stationary form<\/button>/);
+  assert.match(markup, />Audit Log<\/button>/);
+  assert.doesNotMatch(markup, /admin-placeholder-grid/);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {
@@ -51,7 +54,7 @@ test("catalog saves send the current revision and CSRF proof", async (t) => {
 });
 
 const codeList = { listId: "activity", name: "Patient Activity", classification: "suggested" as const,
-  defaultValue: null, values: [
+  elementIds: ["eSituation.01"], defaultValue: null, values: [
     { code: "ONE", codeSystem: "LOCAL", label: "First", sourceLabel: "First", category: null, enabled: true },
     { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
   ] };
@@ -210,7 +213,8 @@ test("form element rows provide keyboard-operable move and confirmed remove cont
   assert.match(markup, /aria-label="Move ePatient.02 up"/);
   assert.match(markup, /aria-label="Move ePatient.15 down"/);
   assert.match(markup, /aria-label="Remove ePatient.02"/);
-  assert.match(markup, /<details open=""/);
+  assert.match(markup, /aria-expanded="true"/);
+  assert.match(markup, /<small>Last Name<\/small>/);
 });
 
 test("form search uses bounded query parameters", async (t) => {

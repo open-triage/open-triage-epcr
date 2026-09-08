@@ -97,7 +97,8 @@ export interface CatalogDraftElement {
     analyticalLocation: "wide" | "repeatable" | "unmapped";
     sqlType: string;
   };
-  agencyRequired: boolean;
+  /** Null is optional; otherwise controls whether a missing value blocks signing or produces an acknowledgement warning. */
+  requirednessSeverity: "warning" | "error" | null;
   constraints: {
     minOccurs: number;
     maxOccurs: number | null;
@@ -119,7 +120,8 @@ export interface CatalogDraftCodeValue {
 export interface CatalogDraftCodeList {
   listId: string;
   name: string;
-  classification: "suggested" | "agency";
+  classification: "defined" | "suggested" | "agency" | "inline";
+  elementIds: string[];
   values: CatalogDraftCodeValue[];
   defaultValue: { code: string; codeSystem: string } | null;
 }
@@ -182,6 +184,7 @@ export interface ClinicalFormConfiguration {
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
     agencyRequired: boolean;
+    requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;
     maxOccurs: number | null;
     nillable: boolean;

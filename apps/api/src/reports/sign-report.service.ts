@@ -50,6 +50,7 @@ type FieldRow = {
   custom_element_definition_id: string | null;
   min_occurs: number | null;
   agency_required: boolean | null;
+  agency_required_severity: "warning" | "error" | null;
 };
 
 type RuleRow = {
@@ -256,8 +257,8 @@ export class SignReportService {
     }
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
-      case when e.agency_required is null then e.min_occurs else 0 end as min_occurs,
-      e.agency_required
+      case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
+      e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
@@ -292,7 +293,7 @@ export class SignReportService {
       }
       if (field.agency_required === true && values.length === 0) {
         findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
-          `Agency-required field ${field.stable_key} has no value`));
+          `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
       if (field.min_occurs !== null && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
@@ -339,6 +340,14 @@ export class SignReportService {
           limit 1
         `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
         if (disabledConfigured[0]) findings.push(this.finding("catalog.value-set-disabled", `${path}.code`,
+          `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
+        const disabledInline = await manager.query<Array<{ element_id: string }>>(`
+          select configured.element_id from catalog.element_option_configuration configured
+          where configured.release_id=$1 and configured.element_id=$2 and configured.source_kind='inline'
+            and configured.code=$3 and configured.code_system=coalesce($4, '') and not configured.enabled
+          limit 1
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (disabledInline[0]) findings.push(this.finding("catalog.value-set-disabled", `${path}.code`,
           `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         const invalidInline = await manager.query<Array<{ element_id: string }>>(`
           select e.element_id from catalog.element_definition e
@@ -490,8 +499,9 @@ export class SignReportService {
       previousHash, eventHash]);
   }
 
-  private finding(code: string, path: string, message: string): SigningFinding {
-    return { severity: "error", code, path, message, ruleVersion: RULE_VERSION };
+  private finding(code: string, path: string, message: string,
+    severity: SigningFinding["severity"] = "error"): SigningFinding {
+    return { severity, code, path, message, ruleVersion: RULE_VERSION };
   }
 
   private async replay(

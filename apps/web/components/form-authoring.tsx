@@ -1,7 +1,8 @@
 "use client";
 
 import type { FormCatalogElement, FormDraftDefinition, FormDraftField } from "@open-triage/contracts";
-import React from "react";
+import React, { useState } from "react";
+import { getNemsisDataElement } from "../app/nemsis-data-model";
 
 function fieldIdentity(field: FormDraftField): string {
   return field.source.kind === "nemsis" ? `nemsis:${field.source.elementId}` : `custom:${field.source.elementDefinitionId}`;
@@ -67,18 +68,38 @@ export function FormElementPicker({ definition, results, query, targetSection, o
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, onChange }: {
+export function FormSectionElements({ definition, busy = false, onChange, onMoveSection, onRequestRemoveSection }: {
   readonly definition: FormDraftDefinition;
+  readonly busy?: boolean;
   readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
+  readonly onMoveSection?: (from: number, to: number) => void;
+  readonly onRequestRemoveSection?: (index: number) => void;
 }) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   return <div className="form-fields">
-    {definition.sections.map((section) => <details key={section.key} open>
-      <summary>{section.key} <span>{section.fields.length} elements</span></summary>
-      <ol aria-label={`${section.key} form elements`}>
+    {definition.sections.map((section, sectionIndex) => {
+      const open = !collapsed.has(section.key);
+      return <section className="form-section" key={section.key}>
+      <header className="form-section-header">
+        <button type="button" className="form-section-toggle" aria-expanded={open}
+          onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(section.key) ? next.delete(section.key) : next.add(section.key); return next; })}>
+          {section.key} <span>{section.fields.length} elements</span>
+        </button>
+        {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
+          <button type="button" disabled={busy || sectionIndex === 0} aria-label={`Move ${section.key} up`}
+            onClick={() => onMoveSection(sectionIndex, sectionIndex - 1)}>Move up</button>
+          <button type="button" disabled={busy || sectionIndex === definition.sections.length - 1} aria-label={`Move ${section.key} down`}
+            onClick={() => onMoveSection(sectionIndex, sectionIndex + 1)}>Move down</button>
+          <button type="button" disabled={busy || definition.sections.length === 1} aria-label={`Remove ${section.key}`}
+            onClick={() => onRequestRemoveSection(sectionIndex)}>Remove section</button>
+        </div>}
+      </header>
+      {open && <ol aria-label={`${section.key} form elements`}>
         {section.fields.map((field, index) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
+          const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : "Custom element";
           return <li key={field.key}>
-            <span><strong>{label}</strong><small>{field.key}</small></span>
+            <span><strong>{label}</strong><small>{clinicalLabel ?? "Unknown catalog element"}</small></span>
             <div className="form-field-actions" aria-label={`Actions for ${label}`}>
               <button type="button" disabled={index === 0} aria-label={`Move ${label} up`} onClick={() =>
                 onChange(moveFormElement(definition, section.key, index, index - 1), `Moved ${label} up.`)}>Move up</button>
@@ -91,7 +112,7 @@ export function FormSectionElements({ definition, onChange }: {
             </div>
           </li>;
         })}
-      </ol>
-    </details>)}
+      </ol>}
+    </section>; })}
   </div>;
 }
