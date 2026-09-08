@@ -103,7 +103,10 @@ export function useReportWorkspace({
       window.localStorage,
       bundledEncounterDefinition,
       report?.id,
-      report?.document?.formProfile,
+      report?.document?.formProfile && {
+        ...report.document.formProfile,
+        catalogFields: report.clinicalForm?.catalogFields,
+      },
     );
     queueInitialSnapshot.current = result.status === "empty" && Boolean(report?.document)
       && (!report || nextDraftChange(window.localStorage, report.id) === null);

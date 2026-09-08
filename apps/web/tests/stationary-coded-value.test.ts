@@ -187,3 +187,32 @@ test("coded metadata and exceptional variants survive the local-document and dra
   const pnMutation = encounterDocumentToDraftMutations(reportId, pn).occurrences.find(({ elementId }) => elementId === patientTarget.elementId)!;
   assert.deepEqual(pnMutation.value, { kind: "pertinent-negative", absenceCode: "8801019", display: "Refused" });
 });
+
+test("a report reopens locally with an agency code from its pinned catalog", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  (patient.elements as Array<EncounterDocument["groups"][number]["instances"][number]["elements"][number]>).push({ id: "ePatient.14", values: [{
+    kind: "coded", occurrenceId: "agency-race-1", code: "251414SE", system: "Agency", display: "Swedish",
+  }] });
+  const bytes = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => bytes.get(key) ?? null,
+    setItem: (key: string, value: string) => { bytes.set(key, value); },
+    removeItem: (key: string) => { bytes.delete(key); },
+  };
+  saveShellState(storage, { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, reportId);
+
+  const restored = loadShellStateResult(storage, undefined, reportId, {
+    ...document.formProfile,
+    catalogFields: { "ePatient.14": {
+      agencyRequired: false, requirednessSeverity: null, minOccurs: 0, maxOccurs: null,
+      nillable: true, supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [{ code: "251414SE", codeSystem: "Agency", label: "Swedish" }],
+    } },
+  });
+
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") throw new Error("expected agency-coded report to reopen");
+  assert.equal(restored.state.encounter.document.groups.find(({ id }) => id === "ePatientSection")!
+    .instances[0]!.elements.find(({ id }) => id === "ePatient.14")!.values[0]?.kind, "coded");
+});
