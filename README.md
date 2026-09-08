@@ -101,6 +101,11 @@ build, a collaborator with write access to that repository must download the
 files with the artifact contents, and push the result to `main`. GitHub Pages
 then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo/).
 
+The database-backed DOKS demo has a separate automated release path. Operators
+should follow the [demo deployment runbook](docs/demo-deployment.md) for required
+credentials and infrastructure, release safeguards, failure recovery, and the
+strict synthetic-data boundary.
+
 ## Prototype interaction model
 
 - The active application uses one clinically neutral, versioned standard encounter
