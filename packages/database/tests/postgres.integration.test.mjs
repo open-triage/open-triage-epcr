@@ -51,41 +51,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const version = await client.query("show server_version_num");
   assert.ok(Number(version.rows[0].server_version_num) >= 150000);
 
-  const migration = await readFile(
-    path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"),
-    "utf8"
-  );
-  await client.query(migration);
-  const catalogAuthoringMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"),
-    "utf8"
-  );
-  await client.query(catalogAuthoringMigration);
-  const codeListAuthoringMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"),
-    "utf8"
-  );
-  await client.query(codeListAuthoringMigration);
-  const formAuthoringMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"),
-    "utf8"
-  );
-  await client.query(formAuthoringMigration);
-  const formActivationMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"),
-    "utf8"
-  );
-  await client.query(formActivationMigration);
-  const reportConfigurationPinMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"),
-    "utf8"
-  );
-  await client.query(reportConfigurationPinMigration);
-  const versionDisplayNameMigration = await readFile(
-    path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"),
-    "utf8"
-  );
-  await client.query(versionDisplayNameMigration);
+  const migrationRunner = path.join(packageRoot, "scripts/migrate.mjs");
+  await execFileAsync(process.execPath, [migrationRunner], {
+    env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
 
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
