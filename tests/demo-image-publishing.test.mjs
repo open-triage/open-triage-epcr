@@ -67,6 +67,11 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   assert.match(publishing, /^          push: true$/m);
   assert.match(
     publishing,
+    /^          - component: web\n            dockerfile: deploy\/docker\/web\.Dockerfile\n            build_args: NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org$/m,
+  );
+  assert.match(publishing, /^          build-args: \$\{\{ matrix\.build_args \}\}$/m);
+  assert.match(
+    publishing,
     /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-\$\{\{ matrix\.component \}\}:\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
   );
   assert.match(publishing, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
