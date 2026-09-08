@@ -9,6 +9,7 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   draftCommandUsesLegacyDerivedIds,
+  deleteDraftReport,
   fetchActiveReport,
   saveDraftReport,
   signDraftReport,
@@ -75,6 +76,21 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
   }
+});
+
+test("prototype record deletion uses a confirmed server-side DELETE with CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: { input: string; init?: RequestInit } | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    request = { input: String(input), init };
+    return Response.json({ deleted: true, reportId });
+  }) as typeof fetch;
+
+  assert.deepEqual(await deleteDraftReport("csrf-proof", reportId), { deleted: true, reportId });
+  assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}`);
+  assert.equal(request?.init?.method, "DELETE");
+  assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 });
 
 test("active polling and draft saves identify a report completed by another client", async () => {

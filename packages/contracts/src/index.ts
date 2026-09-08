@@ -69,6 +69,11 @@ export interface EndClinicianSessionResponse {
   ended: true;
 }
 
+export interface DeleteDraftReportResponse {
+  deleted: true;
+  reportId: string;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
@@ -85,6 +90,19 @@ export interface AdminContext {
       version: number;
     };
   } | null;
+  dashboard: {
+    availableCalls: number;
+    ongoingReports: number;
+    signedReports: number;
+    signedLast24Hours: number;
+    reportsWithErrors: number;
+    activeUsers: number;
+    activeUnits: number;
+    databaseSizeBytes: number;
+    databaseConnections: number;
+    maxDatabaseConnections: number;
+    generatedAt: string;
+  };
 }
 
 export interface CatalogDraftElement {

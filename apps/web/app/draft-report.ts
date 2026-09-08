@@ -1,4 +1,4 @@
-import type { ActiveReportResource, ClinicalFormConfiguration, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, DeleteDraftReportResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -254,6 +254,20 @@ export async function saveDraftReport(csrfToken: string, reportId: string, comma
   if (response.status === 409) throw new Error("conflict");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
+}
+
+export async function deleteDraftReport(csrfToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
+  const base = apiBaseUrl();
+  if (!base) throw new Error("Record deletion requires the database-backed prototype.");
+  const response = await fetch(`${base}/api/reports/${reportId}`, {
+    method: "DELETE", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken },
+  });
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Your shift session has ended.");
+    if (response.status === 409) throw new Error("Only an open synthetic draft can be deleted.");
+    throw new Error("The record could not be deleted.");
+  }
+  return response.json() as Promise<DeleteDraftReportResponse>;
 }
 
 export async function fetchActiveReport(

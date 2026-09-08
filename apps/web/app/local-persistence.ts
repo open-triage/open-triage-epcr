@@ -143,7 +143,6 @@ export function loadShellStateResult(
       : candidateEncounter?.document
       ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
       : initialDocument;
-    const hasCanonicalIncident = ["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"].every((id) => document.groups.some((group) => group.id === id));
     const hasLegacyIncident = candidateEncounter?.crew !== undefined || candidateEncounter?.incident !== undefined;
     if (needsIncidentMigration && hasLegacyIncident) {
       document = migrateLegacyIncidentDocument(document, {
@@ -151,8 +150,6 @@ export function loadShellStateResult(
         incident: candidateEncounter.incident,
         events: persistedEvents as ReadonlyArray<Record<string, unknown>>,
       });
-    } else if (!hasCanonicalIncident) {
-      throw new Error("saved canonical incident data is incomplete");
     }
     if (!isCurrentEnvelope && record.persistenceVersion === 3 && ["currentTime", "crew", "incident"].some((key) => key in candidateEncounter!)) {
       throw new Error("saved state contains parallel legacy incident data");

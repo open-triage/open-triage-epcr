@@ -4,6 +4,11 @@ import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
+const dashboard = {
+  availableCalls: 3, ongoingReports: 2, signedReports: 14, signedLast24Hours: 4,
+  reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10_485_760,
+  databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
+};
 
 function assignedCalls(route: Route) {
   return route.fulfill({
@@ -39,7 +44,8 @@ test("combined owners start clinically and can enter the authorized Admin shell 
       activeConfiguration: {
         catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
         stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 }
-      }
+      },
+      dashboard,
     })
   }));
   await signInAsCombinedOwner(page);
@@ -54,6 +60,10 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByRole("heading", { name: "Active configuration" })).toBeVisible();
   await expect(page.getByText("NEMSIS 3.5.1", { exact: true })).toBeVisible();
   await expect(page.getByText("Agency Stationary, version 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ongoing reports", { exact: true })).toBeVisible();
+  await expect(page.getByText("10 MB", { exact: true })).toBeVisible();
+  await expect(page.getByText("Used by new reports", { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Signed in as .* for/)).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
   await page.getByRole("button", { name: "Users", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
@@ -103,7 +113,8 @@ test("owner previews the unsaved form through Stationary without creating a clin
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
     activeConfiguration: { catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
-      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } },
+    dashboard,
   }) }));
   await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ contentType: "application/json", body: "null" }));
   await page.route("**/api/admin/form-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(draft) }));

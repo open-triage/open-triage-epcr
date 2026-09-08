@@ -62,13 +62,14 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded }: {
+function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly presentationMode: PresentationMode;
   readonly onSaveAndClose: () => void;
   readonly onReportCompleted: () => void;
   readonly onSessionEnded: () => void;
+  readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -113,6 +114,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     onSessionEnded,
     onReportCompleted,
   });
+  useEffect(() => {
+    onErrorStateChange(reviewErrors.length > 0 || Boolean(recoveryNotice || signError || conflictError));
+  }, [conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -611,8 +615,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
   )}</ClinicianSessionGate>;
 }
 
