@@ -6,9 +6,10 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
-import type { ActiveReportResource, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import type {
   CreateDraftReportCommand,
   DraftGroupMutation,
@@ -138,7 +139,7 @@ export class DraftReportService {
   ) {}
 
   async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
@@ -176,14 +177,10 @@ export class DraftReportService {
                     and adv.catalog_release_id = fv.catalog_release_id
                     and adv.effective_from <= now()
                   order by adv.effective_from desc, adv.version desc limit 1) as agency_demographic_version_id
-          from forms.form f
-          join lateral (
-            select candidate.id, candidate.catalog_release_id
-            from forms.form_version candidate
-            where candidate.form_id = f.id and candidate.status = 'published'
-            order by candidate.version desc limit 1
-          ) fv on true
-          where f.id = $1 and f.organization_id = $2
+          from forms.agency_stationary_default active
+          join forms.form_version fv on fv.id = active.form_version_id and fv.status = 'published'
+          join forms.form f on f.id = fv.form_id and f.organization_id = active.organization_id
+          where active.organization_id = $2 and f.id = $1
         `, [command.formId, command.organizationId]);
         if (!active[0]) throw new NotFoundException("No active published form version was found for the organization");
         if (!active[0].agency_demographic_version_id) {
@@ -238,7 +235,7 @@ export class DraftReportService {
   }
 
   async save(accessToken: string, reportId: string, input: unknown): Promise<SaveDraftReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -507,7 +504,7 @@ export class DraftReportService {
   }
 
   async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     return this.dataSource.transaction(async (manager) => {
       const report = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const groups = await manager.query<Array<Record<string, unknown>>>(`
@@ -541,7 +538,7 @@ export class DraftReportService {
   }
 
   async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
-    const session = this.sessions.get(accessToken, now);
+    const session = await this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<OpenCallRow[]>(`
       select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
              ca.dispatch_reason, ca.chief_complaint, ou.call_sign as unit_call_sign,
@@ -593,10 +590,13 @@ export class DraftReportService {
   }
 
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     const details = await this.get(accessToken, reportId);
     const document = await this.dataSource.transaction((manager) => encounterDocument(manager, reportId));
     const conflicts = await this.dataSource.transaction((manager) => dispatchConflicts(manager, reportId));
+    const clinicalForm = await this.dataSource.transaction((manager) => clinicalFormConfiguration(
+      manager, String(details.formVersionId), String(details.catalogReleaseId)
+    ));
     const calls = await this.dataSource.query<Array<{
       call_number: string;
       dispatched_at: Date | string;
@@ -644,6 +644,7 @@ export class DraftReportService {
         documentingUserId: String(details.documentingUserId),
         formVersionId: String(details.formVersionId),
         catalogReleaseId: String(details.catalogReleaseId),
+        clinicalForm,
         revision: Number(details.revision),
         status: "draft",
         document,
@@ -660,11 +661,52 @@ export class DraftReportService {
     };
   }
 
+  /** Prototype-only physical deletion for a clinician-owned synthetic draft. */
+  async deleteSyntheticDraft(accessToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
+    const session = await this.sessions.get(accessToken);
+    return this.dataSource.transaction(async (manager) => {
+      const reports = await manager.query<Array<{ patient_id: string }>>(`
+        select patient_id from clinical.report
+        where id = $1 and organization_id = $2 and documenting_user_id = $3
+          and status = 'draft' and synthetic
+        for update
+      `, [reportId, session.organization.id, session.user.id]);
+      const report = reports[0];
+      if (!report) throw new ConflictException("Only a clinician-owned synthetic draft can be deleted");
+
+      await manager.query("select set_config('open_triage.prototype_delete_report', $1, true)", [reportId]);
+      await manager.query(`delete from clinical_audit.draft_reconciliation where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical_audit.event where report_id = $1`, [reportId]);
+      await manager.query(`delete from integration.projection_backfill_job where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.draft_target_state where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.dispatch_conflict where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.validation_finding where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.element_occurrence where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.group_instance where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.report_contributor where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.command_receipt where report_id = $1`, [reportId]);
+      await manager.query(`delete from clinical.report_change where report_id = $1`, [reportId]);
+      await manager.query(`
+        delete from clinical.call_assignment
+        where report_id = $1 and organization_id = $2
+      `, [reportId, session.organization.id]);
+      const deleted = await manager.query<Array<{ id: string }>>(`
+        delete from clinical.report where id = $1 and status = 'draft' and synthetic returning id
+      `, [reportId]);
+      if (!deleted[0]) throw new ConflictException("The synthetic draft could not be deleted");
+      await manager.query(`
+        delete from clinical.patient where id = $1
+          and not exists (select 1 from clinical.report where patient_id = $1)
+      `, [report.patient_id]);
+      return { deleted: true, reportId };
+    });
+  }
+
   async active(accessToken: string, reportId: string, ifNoneMatch?: string): Promise<{
     readonly etag: string;
     readonly resource: ActiveReportResource | null;
   }> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     const rows = await this.dataSource.query<Array<{
       revision: string | number;
       dispatch_revision: string | number | null;
@@ -710,7 +752,7 @@ export class DraftReportService {
     conflictId: string,
     input: unknown
   ): Promise<DispatchConflict> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     if (!input || typeof input !== "object" || !uuidV4.test(String((input as ResolveDispatchConflictCommand).commandId)) ||
         !["keep", "accept", "acknowledge"].includes(String((input as ResolveDispatchConflictCommand).disposition))) {
       throw new UnprocessableEntityException("A UUIDv4 commandId and keep, accept, or acknowledge disposition are required");

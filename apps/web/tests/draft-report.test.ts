@@ -9,8 +9,10 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   draftCommandUsesLegacyDerivedIds,
+  deleteDraftReport,
   fetchActiveReport,
   saveDraftReport,
+  shouldQueueInitialDraftSnapshot,
   signDraftReport,
   shellStateToDraftMutations,
   stableDraftId,
@@ -18,6 +20,14 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("only a brand-new server report queues an initial persistence snapshot", () => {
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, false), true);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 11, true, false), false,
+    "reopening an existing report must not create a no-op synchronization write");
+  assert.equal(shouldQueueInitialDraftSnapshot("restored", 0, true, false), false);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, true), false);
+});
 
 test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
   const notice = dispatchCancellationNotice({
@@ -77,6 +87,21 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
   }
 });
 
+test("prototype record deletion uses a confirmed server-side DELETE with CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: { input: string; init?: RequestInit } | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    request = { input: String(input), init };
+    return Response.json({ deleted: true, reportId });
+  }) as typeof fetch;
+
+  assert.deepEqual(await deleteDraftReport("csrf-proof", reportId), { deleted: true, reportId });
+  assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}`);
+  assert.equal(request?.init?.method, "DELETE");
+  assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+});
+
 test("active polling and draft saves identify a report completed by another client", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
@@ -103,10 +128,29 @@ test("active polling and draft saves identify a report completed by another clie
   }
 });
 
+test("an invalid saved browser command is distinguished from a temporary outage", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  });
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  globalThis.fetch = (async () => Response.json({ message: "Invalid stale command" }, { status: 422 })) as typeof fetch;
+  await assert.rejects(saveDraftReport("token", reportId, {
+    commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+    authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+    clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+  }), /invalid/);
+});
+
 test("the browser-only static build considers its durable local write synchronized", async () => {
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   const originalFetch = globalThis.fetch;
   process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
   globalThis.fetch = (async () => { throw new Error("the static build must not call a report API"); }) as typeof fetch;
   try {
     const result = await saveDraftReport("token", reportId, {
@@ -119,6 +163,8 @@ test("the browser-only static build considers its durable local write synchroniz
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
   }
 });
 
@@ -202,7 +248,7 @@ test("removing a persisted timeline event emits explicit group and occurrence to
   });
 });
 
-test("the web adapter sends bearer-authenticated commands to the report draft endpoint", async () => {
+test("the web adapter sends cookie credentials and a CSRF proof to the report draft endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let request: { input: string; init?: RequestInit } | undefined;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -218,7 +264,8 @@ test("the web adapter sends bearer-authenticated commands to the report draft en
     assert.equal(result.revision, 8);
     assert.equal(request?.input, draftChangesUrl(reportId));
     assert.equal(request?.init?.method, "POST");
-    assert.equal((request?.init?.headers as Record<string, string>).authorization, "Bearer token");
+    assert.equal(request?.init?.credentials, "include");
+    assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "token");
   } finally {
     globalThis.fetch = originalFetch;
   }

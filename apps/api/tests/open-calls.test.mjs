@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { DraftReportController } from "../dist/reports/draft-report.controller.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
@@ -19,6 +19,35 @@ function sessions() {
     return ownerSession;
   } };
 }
+
+test("prototype deletion atomically removes a clinician-owned synthetic draft without reassigning its call", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000009";
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
+    if (sql.includes("select patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
+    if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
+    return [];
+  } };
+  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+
+  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId), { deleted: true, reportId });
+  assert.match(calls[0].sql, /status = 'draft' and synthetic/);
+  assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
+  assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
+  assert.ok(calls.find(({ sql }) => /delete from clinical\.call_assignment where report_id/.test(sql)));
+  assert.ok(!calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned'/.test(sql)));
+  assert.ok(calls.find(({ sql }) => /delete from clinical\.patient/.test(sql)));
+});
+
+test("prototype deletion refuses reports outside the owned synthetic-draft boundary", async () => {
+  const manager = { query: async () => [] };
+  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+  await assert.rejects(
+    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"),
+    ConflictException,
+  );
+});
 
 test("open calls list only creator-owned drafts in newest-activity order with workflow details", async () => {
   const queries = [];
@@ -102,6 +131,14 @@ test("reopening restores the creator's report with its pinned form and saved con
     const normalized = sql.replace(/\s+/g, " ");
     queries.push({ sql: normalized, parameters });
     if (normalized.includes("from clinical.report where id")) return [report];
+    if (normalized.includes("select canonical_definition from forms.form_version")) return [{ canonical_definition: {
+      schemaVersion: 1, sections: [{ key: "patient", fields: [{ key: "birth-date", source: { kind: "nemsis", elementId: "ePatient.17" } }] }]
+    } }];
+    if (normalized.includes("select element_id, agency_required")) return [{
+      element_id: "ePatient.17", agency_required: false, min_occurs: 0, max_occurs: 1,
+      nillable: true, supports_not_values: true, supports_pertinent_negatives: false
+    }];
+    if (normalized.includes("from catalog.value_set_element")) return [];
     if (normalized.includes("join forms.form_version")) return [{
       id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:05:00.000Z",
       form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -145,6 +182,7 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(reopened.unitCallSign, "Medic 32");
   assert.equal(reopened.report.agencyTimeZone, "America/New_York");
   assert.equal(reopened.report.formVersionId, "pinned-form");
+  assert.equal(reopened.report.clinicalForm.definition.sections[0].fields[0].source.elementId, "ePatient.17");
   assert.deepEqual(reopened.report.dispatchCancellation, {
     canceledAt: "2026-09-03T12:18:31.000Z", dispatchRevision: 3, receiptId: "dispatch-receipt"
   });

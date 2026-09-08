@@ -1,69 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { UnauthorizedException } from "@nestjs/common";
-import {
-  ClinicianSessionService,
-  DEMO_CLINICIAN_PASSWORD,
-  DEMO_CLINICIAN_USERNAME
-} from "../dist/sessions/clinician-session.service.js";
-import { ClinicianSessionController } from "../dist/sessions/clinician-session.controller.js";
+import { createPasswordVerifier, verifyPassword } from "../dist/identity/password.js";
+import { bearerToken, SESSION_COOKIE } from "../dist/sessions/clinician-session.controller.js";
+import { validateChangePassword } from "../dist/sessions/clinician-session.validation.js";
 
-const clinician = {
-  user_id: "32000000-0000-4000-8000-000000000003",
-  display_name: "Synthetic Clinician",
-  organization_id: "32000000-0000-4000-8000-000000000001",
-  organization_name: "OpenTriage Synthetic EMS",
-  shift_session_duration_hours: 14
-};
-
-function fixture() {
-  const dataSource = { query: async () => [clinician] };
-  const service = new ClinicianSessionService(dataSource);
-  return { service, controller: new ClinicianSessionController(service) };
-}
-
-test("the externally observable session API signs in the seeded demo clinician for fourteen fixed hours", async () => {
-  const { controller } = fixture();
-  const session = await controller.create({
-    username: DEMO_CLINICIAN_USERNAME,
-    password: DEMO_CLINICIAN_PASSWORD
-  });
-
-  assert.equal(session.user.displayName, "Synthetic Clinician");
-  assert.equal(Date.parse(session.expiresAt) - Date.parse(session.startedAt), 14 * 60 * 60 * 1_000);
-  assert.deepEqual(controller.current(`Bearer ${session.accessToken}`), session);
+test("local password verifiers are salted, one-way, and reject the wrong password", async () => {
+  const first = await createPasswordVerifier("A strong password! 253");
+  const second = await createPasswordVerifier("A strong password! 253");
+  assert.notEqual(first, second);
+  assert.doesNotMatch(first, /A strong password/);
+  assert.equal(await verifyPassword("A strong password! 253", first), true);
+  assert.equal(await verifyPassword("incorrect password", first), false);
+  assert.equal(await verifyPassword("A strong password! 253", "malformed"), false);
 });
 
-test("a session expires at its original deadline without activity-based extension", async () => {
-  const { service } = fixture();
-  const start = new Date("2026-09-03T08:00:00.000Z");
-  const session = await service.create({
-    username: DEMO_CLINICIAN_USERNAME,
-    password: DEMO_CLINICIAN_PASSWORD
-  }, start);
-
-  assert.equal(service.get(session.accessToken, new Date("2026-09-03T21:59:59.999Z")).expiresAt, "2026-09-03T22:00:00.000Z");
-  assert.throws(
-    () => service.get(session.accessToken, new Date("2026-09-03T22:00:00.000Z")),
-    (error) => error instanceof UnauthorizedException
-  );
+test("cookie credentials take precedence and malformed authorization is rejected", () => {
+  assert.equal(bearerToken("Bearer legacy", `${SESSION_COOKIE}=opaque-cookie; other=value`), "opaque-cookie");
+  assert.equal(bearerToken("Bearer legacy"), "legacy");
+  assert.throws(() => bearerToken(undefined), UnauthorizedException);
 });
 
-test("manual logout invalidates the server session immediately", async () => {
-  const { controller } = fixture();
-  const session = await controller.create({
-    username: DEMO_CLINICIAN_USERNAME,
-    password: DEMO_CLINICIAN_PASSWORD
-  });
-
-  assert.deepEqual(controller.end(`Bearer ${session.accessToken}`), { ended: true });
-  assert.throws(() => controller.current(`Bearer ${session.accessToken}`), UnauthorizedException);
-});
-
-test("incorrect demo credentials are rejected", async () => {
-  const { controller } = fixture();
-  await assert.rejects(
-    controller.create({ username: DEMO_CLINICIAN_USERNAME, password: "incorrect" }),
-    UnauthorizedException
-  );
+test("password replacement validates a strong new secret and a CSRF proof", () => {
+  assert.deepEqual(validateChangePassword({
+    currentPassword: "temporary password", newPassword: "replacement password!", csrfToken: "csrf-proof"
+  }), { currentPassword: "temporary password", newPassword: "replacement password!", csrfToken: "csrf-proof" });
+  assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "short", csrfToken: "csrf" }), /12/);
+  assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "long enough password" }), /CSRF/);
 });

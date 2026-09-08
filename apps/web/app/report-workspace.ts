@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition } from "@open-triage/contracts";
+import { sessionRequestToken } from "./clinician-session";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
 import {
@@ -14,6 +15,7 @@ import {
   fetchActiveReport,
   saveDraftReport,
   shellStateToDraftMutations,
+  shouldQueueInitialDraftSnapshot,
   type ActiveDraftReport,
   type DraftSyncStatus,
 } from "./draft-report";
@@ -21,6 +23,7 @@ import { clearShellState, loadShellStateResult, saveReportSyncStatus, saveShellS
 import {
   acceptDraftChange,
   cacheLocalReportDocument,
+  discardQueuedDraftChanges,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
@@ -80,6 +83,8 @@ export function useReportWorkspace({
   const presentationRef = useRef(presentationMode);
   const skipReconciledQueue = useRef(false);
   const activeSave = useRef<Promise<void> | null>(null);
+  const recoverConflictingQueue = useRef(false);
+  const conflictRecoveryUsed = useRef(false);
   const skipInitialQueue = useRef(false);
   const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -95,6 +100,8 @@ export function useReportWorkspace({
   }, [onReportCompleted, report]);
 
   useEffect(() => {
+    recoverConflictingQueue.current = false;
+    conflictRecoveryUsed.current = false;
     persistedDraft.current = report?.document
       ? encounterDocumentToDraftMutations(report.id, report.document)
       : { groups: [], occurrences: [] };
@@ -102,10 +109,17 @@ export function useReportWorkspace({
       window.localStorage,
       bundledEncounterDefinition,
       report?.id,
-      report?.document?.formProfile,
+      report?.document?.formProfile && {
+        ...report.document.formProfile,
+        catalogFields: report.clinicalForm?.catalogFields,
+      },
     );
-    queueInitialSnapshot.current = result.status === "empty" && Boolean(report?.document)
-      && (!report || nextDraftChange(window.localStorage, report.id) === null);
+    queueInitialSnapshot.current = shouldQueueInitialDraftSnapshot(
+      result.status,
+      report?.revision ?? 0,
+      Boolean(report?.document),
+      Boolean(report && nextDraftChange(window.localStorage, report.id)),
+    );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
       dispatch({ type: "state-restored", state: result.state });
@@ -137,12 +151,13 @@ export function useReportWorkspace({
       markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
       const attempt = (async () => {
         try {
-          const saved = await saveDraftReport(session.accessToken, report.id, queued.command);
+          const saved = await saveDraftReport(sessionRequestToken(session), report.id, queued.command);
           if (saved.status === "signed") {
             completeReport();
             return;
           }
           revision.current = saved.revision;
+          conflictRecoveryUsed.current = false;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
           persistedDraft.current = applyDraftMutationDelta(persistedDraft.current, queued.command);
         } catch (error) {
@@ -156,7 +171,12 @@ export function useReportWorkspace({
             completeReport();
             return;
           }
-          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
+          if ((reason === "conflict" || reason === "invalid") && !conflictRecoveryUsed.current) {
+            recoverConflictingQueue.current = true;
+            conflictRecoveryUsed.current = true;
+            activeEtag.current = undefined;
+          }
+          setSyncStatus(reason === "conflict" || reason === "invalid" ? "Conflict" : "Pending sync");
         }
       })();
       activeSave.current = attempt;
@@ -245,7 +265,7 @@ export function useReportWorkspace({
       if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
       const previousEtag = activeEtag.current;
       try {
-        const response = await fetchActiveReport(session.accessToken, report.id, previousEtag);
+        const response = await fetchActiveReport(sessionRequestToken(session), report.id, previousEtag);
         if (!response || stopped) return;
         activeEtag.current = response.etag || previousEtag;
         const local = shellRef.current.encounter.document;
@@ -255,7 +275,13 @@ export function useReportWorkspace({
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
         revision.current = response.resource.reportRevision;
         if (hasPending) {
-          rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+          if (recoverConflictingQueue.current) {
+            discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
+            recoverConflictingQueue.current = false;
+            setSyncStatus("Saved");
+          } else {
+            rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+          }
           persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
         }
         else {
@@ -296,7 +322,7 @@ export function useReportWorkspace({
     if (!report) return;
     setConflictError(null);
     try {
-      const resolved = await resolveDispatchConflict(session.accessToken, report.id, conflict.id, disposition);
+      const resolved = await resolveDispatchConflict(sessionRequestToken(session), report.id, conflict.id, disposition);
       setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
       revision.current += 1;
     } catch (error) {

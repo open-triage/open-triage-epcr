@@ -1,5 +1,5 @@
 import type { EncounterDocument, EncounterGroupInstance } from "@open-triage/contracts";
-import { editStationaryCodedValue, type StationaryCodedSelection } from "./stationary-coded-value";
+import { editStationaryCodedValue, type StationaryCodedField, type StationaryCodedSelection } from "./stationary-coded-value";
 import {
   editScalarOccurrence,
   scalarControlPresentation,
@@ -195,7 +195,7 @@ export function editNonRepeatingScalarValue(
 /** Coded/exceptional counterpart with the same ownership and ancestry enforcement. */
 export function editNonRepeatingCodedValue(
   document: EncounterDocument,
-  target: { readonly groupId: string; readonly elementId: string; readonly groupInstanceId?: string; readonly parentInstanceId?: string; readonly occurrenceId?: string },
+  target: { readonly groupId: string; readonly elementId: string; readonly groupInstanceId?: string; readonly parentInstanceId?: string; readonly occurrenceId?: string; readonly codedField?: StationaryCodedField },
   selection: StationaryCodedSelection | undefined,
   createId: () => string = () => crypto.randomUUID(),
   now = new Date(),
@@ -214,6 +214,7 @@ export function editNonRepeatingCodedValue(
     groupId: target.groupId,
     instanceId: ensured.instance.instanceId,
     elementId: target.elementId,
+    ...(target.codedField ? { codedField: target.codedField } : {}),
     ...(target.occurrenceId ? { occurrenceId: target.occurrenceId } : {}),
   }, selection, createId, now);
 }

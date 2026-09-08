@@ -80,6 +80,7 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
   const fields: CanonicalFormField[] = [];
   const sectionKeys = new Set<string>();
   const fieldKeys = new Set<string>();
+  const fieldSources = new Set<string>();
   sections.forEach((section, sectionIndex) => {
     const path = `sections[${sectionIndex}]`;
     if (!isRecord(section)) {
@@ -113,6 +114,14 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
       } else if (field.source.kind === "custom" && field.source.groupDefinitionId !== undefined &&
         (typeof field.source.groupDefinitionId !== "string" || !uuidPattern.test(field.source.groupDefinitionId))) {
         findings.push(`${fieldPath}.source.groupDefinitionId must be a UUID`);
+      }
+      if (isRecord(field.source)) {
+        const sourceIdentity = field.source.kind === "nemsis" && typeof field.source.elementId === "string"
+          ? `nemsis:${field.source.elementId}`
+          : field.source.kind === "custom" && typeof field.source.elementDefinitionId === "string"
+            ? `custom:${field.source.elementDefinitionId}` : null;
+        if (sourceIdentity && fieldSources.has(sourceIdentity)) findings.push(`${fieldPath}.source is duplicated`);
+        else if (sourceIdentity) fieldSources.add(sourceIdentity);
       }
       if (field.required !== undefined && typeof field.required !== "boolean") {
         findings.push(`${fieldPath}.required must be a boolean`);
@@ -162,6 +171,9 @@ export function validatePublishCommand(value: unknown): PublishFormVersionComman
   const findings: string[] = [];
   if (typeof value.publishedBy !== "string" || !uuidPattern.test(value.publishedBy)) findings.push("publishedBy must be a UUID");
   if (typeof value.changeNote !== "string" || !value.changeNote.trim()) findings.push("changeNote is required");
+  if (value.displayName !== undefined && (typeof value.displayName !== "string" || !value.displayName.trim() || value.displayName.trim().length > 120)) {
+    findings.push("displayName must contain 1 to 120 characters");
+  }
   if (typeof value.definitionSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.definitionSha256)) {
     findings.push("definitionSha256 must be a lowercase SHA-256 digest");
   }

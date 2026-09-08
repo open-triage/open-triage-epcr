@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException
@@ -19,9 +20,11 @@ import {
   validateCanonicalFormDefinition,
   validatePublishCommand
 } from "./form-publication.validation.js";
+import { configurationPublishingAllowed, READ_ONLY_ADMINISTRATION_MESSAGE } from "../config/installation-settings.js";
 
 type FormVersionRow = {
   id: string;
+  display_name: string | null;
   status: "draft" | "published";
   canonical_definition: unknown;
   definition_sha256: string;
@@ -55,7 +58,8 @@ type CustomGroupRow = {
 export class FormPublicationService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async publish(formVersionId: string, input: unknown): Promise<PublishedFormVersion> {
+  async publish(formVersionId: string, input: unknown, organizationId?: string): Promise<PublishedFormVersion> {
+    if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     let command: PublishFormVersionCommand;
     try {
       command = validatePublishCommand(input);
@@ -65,7 +69,7 @@ export class FormPublicationService {
 
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<FormVersionRow[]>(`
-        select fv.id, fv.status, fv.canonical_definition, fv.definition_sha256,
+        select fv.id, fv.display_name, fv.status, fv.canonical_definition, fv.definition_sha256,
                fv.published_at, fv.catalog_release_id, f.organization_id
         from forms.form_version fv
         join forms.form f on f.id = fv.form_id
@@ -73,7 +77,9 @@ export class FormPublicationService {
         for update
       `, [formVersionId]);
       const version = rows[0];
-      if (!version) throw new NotFoundException(`Form version ${formVersionId} was not found`);
+      if (!version || organizationId && version.organization_id !== organizationId) {
+        throw new NotFoundException(`Form version ${formVersionId} was not found`);
+      }
 
       const digest = canonicalDefinitionSha256(version.canonical_definition);
       if (version.status === "published") {
@@ -157,14 +163,22 @@ export class FormPublicationService {
         with updated as (
           update forms.form_version
           set status = 'published', change_note = $2, published_by = $3, published_at = now(),
-              publication_acknowledgements = $4::jsonb
+              publication_acknowledgements = $4::jsonb, display_name = coalesce($5, display_name)
           where id = $1 and status = 'draft'
           returning published_at
         )
         select published_at from updated
       `, [version.id, command.changeNote.trim(), command.publishedBy,
-        JSON.stringify(command.warningAcknowledgements ?? {})]);
+        JSON.stringify(command.warningAcknowledgements ?? {}), command.displayName?.trim() ?? null]);
       if (!published[0]) throw new ConflictException("Form version is no longer a draft");
+      const counts = await this.projectionCounts(manager, version.id);
+      await manager.query(`
+        insert into app_identity.configuration_event
+          (organization_id, actor_id, action, result, form_version_id, catalog_release_id,
+           change_note, content_sha256, details)
+        values ($1,$2,'form.publish','succeeded',$3,$4,$5,$6,$7::jsonb)
+      `, [version.organization_id, command.publishedBy, version.id, version.catalog_release_id,
+        command.changeNote.trim(), digest, JSON.stringify({ structuralSummary: counts })]);
       return this.publishedResult(manager, version.id, digest, published[0].published_at);
     });
   }
@@ -275,6 +289,23 @@ export class FormPublicationService {
     definitionSha256: string,
     publishedAt: Date | string | null
   ): Promise<PublishedFormVersion> {
+    const counts = await this.projectionCounts(manager, id);
+    const names = await manager.query<Array<{ display_name: string | null }>>(
+      "select display_name from forms.form_version where id = $1", [id]);
+    return {
+      id,
+      ...(names[0]?.display_name ? { displayName: names[0].display_name } : {}),
+      status: "published",
+      definitionSha256,
+      publishedAt: new Date(publishedAt!).toISOString(),
+      projections: counts
+    };
+  }
+
+  private async projectionCounts(
+    manager: EntityManager,
+    id: string
+  ): Promise<{ sections: number; fields: number; rules: number; locales: number }> {
     const counts = await manager.query<Array<{ sections: number; fields: number; rules: number; locales: number }>>(`
       select
         (select count(*)::integer from forms.form_section where form_version_id = $1) as sections,
@@ -282,13 +313,7 @@ export class FormPublicationService {
         (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules,
         (select count(*)::integer from forms.form_locale where form_version_id = $1) as locales
     `, [id]);
-    return {
-      id,
-      status: "published",
-      definitionSha256,
-      publishedAt: new Date(publishedAt!).toISOString(),
-      projections: counts[0]!
-    };
+    return counts[0]!;
   }
 
   private rethrowValidation(error: unknown): never {

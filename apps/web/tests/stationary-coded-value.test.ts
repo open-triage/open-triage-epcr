@@ -11,6 +11,7 @@ import { NEMSIS_DATA_MODEL, requireNemsisDataElement, type NemsisDataElement } f
 import { INITIAL_SHELL_STATE } from "../app/standard-encounter";
 import {
   codedSelectionFromOption,
+  configuredStationaryCodedField,
   editStationaryCodedValue,
   exceptionalSelection,
   repeatableExceptionalChoices,
@@ -46,6 +47,22 @@ test("inline controls expose only exhaustive catalog values and reject invented 
   assert.equal(field.controlKind, "select");
   assert.deepEqual(field.options.map(({ code, label }) => ({ code, label })), element.valueSource.kind === "inline-enumerated" ? element.valueSource.values : []);
   assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "invented" }), /not in the exhaustive value set/);
+});
+
+test("report-pinned catalog choices replace generated labels, ordering, and availability", () => {
+  const field = configuredStationaryCodedField("ePatient.25", {
+    agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: true,
+    codeChoices: [
+      { code: "9906003", codeSystem: "", label: "Configured unknown" },
+      { code: "9906001", codeSystem: "", label: "Configured female" },
+    ],
+  });
+  assert.deepEqual(field.options.map(({ code, label }) => ({ code, label })), [
+    { code: "9906003", label: "Configured unknown" },
+    { code: "9906001", label: "Configured female" },
+  ]);
+  assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "9906005" }), /not in the exhaustive value set/);
 });
 
 test("bundled canonical options render as one label-only dropdown", () => {
@@ -169,4 +186,33 @@ test("coded metadata and exceptional variants survive the local-document and dra
   const pn = editStationaryCodedValue(localRoundTrip, patientTarget, exceptionalSelection(stationaryCodedField(patientTarget.elementId), "pertinent-negative:8801019")!);
   const pnMutation = encounterDocumentToDraftMutations(reportId, pn).occurrences.find(({ elementId }) => elementId === patientTarget.elementId)!;
   assert.deepEqual(pnMutation.value, { kind: "pertinent-negative", absenceCode: "8801019", display: "Refused" });
+});
+
+test("a report reopens locally with an agency code from its pinned catalog", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  (patient.elements as Array<EncounterDocument["groups"][number]["instances"][number]["elements"][number]>).push({ id: "ePatient.14", values: [{
+    kind: "coded", occurrenceId: "agency-race-1", code: "251414SE", system: "Agency", display: "Swedish",
+  }] });
+  const bytes = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => bytes.get(key) ?? null,
+    setItem: (key: string, value: string) => { bytes.set(key, value); },
+    removeItem: (key: string) => { bytes.delete(key); },
+  };
+  saveShellState(storage, { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, reportId);
+
+  const restored = loadShellStateResult(storage, undefined, reportId, {
+    ...document.formProfile,
+    catalogFields: { "ePatient.14": {
+      agencyRequired: false, requirednessSeverity: null, minOccurs: 0, maxOccurs: null,
+      nillable: true, supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [{ code: "251414SE", codeSystem: "Agency", label: "Swedish" }],
+    } },
+  });
+
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") throw new Error("expected agency-coded report to reopen");
+  assert.equal(restored.state.encounter.document.groups.find(({ id }) => id === "ePatientSection")!
+    .instances[0]!.elements.find(({ id }) => id === "ePatient.14")!.values[0]?.kind, "coded");
 });

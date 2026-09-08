@@ -1,4 +1,4 @@
-import type { ActiveReportResource, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, DeleteDraftReportResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -7,6 +7,15 @@ export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
 export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
+
+export function shouldQueueInitialDraftSnapshot(
+  localStateStatus: "empty" | "restored" | "incompatible" | "invalid",
+  serverRevision: number,
+  hasServerDocument: boolean,
+  hasQueuedChange: boolean,
+): boolean {
+  return localStateStatus === "empty" && serverRevision === 0 && hasServerDocument && !hasQueuedChange;
+}
 
 export interface ActiveDraftReport {
   readonly id: string;
@@ -21,6 +30,7 @@ export interface ActiveDraftReport {
   readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
   readonly document?: EncounterDocument;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
@@ -223,7 +233,7 @@ export function applyDraftMutationDelta(
 }
 
 function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true" || process.env.NEXT_PUBLIC_BASE_PATH) return null;
+  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 }
 
@@ -237,7 +247,7 @@ export function draftChangesUrl(reportId: string): string {
   return base ? `${base}${path}` : `${process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? ""}${path}`;
 }
 
-export async function saveDraftReport(accessToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
+export async function saveDraftReport(csrfToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
   // The static prototype's durable browser cache is its only backing store. A
   // successful local write is therefore synchronized; no nonexistent HTTP API
   // should leave the browser-only workflow permanently pending.
@@ -246,17 +256,32 @@ export async function saveDraftReport(accessToken: string, reportId: string, com
   }
   let response: Response;
   try {
-    response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify(command) });
+    response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken, "content-type": "application/json" }, body: JSON.stringify(command) });
   } catch {
     throw new Error("offline");
   }
   if (response.status === 409) throw new Error("conflict");
+  if (response.status === 422) throw new Error("invalid");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
 }
 
+export async function deleteDraftReport(csrfToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
+  const base = apiBaseUrl();
+  if (!base) throw new Error("Record deletion requires the database-backed prototype.");
+  const response = await fetch(`${base}/api/reports/${reportId}`, {
+    method: "DELETE", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken },
+  });
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Your shift session has ended.");
+    if (response.status === 409) throw new Error("Only an open synthetic draft can be deleted.");
+    throw new Error("The record could not be deleted.");
+  }
+  return response.json() as Promise<DeleteDraftReportResponse>;
+}
+
 export async function fetchActiveReport(
-  accessToken: string,
+  _csrfToken: string,
   reportId: string,
   etag?: string,
 ): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
@@ -266,7 +291,8 @@ export async function fetchActiveReport(
   try {
     response = await fetch(`${base}/api/reports/${reportId}/active`, {
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}`, ...(etag ? { "if-none-match": etag } : {}) },
+      credentials: "include",
+      headers: { ...(etag ? { "if-none-match": etag } : {}) },
     });
   } catch {
     throw new Error("offline");
@@ -278,7 +304,7 @@ export async function fetchActiveReport(
 }
 
 export async function signDraftReport(
-  accessToken: string,
+  csrfToken: string,
   reportId: string,
   expectedRevision: number,
   signerId: string,
@@ -291,7 +317,8 @@ export async function signDraftReport(
     response = await fetch(`${base}/api/reports/${reportId}/sign`, {
       method: "POST",
       cache: "no-store",
-      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      credentials: "include",
+      headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
         expectedRevision,

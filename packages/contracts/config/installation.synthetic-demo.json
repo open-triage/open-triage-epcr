@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "syntheticFixtures": { "enabled": true },
+  "sampleDispatchAssignment": { "enabled": true },
+  "syntheticDataBanner": {
+    "enabled": true,
+    "heading": "Synthetic data only",
+    "message": "Usability prototype — not for clinical use"
+  },
+  "clinicalRetention": {
+    "durationHours": 24,
+    "automaticDeletionEnabled": true
+  },
+  "authentication": {
+    "sessionDurationMinutes": 840,
+    "idleTimeoutMinutes": 840,
+    "minimumPasswordLength": 8
+  },
+  "administration": { "readOnly": true },
+  "exports": {
+    "downloadsAllowed": false,
+    "auditExportsAllowed": false,
+    "configurationExportsAllowed": false
+  }
+}

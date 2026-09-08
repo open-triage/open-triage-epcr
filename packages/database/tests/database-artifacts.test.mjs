@@ -14,7 +14,9 @@ const repoRoot = path.resolve(packageRoot, "../..");
 const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
-  operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier] = await Promise.all([
+  operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
+  codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
+  reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -33,8 +35,73 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(packageRoot, "config/database-operations-policy.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "docs/runbooks/database-operations.md"), "utf8"),
   readFile(path.join(packageRoot, "scripts/verify-recovery.mjs"), "utf8"),
-  readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8")
+  readFile(path.join(packageRoot, "scripts/verify-reporting-replica.mjs"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260908141346_prototype_synthetic_draft_deletion.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8")
 ]);
+
+test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
+  assert.match(catalogAuthoringMigration, /create table catalog\.authoring_draft/);
+  assert.match(catalogAuthoringMigration, /revision integer not null/);
+  assert.match(catalogAuthoringMigration, /catalog_one_editable_draft_per_organization/);
+  assert.match(catalogAuthoringMigration, /prevent_sealed_projection_mutation/);
+  assert.match(catalogAuthoringMigration, /before insert or update or delete on catalog\.element_option/);
+  assert.match(catalogAuthoringMigration, /catalog_publication_event_append_only/);
+});
+
+test("code-list projections retain disabled values, deterministic order, and one optional default", () => {
+  assert.match(codeListAuthoringMigration, /create table catalog\.value_set_option_configuration/);
+  assert.match(codeListAuthoringMigration, /enabled boolean not null default true/);
+  assert.match(codeListAuthoringMigration, /sort_order integer/);
+  assert.match(codeListAuthoringMigration, /catalog_value_set_option_order_unique/);
+  assert.match(codeListAuthoringMigration, /catalog_value_set_option_one_default[\s\S]*where is_default/);
+  assert.match(codeListAuthoringMigration, /catalog_value_set_option_configuration_immutable/);
+});
+
+test("form authoring uses revision preconditions while retaining immutable published versions", () => {
+  assert.match(formAuthoringMigration, /revision integer not null default 1/);
+  assert.match(formAuthoringMigration, /forms_one_editable_version_per_form/);
+  assert.match(formAuthoringMigration, /where status = 'draft'/);
+  assert.match(migration, /prevent_published_form_version_mutation/);
+  assert.match(migration, /children of published form version .* are immutable/);
+});
+
+test("form publication and agency activation are separate, pinned, and append-only", () => {
+  assert.match(formActivationMigration, /create table forms\.agency_stationary_default/);
+  assert.match(formActivationMigration, /version_status <> 'published'/);
+  assert.match(formActivationMigration, /create table app_identity\.configuration_event/);
+  assert.match(formActivationMigration, /'form\.publish', 'form\.activate'/);
+  assert.match(formActivationMigration, /previous_form_version_id/);
+  assert.match(formActivationMigration, /configuration_event_append_only/);
+});
+
+test("reports retain immutable, tenant-matched published configuration pins", () => {
+  assert.match(reportConfigurationPinMigration, /foreign key \(form_version_id, catalog_release_id\)/);
+  assert.match(reportConfigurationPinMigration, /fv\.status = 'published'/);
+  assert.match(reportConfigurationPinMigration, /f\.organization_id = new\.organization_id/);
+  assert.match(reportConfigurationPinMigration, /report .* identity and pinned configuration are immutable/);
+  assert.doesNotMatch(reportConfigurationPinMigration, /agency_stationary_default/);
+});
+
+test("prototype deletion remains limited to one explicitly selected synthetic draft", () => {
+  assert.match(prototypeDeletionMigration, /current_setting\('open_triage\.prototype_delete_report', true\)/);
+  assert.match(prototypeDeletionMigration, /id = candidate_report_id and status = 'draft' and synthetic/);
+  assert.match(prototypeDeletionMigration, /id = parent_report_id and status = 'draft' and synthetic/);
+  assert.match(prototypeDeletionMigration, /create or replace function public\.prevent_update_or_delete/);
+  assert.match(prototypeDeletionMigration, /create or replace function clinical\.prevent_signed_report_mutation/);
+});
+
+test("catalog and form versions retain bounded administrator display names", () => {
+  assert.match(versionDisplayNameMigration, /alter table catalog\.release[\s\S]*add column display_name text/);
+  assert.match(versionDisplayNameMigration, /alter table catalog\.authoring_draft[\s\S]*add column display_name text/);
+  assert.match(versionDisplayNameMigration, /alter table forms\.form_version[\s\S]*add column display_name text/);
+  assert.equal((versionDisplayNameMigration.match(/char_length\(display_name\) between 1 and 120/g) ?? []).length, 3);
+});
 
 test("flags unusual values at exclusive exteriors while retaining source and additive derivation", () => {
   const boundary = evaluateQualityAndNormalization([

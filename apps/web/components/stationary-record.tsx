@@ -1,9 +1,10 @@
 "use client";
 
-import type { EncounterDocument } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   activeStationarySection,
+  configuredStationaryPreviewSections,
   configuredStationarySections,
   stationarySectionBlocks,
   stationarySectionStatuses,
@@ -13,20 +14,48 @@ import { STATIONARY_NON_REPEATING_GROUPS } from "../app/stationary-non-repeating
 import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record";
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
 import { stationaryDisplayLabel } from "../app/stationary-label";
+import { getNemsisDataElement } from "../app/nemsis-data-model";
 
 function statusText(errors: number, warnings: number, incomplete: number): string {
   return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}, ${incomplete} required ${incomplete === 1 ? "field" : "fields"} incomplete`;
 }
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
-export function StationaryRecord({ document, findings = [], onDocumentChange }: {
+export function StationaryRecord({ document, findings = [], formDefinition, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
+  readonly formDefinition?: FormDraftDefinition;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const sections = useMemo(() => configuredStationarySections(), []);
+  const defaultSections = useMemo(() => configuredStationarySections(), []);
+  const previewSections = useMemo(() => formDefinition ? configuredStationaryPreviewSections(formDefinition) : undefined, [formDefinition]);
+  const sections = previewSections ?? defaultSections;
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
-  const statuses = useMemo(() => stationarySectionStatuses(document, findings, sections), [document, findings, sections]);
+  const statuses = useMemo(() => {
+    if (!previewSections) return stationarySectionStatuses(document, findings, defaultSections);
+    return new Map(previewSections.map((section) => {
+      const elementIds = new Set(section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : []));
+      const sectionFindings = findings.filter((finding) => {
+        const elementId = finding.target.fieldId ?? finding.target.elementId;
+        return elementId ? elementIds.has(elementId) : section.groupIds.has(finding.target.groupId);
+      });
+      const incomplete = section.fields.filter((field) => {
+        if (field.source.kind !== "nemsis") return false;
+        const elementId = field.source.elementId;
+        const catalogRequired = catalogFields[elementId]?.agencyRequired ||
+          (catalogFields[elementId]?.minOccurs ?? getNemsisDataElement(elementId)?.occurrence.min ?? 0) > 0;
+        if (!(field.required === true || catalogRequired)) return false;
+        return !document.groups.some((group) => group.instances.some((instance) => instance.elements.some((element) =>
+          element.id === elementId && element.values.length > 0)));
+      }).length;
+      return [section.id, {
+        errors: sectionFindings.filter(({ severity }) => severity === "error").length,
+        warnings: sectionFindings.filter(({ severity }) => severity === "warning").length,
+        incomplete,
+      }];
+    }));
+  }, [catalogFields, defaultSections, document, findings, previewSections]);
   const [activeId, setActiveId] = useState(sections[0]?.id ?? "");
 
   const moveToSection = useCallback((sectionId: string, focus: boolean, smooth = false) => {
@@ -118,9 +147,14 @@ export function StationaryRecord({ document, findings = [], onDocumentChange }: 
               <span className={`incomplete-count${status.incomplete ? "" : " zero-count"}`}>{status.incomplete} incomplete</span>
             </p>
           </header>
-          {stationarySectionBlocks(section).map((block) => block.kind === "inline"
-            ? <StationaryNonRepeatingRecord key={block.group.id} document={document} groups={[inlineGroups.get(block.group.id)!]} findings={findings} onDocumentChange={onDocumentChange} />
-            : <StationaryRepeatingGroups key={block.group.id} document={document} groups={[block.group]} findings={findings} onDocumentChange={onDocumentChange} />)}
+          {("blocks" in section ? section.blocks : stationarySectionBlocks(section)).map((block, blockIndex) => block.kind === "inline"
+            ? <StationaryNonRepeatingRecord key={`${block.group.id}:${blockIndex}`} document={document} groups={[
+              { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
+                ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
+                : inlineGroups.get(block.group.id)!.fields }
+            ]} findings={findings} catalogFields={catalogFields} onDocumentChange={onDocumentChange} />
+            : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields } : undefined} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

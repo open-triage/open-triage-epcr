@@ -43,3 +43,23 @@ test("invalid scalar findings retain group, occurrence, and field identity", () 
     occurrenceId: occurrence.occurrenceId, fieldId: "ePatient.15", instanceId: patient.instanceId, elementId: "ePatient.15",
   });
 });
+
+test("report-pinned form requiredness and configured choices define clinical validation", () => {
+  const document = structuredClone(syntheticEncounter.document);
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
+  const clinicalForm = {
+    definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
+      { key: "sex", source: { kind: "nemsis" as const, elementId: "ePatient.25" }, required: true },
+    ] }] },
+    catalogFields: { "ePatient.25": {
+      agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: true,
+      codeChoices: [{ code: "9906001", codeSystem: "", label: "Configured female" }],
+    } },
+  };
+  const missing = validateStationaryRecord(document, clinicalForm);
+  assert.deepEqual(missing.filter(({ target }) => target.fieldId === "ePatient.25").map(({ id }) => id.split(":")[1]), ["field.minimum"]);
+  assert.equal(missing.some(({ target }) => target.fieldId && target.fieldId !== "ePatient.25"), false,
+    "fields removed from the form do not block completion");
+});

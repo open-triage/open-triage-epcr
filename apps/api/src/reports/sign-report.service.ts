@@ -49,6 +49,8 @@ type FieldRow = {
   catalog_element_identity_id: string | null;
   custom_element_definition_id: string | null;
   min_occurs: number | null;
+  agency_required: boolean | null;
+  agency_required_severity: "warning" | "error" | null;
 };
 
 type RuleRow = {
@@ -105,7 +107,7 @@ export class SignReportService {
   ) {}
 
   async sign(accessToken: string, reportId: string, input: unknown): Promise<SignedReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: SignReportCommand;
     try {
       command = validateSignReportCommand(input);
@@ -254,7 +256,9 @@ export class SignReportService {
       return findings;
     }
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
-      ff.catalog_element_identity_id, ff.custom_element_definition_id, e.min_occurs
+      ff.catalog_element_identity_id, ff.custom_element_definition_id,
+      case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
+      e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
@@ -286,6 +290,10 @@ export class SignReportService {
       if (field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
+      }
+      if (field.agency_required === true && values.length === 0) {
+        findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
+          `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
       if (field.min_occurs !== null && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
@@ -322,6 +330,25 @@ export class SignReportService {
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
       }
       if (occurrence.value_kind === "coded") {
+        const disabledConfigured = await manager.query<Array<{ value_set_id: string }>>(`
+          select configured.value_set_id
+          from catalog.value_set_element mapped
+          join catalog.value_set_option_configuration configured
+            on configured.release_id = mapped.release_id and configured.value_set_id = mapped.value_set_id
+          where mapped.release_id = $1 and mapped.element_id = $2 and not configured.enabled
+            and configured.code = $3 and configured.code_system = coalesce($4, '')
+          limit 1
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (disabledConfigured[0]) findings.push(this.finding("catalog.value-set-disabled", `${path}.code`,
+          `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
+        const disabledInline = await manager.query<Array<{ element_id: string }>>(`
+          select configured.element_id from catalog.element_option_configuration configured
+          where configured.release_id=$1 and configured.element_id=$2 and configured.source_kind='inline'
+            and configured.code=$3 and configured.code_system=coalesce($4, '') and not configured.enabled
+          limit 1
+        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
+        if (disabledInline[0]) findings.push(this.finding("catalog.value-set-disabled", `${path}.code`,
+          `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
         const invalidInline = await manager.query<Array<{ element_id: string }>>(`
           select e.element_id from catalog.element_definition e
           where e.release_id = $1 and e.element_id = $2
@@ -344,8 +371,12 @@ export class SignReportService {
                 and valid_set.value_set_id = valid_element.value_set_id and valid_set.exhaustive
               join catalog.value_set_option option on option.release_id = valid_element.release_id
                 and option.value_set_id = valid_element.value_set_id
+              left join catalog.value_set_option_configuration configured
+                on configured.release_id = option.release_id and configured.value_set_id = option.value_set_id
+                and configured.code_system = option.code_system and configured.code = option.code
               where valid_element.release_id = vse.release_id and valid_element.element_id = vse.element_id
-                and option.code = $3 and option.code_system = coalesce($4, ''))
+                and option.code = $3 and option.code_system = coalesce($4, '')
+                and coalesce(configured.enabled, true))
           having count(*) > 0
         `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
         if (exhaustive[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
@@ -468,8 +499,9 @@ export class SignReportService {
       previousHash, eventHash]);
   }
 
-  private finding(code: string, path: string, message: string): SigningFinding {
-    return { severity: "error", code, path, message, ruleVersion: RULE_VERSION };
+  private finding(code: string, path: string, message: string,
+    severity: SigningFinding["severity"] = "error"): SigningFinding {
+    return { severity, code, path, message, ruleVersion: RULE_VERSION };
   }
 
   private async replay(

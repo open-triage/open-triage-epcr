@@ -69,8 +69,8 @@ try {
 
   const releaseResult = await client.query(
     `insert into catalog.release
-       (standard, version, dataset, artifact_schema_version, artifact_sha256, provenance)
-     values ('NEMSIS', $1, $2, $3, $4, $5::jsonb)
+       (standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed)
+     values ('NEMSIS', $1, $2, $3, $4, $5::jsonb, false)
      on conflict (standard, version, dataset) do update
        set artifact_sha256 = excluded.artifact_sha256,
            provenance = excluded.provenance
@@ -333,6 +333,8 @@ try {
      from jsonb_array_elements($2::jsonb) item`,
     [releaseId, JSON.stringify(mapping.elements)]
   );
+
+  await client.query("update catalog.release set sealed = true where id = $1", [releaseId]);
 
   await client.query("commit");
   console.log(
