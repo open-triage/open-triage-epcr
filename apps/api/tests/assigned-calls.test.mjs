@@ -126,7 +126,7 @@ test("the assigned-call endpoint requires a current clinician session", async ()
   assert.throws(() => controller.list(), (error) => error instanceof UnauthorizedException);
 });
 
-test("opening and retrying one assignment creates one pinned creator-owned draft and one replacement", async () => {
+test("opening and retrying one assignment creates one draft and skips stale replacement receipt identities", async () => {
   const assignment = {
     id: "32000000-0000-4000-8000-000000000011",
     organization_id: session.organization.id,
@@ -184,7 +184,15 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
       assignment.report_id = parameters[1];
       return [];
     }
-    if (normalized.includes("insert into clinical.dispatch_receipt")) { writes.push("replacement-receipt"); return []; }
+    if (normalized.includes("select source_record_id from clinical.dispatch_receipt")) return [
+      { source_record_id: "SYNTHETIC-SOURCE-RECORD-0002" },
+      { source_record_id: "SYNTHETIC-SOURCE-RECORD-0003" }
+    ];
+    if (normalized.includes("insert into clinical.dispatch_receipt")) {
+      writes.push("replacement-receipt");
+      assert.match(normalized, /on conflict .* do nothing returning id/);
+      return [{ id: parameters[0] }];
+    }
     if (normalized.includes("insert into clinical.incident")) { writes.push("replacement-incident"); return []; }
     if (normalized.includes("insert into clinical.call_assignment")) { writes.push("replacement-assignment"); return []; }
     if (normalized.includes("from clinical.report where")) return [reports.get(parameters[0])];
@@ -218,8 +226,8 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.report.document.encounter.id, opened.report.id);
   assert.equal(opened.report.agencyTimeZone, "America/New_York");
   assert.deepEqual(opened.report.dispatchConflicts, []);
-  assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
-  assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:15:00.000Z");
+  assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-004");
+  assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:45:00.000Z");
   assert.equal(opened.replacementAssignment.agencyTimeZone, "America/New_York");
   assert.equal(retried.replacementAssignment, null);
   assert.deepEqual(writes, ["patient", "report", "replacement-receipt", "replacement-incident", "replacement-assignment"]);
