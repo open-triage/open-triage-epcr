@@ -143,15 +143,22 @@ export class CatalogAuthoringService {
       if (validation.definitionSha256 !== draft.definition_sha256) {
         throw new ConflictException("Catalog draft canonical content does not match its stored digest");
       }
-      const source = (await manager.query<Array<{ standard: string; version: string; dataset: string; artifact_schema_version: string }>>(
-        "select standard, version, dataset, artifact_schema_version from catalog.release where id = $1", [draft.source_release_id]
-      ))[0]!;
+      const source = (await manager.query<Array<{ standard: string; version: string; dataset: string;
+        artifact_schema_version: string; data_model_version: string }>>(`
+        select source.standard,source.version,source.dataset,source.artifact_schema_version,
+          coalesce(nullif(source.provenance->>'dataModelVersion',''),
+            nullif(parent.provenance->>'dataModelVersion',''),parent.version,source.version) as data_model_version
+        from catalog.release source
+        left join catalog.release parent on parent.id::text=source.provenance->>'sourceReleaseId'
+        where source.id=$1
+      `, [draft.source_release_id]))[0]!;
       const releaseId = randomUUID();
       const version = `${source.version}-agency-${draft.id.replaceAll("-", "").slice(0, 12)}`;
       await manager.query(`insert into catalog.release
         (id, standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed)
         values ($1,$2,$3,$4,$5,$6,$7::jsonb,false)`, [releaseId, source.standard, version, source.dataset,
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
+          dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote }),]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,

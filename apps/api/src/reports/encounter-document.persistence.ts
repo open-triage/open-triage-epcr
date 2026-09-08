@@ -245,9 +245,12 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
 export async function encounterDocument(manager: EntityManager, reportId: string): Promise<EncounterDocument> {
   const reports = await manager.query<ReportDocumentRow[]>(`
     select r.id, r.created_at, r.updated_at, f.id as form_id, fv.version as form_version,
-           cr.standard as catalog_standard, cr.version as catalog_version, cr.dataset as catalog_dataset
+           cr.standard as catalog_standard,
+           coalesce(nullif(cr.provenance->>'dataModelVersion',''),source_cr.version,cr.version) as catalog_version,
+           cr.dataset as catalog_dataset
     from clinical.report r join forms.form_version fv on fv.id = r.form_version_id
     join forms.form f on f.id = fv.form_id join catalog.release cr on cr.id = r.catalog_release_id
+    left join catalog.release source_cr on source_cr.id::text=cr.provenance->>'sourceReleaseId'
     where r.id = $1
   `, [reportId]);
   const report = reports[0];

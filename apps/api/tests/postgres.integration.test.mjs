@@ -251,6 +251,11 @@ integrationTest("authorized Admin context resolves only the session organization
     changeNote: "Agency validation acceptance journey"
   });
   assert.equal(published.projectionsVerified, true);
+  const publishedDataModel = await client.query(
+    "select provenance->>'dataModelVersion' as version from catalog.release where id=$1",
+    [published.id]
+  );
+  assert.equal(publishedDataModel.rows[0].version, "3.5.1");
   const requiredness = await client.query(`select
     (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
     (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,
