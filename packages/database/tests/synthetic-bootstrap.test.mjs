@@ -63,12 +63,16 @@ test("associates the demo clinician and unit, then ingests only the committed in
   }
   assert.ok(bootstrap.includes("insert into app_identity.operational_unit"));
   assert.ok(bootstrap.includes("insert into app_identity.unit_clinician"));
-  assert.ok(!bootstrap.includes("insert into clinical.call_assignment"));
+  assert.equal(bootstrap.match(/insert into clinical\.call_assignment/g)?.length, 1,
+    "the only direct assignment write is the replay-recovery projection");
   assert.match(bootstrap, /synthetic-assignment-01\.json/);
   assert.ok(!bootstrap.includes("synthetic-update.json"));
   assert.ok(!bootstrap.includes("synthetic-cancellation.json"));
   assert.match(bootstrap, /dispatchWriter = \{[\s\S]*client\.query\(sql, parameters\)\)\.rows/);
   assert.match(bootstrap, /let dispatchStatus = "disabled";[\s\S]*dispatchStatus = dispatchIngestion\.status/);
+  assert.match(bootstrap, /synthetic-dispatch-assignment:/);
+  assert.match(bootstrap, /on conflict \(organization_id, dispatch_source_id, dispatch_source_record_id\) do nothing/,
+    "a replay must restore its rebuildable assignment projection after demo data is cleared");
   assert.match(bootstrap, /ingestDispatchDelivery\(dispatchWriter/);
   assert.match(bootstrap, /projectDispatchAssignment\(validatedDispatch\.canonical\)/);
   assert.match(bootstrap, /stationary-layout-1\.0\.0\.json/);
