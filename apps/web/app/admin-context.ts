@@ -19,25 +19,27 @@ async function catalogRequest<T>(path: string, csrfToken: string, init?: Request
 }
 
 export const loadCatalogDraft = (csrfToken: string) => catalogRequest<CatalogDraft | null>("catalog-draft", csrfToken);
-export const cloneCatalogDraft = (csrfToken: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, { method: "POST" });
+export const cloneCatalogDraft = (csrfToken: string, displayName: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
+  method: "POST", body: JSON.stringify({ displayName })
+});
 export const saveCatalogDraft = (csrfToken: string, draft: CatalogDraft) => catalogRequest<CatalogDraft>(`catalog-drafts/${draft.id}`, csrfToken, {
-  method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, definition: draft.definition })
+  method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
 });
 export const validateCatalogDraft = (csrfToken: string, id: string) => catalogRequest<CatalogValidationResult>(`catalog-drafts/${id}/validate`, csrfToken, { method: "POST" });
-export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
-  method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, changeNote })
+export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, displayName: string, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
+  method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, displayName, changeNote })
 });
 export const loadStationaryFormDraft = (csrfToken: string) => catalogRequest<StationaryFormDraft | null>("form-draft", csrfToken);
-export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
-  method: "POST", body: JSON.stringify({ catalogReleaseId })
+export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
+  method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
 });
 export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
-  method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, definition: draft.definition })
+  method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
 });
-export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft, changeNote: string) =>
+export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft, displayName: string, changeNote: string) =>
   catalogRequest<PublishedStationaryForm>(`form-drafts/${draft.id}/publish`, csrfToken, {
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision,
-      definitionSha256: draft.definitionSha256, changeNote })
+      definitionSha256: draft.definitionSha256, displayName, changeNote })
   });
 export const activateStationaryForm = (csrfToken: string, formVersionId: string, changeNote: string) =>
   catalogRequest<StationaryFormActivation>(`form-versions/${formVersionId}/activate`, csrfToken, {

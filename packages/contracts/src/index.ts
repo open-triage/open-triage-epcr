@@ -80,6 +80,7 @@ export interface AdminContext {
   activeConfiguration: {
     catalog: {
       id: string;
+      name: string;
       standard: string;
       version: string;
     };
@@ -155,6 +156,7 @@ export interface CatalogDraftDefinition {
 
 export interface CatalogDraft {
   id: string;
+  displayName?: string;
   sourceReleaseId: string;
   revision: number;
   definitionSha256: string;
@@ -171,6 +173,7 @@ export interface CatalogValidationResult {
 
 export interface PublishedCatalog {
   id: string;
+  displayName: string;
   status: "published";
   version: string;
   definitionSha256: string;
@@ -227,6 +230,7 @@ export interface FormCloneDiagnostic {
 
 export interface StationaryFormDraft {
   id: string;
+  displayName?: string;
   formId: string;
   catalogReleaseId: string;
   clonedFromId: string;
@@ -241,6 +245,7 @@ export interface StationaryFormDraft {
 
 export interface PublishedStationaryForm {
   id: string;
+  displayName: string;
   formId: string;
   catalogReleaseId: string;
   version: number;

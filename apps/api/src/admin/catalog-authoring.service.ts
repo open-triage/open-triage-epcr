@@ -10,6 +10,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
+  display_name: string | null;
   canonical_definition: CatalogDraftDefinition; definition_sha256: string; updated_at: Date | string;
   published_release_id: string | null;
 };
@@ -63,8 +64,9 @@ export class CatalogAuthoringService {
       await this.upgradeDefinition(this.dataSource.manager, rows[0].source_release_id, rows[0].canonical_definition) });
   }
 
-  async cloneActive(sessionToken: string): Promise<CatalogDraft> {
+  async cloneActive(sessionToken: string, input: unknown): Promise<CatalogDraft> {
     const session = await this.admin(sessionToken);
+    const displayName = this.displayName(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
       const existing = await manager.query<DraftRow[]>(`
@@ -85,9 +87,9 @@ export class CatalogAuthoringService {
       const digest = catalogDefinitionSha256(definition);
       const inserted = await manager.query<DraftRow[]>(`
         insert into catalog.authoring_draft
-          (organization_id, source_release_id, canonical_definition, definition_sha256, created_by)
-        values ($1, $2, $3::jsonb, $4, $5) returning *
-      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id]);
+          (organization_id, source_release_id, canonical_definition, definition_sha256, created_by, display_name)
+        values ($1, $2, $3::jsonb, $4, $5, $6) returning *
+      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id, displayName]);
       return this.result(inserted[0]!);
     });
   }
@@ -111,11 +113,11 @@ export class CatalogAuthoringService {
       const updated = await manager.query<DraftRow[]>(`
         with updated as (
           update catalog.authoring_draft set revision = revision + 1, canonical_definition = $3::jsonb,
-            definition_sha256 = $4, updated_at = now()
+            definition_sha256 = $4, display_name = coalesce($6, display_name), updated_at = now()
           where id = $1 and organization_id = $2 and revision = $5 and published_release_id is null returning *
         )
         select * from updated
-      `, [draftId, session.organization.id, JSON.stringify(definition), validation.definitionSha256, body.expectedRevision]);
+      `, [draftId, session.organization.id, JSON.stringify(definition), validation.definitionSha256, body.expectedRevision, body.displayName]);
       if (!updated[0]) throw new ConflictException("Catalog draft revision is stale");
       return this.result(updated[0]);
     });
@@ -163,11 +165,11 @@ export class CatalogAuthoringService {
       const releaseId = randomUUID();
       const version = `${source.version}-agency-${draft.id.replaceAll("-", "").slice(0, 12)}`;
       await manager.query(`insert into catalog.release
-        (id, standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed)
-        values ($1,$2,$3,$4,$5,$6,$7::jsonb,false)`, [releaseId, source.standard, version, source.dataset,
+        (id, standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed, display_name)
+        values ($1,$2,$3,$4,$5,$6,$7::jsonb,false,$8)`, [releaseId, source.standard, version, source.dataset,
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           dataModelVersion: source.data_model_version,
-          organizationId: session.organization.id, changeNote: body.changeNote }),]);
+          organizationId: session.organization.id, changeNote: body.changeNote }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -224,7 +226,7 @@ export class CatalogAuthoringService {
         (organization_id, actor_id, draft_id, release_id, result, change_note, definition_sha256)
         values ($1,$2,$3,$4,'succeeded',$5,$6)`, [session.organization.id, session.user.id, draft.id, releaseId,
         body.changeNote, validation.definitionSha256]);
-      return { id: releaseId, status: "published", version, definitionSha256: validation.definitionSha256,
+      return { id: releaseId, displayName: body.displayName, status: "published", version, definitionSha256: validation.definitionSha256,
         publishedAt: new Date(published[0].published_at).toISOString(), projectionsVerified: true };
     });
   }
@@ -507,23 +509,33 @@ export class CatalogAuthoringService {
     await manager.query(`insert into catalog.analytics_element_mapping select $2,element_id,element_identity_id,analytical_location,sql_column,sql_type,identifying,mapping from catalog.analytics_element_mapping where release_id=$1`, [source, releaseId]);
   }
 
-  private saveBody(input: unknown): { expectedRevision: number; definition: CatalogDraftDefinition } {
+  private saveBody(input: unknown): { expectedRevision: number; displayName: string | null; definition: CatalogDraftDefinition } {
     if (!isRecord(input) || !Number.isInteger(input.expectedRevision) || !isRecord(input.definition))
-      throw new UnprocessableEntityException("expectedRevision and definition are required");
-    return input as unknown as { expectedRevision: number; definition: CatalogDraftDefinition };
+      throw new UnprocessableEntityException("expectedRevision, displayName, and definition are required");
+    return { expectedRevision: input.expectedRevision as number,
+      displayName: input.displayName === undefined ? null : this.displayName(input),
+      definition: input.definition as unknown as CatalogDraftDefinition };
   }
 
-  private publishBody(input: unknown): { expectedRevision: number; definitionSha256: string; changeNote: string } {
+  private publishBody(input: unknown): { expectedRevision: number; definitionSha256: string; displayName: string; changeNote: string } {
     if (!isRecord(input) || !Number.isInteger(input.expectedRevision) || typeof input.definitionSha256 !== "string" ||
-        !/^[a-f0-9]{64}$/.test(input.definitionSha256) || typeof input.changeNote !== "string" || !input.changeNote.trim())
-      throw new UnprocessableEntityException("expectedRevision, validated definitionSha256, and changeNote are required");
+        !/^[a-f0-9]{64}$/.test(input.definitionSha256) || typeof input.displayName !== "string" || !input.displayName.trim() ||
+        input.displayName.trim().length > 120 || typeof input.changeNote !== "string" || !input.changeNote.trim())
+      throw new UnprocessableEntityException("expectedRevision, validated definitionSha256, displayName, and changeNote are required");
     return { expectedRevision: input.expectedRevision as number, definitionSha256: input.definitionSha256,
-      changeNote: input.changeNote.trim() };
+      displayName: input.displayName.trim(), changeNote: input.changeNote.trim() };
   }
 
   private result(row: DraftRow): CatalogDraft {
-    return { id: row.id, sourceReleaseId: row.source_release_id, revision: Number(row.revision),
+    return { id: row.id, ...(row.display_name ? { displayName: row.display_name } : {}), sourceReleaseId: row.source_release_id, revision: Number(row.revision),
       definitionSha256: row.definition_sha256, definition: row.canonical_definition,
       updatedAt: new Date(row.updated_at).toISOString() };
+  }
+
+  private displayName(input: unknown): string {
+    const value = isRecord(input) ? input.displayName : undefined;
+    if (typeof value !== "string" || !value.trim() || value.trim().length > 120)
+      throw new UnprocessableEntityException("displayName must contain 1 to 120 characters");
+    return value.trim();
   }
 }

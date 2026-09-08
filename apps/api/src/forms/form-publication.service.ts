@@ -22,6 +22,7 @@ import {
 
 type FormVersionRow = {
   id: string;
+  display_name: string | null;
   status: "draft" | "published";
   canonical_definition: unknown;
   definition_sha256: string;
@@ -65,7 +66,7 @@ export class FormPublicationService {
 
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<FormVersionRow[]>(`
-        select fv.id, fv.status, fv.canonical_definition, fv.definition_sha256,
+        select fv.id, fv.display_name, fv.status, fv.canonical_definition, fv.definition_sha256,
                fv.published_at, fv.catalog_release_id, f.organization_id
         from forms.form_version fv
         join forms.form f on f.id = fv.form_id
@@ -159,13 +160,13 @@ export class FormPublicationService {
         with updated as (
           update forms.form_version
           set status = 'published', change_note = $2, published_by = $3, published_at = now(),
-              publication_acknowledgements = $4::jsonb
+              publication_acknowledgements = $4::jsonb, display_name = coalesce($5, display_name)
           where id = $1 and status = 'draft'
           returning published_at
         )
         select published_at from updated
       `, [version.id, command.changeNote.trim(), command.publishedBy,
-        JSON.stringify(command.warningAcknowledgements ?? {})]);
+        JSON.stringify(command.warningAcknowledgements ?? {}), command.displayName?.trim() ?? null]);
       if (!published[0]) throw new ConflictException("Form version is no longer a draft");
       const counts = await this.projectionCounts(manager, version.id);
       await manager.query(`
@@ -286,8 +287,11 @@ export class FormPublicationService {
     publishedAt: Date | string | null
   ): Promise<PublishedFormVersion> {
     const counts = await this.projectionCounts(manager, id);
+    const names = await manager.query<Array<{ display_name: string | null }>>(
+      "select display_name from forms.form_version where id = $1", [id]);
     return {
       id,
+      ...(names[0]?.display_name ? { displayName: names[0].display_name } : {}),
       status: "published",
       definitionSha256,
       publishedAt: new Date(publishedAt!).toISOString(),

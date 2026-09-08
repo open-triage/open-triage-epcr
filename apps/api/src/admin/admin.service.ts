@@ -8,6 +8,7 @@ type ActiveConfigurationRow = {
   form_version_id: string;
   form_id: string;
   form_name: string;
+  catalog_name: string;
   form_version: number;
   catalog_release_id: string;
   catalog_standard: string;
@@ -37,8 +38,9 @@ export class AdminService {
   async context(sessionToken: string): Promise<AdminContext> {
     const session = await this.sessions.requireCapability(sessionToken, "installation:administer");
     const rows = await this.dataSource.query<ActiveConfigurationRow[]>(`
-      select fv.id as form_version_id, f.id as form_id, f.name as form_name,
+      select fv.id as form_version_id, f.id as form_id, coalesce(fv.display_name, f.name) as form_name,
              fv.version as form_version, cr.id as catalog_release_id,
+             coalesce(cr.display_name, cr.standard || ' ' || cr.version) as catalog_name,
              cr.standard as catalog_standard, cr.version as catalog_version
       from forms.form f
       join forms.form_version fv on fv.form_id = f.id and fv.status = 'published'
@@ -79,6 +81,7 @@ export class AdminService {
       activeConfiguration: active ? {
         catalog: {
           id: active.catalog_release_id,
+          name: active.catalog_name,
           standard: active.catalog_standard,
           version: active.catalog_version
         },

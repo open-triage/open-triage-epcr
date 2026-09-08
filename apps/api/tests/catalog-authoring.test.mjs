@@ -78,7 +78,7 @@ test("identity, datatype, storage, and unsupported constraint changes are reject
 test("publication requires a human change note before database access", async () => {
   const manager = { query: async () => { throw new Error("database should not be queried"); } };
   await assert.rejects(serviceWith(manager).publish("session", "draft-1", {
-    expectedRevision: 1, definitionSha256: catalogDefinitionSha256(definition), changeNote: " "
+    expectedRevision: 1, definitionSha256: catalogDefinitionSha256(definition), displayName: "Agency Catalog", changeNote: " "
   }), UnprocessableEntityException);
 });
 
