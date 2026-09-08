@@ -5,6 +5,8 @@ metadata:
   labels: {{- include "open-triage.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.web.replicas }}
+  strategy:
+    type: {{ .Values.web.strategy }}
   selector:
     matchLabels: { app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }} }
   template:
