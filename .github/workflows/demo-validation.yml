@@ -182,8 +182,10 @@ jobs:
         include:
           - component: api
             dockerfile: deploy/docker/api.Dockerfile
+            build_args: ""
           - component: web
             dockerfile: deploy/docker/web.Dockerfile
+            build_args: NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
     steps:
       - uses: actions/checkout@v4
         with:
@@ -201,6 +203,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/open-triage-${{ matrix.component }}:${{ inputs.deployment_revision || github.sha }}
