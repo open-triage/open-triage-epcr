@@ -842,7 +842,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     });
 
     const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie }
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
     });
     assert.equal(reopenedResponse.status, 200);
     const reopened = await reopenedResponse.json();
@@ -877,7 +877,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
       where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
 
     const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie }
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
     });
     assert.equal(reopenedAfterActivationResponse.status, 200);
     const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
