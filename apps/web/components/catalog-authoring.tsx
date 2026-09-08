@@ -59,6 +59,9 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
     <div className="catalog-elements" aria-label="Editable catalog elements">
       <p className="catalog-table-warning" role="note"><strong>Occurrence limit:</strong> a blank maximum means unbounded only when the source catalog supports it.</p>
       <table>
+        <colgroup><col className="catalog-element-column" /><col className="catalog-label-column" />
+          <col className="catalog-type-column" /><col className="catalog-requiredness-column" />
+          <col className="catalog-occurrence-column" /><col className="catalog-occurrence-column" /></colgroup>
         <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
         <tbody>{visible.map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
@@ -140,8 +143,9 @@ export function CatalogCodeListEditor({ list, onChange }: {
     if (!nextCode || !nextLabel) return onChange(list, "A code and label are required.");
     if (list.values.some((value) => value.code === nextCode && value.codeSystem === nextSystem))
       return onChange(list, `Duplicate code ${nextCode} was not added.`);
-    onChange({ ...list, values: [...list.values, { code: nextCode, codeSystem: nextSystem, label: nextLabel,
-      sourceLabel: nextLabel, category: null, enabled: true }] }, `Added ${nextLabel}. Save the draft to keep this change.`);
+    onChange({ ...list, values: [{ code: nextCode, codeSystem: nextSystem, label: nextLabel,
+      sourceLabel: nextLabel, category: null, enabled: true }, ...list.values] },
+    `Added ${nextLabel}. Save, validate, and publish the catalog before creating the form.`);
     setCode(""); setCodeSystem(""); setLabel("");
   }
 

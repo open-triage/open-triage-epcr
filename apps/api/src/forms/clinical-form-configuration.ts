@@ -35,6 +35,19 @@ export async function clinicalFormConfiguration(
   const elementIds = [...new Set(versions[0].canonical_definition.sections.flatMap((section) =>
     section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
 
+  return {
+    definition: versions[0].canonical_definition,
+    catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
+  };
+}
+
+/** Loads the immutable catalog behavior needed to preview or document a selected set of fields. */
+export async function catalogFieldsConfiguration(
+  manager: Pick<EntityManager, "query">,
+  catalogReleaseId: string,
+  elementIds: readonly string[],
+): Promise<ClinicalFormConfiguration["catalogFields"]> {
+
   const fields = elementIds.length ? await manager.query<FieldRow[]>(`
     select element_id, agency_required, agency_required_severity, min_occurs, max_occurs, nillable,
            supports_not_values, supports_pertinent_negatives
@@ -71,9 +84,7 @@ export async function clinicalFormConfiguration(
       ...(choice.terminology_version ? { terminologyVersion: new Date(choice.terminology_version).toISOString() } : {}) });
     choicesByElement.set(choice.element_id, current);
   }
-  return {
-    definition: versions[0].canonical_definition,
-    catalogFields: Object.fromEntries(fields.map((field) => [field.element_id, {
+  return Object.fromEntries(fields.map((field) => [field.element_id, {
       agencyRequired: field.agency_required === true,
       requirednessSeverity: field.agency_required_severity,
       minOccurs: Number(field.min_occurs),
@@ -82,6 +93,5 @@ export async function clinicalFormConfiguration(
       supportsNotValues: field.supports_not_values,
       supportsPertinentNegatives: field.supports_pertinent_negatives,
       ...(choicesByElement.has(field.element_id) ? { codeChoices: choicesByElement.get(field.element_id) } : {}),
-    }]))
-  };
+    }]));
 }

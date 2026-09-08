@@ -55,6 +55,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
         revision: 1, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3],
         updated_at: "2026-09-07T01:00:00.000Z"
       }];
+      if (sql.includes("from catalog.value_set_element")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
   };

@@ -215,6 +215,8 @@ export interface StationaryFormDraft {
   revision: number;
   definitionSha256: string;
   definition: FormDraftDefinition;
+  /** Published catalog configuration used by the detached authoring preview. */
+  catalogFields?: ClinicalFormConfiguration["catalogFields"];
   diagnostics: FormCloneDiagnostic[];
   updatedAt: string;
 }

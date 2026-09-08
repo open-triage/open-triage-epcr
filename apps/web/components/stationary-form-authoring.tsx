@@ -159,10 +159,11 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   if (published) return <div className="form-publication" aria-labelledby="published-form-heading">
     <h3 id="published-form-heading">Published Stationary form version {published.version}</h3>
     <p>{published.structuralSummary.sections} sections and {published.structuralSummary.fields} elements were published as immutable content.</p>
-    <p role="status">This version is published but is not active. New reports still use the existing agency default.</p>
+    <p className="form-activation-status" role="status">This version is published but is not active. New reports still use the existing agency default.</p>
     <label htmlFor="form-activation-note">Activation note</label>
-    <textarea id="form-activation-note" value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
-    <button type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
+    <textarea id="form-activation-note" required value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
+    <small>An activation note is required. Activation applies this form and its catalog to new reports.</small>
+    <button className="form-primary-action" type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
       const activation = await activateStationaryForm(csrfToken, published.id, activationNote);
       setActivated(true);
       setStatus("Stationary form activated for new reports. Existing reports remain pinned to their original versions.");

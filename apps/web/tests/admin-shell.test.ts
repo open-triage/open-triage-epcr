@@ -123,6 +123,12 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.deepEqual(syntheticEncounter.document, baseline);
   const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    catalogFields: { "eSituation.11": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [
+        { code: "R10.0", codeSystem: "ICD-10-CM", label: "Acute pain" },
+        { code: "AGENCY-1", codeSystem: "LOCAL", label: "Agency custom choice" }
+      ] } },
     updatedAt: "2026-09-07T01:00:00.000Z" };
   const markup = renderToStaticMarkup(createElement(StationaryFormPreview, { draft, onReturn() {} }));
   assert.match(markup, /Interactive fictional data only/);
@@ -130,6 +136,7 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.match(markup, /aria-label="Complete stationary NEMSIS record"/);
   assert.match(markup, /data-element-id="ePatient\.02"/);
   assert.match(markup, /Acute pain/);
+  assert.match(markup, /Agency custom choice/);
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 
