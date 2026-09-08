@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { CatalogAuthoringService, catalogDefinitionSha256 } from "../dist/admin/catalog-authoring.service.js";
 
 const sourceElement = {
@@ -80,6 +80,21 @@ test("publication requires a human change note before database access", async ()
   await assert.rejects(serviceWith(manager).publish("session", "draft-1", {
     expectedRevision: 1, definitionSha256: catalogDefinitionSha256(definition), displayName: "Agency Catalog", changeNote: " "
   }), UnprocessableEntityException);
+});
+
+test("synthetic demo catalog drafts remain editable but cannot be published", async () => {
+  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+  let queried = false;
+  const manager = { query: async () => { queried = true; return []; } };
+  try {
+    await assert.rejects(serviceWith(manager).publish("session", "draft-1", {}),
+      (error) => error instanceof ForbiddenException && /Drafts can still be/.test(error.message));
+    assert.equal(queried, false);
+  } finally {
+    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
+  }
 });
 
 test("catalog publication carries forward one effective agency demographic version", async () => {

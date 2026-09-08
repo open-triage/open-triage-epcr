@@ -3,6 +3,7 @@
 import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { selectedInstallationSettings } from "../app/installation-settings";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 
 type FormSection = FormDraftDefinition["sections"][number];
@@ -92,6 +93,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   readonly catalogReleaseId: string;
   readonly onActivated?: (activation: StationaryFormActivation, published: PublishedStationaryForm) => void;
 }) {
+  const publicationAllowed = !selectedInstallationSettings().administration.readOnly;
   const [draft, setDraft] = useState<StationaryFormDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -164,15 +166,17 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
     <h3 id="published-form-heading">Published {published.displayName}</h3>
     <p>{published.structuralSummary.sections} sections and {published.structuralSummary.fields} elements were published as immutable content.</p>
     <p className="form-activation-status" role="status">This version is published but is not active. New reports still use the existing agency default.</p>
-    <label htmlFor="form-activation-note">Activation note</label>
-    <textarea id="form-activation-note" required value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
-    <small>An activation note is required. Activation applies this form and its catalog to new reports.</small>
-    <button className="form-primary-action" type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
-      const activation = await activateStationaryForm(csrfToken, published.id, activationNote);
-      setActivated(true);
-      setStatus("Stationary form activated for new reports. Existing reports remain pinned to their original versions.");
-      onActivated?.(activation, published);
-    })}>{activated ? "Agency default active" : "Activate as agency default"}</button>
+    {publicationAllowed ? <>
+      <label htmlFor="form-activation-note">Activation note</label>
+      <textarea id="form-activation-note" required value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
+      <small>An activation note is required. Activation applies this form and its catalog to new reports.</small>
+      <button className="form-primary-action" type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
+        const activation = await activateStationaryForm(csrfToken, published.id, activationNote);
+        setActivated(true);
+        setStatus("Stationary form activated for new reports. Existing reports remain pinned to their original versions.");
+        onActivated?.(activation, published);
+      })}>{activated ? "Agency default active" : "Activate as agency default"}</button>
+    </> : <p role="note">Activation is disabled in this demo.</p>}
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
@@ -223,18 +227,20 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <label htmlFor="form-display-name">Form version display name</label>
       <input id="form-display-name" maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
-      <label htmlFor="form-publication-note">Publication note</label>
-      <textarea id="form-publication-note" required value={publicationNote}
-        onChange={(event) => setPublicationNote(event.target.value)} />
-      <small>A publication note is required. Publishing is available to administrators in the demo.</small>
-      <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
-        onClick={() => action(async () => {
-          if (!draft.displayName?.trim()) throw new Error("Enter a form version display name before publishing.");
-          if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
-          const result = await publishStationaryFormDraft(csrfToken, draft, draft.displayName, publicationNote);
-          setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
-        })}>Publish immutable form</button>
-      {dirty && <p role="status">Save the current draft before publishing.</p>}
+      {publicationAllowed ? <>
+        <label htmlFor="form-publication-note">Publication note</label>
+        <textarea id="form-publication-note" required value={publicationNote}
+          onChange={(event) => setPublicationNote(event.target.value)} />
+        <small>A publication note is required.</small>
+        <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
+          onClick={() => action(async () => {
+            if (!draft.displayName?.trim()) throw new Error("Enter a form version display name before publishing.");
+            if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
+            const result = await publishStationaryFormDraft(csrfToken, draft, draft.displayName, publicationNote);
+            setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
+          })}>Publish immutable form</button>
+        {dirty && <p role="status">Save the current draft before publishing.</p>}
+      </> : <p role="note">Publishing is disabled in this demo. Form drafts can still be created, edited, previewed, and saved.</p>}
     </section>
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>

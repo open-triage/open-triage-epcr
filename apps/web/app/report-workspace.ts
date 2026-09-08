@@ -15,6 +15,7 @@ import {
   fetchActiveReport,
   saveDraftReport,
   shellStateToDraftMutations,
+  shouldQueueInitialDraftSnapshot,
   type ActiveDraftReport,
   type DraftSyncStatus,
 } from "./draft-report";
@@ -113,8 +114,12 @@ export function useReportWorkspace({
         catalogFields: report.clinicalForm?.catalogFields,
       },
     );
-    queueInitialSnapshot.current = result.status === "empty" && Boolean(report?.document)
-      && (!report || nextDraftChange(window.localStorage, report.id) === null);
+    queueInitialSnapshot.current = shouldQueueInitialDraftSnapshot(
+      result.status,
+      report?.revision ?? 0,
+      Boolean(report?.document),
+      Boolean(report && nextDraftChange(window.localStorage, report.id)),
+    );
     if (result.status === "restored") {
       skipInitialQueue.current = true;
       dispatch({ type: "state-restored", state: result.state });

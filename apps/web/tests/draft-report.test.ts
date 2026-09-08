@@ -12,6 +12,7 @@ import {
   deleteDraftReport,
   fetchActiveReport,
   saveDraftReport,
+  shouldQueueInitialDraftSnapshot,
   signDraftReport,
   shellStateToDraftMutations,
   stableDraftId,
@@ -19,6 +20,14 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("only a brand-new server report queues an initial persistence snapshot", () => {
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, false), true);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 11, true, false), false,
+    "reopening an existing report must not create a no-op synchronization write");
+  assert.equal(shouldQueueInitialDraftSnapshot("restored", 0, true, false), false);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, true), false);
+});
 
 test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
   const notice = dispatchCancellationNotice({
