@@ -366,7 +366,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       identity_state: "unknown",
       form_status: "published",
       users: 2,
-      capabilities: 3
+      capabilities: 4
     });
 
     const stableCounts = await client.query(`
