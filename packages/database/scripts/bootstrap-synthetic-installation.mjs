@@ -11,6 +11,7 @@ import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/disp
 import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
 import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
 import { createPasswordVerifier } from "../../../apps/api/dist/identity/password.js";
+import { applyMigrations, readMigrations } from "./migrate.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -130,23 +131,14 @@ const formDefinition = fullStationaryFormDefinition(stationaryLayout);
 
 async function ensureFoundation(client) {
   const existing = await client.query("select to_regclass('app_identity.organization') as organization");
-  let migrated = false;
-  if (!existing.rows[0].organization) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"
-    );
-    await client.query(migration);
-    migrated = true;
-  }
-  const sessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
-  if (!sessions.rows[0].app_session) {
-    const migration = await readFile(
-      path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8"
-    );
-    await client.query(migration);
-    migrated = true;
-  }
-  return migrated;
+  if (existing.rows[0].organization) return false;
+  const migrations = await readMigrations(path.join(repoRoot, "supabase/migrations"));
+  const applied = await applyMigrations(
+    client,
+    migrations,
+    { info() {} },
+  );
+  return applied > 0;
 }
 
 async function ensureCatalog() {

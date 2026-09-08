@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./apps/web/e2e",
-  testIgnore: "static-deployment.spec.ts",
+  testIgnore: "deployment.spec.ts",
   fullyParallel: true,
   reporter: "line",
   use: {

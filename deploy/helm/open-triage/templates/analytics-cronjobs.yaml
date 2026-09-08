@@ -21,7 +21,7 @@ spec:
             - name: projector
               image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
               command: ["npm", "run", "project", "-w", "@open-triage/database"]
-              envFrom: [{ secretRef: { name: {{ include "open-triage.fullname" . }}-database } }]
+              envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -45,5 +45,5 @@ spec:
             - name: health
               image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
               command: ["npm", "run", "project:health", "-w", "@open-triage/database"]
-              envFrom: [{ secretRef: { name: {{ include "open-triage.fullname" . }}-database } }]
+              envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
 {{- end }}
