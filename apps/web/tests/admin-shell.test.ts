@@ -217,12 +217,12 @@ test("form element rows provide keyboard-operable move and confirmed remove cont
   assert.match(markup, /<small>Last Name<\/small>/);
 });
 
-test("form search uses bounded query parameters", async (t) => {
+test("form search sends the searchable query without pagination", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async (input) => {
-    assert.match(String(input), /catalog-elements\?query=patient%20name&offset=40$/);
+    assert.match(String(input), /catalog-elements\?query=patient%20name$/);
     return Response.json({ items: [], nextOffset: null });
   };
-  await searchFormCatalog("csrf-proof", "draft-id", "patient name", 40);
+  await searchFormCatalog("csrf-proof", "draft-id", "patient name");
 });

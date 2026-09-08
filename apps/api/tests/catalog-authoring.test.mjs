@@ -5,12 +5,13 @@ import { CatalogAuthoringService, catalogDefinitionSha256 } from "../dist/admin/
 
 const sourceElement = {
   element_id: "ePatient.01", element_identity_id: "11111111-1111-4111-8111-111111111111",
+  name: "Patient Name",
   base_datatype: "string", source_datatype: "xs:string", group_path: ["Patient"], min_occurs: 0,
   max_occurs: 1, nillable: true, supports_not_values: true, supports_pertinent_negatives: false,
   usage: "Recommended", agency_required_severity: null, analytical_location: "wide", sql_type: "text"
 };
 const element = {
-  elementId: sourceElement.element_id, identityId: sourceElement.element_identity_id, baseDatatype: "string",
+  elementId: sourceElement.element_id, label: sourceElement.name, identityId: sourceElement.element_identity_id, baseDatatype: "string",
   storageSemantics: { sourceDatatype: "xs:string", groupPath: ["Patient"], analyticalLocation: "wide", sqlType: "text" },
   requirednessSeverity: null,
   constraints: { minOccurs: 0, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: false }
@@ -34,6 +35,28 @@ test("stale catalog saves fail before changing canonical content", async () => {
     throw new Error(`unexpected query: ${sql}`);
   } };
   await assert.rejects(serviceWith(manager).save("session", "draft-1", { expectedRevision: 2, definition }), ConflictException);
+});
+
+test("saving normalizes legacy element labels and requiredness before validation", async () => {
+  const legacyDefinition = { ...definition, elements: definition.elements.map(({ label, requirednessSeverity, ...legacy }) => legacy) };
+  let persisted;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: 1, canonical_definition: legacyDefinition,
+      definition_sha256: catalogDefinitionSha256(legacyDefinition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("update catalog.authoring_draft")) {
+      persisted = JSON.parse(parameters[2]);
+      return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
+        canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const saved = await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: legacyDefinition });
+  assert.equal(saved.definition.elements[0].label, "Patient Name");
+  assert.equal(saved.definition.elements[0].requirednessSeverity, null);
+  assert.deepEqual(saved.definition, persisted);
 });
 
 test("identity, datatype, storage, and unsupported constraint changes are rejected", async () => {

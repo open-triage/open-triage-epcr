@@ -15,7 +15,7 @@ type DraftRow = {
 };
 
 type SourceElementRow = {
-  element_id: string; element_identity_id: string; base_datatype: string; source_datatype: string;
+  element_id: string; name: string; element_identity_id: string; base_datatype: string; source_datatype: string;
   group_path: string[]; min_occurs: number; max_occurs: number | null; nillable: boolean;
   supports_not_values: boolean; supports_pertinent_negatives: boolean; usage: string;
   agency_required_severity: "warning" | "error" | null;
@@ -105,7 +105,8 @@ export class CatalogAuthoringService {
       if (draft.revision !== body.expectedRevision) throw new ConflictException({
         message: "Catalog draft revision is stale", expectedRevision: body.expectedRevision, actualRevision: draft.revision
       });
-      const validation = await this.validateDefinition(manager, draft.source_release_id, body.definition);
+      const definition = await this.upgradeDefinition(manager, draft.source_release_id, body.definition);
+      const validation = await this.validateDefinition(manager, draft.source_release_id, definition);
       if (!validation.valid) throw new UnprocessableEntityException({ message: "Catalog validation failed", findings: validation.findings });
       const updated = await manager.query<DraftRow[]>(`
         with updated as (
@@ -114,7 +115,7 @@ export class CatalogAuthoringService {
           where id = $1 and organization_id = $2 and revision = $5 and published_release_id is null returning *
         )
         select * from updated
-      `, [draftId, session.organization.id, JSON.stringify(body.definition), validation.definitionSha256, body.expectedRevision]);
+      `, [draftId, session.organization.id, JSON.stringify(definition), validation.definitionSha256, body.expectedRevision]);
       if (!updated[0]) throw new ConflictException("Catalog draft revision is stale");
       return this.result(updated[0]);
     });
@@ -126,7 +127,9 @@ export class CatalogAuthoringService {
       select * from catalog.authoring_draft where id = $1 and organization_id = $2
     `, [draftId, session.organization.id]);
     if (!rows[0]) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
-    return this.validateDefinition(this.dataSource.manager, rows[0].source_release_id, rows[0].canonical_definition);
+    const definition = await this.upgradeDefinition(this.dataSource.manager, rows[0].source_release_id,
+      rows[0].canonical_definition);
+    return this.validateDefinition(this.dataSource.manager, rows[0].source_release_id, definition);
   }
 
   async publish(sessionToken: string, draftId: string, input: unknown): Promise<PublishedCatalog> {
@@ -253,7 +256,7 @@ export class CatalogAuthoringService {
   }
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
-    return manager.query(`select e.element_id, e.element_identity_id, e.base_datatype, e.source_datatype,
+    return manager.query(`select e.element_id, e.name, e.element_identity_id, e.base_datatype, e.source_datatype,
       e.group_path, e.min_occurs, e.max_occurs, e.nillable, e.supports_not_values,
       e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type
       from catalog.element_definition e left join catalog.analytics_element_mapping m
@@ -301,7 +304,7 @@ export class CatalogAuthoringService {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
     return { schemaVersion: 1, sourceReleaseId, elements: elements.map((row) => ({
-      elementId: row.element_id, identityId: row.element_identity_id, baseDatatype: row.base_datatype,
+      elementId: row.element_id, label: row.name, identityId: row.element_identity_id, baseDatatype: row.base_datatype,
       storageSemantics: { sourceDatatype: row.source_datatype, groupPath: row.group_path,
         analyticalLocation: row.analytical_location, sqlType: row.sql_type },
       requirednessSeverity: row.agency_required_severity ??
@@ -324,8 +327,11 @@ export class CatalogAuthoringService {
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
-        return { ...prior, requirednessSeverity: prior.requirednessSeverity ??
-          (prior.agencyRequired === true ? "error" : prior.agencyRequired === false ? null : element.requirednessSeverity) };
+        const requirednessSeverity = prior.requirednessSeverity === null || prior.requirednessSeverity === "warning" ||
+          prior.requirednessSeverity === "error" ? prior.requirednessSeverity :
+          prior.agencyRequired === true ? "error" : prior.agencyRequired === false ? null : element.requirednessSeverity;
+        return { ...prior, label: typeof prior.label === "string" && prior.label.trim() ? prior.label : element.label,
+          requirednessSeverity };
       }),
       codeLists: baseline.codeLists.map((list) => {
         const prior = existingLists.get(list.listId);
@@ -360,6 +366,8 @@ export class CatalogAuthoringService {
         storage?.sqlType === base.sql_type && Array.isArray(storage?.groupPath) &&
         storage.groupPath.length === base.group_path.length && storage.groupPath.every((part, i) => part === base.group_path[i]);
       if (!immutable) findings.push(`${element.elementId} identity, datatype, and storage semantics cannot change`);
+      if (typeof element.label !== "string" || !element.label.trim())
+        findings.push(`${element.elementId}.label must be a non-empty label`);
       const constraints = element.constraints;
       if (!constraints || !Number.isInteger(constraints.minOccurs) || constraints.minOccurs < 0 ||
           !(constraints.maxOccurs === null || Number.isInteger(constraints.maxOccurs) && constraints.maxOccurs >= 1) ||
@@ -443,13 +451,13 @@ export class CatalogAuthoringService {
       (release_id,element_id,element_identity_id,section,name,description,national,state,usage,source_datatype,base_datatype,
        group_path,min_occurs,max_occurs,unbounded,nillable,supports_not_values,supports_pertinent_negatives,definition,
        agency_required,agency_required_severity)
-      select $2,e.element_id,e.element_identity_id,e.section,e.name,e.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
+      select $2,e.element_id,e.element_identity_id,e.section,x.label,e.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
        e.group_path,x.min_occurs,x.max_occurs,e.unbounded,x.nillable,x.supports_not_values,x.supports_pertinent_negatives,e.definition,
        x.requiredness_severity is not null,x.requiredness_severity
-      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,min_occurs integer,max_occurs integer,
+      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,label text,min_occurs integer,max_occurs integer,
         nillable boolean,supports_not_values boolean,supports_pertinent_negatives boolean,requiredness_severity text) on x.element_id=e.element_id
       where e.release_id=$1`, [source, releaseId, JSON.stringify(draft.canonical_definition.elements.map((e) => ({
-        element_id:e.elementId,min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
+        element_id:e.elementId,label:e.label,min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
         supports_not_values:e.constraints.supportsNotValues,supports_pertinent_negatives:e.constraints.supportsPertinentNegatives,
         requiredness_severity:e.requirednessSeverity })))]);
     await manager.query(`insert into catalog.element_option

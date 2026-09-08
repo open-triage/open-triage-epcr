@@ -16,7 +16,7 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
   const [dirty, setDirty] = useState(false);
   useEffect(() => { loadCatalogDraft(csrfToken).then(setDraft).catch(showError).finally(() => setLoaded(true)); }, [csrfToken]);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
-    element.elementId.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 40) ?? [], [draft, query]);
+    `${element.elementId} ${element.label}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query]);
   const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
     (list.elementIds.length ? list.elementIds : [list.name]).map((elementId) => ({
       key: `${list.listId}\u0000${elementId}`, elementId, list
@@ -52,14 +52,18 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
 
   return <div className="catalog-editor">
     <p>Draft revision {draft.revision}. Stable identity, datatype, and storage semantics are read-only.</p>
-    <label htmlFor="catalog-search">Find element</label>
+    <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
+    <h3 id="element-catalog-heading">Element catalog</h3>
+    <label htmlFor="catalog-search">Find by identifier or label</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     <div className="catalog-elements" aria-label="Editable catalog elements">
       <p className="catalog-table-warning" role="note"><strong>Occurrence limit:</strong> a blank maximum means unbounded only when the source catalog supports it.</p>
       <table>
-        <thead><tr><th>Element</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
+        <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
         <tbody>{visible.map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
+        <td><label><span className="visually-hidden">Label for {element.elementId}</span><input value={element.label}
+          onChange={(event) => edit(element.elementId, (value) => ({ ...value, label: event.target.value }))} /></label></td>
         <td>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</td>
         <td><label><span className="visually-hidden">Requiredness for {element.elementId}</span><select
           value={element.requirednessSeverity ?? "optional"} onChange={(event) => edit(element.elementId,
@@ -74,6 +78,7 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
             maxOccurs: event.target.value === "" ? null : Number(event.target.value) } }))} /></label></td>
       </tr>)}</tbody></table>
     </div>
+    </section>
     {draft.definition.codeLists.length > 0 && <section className="code-list-editor" aria-labelledby="code-list-heading">
       <h3 id="code-list-heading">Recommended and agency-maintained code lists</h3>
       <p>Codes remain permanently resolvable after publication. Disable a value to hide it from future selection.</p>

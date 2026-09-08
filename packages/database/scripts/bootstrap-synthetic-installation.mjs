@@ -210,6 +210,7 @@ try {
       insert into app_identity.capability (key, description)
       values
         ('forms:publish', 'Publish form versions'),
+        ('clinical:document', 'Create and document patient care reports'),
         ('reports:document', 'Create and document patient care reports'),
         ('installation:administer', 'Administer the installation')
       on conflict do nothing
@@ -219,6 +220,9 @@ try {
       values
         ($1, 'forms:publish', $1),
         ($1, 'installation:administer', $1),
+        ($1, 'clinical:document', $1),
+        ($1, 'reports:document', $1),
+        ($2, 'clinical:document', $1),
         ($2, 'reports:document', $1)
       on conflict do nothing
     `, [ids.administrator, ids.clinician]);
@@ -307,9 +311,11 @@ try {
     `, [ids.organization, ids.formVersion, ids.administrator]);
     await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
-      values ($3, $1, $2)
+      values
+        ($3, $1, $2),
+        ($3, $1, $4)
       on conflict do nothing
-    `, [ids.unit, ids.clinician, ids.organization]);
+    `, [ids.unit, ids.clinician, ids.organization, ids.administrator]);
 
     if (dispatchSourceBytes && dispatchCatalog && dispatchProjection) {
       const dispatchIngestion = await ingestDispatchDelivery(dispatchWriter, {

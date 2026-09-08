@@ -101,7 +101,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   const [pendingRemoval, setPendingRemoval] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FormCatalogElement[]>([]);
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [targetSection, setTargetSection] = useState("");
   const [publicationNote, setPublicationNote] = useState("");
   const [activationNote, setActivationNote] = useState("");
@@ -125,7 +124,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
     let current = true;
     const timeout = window.setTimeout(() => {
       searchFormCatalog(csrfToken, draftId, query).then((page) => { if (current) {
-        setResults(page.items); setNextOffset(page.nextOffset);
+        setResults(page.items);
       } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     }, 150);
     return () => { current = false; window.clearTimeout(timeout); };
@@ -146,14 +145,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
         `Added ${element.elementId}.`);
     } catch (reason) { setError(operationErrorMessage(reason)); }
   }
-  async function loadMore() {
-    if (!draft || nextOffset === null) return;
-    await action(async () => {
-      const page = await searchFormCatalog(csrfToken, draft.id, query, nextOffset);
-      setResults((current) => [...current, ...page.items]); setNextOffset(page.nextOffset);
-    });
-  }
-
   if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
   if (!draft) return <div className="form-empty">
     <p>Clone the active Stationary form to change its section sequence without changing the published form.</p>
@@ -188,9 +179,8 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <ul>{draft.diagnostics.map((finding) => <li key={`${finding.code}:${finding.path}`}>{finding.message} ({finding.path})</li>)}</ul>
     </div>}
     <FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
-      onQueryChange={(value) => { setQuery(value); setResults([]); setNextOffset(null); }}
+      onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} />
-    {nextOffset !== null && <button type="button" disabled={busy} onClick={loadMore}>Load more catalog elements</button>}
     <FormSectionElements definition={draft.definition} busy={busy} onChange={change}
       onMoveSection={(from, to) => change(moveFormSection(draft.definition, from, to),
         `Moved ${draft.definition.sections[from]!.key} ${to < from ? "up" : "down"}.`)}
@@ -226,10 +216,12 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <p>Structural summary: {formStructuralSummary(draft.definition)}.</p>
       <p>Publication creates an immutable form pinned to this catalog. It will not activate the form.</p>
       <label htmlFor="form-publication-note">Publication note</label>
-      <textarea id="form-publication-note" value={publicationNote}
+      <textarea id="form-publication-note" required value={publicationNote}
         onChange={(event) => setPublicationNote(event.target.value)} />
-      <button type="button" disabled={busy || dirty || pendingRemoval !== null || !publicationNote.trim() || draft.diagnostics.length > 0}
+      <small>A publication note is required. Publishing is available to administrators in the demo.</small>
+      <button type="button" disabled={busy || dirty || pendingRemoval !== null || draft.diagnostics.length > 0}
         onClick={() => action(async () => {
+          if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
           const result = await publishStationaryFormDraft(csrfToken, draft, publicationNote);
           setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
         })}>Publish immutable form</button>

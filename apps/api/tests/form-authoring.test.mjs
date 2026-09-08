@@ -113,7 +113,7 @@ test("form authoring rejects removal that leaves an invalid section structure", 
   assert.equal(queried, false);
 });
 
-test("catalog search is bounded to an authorized editable draft and returns pagination", async () => {
+test("catalog search returns the full searchable clinical catalog and excludes demographics", async () => {
   const calls = [];
   const service = new FormAuthoringService({ query: async (sql, parameters) => {
     calls.push({ sql, parameters });
@@ -125,9 +125,10 @@ test("catalog search is bounded to an authorized editable draft and returns pagi
     throw new Error(`Unexpected SQL: ${sql}`);
   } }, { requireCapability: async () => session });
   const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
-  assert.equal(page.items.length, 40);
-  assert.equal(page.nextOffset, 80);
-  assert.deepEqual(calls[1].parameters, [catalogId, "patient", 41, 40]);
+  assert.equal(page.items.length, 41);
+  assert.equal(page.nextOffset, null);
+  assert.deepEqual(calls[1].parameters, [catalogId, "patient"]);
+  assert.match(calls[1].sql, /element_id like 'e%\.%'/);
 });
 
 test("duplicate element placement fails API validation before persistence", async () => {

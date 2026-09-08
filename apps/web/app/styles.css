@@ -107,7 +107,10 @@ input, select, textarea { touch-action: manipulation; }
 .catalog-elements td input[type="number"] { width: 88px; }
 .catalog-actions { display: grid; gap: 10px; align-items: start; }
 .catalog-actions button, .catalog-empty button { justify-self: start; }
-.code-list-editor { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 16px; }
+.catalog-element-editor { display: grid; gap: 10px; border: 1px solid #b7c6b9; border-left: 6px solid #4d7457; border-radius: 9px; padding: 14px; background: #f7faf7; }
+.catalog-element-editor h3, .code-list-editor h3 { margin: 0; }
+.catalog-elements td input:not([type]) { width: min(300px, 100%); }
+.code-list-editor { display: grid; gap: 10px; border: 1px solid #9fb9cb; border-left: 6px solid #315f7e; border-radius: 9px; padding: 14px; background: #edf5fa; }
 .code-list-values, .code-list-values ol { display: grid; gap: 10px; margin: 0; padding: 0; }
 .code-list-values ol { max-height: 560px; overflow: auto; list-style: none; }
 .code-list-values li { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(220px, 2fr) auto auto minmax(170px, auto); gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding: 10px; background: #fff; }
@@ -132,6 +135,8 @@ input, select, textarea { touch-action: manipulation; }
 .form-field-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .form-diagnostics { border-left: 4px solid #9c6817; padding: 10px 12px; background: #fff8e7; }
 .form-diagnostics ul { margin-bottom: 0; }
+.form-publication-review { display: grid; gap: 8px; }
+.form-publication-review small { color: var(--muted); }
 @media (max-width: 900px) { .code-list-values li { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px) {
   .admin-shell > .admin-shell { padding: 16px 12px 32px; }

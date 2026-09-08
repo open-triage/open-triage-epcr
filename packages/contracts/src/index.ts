@@ -89,6 +89,8 @@ export interface AdminContext {
 
 export interface CatalogDraftElement {
   elementId: string;
+  /** Agency-editable clinical label; the stable element identity remains elementId. */
+  label: string;
   identityId: string;
   baseDatatype: string;
   storageSemantics: {
