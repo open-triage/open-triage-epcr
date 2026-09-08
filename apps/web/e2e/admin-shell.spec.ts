@@ -42,7 +42,7 @@ test("combined owners start clinically and can enter the authorized Admin shell 
       owner: { id: "owner-id", displayName: "Installation Owner" },
       organization: { id: "organization-id", name: "Example EMS" },
       activeConfiguration: {
-        catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
+        catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
         stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 }
       },
       dashboard,
@@ -112,7 +112,7 @@ test("owner previews the unsaved form through Stationary without creating a clin
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
-    activeConfiguration: { catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } },
     dashboard,
   }) }));

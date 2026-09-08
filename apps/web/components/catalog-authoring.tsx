@@ -11,6 +11,7 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -45,8 +46,11 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
   if (!loaded) return <p role="status">Loading catalog draft…</p>;
   if (!draft) return <div className="catalog-empty">
     <p>Clone the active catalog to adjust agency validation without changing clinical work.</p>
-    <button type="button" disabled={busy} onClick={() => action(async () => {
-      const cloned = await cloneCatalogDraft(csrfToken); setDraft(cloned); setDirty(false); setStatus("Catalog draft created.");
+    <label htmlFor="new-catalog-display-name">New catalog version display name</label>
+    <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
+      onChange={(event) => setNewDisplayName(event.target.value)} />
+    <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
+      const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
     })}>Clone active catalog</button>
   </div>;
 
@@ -100,13 +104,16 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
         const result = await validateCatalogDraft(csrfToken, draft.id);
         setStatus(result.valid && result.projectionsVerified ? "Catalog is valid and projections are verified." : result.findings.join("; "));
       })}>Validate</button>
+      <label htmlFor="catalog-display-name">Catalog version display name</label>
+      <input id="catalog-display-name" maxLength={120} required value={draft.displayName ?? ""}
+        onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
       <label htmlFor="catalog-change-note">Publication change note</label>
       <textarea id="catalog-change-note" value={note} onChange={(event) => setNote(event.target.value)} />
-      <button type="button" disabled={busy || dirty || !note.trim() || status !== "Catalog is valid and projections are verified."}
+      <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || !note.trim() || status !== "Catalog is valid and projections are verified."}
         onClick={() => action(async () => {
-          const published = await publishCatalogDraft(csrfToken, draft, note);
+          const published = await publishCatalogDraft(csrfToken, draft, draft.displayName!, note);
           onPublished?.(published.id);
-          setDraft(null); setDirty(false); setNote(""); setStatus(`Published immutable catalog ${published.version}.`);
+          setDraft(null); setDirty(false); setNote(""); setStatus(`Published ${published.displayName}.`);
         })}>Publish immutable catalog</button>
     </div>
     {error && <p role="alert">{error}</p>}

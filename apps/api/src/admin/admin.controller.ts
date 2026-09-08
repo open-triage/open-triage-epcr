@@ -26,8 +26,8 @@ export class AdminController {
   }
 
   @Post("catalog-drafts")
-  cloneCatalog(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogDraft> {
-    return this.catalogs.cloneActive(sessionToken(request, authorization));
+  cloneCatalog(@Body() body: unknown, @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogDraft> {
+    return this.catalogs.cloneActive(sessionToken(request, authorization), body);
   }
 
   @Put("catalog-drafts/:id")

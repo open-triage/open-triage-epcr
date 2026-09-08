@@ -41,13 +41,13 @@ test("Admin context reports direct authorization failures without trusting clien
 test("catalog saves send the current revision and CSRF proof", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
-  const draft = { id: "draft-id", sourceReleaseId: "release-id", revision: 7,
+  const draft = { id: "draft-id", displayName: "Agency Catalog", sourceReleaseId: "release-id", revision: 7,
     definitionSha256: "a".repeat(64), updatedAt: "2026-09-06T12:00:00.000Z",
     definition: { schemaVersion: 1 as const, sourceReleaseId: "release-id", elements: [], codeLists: [] } };
   globalThis.fetch = async (_input, init) => {
     assert.equal(init?.method, "PUT");
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
-    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, definition: draft.definition });
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, displayName: "Agency Catalog", definition: draft.definition });
     return Response.json({ ...draft, revision: 8 });
   };
   assert.equal((await saveCatalogDraft("csrf-proof", draft)).revision, 8);
@@ -121,7 +121,7 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   const previewDocument = createStationaryPreviewDocument();
   assert.notStrictEqual(previewDocument, syntheticEncounter.document);
   assert.deepEqual(syntheticEncounter.document, baseline);
-  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
     catalogFields: { "eSituation.11": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
       supportsNotValues: true, supportsPertinentNegatives: false,
@@ -146,7 +146,7 @@ test("preview validation is scoped to included fields and honors an explicit opt
     ...instance,
     elements: instance.elements.map((element) => element.id === "ePatient.15" ? { ...element, values: [] } : element),
   })) }));
-  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
       { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" }, required: false }
     ] }] }, diagnostics: [], updatedAt: "2026-09-07T01:00:00.000Z" };
@@ -156,13 +156,13 @@ test("preview validation is scoped to included fields and honors an explicit opt
 test("form saves send section order with the current revision and CSRF proof", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
-  const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: moveFormSection(formDefinition, 1, 0), diagnostics: [],
     updatedAt: "2026-09-07T01:00:00.000Z" };
   globalThis.fetch = async (_input, init) => {
     assert.equal(init?.method, "PUT");
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
-    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4, definition: draft.definition });
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4, displayName: "Night Shift Form", definition: draft.definition });
     return Response.json({ ...draft, revision: 5 });
   };
   assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
@@ -178,7 +178,7 @@ test("form review summarizes structure and publication stays separate from activ
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
     if (String(input).endsWith("/form-drafts/draft-id/publish")) {
       assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4,
-        definitionSha256: "a".repeat(64), changeNote: "Reviewed" });
+        definitionSha256: "a".repeat(64), displayName: "Night Shift Form", changeNote: "Reviewed" });
       return Response.json({ id: "draft-id", status: "published" });
     }
     assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Deploy" });
@@ -187,7 +187,7 @@ test("form review summarizes structure and publication stays separate from activ
   const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
     updatedAt: "2026-09-07T01:00:00.000Z" };
-  await publishStationaryFormDraft("csrf-proof", draft, "Reviewed");
+  await publishStationaryFormDraft("csrf-proof", draft, "Night Shift Form", "Reviewed");
   assert.equal(paths.length, 1, "publication did not activate the form");
   await activateStationaryForm("csrf-proof", "draft-id", "Deploy");
   assert.match(paths[1]!, /form-versions\/draft-id\/activate$/);

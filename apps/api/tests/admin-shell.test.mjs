@@ -20,7 +20,7 @@ test("admin context is resolved from the authorized session organization", async
         database_connections: "5", max_database_connections: "100"
       }];
       return [{
-        form_version_id: "form-version-id", form_id: "form-id", form_name: "Stationary",
+        form_version_id: "form-version-id", form_id: "form-id", form_name: "Stationary", catalog_name: "Agency Catalog",
         form_version: 4, catalog_release_id: "catalog-id", catalog_standard: "NEMSIS", catalog_version: "3.5.1"
       }];
     }
@@ -38,7 +38,7 @@ test("admin context is resolved from the authorized session organization", async
     owner: session.user,
     organization: session.organization,
     activeConfiguration: {
-      catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
+      catalog: { id: "catalog-id", name: "Agency Catalog", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "form-version-id", formId: "form-id", name: "Stationary", version: 4 }
     },
     dashboard: {

@@ -67,7 +67,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
     }
   });
 
-  const draft = await service.clone("owner-session", { catalogReleaseId: catalogId });
+  const draft = await service.clone("owner-session", { catalogReleaseId: catalogId, displayName: "Night Shift Form" });
   assert.deepEqual(draft.definition.sections[0].fields.map(({ key }) => key), ["compatible"]);
   assert.deepEqual(draft.diagnostics.map(({ code }) => code), [
     "missing-reference", "incompatible-reference", "disabled-reference"
@@ -99,7 +99,7 @@ test("form authoring rejects callers without Admin capability before querying", 
   const service = new FormAuthoringService({ transaction: async () => { queried = true; } }, {
     requireCapability: async () => { throw new UnauthorizedException("Admin capability is required"); }
   });
-  await assert.rejects(service.clone("clinician-session", { catalogReleaseId: catalogId }), UnauthorizedException);
+  await assert.rejects(service.clone("clinician-session", { catalogReleaseId: catalogId, displayName: "Night Shift Form" }), UnauthorizedException);
   assert.equal(queried, false);
 });
 
@@ -160,15 +160,15 @@ test("publishing requires a saved revision and note without changing the agency 
       version: 2, revision: 3, canonical_definition: definition, definition_sha256: "a".repeat(64), updated_at: new Date() }];
   } }, { requireCapability: async () => session }, publication);
   await assert.rejects(service.publish("owner-session", draftId, {
-    expectedRevision: 3, definitionSha256: "a".repeat(64), changeNote: " "
+    expectedRevision: 3, definitionSha256: "a".repeat(64), displayName: "Night Shift Form", changeNote: " "
   }), UnprocessableEntityException);
   const result = await service.publish("owner-session", draftId, {
-    expectedRevision: 3, definitionSha256: "a".repeat(64), changeNote: "Reviewed structure"
+    expectedRevision: 3, definitionSha256: "a".repeat(64), displayName: "Night Shift Form", changeNote: "Reviewed structure"
   });
   assert.equal(result.status, "published");
   assert.equal(result.structuralSummary.fields, 4);
   assert.deepEqual(calls[0], { id: draftId, organization: organizationId, body: {
-    publishedBy: session.user.id, changeNote: "Reviewed structure", definitionSha256: "a".repeat(64)
+    publishedBy: session.user.id, changeNote: "Reviewed structure", definitionSha256: "a".repeat(64), displayName: "Night Shift Form"
   } });
 });
 

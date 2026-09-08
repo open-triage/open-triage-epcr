@@ -22,6 +22,7 @@ import { clearShellState, loadShellStateResult, saveReportSyncStatus, saveShellS
 import {
   acceptDraftChange,
   cacheLocalReportDocument,
+  discardQueuedDraftChanges,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
   nextDraftChange,
@@ -81,6 +82,8 @@ export function useReportWorkspace({
   const presentationRef = useRef(presentationMode);
   const skipReconciledQueue = useRef(false);
   const activeSave = useRef<Promise<void> | null>(null);
+  const recoverConflictingQueue = useRef(false);
+  const conflictRecoveryUsed = useRef(false);
   const skipInitialQueue = useRef(false);
   const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -96,6 +99,8 @@ export function useReportWorkspace({
   }, [onReportCompleted, report]);
 
   useEffect(() => {
+    recoverConflictingQueue.current = false;
+    conflictRecoveryUsed.current = false;
     persistedDraft.current = report?.document
       ? encounterDocumentToDraftMutations(report.id, report.document)
       : { groups: [], occurrences: [] };
@@ -147,6 +152,7 @@ export function useReportWorkspace({
             return;
           }
           revision.current = saved.revision;
+          conflictRecoveryUsed.current = false;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
           persistedDraft.current = applyDraftMutationDelta(persistedDraft.current, queued.command);
         } catch (error) {
@@ -160,7 +166,12 @@ export function useReportWorkspace({
             completeReport();
             return;
           }
-          setSyncStatus(reason === "conflict" ? "Conflict" : "Pending sync");
+          if ((reason === "conflict" || reason === "invalid") && !conflictRecoveryUsed.current) {
+            recoverConflictingQueue.current = true;
+            conflictRecoveryUsed.current = true;
+            activeEtag.current = undefined;
+          }
+          setSyncStatus(reason === "conflict" || reason === "invalid" ? "Conflict" : "Pending sync");
         }
       })();
       activeSave.current = attempt;
@@ -259,7 +270,13 @@ export function useReportWorkspace({
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
         revision.current = response.resource.reportRevision;
         if (hasPending) {
-          rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+          if (recoverConflictingQueue.current) {
+            discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
+            recoverConflictingQueue.current = false;
+            setSyncStatus("Saved");
+          } else {
+            rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+          }
           persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
         }
         else {

@@ -80,7 +80,7 @@ export function AdminShell({ session }: { readonly session: ClinicianSession }) 
         <h2 id="active-configuration-heading">Active configuration</h2>
       </div>
       {context.activeConfiguration ? <dl>
-        <div><dt>Element catalog</dt><dd>{context.activeConfiguration.catalog.standard} {context.activeConfiguration.catalog.version}</dd></div>
+        <div><dt>Element catalog</dt><dd>{context.activeConfiguration.catalog.name}</dd></div>
         <div><dt>Stationary form</dt><dd>{context.activeConfiguration.stationaryForm.name}, version {context.activeConfiguration.stationaryForm.version}</dd></div>
       </dl> : <p role="status">No active Stationary configuration is assigned to an operational unit.</p>}
       <div className="section-heading"><h2>Operations</h2></div>

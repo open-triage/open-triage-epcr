@@ -103,6 +103,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   const [results, setResults] = useState<FormCatalogElement[]>([]);
   const [targetSection, setTargetSection] = useState("");
   const [publicationNote, setPublicationNote] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
   const [activationNote, setActivationNote] = useState("");
   const [published, setPublished] = useState<PublishedStationaryForm | null>(null);
   const [activated, setActivated] = useState(false);
@@ -148,16 +149,19 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
   if (!draft) return <div className="form-empty">
     <p>Clone the active Stationary form to change its section sequence without changing the published form.</p>
-    <button type="button" disabled={busy || !catalogReleaseId} onClick={() => action(async () => {
-      const cloned = await cloneStationaryFormDraft(csrfToken, catalogReleaseId);
-      setDraft(cloned); setDirty(false); setStatus("Stationary form draft created.");
+    <label htmlFor="new-form-display-name">New form version display name</label>
+    <input id="new-form-display-name" maxLength={120} required value={newDisplayName}
+      onChange={(event) => setNewDisplayName(event.target.value)} />
+    <button type="button" disabled={busy || !catalogReleaseId || !newDisplayName.trim()} onClick={() => action(async () => {
+      const cloned = await cloneStationaryFormDraft(csrfToken, catalogReleaseId, newDisplayName);
+      setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Stationary form draft created.");
     })}>Clone active Stationary form</button>
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
   if (published) return <div className="form-publication" aria-labelledby="published-form-heading">
-    <h3 id="published-form-heading">Published Stationary form version {published.version}</h3>
+    <h3 id="published-form-heading">Published {published.displayName}</h3>
     <p>{published.structuralSummary.sections} sections and {published.structuralSummary.fields} elements were published as immutable content.</p>
     <p className="form-activation-status" role="status">This version is published but is not active. New reports still use the existing agency default.</p>
     <label htmlFor="form-activation-note">Activation note</label>
@@ -216,14 +220,18 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <h3 id="form-publication-heading">Publication review</h3>
       <p>Structural summary: {formStructuralSummary(draft.definition)}.</p>
       <p>Publication creates an immutable form pinned to this catalog. It will not activate the form.</p>
+      <label htmlFor="form-display-name">Form version display name</label>
+      <input id="form-display-name" maxLength={120} required value={draft.displayName ?? ""}
+        onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
       <label htmlFor="form-publication-note">Publication note</label>
       <textarea id="form-publication-note" required value={publicationNote}
         onChange={(event) => setPublicationNote(event.target.value)} />
       <small>A publication note is required. Publishing is available to administrators in the demo.</small>
-      <button type="button" disabled={busy || dirty || pendingRemoval !== null || draft.diagnostics.length > 0}
+      <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
         onClick={() => action(async () => {
+          if (!draft.displayName?.trim()) throw new Error("Enter a form version display name before publishing.");
           if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
-          const result = await publishStationaryFormDraft(csrfToken, draft, publicationNote);
+          const result = await publishStationaryFormDraft(csrfToken, draft, draft.displayName, publicationNote);
           setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
         })}>Publish immutable form</button>
       {dirty && <p role="status">Save the current draft before publishing.</p>}

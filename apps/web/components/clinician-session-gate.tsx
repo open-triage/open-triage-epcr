@@ -243,10 +243,6 @@ export function ClinicianSessionGate({ children }: {
           ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
           : <span className="call-list-refresh session-bar-placeholder" aria-hidden="true" />}
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
-        {installationSettings.syntheticFixtures.enabled && activeReport && reportWithErrorsId === activeReport.id &&
-          <button className="delete-record-action" type="button" disabled={deletingReport} onClick={() => void deleteActiveRecord()}>
-            {deletingReport ? "Deleting…" : "Delete record"}
-          </button>}
         <div className="presentation-selector" role="group" aria-label="Documentation presentation">
           {hasClinicalMode(session.capabilities) && <>
             <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
@@ -263,6 +259,10 @@ export function ClinicianSessionGate({ children }: {
         {installationSettings.syntheticFixtures.enabled && activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
           <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}>Populate</button>
           <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
+          {reportWithErrorsId === activeReport.id &&
+            <button className="delete-record-action" type="button" disabled={deletingReport} onClick={() => void deleteActiveRecord()}>
+              {deletingReport ? "Deleting…" : "Delete record"}
+            </button>}
         </span>}
       </aside>}
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>

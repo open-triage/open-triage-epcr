@@ -84,6 +84,15 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const versionDisplayNames = await client.query(`select 1 from information_schema.columns
+    where table_schema='forms' and table_name='form_version' and column_name='display_name'`);
+  if (!versionDisplayNames.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"),
+      "utf8"
+    );
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -232,7 +241,7 @@ integrationTest("authorized Admin context resolves only the session organization
   await assert.rejects(client.query("update app_identity.configuration_event set change_note='changed' where organization_id=$1",
     [organizationId]));
   const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
-  const draft = await authoring.cloneActive(active.sessionToken);
+  const draft = await authoring.cloneActive(active.sessionToken, { displayName: "Integration catalog" });
   assert.equal(draft.revision, 1);
   const changedElement = draft.definition.elements[0];
   const changedList = draft.definition.codeLists.find((list) => list.classification !== "inline");
@@ -251,22 +260,24 @@ integrationTest("authorized Admin context resolves only the session organization
       defaultValue: { code: localValue.code, codeSystem: localValue.codeSystem } } : list.listId === changedInlineList.listId
       ? { ...list, values: list.values.map((value) => value.code === disabledInlineValue.code && value.codeSystem === disabledInlineValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value) } : list) };
-  const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition });
-  await assert.rejects(authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, definition: changedDefinition }),
+  const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition });
+  await assert.rejects(authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition }),
     /revision is stale/i);
   const validation = await authoring.validate(active.sessionToken, draft.id);
   assert.equal(validation.valid, true);
   assert.equal(validation.projectionsVerified, true);
   const published = await authoring.publish(active.sessionToken, draft.id, {
     expectedRevision: saved.revision, definitionSha256: saved.definitionSha256,
+    displayName: "Integration catalog",
     changeNote: "Agency validation acceptance journey"
   });
   assert.equal(published.projectionsVerified, true);
   const publishedDataModel = await client.query(
-    "select provenance->>'dataModelVersion' as version from catalog.release where id=$1",
+    "select provenance->>'dataModelVersion' as version, display_name from catalog.release where id=$1",
     [published.id]
   );
   assert.equal(publishedDataModel.rows[0].version, "3.5.1");
+  assert.equal(publishedDataModel.rows[0].display_name, "Integration catalog");
   const requiredness = await client.query(`select
     (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
     (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,

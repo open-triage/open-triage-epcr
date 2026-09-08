@@ -9,6 +9,7 @@ import { catalogFieldsConfiguration } from "../forms/clinical-form-configuration
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
+  display_name: string | null;
   revision: number; canonical_definition: FormDraftDefinition; definition_sha256: string;
   updated_at: Date | string;
 };
@@ -35,7 +36,7 @@ export class FormAuthoringService {
 
   async clone(token: string, input: unknown): Promise<StationaryFormDraft> {
     const session = await this.admin(token);
-    const catalogReleaseId = this.catalogReleaseId(input);
+    const { catalogReleaseId, displayName } = this.cloneBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-draft:${session.organization.id}`]);
       const target = await manager.query<Array<{ id: string }>>(`
@@ -63,10 +64,10 @@ export class FormAuthoringService {
       const digest = canonicalDefinitionSha256(cloned.definition);
       const inserted = await manager.query<VersionRow[]>(`
         insert into forms.form_version
-          (form_id,catalog_release_id,version,canonical_definition,definition_sha256,cloned_from_id,created_by)
-        select $1,$2,coalesce(max(version),0)+1,$3::jsonb,$4,$5,$6
+          (form_id,catalog_release_id,version,canonical_definition,definition_sha256,cloned_from_id,created_by,display_name)
+        select $1,$2,coalesce(max(version),0)+1,$3::jsonb,$4,$5,$6,$7
         from forms.form_version where form_id=$1 returning *
-      `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id]);
+      `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id, displayName]);
       return this.result(manager, inserted[0]!, cloned.diagnostics);
     });
   }
@@ -114,11 +115,11 @@ export class FormAuthoringService {
       const updated = await manager.query<VersionRow[]>(`
         with updated as (
           update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
-            revision=revision+1,updated_at=now()
+            display_name=coalesce($5,display_name),revision=revision+1,updated_at=now()
           where id=$1 and revision=$2 and status='draft' returning *
         )
         select * from updated
-      `, [id, body.expectedRevision, JSON.stringify(body.definition), digest]);
+      `, [id, body.expectedRevision, JSON.stringify(body.definition), digest, body.displayName]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
       return this.result(manager, updated[0]);
     });
@@ -138,9 +139,9 @@ export class FormAuthoringService {
     });
     const published = await this.publication.publish(id, {
       publishedBy: session.user.id, changeNote: body.changeNote,
-      definitionSha256: body.definitionSha256
+      definitionSha256: body.definitionSha256, displayName: body.displayName
     }, session.organization.id);
-    return { id: published.id, formId: draft.form_id, catalogReleaseId: draft.catalog_release_id,
+    return { id: published.id, displayName: body.displayName, formId: draft.form_id, catalogReleaseId: draft.catalog_release_id,
       version: draft.version, status: "published", definitionSha256: published.definitionSha256,
       publishedAt: published.publishedAt, structuralSummary: published.projections };
   }
@@ -235,30 +236,33 @@ export class FormAuthoringService {
     }
   }
 
-  private saveBody(input: unknown): { expectedRevision: number; definition: FormDraftDefinition } {
+  private saveBody(input: unknown): { expectedRevision: number; displayName: string | null; definition: FormDraftDefinition } {
     if (!input || typeof input !== "object" || !Number.isInteger((input as Record<string, unknown>).expectedRevision) ||
         Number((input as Record<string, unknown>).expectedRevision) < 1)
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     return { expectedRevision: (input as { expectedRevision: number }).expectedRevision,
+      displayName: (input as Record<string, unknown>).displayName === undefined ? null : this.displayName(input),
       definition: this.definition((input as Record<string, unknown>).definition) };
   }
 
-  private catalogReleaseId(input: unknown): string {
+  private cloneBody(input: unknown): { catalogReleaseId: string; displayName: string } {
     const id = input && typeof input === "object" ? (input as Record<string, unknown>).catalogReleaseId : undefined;
     if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
       throw new UnprocessableEntityException("catalogReleaseId must be a UUID");
-    return id;
+    return { catalogReleaseId: id, displayName: this.displayName(input) };
   }
 
-  private publicationBody(input: unknown): { expectedRevision: number; definitionSha256: string; changeNote: string } {
+  private publicationBody(input: unknown): { expectedRevision: number; definitionSha256: string; displayName: string; changeNote: string } {
     if (!input || typeof input !== "object") throw new UnprocessableEntityException("Publication details are required");
     const body = input as Record<string, unknown>;
     if (!Number.isInteger(body.expectedRevision) || Number(body.expectedRevision) < 1)
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     if (typeof body.definitionSha256 !== "string" || !/^[a-f0-9]{64}$/.test(body.definitionSha256))
       throw new UnprocessableEntityException("definitionSha256 must be a lowercase SHA-256 digest");
+    if (typeof body.displayName !== "string" || !body.displayName.trim() || body.displayName.trim().length > 120)
+      throw new UnprocessableEntityException("displayName must contain 1 to 120 characters");
     return { expectedRevision: Number(body.expectedRevision), definitionSha256: body.definitionSha256,
-      changeNote: this.changeNote(input) };
+      displayName: body.displayName.trim(), changeNote: this.changeNote(input) };
   }
 
   private changeNote(input: unknown): string {
@@ -281,11 +285,19 @@ export class FormAuthoringService {
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
     const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
+      ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
       definition: row.canonical_definition, catalogFields, diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
   private admin(token: string): Promise<ClinicianSession> {
     return this.sessions.requireCapability(token, "installation:administer");
+  }
+
+  private displayName(input: unknown): string {
+    const value = input && typeof input === "object" ? (input as Record<string, unknown>).displayName : undefined;
+    if (typeof value !== "string" || !value.trim() || value.trim().length > 120)
+      throw new UnprocessableEntityException("displayName must contain 1 to 120 characters");
+    return value.trim();
   }
 }

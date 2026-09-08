@@ -39,6 +39,7 @@ export interface CanonicalFormDefinition {
 
 export interface PublishFormVersionCommand {
   publishedBy: string;
+  displayName?: string;
   changeNote: string;
   definitionSha256: string;
   warningAcknowledgements?: Record<string, unknown>;
@@ -46,6 +47,7 @@ export interface PublishFormVersionCommand {
 
 export interface PublishedFormVersion {
   id: string;
+  displayName?: string;
   status: "published";
   definitionSha256: string;
   publishedAt: string;
