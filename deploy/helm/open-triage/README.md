@@ -51,9 +51,11 @@ committed in its own transaction. A failed migration is rolled back and stops
 the release; a successful migration remains committed if a later application
 rollout fails.
 
-The migration Job deliberately does not run `bootstrap:synthetic`. Seed the
-fictional installation once, as a separate operator action, when provisioning a
-new demo database:
+The migration Job defaults to schema migrations only. The public synthetic demo
+values set `migration.bootstrapSynthetic=true`, which runs the idempotent
+synthetic bootstrap before every rollout so the fictional users, credentials,
+agency configuration, catalog, and initial assignment remain available. For a
+one-time manual demo bootstrap, run:
 
 ```sh
 npm run bootstrap:synthetic -w @open-triage/database

@@ -34,6 +34,13 @@ test("deploy does not run the synthetic bootstrap", () => {
   assert.doesNotMatch(output, /bootstrap:synthetic|bootstrap-synthetic-installation/);
 });
 
+test("demo deployment restores its idempotent synthetic installation before rollout", () => {
+  const output = render("--values", fileURLToPath(new URL("../demo-reference.values.yaml", import.meta.url)));
+  const job = output.slice(output.indexOf("# Source: open-triage/templates/migration-job.yaml"));
+
+  assert.match(job, /command: \["npm", "run", "bootstrap:synthetic", "-w", "@open-triage\/database"\]/);
+});
+
 test("migration gate requires a pre-existing cluster-owned Secret", () => {
   assert.throws(
     () => render(

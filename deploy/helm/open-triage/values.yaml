@@ -25,6 +25,7 @@ api:
 
 migration:
   enabled: true
+  bootstrapSynthetic: false
   activeDeadlineSeconds: 600
   resources:
     requests: { cpu: 100m, memory: 128Mi }

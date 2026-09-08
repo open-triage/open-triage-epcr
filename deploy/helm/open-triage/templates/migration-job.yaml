@@ -24,7 +24,11 @@ spec:
         - name: migration
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          {{- if .Values.migration.bootstrapSynthetic }}
+          command: ["npm", "run", "bootstrap:synthetic", "-w", "@open-triage/database"]
+          {{- else }}
           command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
+          {{- end }}
           envFrom: [{ secretRef: { name: {{ $secretName }} } }]
           resources: {{- toYaml .Values.migration.resources | nindent 12 }}
 {{- end }}

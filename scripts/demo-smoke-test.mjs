@@ -94,14 +94,14 @@ export async function verifyPublicDemo(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
-  const session = await responseJson(loginResponse, "Synthetic login");
-  if (typeof session?.accessToken !== "string" || session.accessToken.length === 0) {
-    throw new Error("Synthetic login did not return an access token");
-  }
+  await responseJson(loginResponse, "Synthetic login");
+  const sessionCookie = loginResponse.headers.get("set-cookie")?.split(";", 1)[0];
+  if (!sessionCookie?.startsWith("open_triage_session="))
+    throw new Error("Synthetic login did not establish a session cookie");
   log("PASS synthetic login");
 
   const assignedResponse = await request(fetchImpl, "Authenticated read", new URL("/api/calls/assigned", api), {
-    headers: { authorization: `Bearer ${session.accessToken}` },
+    headers: { cookie: sessionCookie },
   });
   const assigned = await responseJson(assignedResponse, "Authenticated read");
   if (!Array.isArray(assigned?.assignedCalls) || !Array.isArray(assigned?.canceledAssignmentIds)) {
