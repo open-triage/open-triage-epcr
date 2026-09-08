@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { DraftReportController } from "../dist/reports/draft-report.controller.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
@@ -19,6 +19,34 @@ function sessions() {
     return ownerSession;
   } };
 }
+
+test("prototype deletion atomically removes only a clinician-owned synthetic draft and requeues its call", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000009";
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
+    if (sql.includes("select patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
+    if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
+    return [];
+  } };
+  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+
+  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId), { deleted: true, reportId });
+  assert.match(calls[0].sql, /status = 'draft' and synthetic/);
+  assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
+  assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
+  assert.ok(calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned', report_id = null/.test(sql)));
+  assert.ok(calls.find(({ sql }) => /delete from clinical\.patient/.test(sql)));
+});
+
+test("prototype deletion refuses reports outside the owned synthetic-draft boundary", async () => {
+  const manager = { query: async () => [] };
+  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+  await assert.rejects(
+    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"),
+    ConflictException,
+  );
+});
 
 test("open calls list only creator-owned drafts in newest-activity order with workflow details", async () => {
   const queries = [];

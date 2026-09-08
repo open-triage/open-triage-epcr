@@ -4,9 +4,17 @@ import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, 
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
-import { StationaryFormPreview } from "./stationary-form-preview";
 
 type FormSection = FormDraftDefinition["sections"][number];
+
+export function openStationaryFormPreview(draft: StationaryFormDraft): boolean {
+  const key = `open-triage:stationary-form-preview:${crypto.randomUUID()}`;
+  localStorage.setItem(key, JSON.stringify(draft));
+  const preview = window.open(`/admin-preview?draft=${encodeURIComponent(key)}`, "_blank");
+  if (preview) preview.opener = null;
+  if (!preview) localStorage.removeItem(key);
+  return Boolean(preview);
+}
 
 function operationErrorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : "Stationary form operation failed.";
@@ -93,9 +101,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   const [pendingRemoval, setPendingRemoval] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FormCatalogElement[]>([]);
-  const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [targetSection, setTargetSection] = useState("");
-  const [previewing, setPreviewing] = useState(false);
   const [publicationNote, setPublicationNote] = useState("");
   const [activationNote, setActivationNote] = useState("");
   const [published, setPublished] = useState<PublishedStationaryForm | null>(null);
@@ -118,7 +124,7 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
     let current = true;
     const timeout = window.setTimeout(() => {
       searchFormCatalog(csrfToken, draftId, query).then((page) => { if (current) {
-        setResults(page.items); setNextOffset(page.nextOffset);
+        setResults(page.items);
       } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     }, 150);
     return () => { current = false; window.clearTimeout(timeout); };
@@ -139,14 +145,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
         `Added ${element.elementId}.`);
     } catch (reason) { setError(operationErrorMessage(reason)); }
   }
-  async function loadMore() {
-    if (!draft || nextOffset === null) return;
-    await action(async () => {
-      const page = await searchFormCatalog(csrfToken, draft.id, query, nextOffset);
-      setResults((current) => [...current, ...page.items]); setNextOffset(page.nextOffset);
-    });
-  }
-
   if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
   if (!draft) return <div className="form-empty">
     <p>Clone the active Stationary form to change its section sequence without changing the published form.</p>
@@ -161,10 +159,11 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
   if (published) return <div className="form-publication" aria-labelledby="published-form-heading">
     <h3 id="published-form-heading">Published Stationary form version {published.version}</h3>
     <p>{published.structuralSummary.sections} sections and {published.structuralSummary.fields} elements were published as immutable content.</p>
-    <p role="status">This version is published but is not active. New reports still use the existing agency default.</p>
+    <p className="form-activation-status" role="status">This version is published but is not active. New reports still use the existing agency default.</p>
     <label htmlFor="form-activation-note">Activation note</label>
-    <textarea id="form-activation-note" value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
-    <button type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
+    <textarea id="form-activation-note" required value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
+    <small>An activation note is required. Activation applies this form and its catalog to new reports.</small>
+    <button className="form-primary-action" type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
       const activation = await activateStationaryForm(csrfToken, published.id, activationNote);
       setActivated(true);
       setStatus("Stationary form activated for new reports. Existing reports remain pinned to their original versions.");
@@ -174,11 +173,6 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
-  if (previewing) return <StationaryFormPreview draft={draft} onReturn={() => {
-    setPreviewing(false);
-    setStatus("Returned to the unchanged form draft.");
-  }} />;
-
   return <div className="form-editor">
     <p>Draft revision {draft.revision}. Published forms remain immutable and existing reports keep their pinned form version.</p>
     {draft.diagnostics.length > 0 && <div className="form-findings" role="alert">
@@ -186,23 +180,33 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <ul>{draft.diagnostics.map((finding) => <li key={`${finding.code}:${finding.path}`}>{finding.message} ({finding.path})</li>)}</ul>
     </div>}
     <FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
-      onQueryChange={(value) => { setQuery(value); setResults([]); setNextOffset(null); }}
+      onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} />
-    {nextOffset !== null && <button type="button" disabled={busy} onClick={loadMore}>Load more catalog elements</button>}
-    <FormSectionElements definition={draft.definition} onChange={change} />
-    <StationarySectionControls definition={draft.definition} pendingRemoval={pendingRemoval} busy={busy}
-      confirmationRef={confirmationRef} onMove={(from, to) => change(moveFormSection(draft.definition, from, to),
+    <FormSectionElements definition={draft.definition} busy={busy} onChange={change}
+      onMoveSection={(from, to) => change(moveFormSection(draft.definition, from, to),
         `Moved ${draft.definition.sections[from]!.key} ${to < from ? "up" : "down"}.`)}
-      onRequestRemoval={setPendingRemoval} onConfirmRemoval={(index) => {
+      onRequestRemoveSection={setPendingRemoval} />
+    {pendingRemoval !== null && draft.definition.sections[pendingRemoval] && <div className="form-remove-confirmation"
+      role="alertdialog" aria-modal="false" aria-labelledby="remove-section-heading"
+      aria-describedby="remove-section-description" tabIndex={-1} ref={confirmationRef}>
+      <h3 id="remove-section-heading">Remove {draft.definition.sections[pendingRemoval]!.key}?</h3>
+      <p id="remove-section-description">This removes the section and its {affectedFieldNames(draft.definition.sections[pendingRemoval]!).length} affected fields from this draft.</p>
+      <ul>{affectedFieldNames(draft.definition.sections[pendingRemoval]!).map((field) => <li key={field}>{field}</li>)}</ul>
+      <div><button type="button" onClick={() => {
+        const index = pendingRemoval;
         const section = draft.definition.sections[index]!; const affected = affectedFieldNames(section);
         change(removeFormSection(draft.definition, index),
           `Removed ${section.key} and ${affected.length} affected ${affected.length === 1 ? "field" : "fields"}.`);
-      }} onCancelRemoval={() => {
+      }}>Confirm removal</button><button type="button" onClick={() => {
         const section = pendingRemoval === null ? undefined : draft.definition.sections[pendingRemoval];
         setPendingRemoval(null); setStatus(section ? `Kept ${section.key}.` : "Removal canceled.");
-      }} />
+      }}>Keep section</button></div>
+    </div>}
     <div className="form-actions">
-      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => setPreviewing(true)}>Preview Stationary form</button>
+      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+        if (openStationaryFormPreview(draft)) setStatus("Opened Stationary form preview in a new window.");
+        else setError("The preview window was blocked. Allow pop-ups and try again.");
+      }}>Preview Stationary form</button>
       <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
         const saved = await saveStationaryFormDraft(csrfToken, draft);
         setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
@@ -213,10 +217,12 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivat
       <p>Structural summary: {formStructuralSummary(draft.definition)}.</p>
       <p>Publication creates an immutable form pinned to this catalog. It will not activate the form.</p>
       <label htmlFor="form-publication-note">Publication note</label>
-      <textarea id="form-publication-note" value={publicationNote}
+      <textarea id="form-publication-note" required value={publicationNote}
         onChange={(event) => setPublicationNote(event.target.value)} />
-      <button type="button" disabled={busy || dirty || pendingRemoval !== null || !publicationNote.trim() || draft.diagnostics.length > 0}
+      <small>A publication note is required. Publishing is available to administrators in the demo.</small>
+      <button type="button" disabled={busy || dirty || pendingRemoval !== null || draft.diagnostics.length > 0}
         onClick={() => action(async () => {
+          if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
           const result = await publishStationaryFormDraft(csrfToken, draft, publicationNote);
           setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
         })}>Publish immutable form</button>

@@ -55,6 +55,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
         revision: 1, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3],
         updated_at: "2026-09-07T01:00:00.000Z"
       }];
+      if (sql.includes("from catalog.value_set_element")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
   };
@@ -113,7 +114,7 @@ test("form authoring rejects removal that leaves an invalid section structure", 
   assert.equal(queried, false);
 });
 
-test("catalog search is bounded to an authorized editable draft and returns pagination", async () => {
+test("catalog search returns the full searchable clinical catalog and excludes demographics", async () => {
   const calls = [];
   const service = new FormAuthoringService({ query: async (sql, parameters) => {
     calls.push({ sql, parameters });
@@ -125,9 +126,10 @@ test("catalog search is bounded to an authorized editable draft and returns pagi
     throw new Error(`Unexpected SQL: ${sql}`);
   } }, { requireCapability: async () => session });
   const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
-  assert.equal(page.items.length, 40);
-  assert.equal(page.nextOffset, 80);
-  assert.deepEqual(calls[1].parameters, [catalogId, "patient", 41, 40]);
+  assert.equal(page.items.length, 41);
+  assert.equal(page.nextOffset, null);
+  assert.deepEqual(calls[1].parameters, [catalogId, "patient"]);
+  assert.match(calls[1].sql, /element_id like 'e%\.%'/);
 });
 
 test("duplicate element placement fails API validation before persistence", async () => {

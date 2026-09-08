@@ -10,6 +10,7 @@ import {
   encounterDocumentDiagnostics,
   loadEncounterDocument,
   serializeEncounterDocument,
+  type EncounterDocumentCompatibility,
 } from "../app/encounter-document";
 
 const schema = JSON.parse(readFileSync(new URL("../../../packages/contracts/encounter-document.schema-1.0.0.json", import.meta.url), "utf8"));
@@ -99,6 +100,27 @@ test("standard coded, NV, and PN values are checked against the pinned NEMSIS mo
   const nameGroup = pertinentNegative.groups.find(({ id }) => id === "ePatient.PatientNameGroup") as { instances: Array<{ elements: Array<{ values: unknown[] }> }> };
   nameGroup.instances[0]!.elements[0]!.values = [{ kind: "pertinent-negative", occurrenceId: "last-name-1", code: "8801019" }];
   assert.doesNotThrow(() => loadEncounterDocument(pertinentNegative));
+});
+
+test("report-pinned agency codes extend exhaustive NEMSIS choices without admitting unknown codes", () => {
+  const candidate = structuredClone(syntheticEncounter) as unknown as { groups: Array<Record<string, unknown>> };
+  const patientGroup = candidate.groups.find((group) => group.id === "ePatientSection") as {
+    instances: Array<{ elements: Array<{ id: string; values: Array<Record<string, unknown>> }> }>;
+  };
+  const race = { id: "ePatient.14", values: [
+    { kind: "coded", occurrenceId: "race-agency-1", code: "251414SE", system: "Agency", display: "Swedish" },
+  ] };
+  patientGroup.instances[0]!.elements.push(race);
+  const compatibility: EncounterDocumentCompatibility = { catalogFields: { "ePatient.14": {
+    agencyRequired: false, requirednessSeverity: null, minOccurs: 0, maxOccurs: null,
+    nillable: true, supportsNotValues: true, supportsPertinentNegatives: false,
+    codeChoices: [{ code: "251414SE", codeSystem: "Agency", label: "Swedish" }],
+  } } };
+
+  assert.doesNotThrow(() => loadEncounterDocument(candidate, compatibility));
+  race.values[0]!.code = "UNKNOWN-AGENCY-CODE";
+  assert.ok(encounterDocumentDiagnostics(candidate, compatibility)
+    .some(({ path, message }) => path.endsWith(".code") && message.includes("exhaustive value set")));
 });
 
 test("compatible unknown extensions and custom content survive a pretty-printed round trip losslessly", () => {

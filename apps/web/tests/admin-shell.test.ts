@@ -21,11 +21,14 @@ const session: ClinicianSession = {
   capabilities: ["installation:administer", "clinical:document"]
 };
 
-test("every deferred Admin panel is labeled as a non-interactive unavailable placeholder", () => {
+test("Admin panels use one persistent side-tab navigator", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
-  assert.equal((markup.match(/Unavailable in this release\./g) ?? []).length, 11);
-  assert.doesNotMatch(markup, /<(button|input|select|textarea)\b/);
+  assert.match(markup, /class="admin-tabs"/);
+  assert.match(markup, />Element catalog<\/button>/);
+  assert.match(markup, />Stationary form<\/button>/);
+  assert.match(markup, />Audit Log<\/button>/);
+  assert.doesNotMatch(markup, /admin-placeholder-grid/);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {
@@ -51,7 +54,7 @@ test("catalog saves send the current revision and CSRF proof", async (t) => {
 });
 
 const codeList = { listId: "activity", name: "Patient Activity", classification: "suggested" as const,
-  defaultValue: null, values: [
+  elementIds: ["eSituation.01"], defaultValue: null, values: [
     { code: "ONE", codeSystem: "LOCAL", label: "First", sourceLabel: "First", category: null, enabled: true },
     { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
   ] };
@@ -120,6 +123,12 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.deepEqual(syntheticEncounter.document, baseline);
   const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
     revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    catalogFields: { "eSituation.11": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [
+        { code: "R10.0", codeSystem: "ICD-10-CM", label: "Acute pain" },
+        { code: "AGENCY-1", codeSystem: "LOCAL", label: "Agency custom choice" }
+      ] } },
     updatedAt: "2026-09-07T01:00:00.000Z" };
   const markup = renderToStaticMarkup(createElement(StationaryFormPreview, { draft, onReturn() {} }));
   assert.match(markup, /Interactive fictional data only/);
@@ -127,6 +136,7 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.match(markup, /aria-label="Complete stationary NEMSIS record"/);
   assert.match(markup, /data-element-id="ePatient\.02"/);
   assert.match(markup, /Acute pain/);
+  assert.match(markup, /Agency custom choice/);
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 
@@ -210,15 +220,16 @@ test("form element rows provide keyboard-operable move and confirmed remove cont
   assert.match(markup, /aria-label="Move ePatient.02 up"/);
   assert.match(markup, /aria-label="Move ePatient.15 down"/);
   assert.match(markup, /aria-label="Remove ePatient.02"/);
-  assert.match(markup, /<details open=""/);
+  assert.match(markup, /aria-expanded="true"/);
+  assert.match(markup, /<small>Last Name<\/small>/);
 });
 
-test("form search uses bounded query parameters", async (t) => {
+test("form search sends the searchable query without pagination", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async (input) => {
-    assert.match(String(input), /catalog-elements\?query=patient%20name&offset=40$/);
+    assert.match(String(input), /catalog-elements\?query=patient%20name$/);
     return Response.json({ items: [], nextOffset: null });
   };
-  await searchFormCatalog("csrf-proof", "draft-id", "patient name", 40);
+  await searchFormCatalog("csrf-proof", "draft-id", "patient name");
 });

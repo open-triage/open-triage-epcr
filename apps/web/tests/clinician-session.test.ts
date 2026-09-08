@@ -4,10 +4,21 @@ import type { ClinicianSession } from "@open-triage/contracts";
 import {
   CLINICIAN_SESSION_STORAGE_KEY,
   clearClinicianSession,
+  defaultDemoUsername,
   loadClinicianSession,
   sessionIsActive,
   storeClinicianSession
 } from "../app/clinician-session";
+
+test("server-backed demos prefill the administrator while static demos retain the clinician", () => {
+  const previous = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  assert.equal(defaultDemoUsername(), "demo.admin");
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  assert.equal(defaultDemoUsername(), "demo.clinician");
+  if (previous === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = previous;
+});
 
 const session: ClinicianSession = {
   accessToken: "demo-token",

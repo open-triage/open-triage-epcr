@@ -44,8 +44,8 @@ export const activateStationaryForm = (csrfToken: string, formVersionId: string,
     method: "POST", body: JSON.stringify({ changeNote })
   });
 
-export const searchFormCatalog = (csrfToken: string, id: string, query: string, offset = 0) =>
-  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}&offset=${offset}`, csrfToken);
+export const searchFormCatalog = (csrfToken: string, id: string, query: string) =>
+  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`, csrfToken);
 
 export async function loadAdminContext(): Promise<AdminContext> {
   const response = await fetch(`${apiBaseUrl()}/api/admin/context`, { credentials: "include" });

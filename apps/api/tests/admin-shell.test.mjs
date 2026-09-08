@@ -14,6 +14,11 @@ test("admin context is resolved from the authorized session organization", async
   const service = new AdminService({
     query: async (sql, parameters) => {
       calls.push({ sql, parameters });
+      if (sql.includes("with report_stats")) return [{
+        available_calls: "3", ongoing_reports: "2", signed_reports: "14", signed_last_24_hours: "4",
+        reports_with_errors: "1", active_users: "6", active_units: "2", database_size_bytes: "10485760",
+        database_connections: "5", max_database_connections: "100"
+      }];
       return [{
         form_version_id: "form-version-id", form_id: "form-id", form_name: "Stationary",
         form_version: 4, catalog_release_id: "catalog-id", catalog_standard: "NEMSIS", catalog_version: "3.5.1"
@@ -27,16 +32,25 @@ test("admin context is resolved from the authorized session organization", async
     }
   });
 
-  assert.deepEqual(await service.context("opaque-session"), {
+  const context = await service.context("opaque-session");
+  assert.ok(!Number.isNaN(Date.parse(context.dashboard.generatedAt)));
+  assert.deepEqual({ ...context, dashboard: { ...context.dashboard, generatedAt: "measured" } }, {
     owner: session.user,
     organization: session.organization,
     activeConfiguration: {
       catalog: { id: "catalog-id", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "form-version-id", formId: "form-id", name: "Stationary", version: 4 }
+    },
+    dashboard: {
+      availableCalls: 3, ongoingReports: 2, signedReports: 14, signedLast24Hours: 4,
+      reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10485760,
+      databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "measured"
     }
   });
   assert.deepEqual(calls[0].parameters, [session.organization.id]);
   assert.match(calls[0].sql, /agency_stationary_default[\s\S]*active\.form_version_id = fv\.id/);
+  assert.match(calls[1].sql, /pg_database_size\(current_database\(\)\)/);
+  assert.match(calls[1].sql, /finding\.revision = report\.revision/);
 });
 
 test("direct admin access fails before configuration is queried without the capability", async () => {

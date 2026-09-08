@@ -1,8 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dispatchEntityId, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { dispatchEntityId, encounterDocument, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
 
 const reportId = "42000000-0000-4000-8000-000000000002";
+
+test("agency catalog labels rehydrate as their stable NEMSIS data-model version", async () => {
+  let reportQuery = "";
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from clinical.report r")) {
+      reportQuery = normalized;
+      return [{ id: reportId, created_at: "2026-09-08T12:00:00.000Z", updated_at: "2026-09-08T12:00:00.000Z",
+        form_id: "form", form_version: 2, catalog_standard: "NEMSIS", catalog_version: "3.5.1",
+        catalog_dataset: "EMSDataSet" }];
+    }
+    if (normalized.includes("from clinical.group_instance") || normalized.includes("from clinical.element_occurrence")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const document = await encounterDocument(manager, reportId);
+  assert.equal(document.dataModel.version, "3.5.1");
+  assert.match(reportQuery, /cr\.provenance->>'dataModelVersion'/);
+  assert.match(reportQuery, /left join catalog\.release source_cr/);
+});
 
 test("payload identities map stably while nested and hidden values are seeded with a server PCR number", async () => {
   const groups = [];

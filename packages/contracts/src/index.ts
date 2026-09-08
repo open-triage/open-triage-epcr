@@ -69,6 +69,11 @@ export interface EndClinicianSessionResponse {
   ended: true;
 }
 
+export interface DeleteDraftReportResponse {
+  deleted: true;
+  reportId: string;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
@@ -85,10 +90,25 @@ export interface AdminContext {
       version: number;
     };
   } | null;
+  dashboard: {
+    availableCalls: number;
+    ongoingReports: number;
+    signedReports: number;
+    signedLast24Hours: number;
+    reportsWithErrors: number;
+    activeUsers: number;
+    activeUnits: number;
+    databaseSizeBytes: number;
+    databaseConnections: number;
+    maxDatabaseConnections: number;
+    generatedAt: string;
+  };
 }
 
 export interface CatalogDraftElement {
   elementId: string;
+  /** Agency-editable clinical label; the stable element identity remains elementId. */
+  label: string;
   identityId: string;
   baseDatatype: string;
   storageSemantics: {
@@ -97,7 +117,8 @@ export interface CatalogDraftElement {
     analyticalLocation: "wide" | "repeatable" | "unmapped";
     sqlType: string;
   };
-  agencyRequired: boolean;
+  /** Null is optional; otherwise controls whether a missing value blocks signing or produces an acknowledgement warning. */
+  requirednessSeverity: "warning" | "error" | null;
   constraints: {
     minOccurs: number;
     maxOccurs: number | null;
@@ -119,7 +140,8 @@ export interface CatalogDraftCodeValue {
 export interface CatalogDraftCodeList {
   listId: string;
   name: string;
-  classification: "suggested" | "agency";
+  classification: "defined" | "suggested" | "agency" | "inline";
+  elementIds: string[];
   values: CatalogDraftCodeValue[];
   defaultValue: { code: string; codeSystem: string } | null;
 }
@@ -182,6 +204,7 @@ export interface ClinicalFormConfiguration {
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
     agencyRequired: boolean;
+    requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;
     maxOccurs: number | null;
     nillable: boolean;
@@ -210,6 +233,8 @@ export interface StationaryFormDraft {
   revision: number;
   definitionSha256: string;
   definition: FormDraftDefinition;
+  /** Published catalog configuration used by the detached authoring preview. */
+  catalogFields?: ClinicalFormConfiguration["catalogFields"];
   diagnostics: FormCloneDiagnostic[];
   updatedAt: string;
 }

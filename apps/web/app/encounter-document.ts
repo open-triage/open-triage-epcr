@@ -1,4 +1,4 @@
-import type { EncounterDocument } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument } from "@open-triage/contracts";
 import {
   NEMSIS_DATA_MODEL,
   getNemsisDataElement,
@@ -16,6 +16,8 @@ export type EncounterDocumentCompatibility = {
   readonly nemsisVersion?: string;
   /** When supplied, only these profile ids and versions are loadable. */
   readonly formProfiles?: Readonly<Record<string, ReadonlyArray<string>>>;
+  /** Report-pinned choices replace the bundled coded set for configured elements. */
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
 };
 
 export class EncounterDocumentError extends Error {
@@ -83,6 +85,7 @@ function validateStandardValue(
   element: NemsisDataElement,
   value: Record<string, unknown>,
   path: string,
+  configured?: ClinicalFormConfiguration["catalogFields"][string],
 ): void {
   if (value.kind === "null") {
     if (!element.nillable) diagnostic(list, `${path}.kind`, `${element.id} is not nillable in NEMSIS ${NEMSIS_DATA_MODEL.release}`);
@@ -105,8 +108,11 @@ function validateStandardValue(
   if (value.kind === "coded") {
     const resolved = resolveNemsisElementValues(element);
     if (resolved.kind === "scalar") diagnostic(list, `${path}.kind`, `${element.id} is scalar, not coded`);
-    if (requireString(list, value.code, `${path}.code`) && resolved.exhaustive
-      && !resolved.permissibleValues.some(({ code }) => code === value.code)) {
+    const validCode = configured?.codeChoices
+      ? configured.codeChoices.some(({ code, codeSystem }) => code === value.code
+        && (codeSystem || "") === (typeof value.system === "string" ? value.system : ""))
+      : resolved.permissibleValues.some(({ code }) => code === value.code);
+    if (requireString(list, value.code, `${path}.code`) && resolved.exhaustive && !validCode) {
       diagnostic(list, `${path}.code`, `code ${value.code} is not in the exhaustive value set for ${element.id}`);
     }
     return;
@@ -139,6 +145,7 @@ function validateValue(
   candidate: unknown,
   path: string,
   element?: NemsisDataElement,
+  configured?: ClinicalFormConfiguration["catalogFields"][string],
 ): void {
   const value = requireRecord(list, candidate, path);
   requireString(list, value.occurrenceId, `${path}.occurrenceId`);
@@ -161,7 +168,7 @@ function validateValue(
   if (value.kind === "scalar" && !["string", "number", "boolean"].includes(typeof value.value)) {
     diagnostic(list, `${path}.value`, "must be a string, number, or boolean");
   }
-  if (element) validateStandardValue(list, element, value, path);
+  if (element) validateStandardValue(list, element, value, path, configured);
 }
 
 /** Returns every structural and catalog-compatibility problem with a JSON path. */
@@ -289,7 +296,13 @@ export function encounterDocumentDiagnostics(
         duplicateStrings(elementRecord.values.map((item) => isRecord(item) ? item.occurrenceId : undefined)).forEach((id) => {
           diagnostic(diagnostics, `${elementPath}.values`, `contains duplicate occurrenceId ${id}`);
         });
-        elementRecord.values.forEach((item, valueIndex) => validateValue(diagnostics, item, `${elementPath}.values[${valueIndex}]`, standardElement));
+        elementRecord.values.forEach((item, valueIndex) => validateValue(
+          diagnostics,
+          item,
+          `${elementPath}.values[${valueIndex}]`,
+          standardElement,
+          hasElementId ? compatibility.catalogFields?.[elementRecord.id as string] : undefined,
+        ));
       });
     });
   });

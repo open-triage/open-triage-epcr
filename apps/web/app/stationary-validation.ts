@@ -46,6 +46,7 @@ function finding(
   message: string,
   target: Omit<StationaryFindingTarget, "sectionId" | "instanceId" | "elementId">,
   title: string,
+  severity: StationaryValidationFinding["severity"] = "error",
 ): StationaryValidationFinding {
   const fieldId = target.fieldId;
   const completeTarget: StationaryFindingTarget = {
@@ -56,7 +57,7 @@ function finding(
   };
   return {
     id: `stationary:${code}:${idPart(target.groupId)}:${idPart(target.groupInstanceId)}:${idPart(target.occurrenceId)}:${idPart(fieldId)}`,
-    severity: "error",
+    severity,
     category: "Complete record",
     title,
     reference: fieldId ?? target.groupId,
@@ -149,15 +150,16 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const elementInstances = instancesByGroup.get(groupId) ?? [];
     const minimum = formRequired.has(element.id) || configured?.agencyRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min) : configured?.minOccurs ?? element.occurrence.min;
     const maximum = configured ? configured.maxOccurs ?? "unbounded" : element.occurrence.max;
+    const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     if (editable && minimum > 0 && elementInstances.length === 0) findings.push(finding(
       "field.minimum", `${element.name} requires at least ${minimum} value(s); found 0.`,
-      { groupId, fieldId: element.id }, element.name,
+      { groupId, fieldId: element.id }, element.name, requirednessSeverity,
     ));
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
       if (editable && values.length < minimum) findings.push(finding(
         "field.minimum", `${element.name} requires at least ${minimum} value(s); found ${values.length}.`,
-        { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name,
+        { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
       if (maximum !== "unbounded" && values.length > maximum) findings.push(finding(
         "field.maximum", `${element.name} permits at most ${maximum} value(s); found ${values.length}.`,

@@ -5,6 +5,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
+import { catalogFieldsConfiguration } from "../forms/clinical-form-configuration.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -73,25 +74,23 @@ export class FormAuthoringService {
   async searchCatalog(token: string, id: string, input: Record<string, unknown>): Promise<FormCatalogElementPage> {
     const session = await this.admin(token);
     const query = typeof input.query === "string" ? input.query.trim().slice(0, 100).toLowerCase() : "";
-    const requestedOffset = typeof input.offset === "string" && /^\d+$/.test(input.offset) ? Number(input.offset) : 0;
-    const offset = Number.isSafeInteger(requestedOffset) && requestedOffset >= 0 ? Math.min(requestedOffset, 10_000) : 0;
     const drafts = await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
       select fv.catalog_release_id from forms.form_version fv join forms.form f on f.id=fv.form_id
       where fv.id=$1 and f.organization_id=$2 and fv.status='draft'
     `, [id, session.organization.id]);
     if (!drafts[0]) throw new NotFoundException(`Form draft ${id} was not found`);
-    const limit = 40;
     const rows = await this.dataSource.query<Array<{
       element_id: string; name: string; description: string; base_datatype: string; group_path: string[];
     }>>(`
       select element_id,name,description,base_datatype,group_path
       from catalog.element_definition
-      where release_id=$1 and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
-      order by section,group_path,element_id limit $3 offset $4
-    `, [drafts[0].catalog_release_id, query, limit + 1, offset]);
-    return { items: rows.slice(0, limit).map((row) => ({ elementId: row.element_id, name: row.name,
+      where release_id=$1 and element_id like 'e%.%'
+        and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
+      order by section,group_path,element_id
+    `, [drafts[0].catalog_release_id, query]);
+    return { items: rows.map((row) => ({ elementId: row.element_id, name: row.name,
       description: row.description, baseDatatype: row.base_datatype, groupPath: row.group_path })),
-      nextOffset: rows.length > limit ? offset + limit : null };
+      nextOffset: null };
   }
 
   async save(token: string, id: string, input: unknown): Promise<StationaryFormDraft> {
@@ -113,9 +112,12 @@ export class FormAuthoringService {
       });
       const digest = canonicalDefinitionSha256(body.definition);
       const updated = await manager.query<VersionRow[]>(`
-        update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
-          revision=revision+1,updated_at=now()
-        where id=$1 and revision=$2 and status='draft' returning *
+        with updated as (
+          update forms.form_version set canonical_definition=$3::jsonb,definition_sha256=$4,
+            revision=revision+1,updated_at=now()
+          where id=$1 and revision=$2 and status='draft' returning *
+        )
+        select * from updated
       `, [id, body.expectedRevision, JSON.stringify(body.definition), digest]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
       return this.result(manager, updated[0]);
@@ -202,6 +204,7 @@ export class FormAuthoringService {
     const diagnostics: FormCloneDiagnostic[] = [];
     const sections = definition.sections.map((section, sectionIndex) => ({ ...section, fields: section.fields.filter((field, fieldIndex) => {
       if (field.source.kind !== "nemsis") return true;
+      if (!/^e[^.]+\./.test(field.source.elementId)) return false;
       const path = `sections[${sectionIndex}].fields[${fieldIndex}].source.elementId`;
       const before = oldById.get(field.source.elementId);
       const after = newById.get(field.source.elementId);
@@ -274,9 +277,12 @@ export class FormAuthoringService {
       findings = sources[0] ? (await this.compatibleClone(manager, sources[0].catalog_release_id,
         row.catalog_release_id, sources[0].canonical_definition)).diagnostics : [];
     }
+    const elementIds = [...new Set(row.canonical_definition.sections.flatMap((section) =>
+      section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+    const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition: row.canonical_definition, diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
+      definition: row.canonical_definition, catalogFields, diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
   private admin(token: string): Promise<ClinicianSession> {

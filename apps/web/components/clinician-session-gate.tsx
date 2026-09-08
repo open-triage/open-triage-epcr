@@ -6,8 +6,8 @@ import {
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
+  defaultDemoUsername,
   DEMO_CLINICIAN_PASSWORD,
-  DEMO_CLINICIAN_USERNAME,
   endClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
@@ -28,6 +28,9 @@ import {
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 import { selectedInstallationSettings } from "../app/installation-settings";
 import { AdminShell } from "./admin-shell";
+import { deleteDraftReport } from "../app/draft-report";
+import { clearShellState } from "../app/local-persistence";
+import { removeSignedOfflineReport } from "../app/offline-reports";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -35,6 +38,7 @@ export function ClinicianSessionGate({ children }: {
     report: ActiveDraftReport | null;
     closeReport: () => void;
     completeReport: () => void;
+    reportErrorStateChanged: (hasErrors: boolean) => void;
     sessionEnded: () => void;
     presentationMode: PresentationMode;
   }) => ReactNode);
@@ -52,7 +56,12 @@ export function ClinicianSessionGate({ children }: {
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
+  const [reportWithErrorsId, setReportWithErrorsId] = useState<string | null>(null);
+  const [deletingReport, setDeletingReport] = useState(false);
   const completionNoticeRef = useRef<HTMLParagraphElement>(null);
+  const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
+    setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
+  }, [activeReport?.id]);
 
   useEffect(() => {
     if (completionNotice) completionNoticeRef.current?.focus();
@@ -155,6 +164,30 @@ export function ClinicianSessionGate({ children }: {
     setPresentationMode(mode);
   }
 
+  async function deleteActiveRecord() {
+    if (!session || !activeReport || deletingReport) return;
+    const call = activeReport.callNumber ? ` for ${activeReport.callNumber}` : "";
+    if (!window.confirm(`Permanently delete this synthetic record${call}? The call will return to the available list.`)) return;
+    setDeletingReport(true);
+    setModeMessage(null);
+    try {
+      await deleteDraftReport(sessionRequestToken(session), activeReport.id);
+      clearShellState(window.localStorage, activeReport.id);
+      removeSignedOfflineReport(window.localStorage, activeReport.id);
+      setActiveReport(null);
+      setReportWithErrorsId(null);
+      setOpenCallsRevision((value) => value + 1);
+      setRefreshRequest((value) => value + 1);
+      setCompletionNotice(activeReport.callNumber
+        ? `Deleted the synthetic record for ${activeReport.callNumber}; the call is available again.`
+        : "Deleted the synthetic record.");
+    } catch (reason) {
+      setModeMessage(reason instanceof Error ? reason.message : "The record could not be deleted.");
+    } finally {
+      setDeletingReport(false);
+    }
+  }
+
   const sessionEnded = useCallback(() => {
     clearClinicianSession(window.localStorage);
     setSession(null);
@@ -173,11 +206,11 @@ export function ClinicianSessionGate({ children }: {
         <form className="login-card" onSubmit={signIn}>
           <p className="eyebrow">{installationSettings.syntheticFixtures.enabled ? "Demo unit" : "Clinical documentation"}</p>
           <h1>Sign in for your shift</h1>
-          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic clinician account to begin." : "Enter your organization credentials to begin."}</p>
+          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic demo account to begin." : "Enter your organization credentials to begin."}</p>
           {message && <p className="login-message" role="status">{message}</p>}
           <label>
             Username
-            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? DEMO_CLINICIAN_USERNAME : ""} required />
+            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? defaultDemoUsername() : ""} required />
           </label>
           <label>
             Password
@@ -206,8 +239,14 @@ export function ClinicianSessionGate({ children }: {
   return (
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
-        {presentationMode !== "admin" && <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>}
+        {presentationMode !== "admin"
+          ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
+          : <span className="call-list-refresh session-bar-placeholder" aria-hidden="true" />}
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
+        {installationSettings.syntheticFixtures.enabled && activeReport && reportWithErrorsId === activeReport.id &&
+          <button className="delete-record-action" type="button" disabled={deletingReport} onClick={() => void deleteActiveRecord()}>
+            {deletingReport ? "Deleting…" : "Delete record"}
+          </button>}
         <div className="presentation-selector" role="group" aria-label="Documentation presentation">
           {hasClinicalMode(session.capabilities) && <>
             <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
@@ -245,7 +284,8 @@ export function ClinicianSessionGate({ children }: {
           {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
         </p>
       }
-      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, closeReport: () => {
+      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode,
+        reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       }, completeReport: () => {

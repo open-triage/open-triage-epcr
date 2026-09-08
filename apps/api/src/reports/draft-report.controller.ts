@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
-import type { ActiveReportResource, DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -47,6 +47,15 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string
   ): Promise<ReopenOpenCallResponse> {
     return this.reports.reopen(bearerToken(authorization, cookie), id);
+  }
+
+  @Delete(":id")
+  deleteDraft(
+    @Param("id", uuidV4) id: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<DeleteDraftReportResponse> {
+    return this.reports.deleteSyntheticDraft(bearerToken(authorization, cookie), id);
   }
 
   @Get(":id/active")
