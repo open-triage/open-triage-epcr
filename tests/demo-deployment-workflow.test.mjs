@@ -62,8 +62,20 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   for (const safeguard of ["--atomic", "--cleanup-on-fail", "--wait", "--timeout 10m"]) {
     assert.ok(deploy.includes(safeguard), `missing Helm safeguard: ${safeguard}`);
   }
+  assert.match(deploy, /--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/);
   assert.match(deploy, /api\.image\.tag="\$\{\{ steps\.images\.outputs\.api-tag \}\}"/);
   assert.match(deploy, /web\.image\.tag="\$\{\{ steps\.images\.outputs\.web-tag \}\}"/);
+});
+
+test("Helm validation uses the same committed values as the demo deployment", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.equal(
+    workflow.match(/--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/g)?.length,
+    3,
+    "lint, template, and deployment must share the demo values",
+  );
+  assert.doesNotMatch(workflow, /--reuse-values/);
 });
 
 test("manual redeploy accepts only a full revision reachable from main", async () => {

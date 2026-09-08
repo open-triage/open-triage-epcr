@@ -30,8 +30,13 @@ Install or upgrade the workloads without passing secret values to Helm:
 
 ```sh
 helm upgrade --install open-triage ./deploy/helm/open-triage \
+  --values ./deploy/helm/open-triage/demo-reference.values.yaml \
   --namespace open-triage --create-namespace
 ```
+
+The committed demo reference values contain no credentials. They preserve the
+cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
+`open-triage-database` application Secret during repeatable upgrades.
 
 Helm runs a forward-only migration Job before each install or upgrade. The Job
 reads `DATABASE_URL` from the cluster-owned Secret and must succeed before Helm
