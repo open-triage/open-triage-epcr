@@ -6,8 +6,8 @@ import {
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
+  defaultDemoUsername,
   DEMO_CLINICIAN_PASSWORD,
-  DEMO_CLINICIAN_USERNAME,
   endClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
@@ -173,11 +173,11 @@ export function ClinicianSessionGate({ children }: {
         <form className="login-card" onSubmit={signIn}>
           <p className="eyebrow">{installationSettings.syntheticFixtures.enabled ? "Demo unit" : "Clinical documentation"}</p>
           <h1>Sign in for your shift</h1>
-          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic clinician account to begin." : "Enter your organization credentials to begin."}</p>
+          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic demo account to begin." : "Enter your organization credentials to begin."}</p>
           {message && <p className="login-message" role="status">{message}</p>}
           <label>
             Username
-            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? DEMO_CLINICIAN_USERNAME : ""} required />
+            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? defaultDemoUsername() : ""} required />
           </label>
           <label>
             Password

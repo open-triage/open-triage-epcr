@@ -3,6 +3,7 @@ import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
 
 export const DEMO_CLINICIAN_USERNAME = "demo.clinician";
+export const DEMO_ADMIN_USERNAME = "demo.admin";
 export const DEMO_CLINICIAN_PASSWORD = "open-triage-demo";
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 
@@ -46,6 +47,11 @@ export function clearClinicianSession(storage: Pick<Storage, "removeItem">): voi
 function apiBaseUrl(): string | null {
   if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
+}
+
+/** Server-backed demos default to the administrator; static exports retain the clinician-only identity. */
+export function defaultDemoUsername(): string {
+  return apiBaseUrl() ? DEMO_ADMIN_USERNAME : DEMO_CLINICIAN_USERNAME;
 }
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {
