@@ -299,10 +299,10 @@ export class AssignedCallsService {
   }
 
   private async createReplacement(manager: EntityManager, source: OpenableAssignmentRow): Promise<AssignedCall> {
-    const callNumber = nextCallNumber(source.call_number);
+    let callNumber = nextCallNumber(source.call_number);
     const incidentId = randomUUID();
     const assignmentId = randomUUID();
-    const dispatchedAt = new Date(new Date(source.dispatched_at).getTime() + 15 * 60 * 1_000);
+    let dispatchedAt = new Date(new Date(source.dispatched_at).getTime() + 15 * 60 * 1_000);
     const sourceReceipts = source.dispatch_receipt_id
       ? await manager.query<SyntheticReceiptRow[]>(`
           select source_id, source_payload from clinical.dispatch_receipt
@@ -310,28 +310,48 @@ export class AssignedCallsService {
         `, [source.dispatch_receipt_id, source.organization_id])
       : [];
     const sourceReceipt = sourceReceipts[0];
-    const receiptId = randomUUID();
-    const sourceRecordId = sourceReceipt
+    let sourceRecordId = sourceReceipt
       ? nextCallNumber(String(sourceReceipt.source_payload.sourceRecordId))
       : syntheticSourceRecordId(callNumber);
-    const payload = syntheticReplacementPayload(
-      randomSyntheticDispatchPayload(), callNumber, dispatchedAt, randomUUID(), sourceRecordId,
-    );
+    const priorReceipts = await manager.query<Array<{ source_record_id: string }>>(`
+      select source_record_id from clinical.dispatch_receipt
+      where organization_id = $1 and source_id = $2
+    `, [source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator"]);
+    const occupiedSourceRecords = new Set(priorReceipts.map(({ source_record_id }) => source_record_id));
+    while (occupiedSourceRecords.has(sourceRecordId)) {
+      callNumber = nextCallNumber(callNumber);
+      sourceRecordId = nextCallNumber(sourceRecordId);
+      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
+    }
+
+    let receiptId: string;
+    let payload: Record<string, unknown>;
+    while (true) {
+      receiptId = randomUUID();
+      payload = syntheticReplacementPayload(
+        randomSyntheticDispatchPayload(), callNumber, dispatchedAt, randomUUID(), sourceRecordId,
+      );
+      const insertedReceipts = await manager.query<Array<{ id: string }>>(`
+        insert into clinical.dispatch_receipt
+          (id, organization_id, source_id, message_id, source_record_id, source_revision,
+           source_bytes, source_payload, status, result)
+        values ($1, $2, $3, $4, $5, 1, $6, $7::jsonb, 'applied', $8::jsonb)
+        on conflict (organization_id, source_id, source_record_id, source_revision) do nothing
+        returning id
+      `, [receiptId, source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator", payload.messageId,
+        payload.sourceRecordId, Buffer.from(JSON.stringify(payload), "utf8"), JSON.stringify(payload), JSON.stringify({
+          synthetic: true, generatedFromAssignmentId: source.id
+        })]);
+      if (insertedReceipts.length > 0) break;
+      callNumber = nextCallNumber(callNumber);
+      sourceRecordId = nextCallNumber(sourceRecordId);
+      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
+    }
     const dispatchReason = records(payloadElement(payload, "eDispatch.01")?.values)[0]?.display;
     const generatedDispatchReason = typeof dispatchReason === "string" ? dispatchReason : source.dispatch_reason;
     const priority = records(payloadElement(payload, "eDispatch.05")?.values)[0];
     const priorityCode = typeof priority?.code === "string" ? priority.code : null;
     const priorityDisplay = typeof priority?.display === "string" ? priority.display : priorityCode;
-    const sourceBytes = Buffer.from(JSON.stringify(payload), "utf8");
-    await manager.query(`
-      insert into clinical.dispatch_receipt
-        (id, organization_id, source_id, message_id, source_record_id, source_revision,
-         source_bytes, source_payload, status, result)
-      values ($1, $2, $3, $4, $5, 1, $6, $7::jsonb, 'applied', $8::jsonb)
-    `, [receiptId, source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator", payload.messageId,
-      payload.sourceRecordId, sourceBytes, JSON.stringify(payload), JSON.stringify({
-        synthetic: true, generatedFromAssignmentId: source.id
-      })]);
     await manager.query(`
       insert into clinical.incident
         (id, organization_id, operational_state, dispatch_provenance, synthetic)
