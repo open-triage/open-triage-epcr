@@ -4,7 +4,10 @@ The `Demo validation` workflow is the only automated path to the DOKS demo.
 A push to `main` validates the application, database, web artifact, and Helm
 chart; publishes immutable API and web `linux/amd64` images; runs the
 forward-only migration hook; and atomically deploys the exact image tags from
-that run's run-scoped GitHub artifact. Deployment runs are serialized.
+that run's run-scoped GitHub artifact. After the rollout, the same deployment
+job verifies the frontend certificate and public Ingress routes, API health,
+synthetic login, and an authenticated assigned-calls read. A failed smoke check
+fails the deployment. Deployment runs are serialized.
 
 The `demo` GitHub environment must define:
 
@@ -28,6 +31,11 @@ readiness probes, or rollouts fail the workflow and restore the prior Helm
 release. Database migrations are forward-only and remain committed as
 documented in the chart README. Both one-replica Deployments use `Recreate`, so
 the one-node demo may be briefly unavailable while pods are replaced.
+
+Smoke verification logs only named pass/fail stages and HTTP status codes. It
+does not print bearer tokens, login responses, or assigned-call response bodies.
+Both public URLs must use HTTPS; Node's normal TLS verification rejects an
+expired, untrusted, or hostname-mismatched certificate.
 
 ## Required repository protection
 
