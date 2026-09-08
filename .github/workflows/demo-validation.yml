@@ -137,12 +137,14 @@ jobs:
       - name: Lint chart
         run: >-
           helm lint deploy/helm/open-triage
+          --values deploy/helm/open-triage/demo-reference.values.yaml
           --set-string secrets.databaseUrl=postgresql://validation.invalid/open_triage
           --set-string secrets.patientKeyInstallationId=00000000-0000-0000-0000-000000000000
           --set-string secrets.patientKeySecretBase64=dmFsaWRhdGlvbi1vbmx5
       - name: Render Kubernetes manifests
         run: >-
           helm template open-triage deploy/helm/open-triage
+          --values deploy/helm/open-triage/demo-reference.values.yaml
           --set-string secrets.databaseUrl=postgresql://validation.invalid/open_triage
           --set-string secrets.patientKeyInstallationId=00000000-0000-0000-0000-000000000000
           --set-string secrets.patientKeySecretBase64=dmFsaWRhdGlvbi1vbmx5
@@ -310,6 +312,7 @@ jobs:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: >-
           helm upgrade --install open-triage deploy/helm/open-triage
+          --values deploy/helm/open-triage/demo-reference.values.yaml
           --namespace open-triage
           --create-namespace
           --atomic

@@ -53,6 +53,13 @@ The fixed automated targets are Helm release `open-triage`, namespace
 `https://api.demo.opentriage.org`. Changing any of them requires a reviewed
 workflow or chart change; they are not workflow inputs.
 
+The committed, non-secret
+`deploy/helm/open-triage/demo-reference.values.yaml` file also pins the existing
+`ghcr-pull` image pull Secret and `open-triage-tls` Ingress certificate. Keep
+those cluster-owned Secrets in place. The workflow passes this file to Helm
+validation and every automated upgrade so a release cannot silently discard
+private-registry access or public TLS configuration.
+
 ## Manual redeployment
 
 Run `Demo validation` with **Run workflow** and supply the full 40-character
