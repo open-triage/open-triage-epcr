@@ -687,7 +687,7 @@ export class DraftReportService {
       await manager.query(`delete from clinical.command_receipt where report_id = $1`, [reportId]);
       await manager.query(`delete from clinical.report_change where report_id = $1`, [reportId]);
       await manager.query(`
-        update clinical.call_assignment set status = 'assigned', report_id = null, updated_at = now()
+        delete from clinical.call_assignment
         where report_id = $1 and organization_id = $2
       `, [reportId, session.organization.id]);
       const deleted = await manager.query<Array<{ id: string }>>(`

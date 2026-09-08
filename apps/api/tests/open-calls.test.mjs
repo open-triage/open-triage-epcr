@@ -20,7 +20,7 @@ function sessions() {
   } };
 }
 
-test("prototype deletion atomically removes only a clinician-owned synthetic draft and requeues its call", async () => {
+test("prototype deletion atomically removes a clinician-owned synthetic draft without reassigning its call", async () => {
   const reportId = "42000000-0000-4000-8000-000000000009";
   const calls = [];
   const manager = { query: async (sql, parameters) => {
@@ -35,7 +35,8 @@ test("prototype deletion atomically removes only a clinician-owned synthetic dra
   assert.match(calls[0].sql, /status = 'draft' and synthetic/);
   assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
   assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
-  assert.ok(calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned', report_id = null/.test(sql)));
+  assert.ok(calls.find(({ sql }) => /delete from clinical\.call_assignment where report_id/.test(sql)));
+  assert.ok(!calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.patient/.test(sql)));
 });
 

@@ -203,7 +203,11 @@ try {
       values
         ($1, 'demo.admin', $3, false, now()),
         ($2, 'demo.clinician', $3, false, now())
-      on conflict (user_id) do nothing
+      on conflict (user_id) do update set
+        username = excluded.username,
+        password_verifier = excluded.password_verifier,
+        must_change_password = false,
+        password_changed_at = now()
     `, [ids.administrator, ids.clinician, demoPasswordVerifier]);
 
     await client.query(`
@@ -317,6 +321,7 @@ try {
       on conflict do nothing
     `, [ids.unit, ids.clinician, ids.organization, ids.administrator]);
 
+    let dispatchStatus = "disabled";
     if (dispatchSourceBytes && dispatchCatalog && dispatchProjection) {
       const dispatchIngestion = await ingestDispatchDelivery(dispatchWriter, {
         organizationId: ids.organization,
@@ -326,6 +331,7 @@ try {
       if (!["applied", "replayed", "applied_with_findings"].includes(dispatchIngestion.status)) {
         throw new Error(`Initial dispatch sample was not applied: ${dispatchIngestion.status}`);
       }
+      dispatchStatus = dispatchIngestion.status;
       await client.query(`
         update clinical.call_assignment ca
         set synthetic = true
@@ -372,7 +378,7 @@ try {
     const installation = await client.query(`
       select r.id as report_id, r.organization_id, r.agency_demographic_version_id,
              r.form_version_id, r.catalog_release_id, r.synthetic, r.baseline,
-             fv.status as form_status, fv.definition_sha256 as form_sha256,
+             fv.status as form_status,
              adv.definition_sha256 as agency_sha256,
              u.organization_id as user_organization_id, u.synthetic as user_is_synthetic,
              ou.id as unit_id, ou.default_form_id, ca.id as assignment_id,
@@ -391,18 +397,25 @@ try {
       where r.id = $1 and r.organization_id = $2
     `, [ids.report, ids.organization, dispatchProjection.sourceRecordId]);
     const expected = installation.rows[0];
-    if (!expected || expected.agency_demographic_version_id !== ids.agencyVersion ||
-        expected.form_version_id !== ids.formVersion || expected.catalog_release_id !== releaseId ||
-        expected.form_status !== "published" || expected.form_sha256 !== sha256(formDefinition) ||
-        expected.agency_sha256 !== sha256(agencyDefinition) ||
-        expected.user_organization_id !== ids.organization || !expected.synthetic || !expected.baseline ||
-        !expected.user_is_synthetic || expected.unit_id !== ids.unit ||
-        expected.default_form_id !== ids.form || expected.assignment_status !== "assigned" ||
-        !expected.assignment_is_synthetic || expected.call_number !== dispatchProjection.incidentNumber ||
-        expected.response_number !== dispatchProjection.responseNumber ||
-        expected.vehicle_number !== dispatchProjection.vehicleNumber ||
-        expected.dispatch_source_record_id !== dispatchProjection.sourceRecordId) {
-      throw new Error("Existing data conflicts with the deterministic synthetic installation");
+    const conflicts = !expected ? ["installation projection"] : [
+      ["agency demographic version", expected.agency_demographic_version_id === ids.agencyVersion],
+      ["baseline form version", expected.form_version_id === ids.formVersion],
+      ["baseline catalog release", expected.catalog_release_id === releaseId],
+      ["baseline form publication", expected.form_status === "published"],
+      ["agency demographic content", expected.agency_sha256 === sha256(agencyDefinition)],
+      ["user organization", expected.user_organization_id === ids.organization],
+      ["baseline report provenance", expected.synthetic && expected.baseline],
+      ["user provenance", expected.user_is_synthetic],
+      ["unit identity", expected.unit_id === ids.unit],
+      ["unit form identity", expected.default_form_id === ids.form],
+      ["assignment provenance", expected.assignment_is_synthetic],
+      ["assignment call number", expected.call_number === dispatchProjection.incidentNumber],
+      ["assignment response number", expected.response_number === dispatchProjection.responseNumber],
+      ["assignment vehicle number", expected.vehicle_number === dispatchProjection.vehicleNumber],
+      ["assignment source identity", expected.dispatch_source_record_id === dispatchProjection.sourceRecordId],
+    ].filter(([, matches]) => !matches).map(([name]) => name);
+    if (conflicts.length) {
+      throw new Error(`Existing data conflicts with the deterministic synthetic installation: ${conflicts.join(", ")}`);
     }
 
     await client.query("commit");
@@ -416,7 +429,7 @@ try {
       catalogReleaseId: releaseId,
       baselineReportId: ids.report,
       assignmentId: expected.assignment_id,
-      dispatchStatus: dispatchIngestion.status
+      dispatchStatus
     }, null, 2));
   } catch (error) {
     await client.query("rollback");

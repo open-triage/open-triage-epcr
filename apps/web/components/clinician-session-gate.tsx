@@ -167,7 +167,7 @@ export function ClinicianSessionGate({ children }: {
   async function deleteActiveRecord() {
     if (!session || !activeReport || deletingReport) return;
     const call = activeReport.callNumber ? ` for ${activeReport.callNumber}` : "";
-    if (!window.confirm(`Permanently delete this synthetic record${call}? The call will return to the available list.`)) return;
+    if (!window.confirm(`Permanently delete this synthetic record${call}? This will not reassign the call.`)) return;
     setDeletingReport(true);
     setModeMessage(null);
     try {
@@ -179,7 +179,7 @@ export function ClinicianSessionGate({ children }: {
       setOpenCallsRevision((value) => value + 1);
       setRefreshRequest((value) => value + 1);
       setCompletionNotice(activeReport.callNumber
-        ? `Deleted the synthetic record for ${activeReport.callNumber}; the call is available again.`
+        ? `Deleted the synthetic record for ${activeReport.callNumber}.`
         : "Deleted the synthetic record.");
     } catch (reason) {
       setModeMessage(reason instanceof Error ? reason.message : "The record could not be deleted.");

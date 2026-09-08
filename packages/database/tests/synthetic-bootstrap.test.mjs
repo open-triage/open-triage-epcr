@@ -48,6 +48,7 @@ test("seeds usable local credentials for both demo roles", () => {
   assert.match(bootstrap, /'demo\.admin'/);
   assert.match(bootstrap, /'demo\.clinician'/);
   assert.match(bootstrap, /createPasswordVerifier\("open-triage-demo"\)/);
+  assert.match(bootstrap, /on conflict \(user_id\) do update set[\s\S]*password_verifier = excluded\.password_verifier/);
 });
 
 test("seeds the demo organization with a fixed fourteen-hour shift session", () => {
@@ -67,6 +68,7 @@ test("associates the demo clinician and unit, then ingests only the committed in
   assert.ok(!bootstrap.includes("synthetic-update.json"));
   assert.ok(!bootstrap.includes("synthetic-cancellation.json"));
   assert.match(bootstrap, /dispatchWriter = \{[\s\S]*client\.query\(sql, parameters\)\)\.rows/);
+  assert.match(bootstrap, /let dispatchStatus = "disabled";[\s\S]*dispatchStatus = dispatchIngestion\.status/);
   assert.match(bootstrap, /ingestDispatchDelivery\(dispatchWriter/);
   assert.match(bootstrap, /projectDispatchAssignment\(validatedDispatch\.canonical\)/);
   assert.match(bootstrap, /stationary-layout-1\.0\.0\.json/);
@@ -79,8 +81,12 @@ test("associates the demo clinician and unit, then ingests only the committed in
   assert.ok(!bootstrap.includes("SYN-20260903-001"));
   assert.ok(!bootstrap.includes("Medical assistance requested"));
   assert.match(bootstrap, /fv\.status as form_status/);
-  assert.match(bootstrap, /expected\.form_status !== "published"/);
+  assert.match(bootstrap, /baseline form publication/);
+  assert.doesNotMatch(bootstrap, /baseline form content/,
+    "a previously published immutable baseline remains valid after the bundled layout evolves");
   assert.match(bootstrap, /insert into forms\.agency_stationary_default[\s\S]*on conflict \(organization_id\) do nothing/);
+  assert.doesNotMatch(bootstrap, /expected\.assignment_status !== "assigned"/,
+    "rerunning the bootstrap must preserve an assignment that has progressed through the demo workflow");
 });
 
 test("normal application startup and bootstrap never delete existing data", () => {
