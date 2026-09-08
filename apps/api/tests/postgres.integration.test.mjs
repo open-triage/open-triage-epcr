@@ -331,7 +331,9 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
 
   const forms = new FormAuthoringService(transactionalDatabase, sessions);
-  const formDraft = await forms.clone(active.sessionToken, { catalogReleaseId: published.id });
+  const formDraft = await forms.clone(active.sessionToken, {
+    catalogReleaseId: published.id, displayName: "Agency Stationary validation draft"
+  });
   assert.equal(formDraft.catalogReleaseId, published.id);
   assert.equal(formDraft.clonedFromId, formVersionId);
   assert.deepEqual(formDraft.definition, activeFormDefinition);
@@ -840,7 +842,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     });
 
     const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }
+      method: "POST", headers: { cookie: sessionCookie }
     });
     assert.equal(reopenedResponse.status, 200);
     const reopened = await reopenedResponse.json();
@@ -848,7 +850,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
 
     const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: { cookie: sessionCookie }
     });
     assert.equal(openCallsResponse.status, 200);
     const openCalls = await openCallsResponse.json();
