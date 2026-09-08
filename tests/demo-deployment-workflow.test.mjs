@@ -85,3 +85,16 @@ test("one-replica demo deployments explicitly allow replacement downtime", async
   assert.match(apiTemplate, /strategy:\n    type: \{\{ \.Values\.api\.strategy \}\}/);
   assert.match(webTemplate, /strategy:\n    type: \{\{ \.Values\.web\.strategy \}\}/);
 });
+
+test("deployment fails unless the public HTTPS smoke verification passes", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const deploy = workflow.slice(workflow.indexOf("  deploy-demo:"));
+  const rollout = deploy.indexOf("helm upgrade --install");
+  const smoke = deploy.indexOf("node scripts/demo-smoke-test.mjs");
+
+  assert.ok(rollout >= 0 && smoke > rollout, "public smoke verification must follow the rollout");
+  assert.match(deploy, /uses: actions\/setup-node@v4[\s\S]*node-version: 22/);
+  assert.match(deploy, /DEMO_WEB_URL: https:\/\/demo\.opentriage\.org/);
+  assert.match(deploy, /DEMO_API_URL: https:\/\/api\.demo\.opentriage\.org/);
+  assert.doesNotMatch(deploy, /continue-on-error/);
+});
