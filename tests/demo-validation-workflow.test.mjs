@@ -81,3 +81,14 @@ test("the gate depends on every application, database, web, and Helm validation"
     assert.ok(workflow.includes(command), `missing required workflow command: ${command}`);
   }
 });
+
+test("the Kubernetes web artifact is built for root hosting", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const webValidation = workflow.slice(
+    workflow.indexOf("  web-deployment-validation:"),
+    workflow.indexOf("  helm-validation:"),
+  );
+
+  assert.match(webValidation, /name: Test the root-hosted web artifact/);
+  assert.doesNotMatch(webValidation, /NEXT_PUBLIC_BASE_PATH|open-triage-epcr-demo/);
+});

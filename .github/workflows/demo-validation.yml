@@ -105,8 +105,6 @@ jobs:
     name: Validate / Web deployment
     needs: validate-deployment-revision
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_BASE_PATH: /open-triage-epcr-demo
     steps:
       - uses: actions/checkout@v4
         with:
@@ -120,7 +118,7 @@ jobs:
         run: npm run build -w @open-triage/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Test the deployed web artifact
+      - name: Test the root-hosted web artifact
         run: npm run test:deployment -w @open-triage/web
 
   helm-validation:
