@@ -332,6 +332,36 @@ try {
         throw new Error(`Initial dispatch sample was not applied: ${dispatchIngestion.status}`);
       }
       dispatchStatus = dispatchIngestion.status;
+      const dispatchIncidentId = (await client.query(`
+        select id from clinical.incident
+        where organization_id = $1
+          and dispatch_provenance @> $2::jsonb
+        order by created_at limit 1
+      `, [ids.organization, JSON.stringify({
+        sourceId: "synthetic-bootstrap", sourceRecordId: dispatchProjection.sourceRecordId
+      })])).rows[0]?.id ?? deterministicUuid(`synthetic-dispatch-incident:${dispatchProjection.sourceRecordId}`);
+      await client.query(`
+        insert into clinical.incident
+          (id, organization_id, operational_state, dispatch_provenance, synthetic, baseline)
+        values ($1, $2, 'assigned', $3::jsonb, true, true)
+        on conflict do nothing
+      `, [dispatchIncidentId, ids.organization, JSON.stringify({
+        sourceId: "synthetic-bootstrap", sourceRecordId: dispatchProjection.sourceRecordId
+      })]);
+      await client.query(`
+        insert into clinical.call_assignment
+          (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
+           dispatch_reason, status, dispatch_source_id, dispatch_source_record_id,
+           dispatch_revision, response_number, vehicle_number, dispatch_receipt_id, synthetic)
+        values ($1, $2, $3, $4, $5, $6, $7, 'assigned', 'synthetic-bootstrap',
+          $8, $9, $10, $11, $12, true)
+        on conflict (organization_id, dispatch_source_id, dispatch_source_record_id) do nothing
+      `, [deterministicUuid(`synthetic-dispatch-assignment:${dispatchProjection.sourceRecordId}`),
+        ids.organization, ids.unit, dispatchIncidentId, dispatchProjection.incidentNumber,
+        dispatchProjection.unitNotifiedAt, dispatchProjection.dispatchReason,
+        dispatchProjection.sourceRecordId, dispatchProjection.revision,
+        dispatchProjection.responseNumber, dispatchProjection.vehicleNumber,
+        dispatchIngestion.receiptId]);
       await client.query(`
         update clinical.call_assignment ca
         set synthetic = true
