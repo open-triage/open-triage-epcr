@@ -12,3 +12,6 @@ ingress:
 
 secrets:
   existingSecret: open-triage-database
+
+migration:
+  bootstrapSynthetic: true
