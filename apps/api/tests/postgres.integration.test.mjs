@@ -213,7 +213,7 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.equal(context.owner.id, owner.userId);
   assert.equal(context.organization.id, organizationId);
   assert.deepEqual(context.activeConfiguration, {
-    catalog: { id: release.rows[0].id, standard: "NEMSIS", version: "3.5.1" },
+    catalog: { id: release.rows[0].id, name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
     stationaryForm: { id: formVersionId, formId, name: "Agency Stationary", version: 3 }
   });
 
@@ -331,7 +331,9 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
 
   const forms = new FormAuthoringService(transactionalDatabase, sessions);
-  const formDraft = await forms.clone(active.sessionToken, { catalogReleaseId: published.id });
+  const formDraft = await forms.clone(active.sessionToken, {
+    catalogReleaseId: published.id, displayName: "Agency Stationary validation draft"
+  });
   assert.equal(formDraft.catalogReleaseId, published.id);
   assert.equal(formDraft.clonedFromId, formVersionId);
   assert.deepEqual(formDraft.definition, activeFormDefinition);
@@ -746,6 +748,12 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
 });
 
 integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
+  const originalInstallationSettings = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+  t.after(() => {
+    if (originalInstallationSettings === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = originalInstallationSettings;
+  });
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -834,7 +842,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     });
 
     const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
     });
     assert.equal(reopenedResponse.status, 200);
     const reopened = await reopenedResponse.json();
@@ -842,7 +850,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
 
     const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: { cookie: sessionCookie }
     });
     assert.equal(openCallsResponse.status, 200);
     const openCalls = await openCallsResponse.json();
@@ -869,7 +877,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
       where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
 
     const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie }
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
     });
     assert.equal(reopenedAfterActivationResponse.status, 200);
     const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
@@ -883,7 +891,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     await client.query(`update forms.agency_stationary_default
       set form_version_id = $2, activated_by = $3, activated_at = now()
       where organization_id = $1`, [session.organization.id, latestBeforeOpen, session.user.id]);
-    if (opened) {
+    if (opened?.replacementAssignment) {
       await client.query("begin");
       try {
         const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
@@ -1384,7 +1392,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     where id = $1`, [requiredOccurrenceId]);
 
   const codedOccurrence = (await client.query(`select id, code from clinical.element_occurrence
-    where report_id = $1 and element_id = $2 and tombstoned_at is null`, [reportId, ids.coded_id])).rows[0];
+    where report_id = $1 and element_id = $2 and value_kind = 'coded' and tombstoned_at is null`,
+  [reportId, ids.coded_id])).rows[0];
   await client.query("update clinical.element_occurrence set code = 'INVALID-VALUE-SET-CODE' where id = $1", [codedOccurrence.id]);
   const invalidValueSet = await sign({
     commandId: randomUUID(), expectedRevision: 8, signerId: userId,
