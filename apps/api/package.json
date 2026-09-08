@@ -4,6 +4,7 @@
   "license": "AGPL-3.0-only",
   "private": true,
   "scripts": {
+    "prebuild": "npm run build -w @open-triage/contracts",
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
