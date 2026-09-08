@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -195,4 +195,20 @@ test("activation pins one exact version and appends previous/new audit evidence"
   const audit = queries.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
   assert.deepEqual(audit.parameters.slice(0, 8), [organizationId, session.user.id, draftId, catalogId,
     sourceFormId, sourceCatalogId, "Deploy reviewed form", "b".repeat(64)]);
+});
+
+test("synthetic demo blocks form activation before changing the agency default", async () => {
+  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+  let queried = false;
+  const service = new FormAuthoringService({ transaction: async () => { queried = true; } },
+    { requireCapability: async () => session }, {});
+  try {
+    await assert.rejects(service.activate("owner-session", draftId, { changeNote: "Activate" }),
+      (error) => error instanceof ForbiddenException && /activation are disabled/.test(error.message));
+    assert.equal(queried, false);
+  } finally {
+    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
+  }
 });

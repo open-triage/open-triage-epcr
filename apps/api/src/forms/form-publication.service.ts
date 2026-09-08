@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException
@@ -19,6 +20,7 @@ import {
   validateCanonicalFormDefinition,
   validatePublishCommand
 } from "./form-publication.validation.js";
+import { configurationPublishingAllowed, READ_ONLY_ADMINISTRATION_MESSAGE } from "../config/installation-settings.js";
 
 type FormVersionRow = {
   id: string;
@@ -57,6 +59,7 @@ export class FormPublicationService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async publish(formVersionId: string, input: unknown, organizationId?: string): Promise<PublishedFormVersion> {
+    if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     let command: PublishFormVersionCommand;
     try {
       command = validatePublishCommand(input);

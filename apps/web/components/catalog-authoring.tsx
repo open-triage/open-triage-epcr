@@ -3,8 +3,10 @@
 import type { CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
 import { cloneCatalogDraft, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
+import { selectedInstallationSettings } from "../app/installation-settings";
 
 export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToken: string; readonly onPublished?: (catalogReleaseId: string) => void }) {
+  const publicationAllowed = !selectedInstallationSettings().administration.readOnly;
   const [draft, setDraft] = useState<CatalogDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
@@ -107,14 +109,16 @@ export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToke
       <label htmlFor="catalog-display-name">Catalog version display name</label>
       <input id="catalog-display-name" maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
-      <label htmlFor="catalog-change-note">Publication change note</label>
-      <textarea id="catalog-change-note" value={note} onChange={(event) => setNote(event.target.value)} />
-      <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || !note.trim() || status !== "Catalog is valid and projections are verified."}
-        onClick={() => action(async () => {
-          const published = await publishCatalogDraft(csrfToken, draft, draft.displayName!, note);
-          onPublished?.(published.id);
-          setDraft(null); setDirty(false); setNote(""); setStatus(`Published ${published.displayName}.`);
-        })}>Publish immutable catalog</button>
+      {publicationAllowed ? <>
+        <label htmlFor="catalog-change-note">Publication change note</label>
+        <textarea id="catalog-change-note" value={note} onChange={(event) => setNote(event.target.value)} />
+        <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || !note.trim() || status !== "Catalog is valid and projections are verified."}
+          onClick={() => action(async () => {
+            const published = await publishCatalogDraft(csrfToken, draft, draft.displayName!, note);
+            onPublished?.(published.id);
+            setDraft(null); setDirty(false); setNote(""); setStatus(`Published ${published.displayName}.`);
+          })}>Publish immutable catalog</button>
+      </> : <p role="note">Publishing is disabled in this demo. Catalog drafts can still be created, edited, validated, and saved.</p>}
     </div>
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>

@@ -8,6 +8,15 @@ export const DRAFT_SYNC_RETRY_MS = 2_000;
 export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
+export function shouldQueueInitialDraftSnapshot(
+  localStateStatus: "empty" | "restored" | "incompatible" | "invalid",
+  serverRevision: number,
+  hasServerDocument: boolean,
+  hasQueuedChange: boolean,
+): boolean {
+  return localStateStatus === "empty" && serverRevision === 0 && hasServerDocument && !hasQueuedChange;
+}
+
 export interface ActiveDraftReport {
   readonly id: string;
   readonly revision: number;
