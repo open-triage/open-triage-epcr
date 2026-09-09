@@ -1,10 +1,10 @@
-import type { ClinicianSession, CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
 
-export const DEMO_CLINICIAN_USERNAME = "demo.clinician";
-export const DEMO_ADMIN_USERNAME = "demo.admin";
-export const DEMO_CLINICIAN_PASSWORD = "open-triage-demo";
+export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
+export const DEMO_ADMIN_USERNAME = SYNTHETIC_DEMO_FIXTURE.administratorUsername;
+export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 
 const localDemoIdentity = {

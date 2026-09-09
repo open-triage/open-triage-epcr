@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ClinicianSession } from "@open-triage/contracts";
+import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
+import production from "@open-triage/contracts/config/installation.production.json";
 import { activateStationaryForm, loadAdminContext, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
@@ -20,9 +21,10 @@ const session: ClinicianSession = {
   expiresAt: "2026-09-06T20:00:00.000Z",
   capabilities: ["installation:administer", "clinical:document"]
 };
+const productionSettings = parseInstallationSettings(production);
 
 test("Admin panels use one persistent side-tab navigator", () => {
-  const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
+  const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
   assert.match(markup, />Element catalog<\/button>/);
@@ -95,7 +97,9 @@ test("section operations preserve canonical content while changing only section 
 });
 
 test("Stationary section controls are named, keyboard-operable buttons with affected-field confirmation", () => {
-  const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, { csrfToken: "csrf", catalogReleaseId: "catalog-id" }));
+  const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
+    csrfToken: "csrf", catalogReleaseId: "catalog-id", installationSettings: productionSettings,
+  }));
   assert.match(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(StationarySectionControls, { definition: formDefinition, pendingRemoval: 0,
     onMove: () => {}, onRequestRemoval: () => {}, onConfirmRemoval: () => {}, onCancelRemoval: () => {} }));

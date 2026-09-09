@@ -1,13 +1,11 @@
 "use client";
 
-import type { ClinicianSession } from "@open-triage/contracts";
+import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
-  defaultDemoUsername,
-  DEMO_CLINICIAN_PASSWORD,
   endClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
@@ -26,7 +24,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
-import { selectedInstallationSettings } from "../app/installation-settings";
+import { loadInstallationConfiguration } from "../app/installation-settings";
 import { AdminShell } from "./admin-shell";
 import { deleteDraftReport } from "../app/draft-report";
 import { clearShellState } from "../app/local-persistence";
@@ -43,8 +41,7 @@ export function ClinicianSessionGate({ children }: {
     presentationMode: PresentationMode;
   }) => ReactNode);
 }) {
-  const installationSettings = selectedInstallationSettings();
-  const banner = installationSettings.syntheticDataBanner;
+  const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -68,12 +65,19 @@ export function ClinicianSessionGate({ children }: {
   }, [completionNotice]);
 
   useEffect(() => {
-    queueMicrotask(() => {
+    let current = true;
+    loadInstallationConfiguration().then((loaded) => {
+      if (!current) return;
       const loadedSession = loadClinicianSession(window.localStorage);
+      setInstallation(loaded);
       setSession(loadedSession);
       setPresentationMode(loadPresentationMode(window.localStorage, loadedSession?.capabilities));
-      setReady(true);
+    }).catch((reason: unknown) => {
+      if (current) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
+    }).finally(() => {
+      if (current) setReady(true);
     });
+    return () => { current = false; };
   }, []);
 
   useEffect(() => {
@@ -196,6 +200,9 @@ export function ClinicianSessionGate({ children }: {
   }, []);
 
   if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
+  const installationSettings = installation.settings;
+  const banner = installationSettings.syntheticDataBanner;
   if (!session) {
     return (
       <main className="login-shell">
@@ -210,11 +217,11 @@ export function ClinicianSessionGate({ children }: {
           {message && <p className="login-message" role="status">{message}</p>}
           <label>
             Username
-            <input name="username" autoComplete="username" defaultValue={installationSettings.syntheticFixtures.enabled ? defaultDemoUsername() : ""} required />
+            <input name="username" autoComplete="username" defaultValue={installation.demoLogin?.username ?? ""} required />
           </label>
           <label>
             Password
-            <input name="password" type="password" autoComplete="current-password" defaultValue={installationSettings.syntheticFixtures.enabled ? DEMO_CLINICIAN_PASSWORD : ""} required />
+            <input name="password" type="password" autoComplete="current-password" defaultValue={installation.demoLogin?.password ?? ""} required />
           </label>
           <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
         </form>
@@ -294,7 +301,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} />}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} installationSettings={installationSettings} />}
     </div>
   );
 }

@@ -45,9 +45,9 @@ test("uses deterministic synthetic identities and contains no patient identity f
 });
 
 test("seeds usable local credentials for both demo roles", () => {
-  assert.match(bootstrap, /'demo\.admin'/);
-  assert.match(bootstrap, /'demo\.clinician'/);
-  assert.match(bootstrap, /createPasswordVerifier\("open-triage-demo"\)/);
+  assert.match(bootstrap, /SYNTHETIC_DEMO_FIXTURE\.administratorUsername/);
+  assert.match(bootstrap, /SYNTHETIC_DEMO_FIXTURE\.clinicianUsername/);
+  assert.match(bootstrap, /createPasswordVerifier\(SYNTHETIC_DEMO_FIXTURE\.password\)/);
   assert.match(bootstrap, /on conflict \(user_id\) do update set[\s\S]*password_verifier = excluded\.password_verifier/);
 });
 
@@ -78,17 +78,17 @@ test("associates the demo clinician and unit, then ingests only the committed in
   assert.match(bootstrap, /stationary-layout-1\.0\.0\.json/);
   assert.match(bootstrap, /fullStationaryFormDefinition\(stationaryLayout\)/);
   assert.match(bootstrap, /fieldElementIds = formDefinition\.sections\.flatMap/);
-  assert.match(bootstrap, /synthetic-stationary-section:/);
-  assert.match(bootstrap, /synthetic-stationary-field:/);
+  assert.match(bootstrap, /synthetic-stationary-section:\$\{ids\.formVersion\}/);
+  assert.match(bootstrap, /synthetic-stationary-field:\$\{ids\.formVersion\}/);
   assert.match(bootstrap, /default_form_id, synthetic[\s\S]*ids\.form/);
   assert.match(bootstrap, /unit_clinician[\s\S]*ids\.clinician/);
   assert.ok(!bootstrap.includes("SYN-20260903-001"));
   assert.ok(!bootstrap.includes("Medical assistance requested"));
-  assert.match(bootstrap, /fv\.status as form_status/);
-  assert.match(bootstrap, /baseline form publication/);
-  assert.doesNotMatch(bootstrap, /baseline form content/,
-    "a previously published immutable baseline remains valid after the bundled layout evolves");
-  assert.match(bootstrap, /insert into forms\.agency_stationary_default[\s\S]*on conflict \(organization_id\) do nothing/);
+  assert.match(bootstrap, /active_fv\.definition_sha256 as active_form_sha256/);
+  assert.match(bootstrap, /active form version identity/);
+  assert.match(bootstrap, /active form content/,
+    "the fixture reconciler must detect stale immutable form content");
+  assert.match(bootstrap, /insert into forms\.agency_stationary_default[\s\S]*on conflict \(organization_id\) do update set/);
   assert.doesNotMatch(bootstrap, /expected\.assignment_status !== "assigned"/,
     "rerunning the bootstrap must preserve an assignment that has progressed through the demo workflow");
 });

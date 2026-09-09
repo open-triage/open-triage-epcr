@@ -1,12 +1,15 @@
 "use client";
 
-import type { CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
+import type { CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, InstallationSettings } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
 import { cloneCatalogDraft, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
-import { selectedInstallationSettings } from "../app/installation-settings";
 
-export function CatalogAuthoring({ csrfToken, onPublished }: { readonly csrfToken: string; readonly onPublished?: (catalogReleaseId: string) => void }) {
-  const publicationAllowed = !selectedInstallationSettings().administration.readOnly;
+export function CatalogAuthoring({ csrfToken, installationSettings, onPublished }: {
+  readonly csrfToken: string;
+  readonly installationSettings: InstallationSettings;
+  readonly onPublished?: (catalogReleaseId: string) => void;
+}) {
+  const publicationAllowed = !installationSettings.administration.readOnly;
   const [draft, setDraft] = useState<CatalogDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");

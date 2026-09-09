@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ChangePasswordCommand, ClinicianSession, CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
 
-export const DEMO_CLINICIAN_USERNAME = "demo.clinician";
-export const DEMO_CLINICIAN_PASSWORD = "open-triage-demo";
+export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
+export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 
 type CredentialRow = {
   user_id: string; display_name: string; organization_id: string; organization_name: string;

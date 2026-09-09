@@ -1,9 +1,8 @@
 "use client";
 
-import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { FormCatalogElement, FormDraftDefinition, InstallationSettings, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
-import { selectedInstallationSettings } from "../app/installation-settings";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 
 type FormSection = FormDraftDefinition["sections"][number];
@@ -88,12 +87,13 @@ export function StationarySectionControls({ definition, pendingRemoval, busy = f
   </>;
 }
 
-export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, onActivated }: {
+export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, installationSettings, onActivated }: {
   readonly csrfToken: string;
   readonly catalogReleaseId: string;
+  readonly installationSettings: InstallationSettings;
   readonly onActivated?: (activation: StationaryFormActivation, published: PublishedStationaryForm) => void;
 }) {
-  const publicationAllowed = !selectedInstallationSettings().administration.readOnly;
+  const publicationAllowed = !installationSettings.administration.readOnly;
   const [draft, setDraft] = useState<StationaryFormDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);

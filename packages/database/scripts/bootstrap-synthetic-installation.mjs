@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
-import { parseInstallationSettings } from "@open-triage/contracts";
+import { parseInstallationSettings, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { validateDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.validation.js";
 import { projectDispatchAssignment } from "../../../apps/api/dist/dispatch/dispatch-assignment.projection.js";
 import { ingestDispatchDelivery } from "../../../apps/api/dist/dispatch/dispatch-ingestion.js";
@@ -51,14 +51,16 @@ const dispatchProjection = validatedDispatch?.canonical ? projectDispatchAssignm
 // Stable UUIDs make this fixture an idempotent installation baseline. Every clinical
 // UUID is v4-shaped so the same constraints used for offline-created records apply.
 const ids = Object.freeze({
-  organization: "32000000-0000-4000-8000-000000000001",
+  organization: SYNTHETIC_DEMO_FIXTURE.organizationId,
   administrator: "32000000-0000-4000-8000-000000000002",
   clinician: "32000000-0000-4000-8000-000000000003",
   administratorIdentity: "32000000-0000-4000-8000-000000000004",
   clinicianIdentity: "32000000-0000-4000-8000-000000000005",
   agencyVersion: "32000000-0000-4000-8000-000000000006",
-  form: "32000000-0000-4000-8000-000000000007",
-  formVersion: "32000000-0000-4000-8000-000000000008",
+  // The v1 form aggregate (...0007/...0008) is retained because reports and local
+  // administrator drafts may remain pinned to it.
+  form: SYNTHETIC_DEMO_FIXTURE.formId,
+  formVersion: SYNTHETIC_DEMO_FIXTURE.formVersionId,
   incident: "32000000-0000-4000-8000-00000000000c",
   patient: "32000000-0000-4000-8000-00000000000d",
   report: "32000000-0000-4000-8000-00000000000e",
@@ -155,7 +157,7 @@ const dispatchWriter = {
 try {
   const migrated = await ensureFoundation(client);
   const catalogLoad = await ensureCatalog();
-  const demoPasswordVerifier = await createPasswordVerifier("open-triage-demo");
+  const demoPasswordVerifier = await createPasswordVerifier(SYNTHETIC_DEMO_FIXTURE.password);
 
   await client.query("begin");
   try {
@@ -193,14 +195,15 @@ try {
       insert into app_identity.local_credential
         (user_id, username, password_verifier, must_change_password, password_changed_at)
       values
-        ($1, 'demo.admin', $3, false, now()),
-        ($2, 'demo.clinician', $3, false, now())
+        ($1, $4, $3, false, now()),
+        ($2, $5, $3, false, now())
       on conflict (user_id) do update set
         username = excluded.username,
         password_verifier = excluded.password_verifier,
         must_change_password = false,
         password_changed_at = now()
-    `, [ids.administrator, ids.clinician, demoPasswordVerifier]);
+    `, [ids.administrator, ids.clinician, demoPasswordVerifier,
+      SYNTHETIC_DEMO_FIXTURE.administratorUsername, SYNTHETIC_DEMO_FIXTURE.clinicianUsername]);
 
     await client.query(`
       insert into app_identity.capability (key, description)
@@ -235,7 +238,7 @@ try {
 
     await client.query(`
       insert into forms.form (id, organization_id, slug, name)
-      values ($1, $2, 'synthetic-standard-encounter', 'Synthetic standard encounter')
+      values ($1, $2, 'synthetic-standard-encounter-v2', 'Synthetic full stationary encounter')
       on conflict do nothing
     `, [ids.form, ids.organization]);
     const fieldElementIds = formDefinition.sections.flatMap((section) =>
@@ -253,8 +256,8 @@ try {
     const fieldsByElementId = new Map(fields.rows.map((field) => [field.element_id, field]));
 
     const existingFormVersion = await client.query(
-      "select id from forms.form_version where id = $1 or (form_id = $2 and version = 1)",
-      [ids.formVersion, ids.form]
+      "select id from forms.form_version where id = $1",
+      [ids.formVersion]
     );
     if (existingFormVersion.rowCount === 0) {
       // Children are projected while the version is a draft, followed by the one-way
@@ -262,10 +265,12 @@ try {
       await client.query(`
         insert into forms.form_version
           (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
-        values ($1, $2, $3, 1, $4::jsonb, $5, $6)
-      `, [ids.formVersion, ids.form, releaseId, JSON.stringify(formDefinition), sha256(formDefinition), ids.administrator]);
+        select $1, $2, $3, coalesce(max(version), 0) + 1, $4::jsonb, $5, $6
+        from forms.form_version where form_id = $2
+      `, [ids.formVersion, ids.form, releaseId,
+        JSON.stringify(formDefinition), sha256(formDefinition), ids.administrator]);
       for (const [sectionPosition, section] of formDefinition.sections.entries()) {
-        const sectionId = deterministicUuid(`synthetic-stationary-section:${section.key}`);
+        const sectionId = deterministicUuid(`synthetic-stationary-section:${ids.formVersion}:${section.key}`);
         await client.query(`
           insert into forms.form_section (id, form_version_id, stable_key, position, presentation)
           values ($1, $2, $3, $4, $5::jsonb)
@@ -277,7 +282,7 @@ try {
               (id, form_version_id, section_id, stable_key, position, source_kind,
                catalog_element_identity_id, required, analytical_repeatable)
             values ($1, $2, $3, $4, $5, 'nemsis', $6, $7, $8)
-          `, [deterministicUuid(`synthetic-stationary-field:${field.source.elementId}`), ids.formVersion,
+          `, [deterministicUuid(`synthetic-stationary-field:${ids.formVersion}:${field.source.elementId}`), ids.formVersion,
             sectionId, field.key, fieldPosition, metadata.element_identity_id, field.required ?? false,
             metadata.analytical_location === "repeatable"]);
         }
@@ -298,12 +303,18 @@ try {
       insert into app_identity.operational_unit
         (id, organization_id, call_sign, name, default_form_id, synthetic)
       values ($1, $2, $3, 'Demo dispatch unit', $4, true)
-      on conflict do nothing
+      on conflict (id) do update set default_form_id = excluded.default_form_id
     `, [ids.unit, ids.organization, dispatchProjection?.callSign ?? "SYNTHETIC-UNIT-1", ids.form]);
     await client.query(`
       insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
       values ($1, $2, $3)
-      on conflict (organization_id) do nothing
+      on conflict (organization_id) do update set
+        form_version_id = excluded.form_version_id,
+        activated_by = excluded.activated_by,
+        activated_at = case
+          when forms.agency_stationary_default.form_version_id <> excluded.form_version_id then now()
+          else forms.agency_stationary_default.activated_at
+        end
     `, [ids.organization, ids.formVersion, ids.administrator]);
     await client.query(`
       insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
@@ -400,7 +411,11 @@ try {
     const installation = await client.query(`
       select r.id as report_id, r.organization_id, r.agency_demographic_version_id,
              r.form_version_id, r.catalog_release_id, r.synthetic, r.baseline,
-             fv.status as form_status,
+             active.form_version_id as active_form_version_id,
+             active_fv.version as active_form_version,
+             active_fv.definition_sha256 as active_form_sha256,
+             (select count(*) from forms.form_section fs where fs.form_version_id = active_fv.id) as active_section_count,
+             (select count(*) from forms.form_field ff where ff.form_version_id = active_fv.id) as active_field_count,
              adv.definition_sha256 as agency_sha256,
              u.organization_id as user_organization_id, u.synthetic as user_is_synthetic,
              ou.id as unit_id, ou.default_form_id, ca.id as assignment_id,
@@ -409,6 +424,8 @@ try {
              ca.dispatch_source_record_id
       from clinical.report r
       join forms.form_version fv on fv.id = r.form_version_id
+      join forms.agency_stationary_default active on active.organization_id = r.organization_id
+      join forms.form_version active_fv on active_fv.id = active.form_version_id
       join app_identity.agency_demographic_version adv on adv.id = r.agency_demographic_version_id
       join app_identity.app_user u on u.id = r.documenting_user_id
       join app_identity.unit_clinician uc on uc.user_id = u.id
@@ -421,9 +438,11 @@ try {
     const expected = installation.rows[0];
     const conflicts = !expected ? ["installation projection"] : [
       ["agency demographic version", expected.agency_demographic_version_id === ids.agencyVersion],
-      ["baseline form version", expected.form_version_id === ids.formVersion],
-      ["baseline catalog release", expected.catalog_release_id === releaseId],
-      ["baseline form publication", expected.form_status === "published"],
+      ["active form version identity", expected.active_form_version_id === ids.formVersion],
+      ["active form version", Number(expected.active_form_version) >= 1],
+      ["active form content", expected.active_form_sha256 === sha256(formDefinition)],
+      ["active form section count", Number(expected.active_section_count) === SYNTHETIC_DEMO_FIXTURE.expectedSectionCount],
+      ["active form field count", Number(expected.active_field_count) === SYNTHETIC_DEMO_FIXTURE.expectedFieldCount],
       ["agency demographic content", expected.agency_sha256 === sha256(agencyDefinition)],
       ["user organization", expected.user_organization_id === ids.organization],
       ["baseline report provenance", expected.synthetic && expected.baseline],
