@@ -27,6 +27,7 @@ test("the Kubernetes web artifact is served from the domain root", async ({ page
   }));
   await page.goto("/");
   await expect(page).toHaveTitle("OpenTriage synthetic encounter");
+  await expect(page.getByRole("note", { name: "Prototype safety notice" })).toContainText("Synthetic data only");
   await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   await expect(page.getByLabel("Username")).toHaveValue(SYNTHETIC_DEMO_FIXTURE.administratorUsername);

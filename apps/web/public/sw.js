@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   // service-worker/service-worker.ts
-  var cacheName = "open-triage-shell-v3";
+  var cacheName = "open-triage-shell-v4";
   var appRoot = new URL("./", self.registration.scope).toString();
   var appShell = [
     appRoot,
@@ -22,7 +22,7 @@
     await cache.addAll([.../* @__PURE__ */ new Set([...appShell.slice(1), ...linkedAssets])]);
   }
   self.addEventListener("install", (event) => {
-    event.waitUntil(cacheStaticShell());
+    event.waitUntil(Promise.all([cacheStaticShell(), self.skipWaiting()]));
   });
   self.addEventListener("activate", (event) => {
     event.waitUntil(Promise.all([

@@ -3,7 +3,7 @@
 declare const self: ServiceWorkerGlobalScope;
 declare const SAMPLE_DISPATCH_ASSIGNMENT_ENABLED: boolean;
 
-const cacheName = "open-triage-shell-v3";
+const cacheName = "open-triage-shell-v4";
 const appRoot = new URL("./", self.registration.scope).toString();
 const appShell = [
   appRoot,
@@ -28,7 +28,7 @@ async function cacheStaticShell(): Promise<void> {
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(cacheStaticShell());
+  event.waitUntil(Promise.all([cacheStaticShell(), self.skipWaiting()]));
 });
 
 self.addEventListener("activate", (event) => {
