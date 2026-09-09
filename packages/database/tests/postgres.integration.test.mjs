@@ -6,6 +6,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 
 const execFileAsync = promisify(execFile);
@@ -357,7 +358,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.deepEqual(fixture.rows[0], {
       organization_id: "32000000-0000-4000-8000-000000000001",
       agency_demographic_version_id: "32000000-0000-4000-8000-000000000006",
-      form_version_id: "32000000-0000-4000-8000-000000000008",
+      form_version_id: SYNTHETIC_DEMO_FIXTURE.formVersionId,
       catalog_release_id: fixture.rows[0].catalog_release_id,
       report_synthetic: true,
       report_baseline: true,
@@ -376,10 +377,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         (select count(*)::integer from app_identity.agency_demographic_version
           where organization_id = '32000000-0000-4000-8000-000000000001') as agency_versions,
         (select count(*)::integer from forms.form_version
-          where form_id = '32000000-0000-4000-8000-000000000007') as form_versions,
+          where form_id = $1) as form_versions,
         (select count(*)::integer from clinical.report
           where organization_id = '32000000-0000-4000-8000-000000000001') as reports
-    `);
+    `, [SYNTHETIC_DEMO_FIXTURE.formId]);
     assert.deepEqual(stableCounts.rows[0], {
       organizations: 1,
       agency_versions: 1,
@@ -545,7 +546,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const administratorId = "32000000-0000-4000-8000-000000000002";
     const clinicianId = "32000000-0000-4000-8000-000000000003";
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
-    const formVersionId = "32000000-0000-4000-8000-000000000008";
+    const formVersionId = SYNTHETIC_DEMO_FIXTURE.formVersionId;
     const release = await client.query(
       "select id, version from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
     );
@@ -894,8 +895,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.equal(etco2.quality_rule_version, "clinical-quality-1.0.0");
     assert.equal(etco2.quality_findings[0].sourceOccurrenceId, etco2.element_occurrence_id);
     const paymentDate = repeatById.get("ePayment.60").value_date;
+    const serializedPaymentDate = paymentDate instanceof Date
+      ? `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, "0")}-${String(paymentDate.getDate()).padStart(2, "0")}`
+      : paymentDate;
     assert.equal(
-      paymentDate instanceof Date ? paymentDate.toISOString().slice(0, 10) : paymentDate,
+      serializedPaymentDate,
       "2042-12-31"
     );
     assert.equal(repeatById.get("ePayment.60").value_precision, "day");

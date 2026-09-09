@@ -115,6 +115,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build deployable web application
+        env:
+          NEXT_PUBLIC_API_URL: https://api.demo.opentriage.org
+          NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE: synthetic-demo
         run: npm run build -w @open-triage/web
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
