@@ -5,7 +5,7 @@ import { parseInstallationSettings } from "@open-triage/contracts";
 import schema from "@open-triage/contracts/installation-settings.schema-1.0.0.json";
 import production from "@open-triage/contracts/config/installation.production.json";
 import syntheticDemo from "@open-triage/contracts/config/installation.synthetic-demo.json";
-import { selectedInstallationSettings } from "../app/installation-settings";
+import { loadInstallationConfiguration, selectedInstallationSettings } from "../app/installation-settings";
 
 test("production and synthetic demo baselines conform to the installation settings schema", () => {
   const validate = new Ajv2020({ strict: true }).compile(schema);
@@ -49,6 +49,28 @@ test("the browser selects a baseline explicitly and fails closed on unknown sele
 
 test("settings reject undeclared fields instead of silently enabling behavior", () => {
   assert.throws(() => parseInstallationSettings({ ...production, demo: true }), /invalid keys/);
+});
+
+test("server-backed web clients load the API's authoritative installation profile", async () => {
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  try {
+    delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
+    const loaded = await loadInstallationConfiguration(async (input) => {
+      assert.equal(String(input), "https://api.example.test/api/installation");
+      return new Response(JSON.stringify({ profile: "synthetic-demo", settings: syntheticDemo,
+        demoLogin: { username: "demo.admin", password: "open-triage-demo" } }), { status: 200 });
+    });
+    assert.equal(loaded.profile, "synthetic-demo");
+    assert.equal(loaded.settings.syntheticFixtures.enabled, true);
+    assert.equal(loaded.demoLogin?.username, "demo.admin");
+  } finally {
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+    if (originalApiUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
+    else process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  }
 });
 
 test("fixture, assignment, banner, and restriction controls accept independent combinations", () => {

@@ -34,6 +34,10 @@ export interface HealthResponse {
 }
 
 export { parseInstallationSettings, type InstallationSettings } from "./installation-settings.js";
+export {
+  SYNTHETIC_DEMO_FIXTURE,
+  type PublicInstallationConfiguration,
+} from "./synthetic-demo.js";
 
 export interface CreateClinicianSessionCommand {
   username: string;

@@ -185,7 +185,9 @@ jobs:
             build_args: ""
           - component: web
             dockerfile: deploy/docker/web.Dockerfile
-            build_args: NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
+            build_args: |
+              NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
+              NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo
     steps:
       - uses: actions/checkout@v4
         with:
