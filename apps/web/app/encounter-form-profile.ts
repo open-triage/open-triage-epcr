@@ -12,7 +12,7 @@ export type EncounterFormProfile = {
   readonly labels?: Readonly<Record<string, string>>;
   readonly helpText?: Readonly<Record<string, string>>;
   readonly review: { readonly groups: ReadonlyArray<{ readonly severity: ReviewSeverity; readonly title: string; readonly empty: string }>; readonly sectionOrder: ReadonlyArray<ConfiguredEventType> };
-  readonly summary: { readonly sectionOrder: ReadonlyArray<ConfiguredEventType>; readonly vitalOrder: ReadonlyArray<string> };
+  readonly summary: { readonly vitalOrder: ReadonlyArray<string> };
 };
 
 export class EncounterFormProfileError extends Error {
@@ -87,7 +87,9 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
   const validateEventOrder = (candidate: unknown, path: string) => {
     if (!Array.isArray(candidate) || candidate.length !== eventIds.length || new Set(candidate).size !== eventIds.length || candidate.some((id) => !eventIds.includes(id as ConfiguredEventType))) errors.push(`${path}: must contain each clinical section exactly once`);
   };
-  validateEventOrder(review.sectionOrder, "$.review.sectionOrder"); validateEventOrder(summary.sectionOrder, "$.summary.sectionOrder");
+  validateEventOrder(review.sectionOrder, "$.review.sectionOrder");
+  Object.keys(summary).filter((key) => key !== "vitalOrder")
+    .forEach((key) => errors.push(`$.summary.${key}: unsupported completed-summary configuration`));
   if (!Array.isArray(review.groups) || review.groups.length !== 2 || new Set(review.groups.map((group) => isRecord(group) ? group.severity : undefined)).size !== 2) errors.push("$.review.groups: must contain error and warning exactly once");
   const vitalOrder = Array.isArray(summary.vitalOrder) ? summary.vitalOrder : [];
   const vitalSection = parsedSections.find(({ id }) => id === "vitals");
@@ -114,7 +116,6 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
     composition: {
       quickActionOrder: profile.sections.map(({ id }) => id),
       review: { groups: profile.review.groups, eventTypeOrder: profile.review.sectionOrder },
-      summary: { eventTypeOrder: profile.summary.sectionOrder },
     },
     events: {
       note: { ...catalogBackedDefaults.events.note, quickAction: { visible: section("note").visible, label: section("note").quickActionLabel } },

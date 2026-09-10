@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { configuredQuickActions, validateEncounterDefinition, type ConfiguredEventType, type QuickActionId } from "../app/encounter-definition";
-import { completedSummaryEvents, EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, type EncounterEvent } from "../app/standard-encounter";
+import { EMPTY_VITALS, INITIAL_SHELL_STATE, reviewEncounter, type EncounterEvent } from "../app/standard-encounter";
 import { saveCanonicalEvent } from "../app/canonical-events";
 
 type MutableCompositionDefinition = {
   composition: {
     quickActionOrder: QuickActionId[];
     review: { groups: Array<{ severity: "error" | "warning"; title: string; empty: string }>; eventTypeOrder: ConfiguredEventType[] };
-    summary: { eventTypeOrder: ConfiguredEventType[] };
   };
   events: {
     note: { quickAction: { visible: boolean; label: string } };
@@ -32,20 +31,16 @@ test("configured quick actions control order, visibility, and accessible labels"
   assert.equal(actions[0]?.label, "Record observation");
 });
 
-test("review and completed-summary event order are independently configurable", () => {
+test("review event order is independently configurable", () => {
   const candidate = mutableDefinition();
   candidate.composition.review.eventTypeOrder = ["note", "vitals", "procedure", "medication"];
-  candidate.composition.summary.eventTypeOrder = ["medication", "note", "procedure", "vitals"];
   const definition = validateEncounterDefinition(candidate);
   const note: EncounterEvent = { id: "note", time: "88:88", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
   const vital: EncounterEvent = { id: "vital", time: "88:88", kind: "care", title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: EMPTY_VITALS };
-  const medication: EncounterEvent = { id: "medication", time: "08:00", kind: "medication", title: "Medication", detail: "", reference: "eMedications.03", medication: { medicationCode: "1191", codeType: "RxNorm", label: "Aspirin", dose: "324", unit: "mg", route: "PO — Oral", response: "Improved", warningAcknowledged: false } };
-  const procedure: EncounterEvent = { id: "procedure", time: "08:01", kind: "procedure", title: "Procedure", detail: "", reference: "eProcedures.03", procedure: { code: "268400002", label: "12 lead ECG", attempts: 1, success: "yes", outcome: "improved", complications: ["3907033"], warningAcknowledged: false } };
   const document = [vital, note].reduce((current, event) => saveCanonicalEvent(current, event, definition), INITIAL_SHELL_STATE.encounter.document);
   const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } };
 
   assert.deepEqual([...new Set(reviewEncounter(state, definition).map(({ eventType }) => eventType))], ["note", "vitals"]);
-  assert.deepEqual(completedSummaryEvents([vital, procedure, note, medication], definition).map(({ id }) => id), ["medication", "note", "procedure", "vital"]);
 });
 
 test("invalid composition fails before rendering", () => {

@@ -21,7 +21,6 @@ export const standardEncounterDefinition = {
       ],
       eventTypeOrder: ["vitals", "medication", "procedure", "note"],
     },
-    summary: { eventTypeOrder: ["vitals", "medication", "procedure", "note"] },
   },
   events: {
     note: {
