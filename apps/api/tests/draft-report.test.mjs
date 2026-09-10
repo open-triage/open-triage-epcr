@@ -9,6 +9,7 @@ import {
   validateSaveDraftReportCommand
 } from "../dist/reports/draft-report.validation.js";
 import { storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { DraftReportService } from "../dist/reports/draft-report.service.js";
 
 test("active-report reconstruction retains coded terminology metadata", () => {
   assert.deepEqual(storedEncounterValue({
@@ -86,4 +87,61 @@ test("draft changes accept each sparse typed value and explicit incomplete state
 test("command digests are stable across object key order", () => {
   assert.equal(commandSha256({ reportId: "one", nested: { b: 2, a: 1 } }),
     commandSha256({ nested: { a: 1, b: 2 }, reportId: "one" }));
+});
+
+test("a full 441-field form save uses bounded database batches instead of per-field queries", async () => {
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const reportId = randomUUID();
+  const elementIdentityId = randomUUID();
+  const occurrences = Array.from({ length: 441 }, (_, ordinal) => ({
+    id: randomUUID(), elementId: "eNarrative.01", ordinal,
+    value: { kind: "text", value: `Full form value ${ordinal}` }
+  }));
+  const report = {
+    id: reportId, status: "draft", revision: 0, organization_id: organizationId,
+    incident_id: randomUUID(), patient_id: randomUUID(), agency_demographic_version_id: randomUUID(),
+    form_version_id: randomUUID(), catalog_release_id: randomUUID(), documenting_user_id: userId
+  };
+  const queries = [];
+  const manager = { query: async (sql, parameters = []) => {
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    queries.push(normalized);
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("select * from clinical.command_receipt")) return [];
+    if (normalized.includes("select * from clinical.report") && normalized.includes("for update")) return [report];
+    if (normalized.includes("from app_identity.app_user")) return [{ id: userId }];
+    if (normalized.includes("clock_timestamp()")) return [{ received_at: new Date() }];
+    if (normalized.includes("from clinical.draft_target_state") && normalized.includes("for update")) return [];
+    if (normalized.includes("from catalog.element_definition")) return [{
+      element_id: "eNarrative.01", element_identity_id: elementIdentityId, base_datatype: "string",
+      analytical_repeatable: false, identifying: false, allowed_absence_states: []
+    }];
+    if (normalized.startsWith("insert into clinical.element_occurrence")) {
+      const rows = JSON.parse(parameters[3]).map(({ id }) => ({ id }));
+      return [rows, rows.length];
+    }
+    if (normalized.startsWith("update clinical.report set revision")) {
+      report.revision = 1;
+      return [];
+    }
+    if (normalized.startsWith("insert into clinical.report_change") ||
+        normalized.startsWith("insert into clinical.draft_target_state") ||
+        normalized.startsWith("insert into clinical.command_receipt")) return [];
+    if (normalized.startsWith("select id, status, revision")) return [report];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const dataSource = { transaction: async (_isolation, operation) => operation(manager) };
+  const sessions = { get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
+  const service = new DraftReportService(dataSource, sessions);
+
+  const saved = await service.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, occurrences
+  });
+
+  assert.equal(saved.revision, 1);
+  assert.ok(queries.length <= 15, `full form save issued ${queries.length} database queries`);
+  assert.equal(queries.filter((sql) => sql.startsWith("insert into clinical.element_occurrence")).length, 1);
+  assert.equal(queries.filter((sql) => sql.includes("from catalog.element_definition")).length, 1);
+  assert.equal(queries.filter((sql) => sql.includes("from clinical.draft_target_state") && sql.includes("for update")).length, 1);
 });

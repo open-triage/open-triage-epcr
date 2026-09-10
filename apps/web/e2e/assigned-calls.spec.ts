@@ -135,6 +135,10 @@ test("assignment polling runs every ten seconds only while visible and refreshes
 test("opening an assignment enters documentation and a retry resolves to the same report", async ({ page }) => {
   let opens = 0;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/demo-open-assignment.json", async (route) => {
+    opens += 1;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
+  });
   await page.route(`**/api/calls/${assignedCall.id}/open`, async (route) => {
     opens += 1;
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
@@ -230,6 +234,12 @@ test("Sign record requires acknowledged validation and removes the report from O
     const command = route.request().postDataJSON() as { expectedRevision: number };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({
       id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1
+    }) });
+  });
+  await page.route(`**/api/reports/${openedAssignment.report.id}/sign`, async (route) => {
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "signed", revision: command.expectedRevision + 1
     }) });
   });
   await signIn(page);
@@ -358,7 +368,7 @@ test("the requested SYN-20260903-005 stale queue is cleared against its saved se
 
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.abort("internetdisconnected"));
+  await page.route("**/demo-open-assignment.json", (route) => route.abort("internetdisconnected"));
   await signIn(page);
 
   await page.getByRole("button", { name: "Open call" }).click();

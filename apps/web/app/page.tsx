@@ -7,7 +7,6 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -34,7 +33,7 @@ import {
 } from "./draft-report";
 import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
-import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
+import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
@@ -107,7 +106,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
     restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
-    conflictError, flushSave, resolveConflict,
+    conflictError, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
     validationErrorCount: reviewErrors.length,
@@ -324,9 +323,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     }
     try {
       await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
-      purgeCompletedReportCaches(window.localStorage, [report.id]);
-      removeSignedOfflineReport(window.localStorage, report.id);
-      onReportCompleted();
+      completeWorkspaceReport();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : "The record could not be signed.");
     } finally {

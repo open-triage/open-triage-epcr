@@ -16,7 +16,6 @@ import { OpenCalls } from "./open-calls";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 import {
-  defaultPresentationMode,
   hasAdminMode,
   hasClinicalMode,
   loadPresentationMode,
@@ -114,7 +113,7 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, created);
       setActiveReport(null);
       setSession(created);
-      const initialMode = defaultPresentationMode(created.capabilities);
+      const initialMode = loadPresentationMode(window.localStorage, created.capabilities);
       storePresentationMode(window.localStorage, initialMode);
       setPresentationMode(initialMode);
     } catch (error) {

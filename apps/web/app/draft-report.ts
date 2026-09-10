@@ -311,10 +311,11 @@ export async function signDraftReport(
   warningAcknowledgements: ReadonlyArray<string>,
 ): Promise<void> {
   const base = apiBaseUrl();
-  if (!base) return;
+  if (!base && process.env.NEXT_PUBLIC_BASE_PATH) return;
+  const path = `/api/reports/${reportId}/sign`;
   let response: Response;
   try {
-    response = await fetch(`${base}/api/reports/${reportId}/sign`, {
+    response = await fetch(base ? `${base}${path}` : path, {
       method: "POST",
       cache: "no-store",
       credentials: "include",

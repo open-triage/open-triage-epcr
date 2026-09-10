@@ -50,6 +50,8 @@ type ReportRow = {
 };
 
 type ElementMetadata = {
+  element_id?: string;
+  form_field_id?: string;
   element_identity_id: string;
   base_datatype: string;
   analytical_repeatable: boolean;
@@ -113,6 +115,12 @@ type ReconciliationAudit = {
 
 const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function affectedRowCount(result: unknown): number {
+  if (!Array.isArray(result)) return 0;
+  if (result.length === 2 && Array.isArray(result[0]) && typeof result[1] === "number") return result[1];
+  return result.length;
+}
 
 function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftValue {
   if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display, ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
@@ -284,6 +292,12 @@ export class DraftReportService {
           ...(command.groups ?? []).map((value) => ({ type: "group" as const, value })),
           ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
         ];
+        const currentStates = await this.targetStates(manager, report.id, targets);
+        const occurrenceMetadata = await this.elementMetadataBatch(
+          manager,
+          report,
+          (command.occurrences ?? []).filter((occurrence) => !occurrence.tombstone)
+        );
         for (const target of targets) {
           const incoming: IncomingTarget = {
             targetType: target.type,
@@ -297,11 +311,11 @@ export class DraftReportService {
             serverReceivedTime,
             baseRevision: command.expectedRevision
           };
-          const current = await this.targetState(manager, report.id, target.type, target.value.id);
+          const current = currentStates.get(`${target.type}:${target.value.id}`) ?? null;
           if (current) this.assertStableTarget(current.target_value, target.value, target.type);
           if (target.type === "occurrence" && !(target.value as DraftOccurrenceMutation).tombstone) {
             const occurrence = target.value as DraftOccurrenceMutation;
-            const metadata = await this.elementMetadata(manager, report, occurrence);
+            const metadata = occurrenceMetadata.get(occurrence.id)!;
             this.validateDatatype(occurrence.value!, metadata, occurrence.elementId);
           }
           let incomingWins = true;
@@ -325,7 +339,7 @@ export class DraftReportService {
         }
 
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
-        for (const occurrence of winningOccurrences) await this.applyOccurrence(manager, report, command, occurrence);
+        await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
 
         await manager.query(`
           update clinical.report set revision = $2, updated_at = now() where id = $1
@@ -339,8 +353,8 @@ export class DraftReportService {
             baseRevision: command.expectedRevision,
             groups: command.groups ?? [], occurrences: command.occurrences ?? []
           })]);
-        for (const target of winningTargets) await this.storeTargetState(manager, report.id, target);
-        for (const audit of audits) await this.storeReconciliationAudit(manager, report.id, audit);
+        await this.storeTargetStates(manager, report.id, winningTargets);
+        await this.storeReconciliationAudits(manager, report.id, audits);
         const result = await this.reportResult(manager, reportId);
         await this.storeReceipt(manager, command.commandId, reportId, "save-draft", digest, result);
         return result;
@@ -400,20 +414,20 @@ export class DraftReportService {
     return result;
   }
 
-  private async targetState(
+  private async targetStates(
     manager: EntityManager,
     reportId: string,
-    targetType: DraftTargetType,
-    targetId: string
-  ): Promise<DraftTargetStateRow | null> {
+    targets: ReadonlyArray<{ type: DraftTargetType; value: DraftGroupMutation | DraftOccurrenceMutation }>
+  ): Promise<Map<string, DraftTargetStateRow>> {
+    if (!targets.length) return new Map();
     const rows = await manager.query<DraftTargetStateRow[]>(`
       select target_type, target_id, revision, idempotency_key, author_id, device_id,
              client_time, server_received_time, base_revision, target_value
       from clinical.draft_target_state
-      where report_id = $1 and target_type = $2 and target_id = $3
+      where report_id = $1 and target_id = any($2::uuid[])
       for update
-    `, [reportId, targetType, targetId]);
-    return rows[0] ?? null;
+    `, [reportId, targets.map(({ value }) => value.id)]);
+    return new Map(rows.map((row) => [`${row.target_type}:${row.target_id}`, row]));
   }
 
   private targetFromState(state: DraftTargetStateRow): IncomingTarget {
@@ -467,40 +481,86 @@ export class DraftReportService {
     return { winner: incoming, resolution: "server-receipt-order" };
   }
 
-  private async storeTargetState(manager: EntityManager, reportId: string, target: IncomingTarget): Promise<void> {
+  private async storeTargetStates(
+    manager: EntityManager,
+    reportId: string,
+    targets: ReadonlyArray<IncomingTarget>
+  ): Promise<void> {
+    if (!targets.length) return;
     await manager.query(`
       insert into clinical.draft_target_state
         (report_id, target_type, target_id, revision, idempotency_key, author_id, device_id,
          client_time, server_received_time, base_revision, target_value)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+      select $1, incoming.target_type, incoming.target_id, incoming.revision,
+             incoming.idempotency_key, incoming.author_id, incoming.device_id,
+             incoming.client_time, incoming.server_received_time, incoming.base_revision,
+             incoming.target_value
+      from jsonb_to_recordset($2::jsonb) as incoming(
+        target_type text, target_id uuid, revision bigint, idempotency_key uuid,
+        author_id uuid, device_id text, client_time timestamptz,
+        server_received_time timestamptz, base_revision bigint, target_value jsonb)
       on conflict (report_id, target_type, target_id) do update set
         revision = excluded.revision, idempotency_key = excluded.idempotency_key,
         author_id = excluded.author_id, device_id = excluded.device_id,
         client_time = excluded.client_time, server_received_time = excluded.server_received_time,
         base_revision = excluded.base_revision, target_value = excluded.target_value
-    `, [reportId, target.targetType, target.targetId, target.revision, target.commandId,
-      target.authorId, target.deviceId, target.clientTime, target.serverReceivedTime,
-      target.baseRevision, JSON.stringify(target.value)]);
+    `, [reportId, JSON.stringify(targets.map((target) => ({
+      target_type: target.targetType,
+      target_id: target.targetId,
+      revision: target.revision,
+      idempotency_key: target.commandId,
+      author_id: target.authorId,
+      device_id: target.deviceId,
+      client_time: target.clientTime,
+      server_received_time: target.serverReceivedTime,
+      base_revision: target.baseRevision,
+      target_value: target.value
+    })))]);
   }
 
-  private async storeReconciliationAudit(
+  private async storeReconciliationAudits(
     manager: EntityManager,
     reportId: string,
-    audit: ReconciliationAudit
+    audits: ReadonlyArray<ReconciliationAudit>
   ): Promise<void> {
+    if (!audits.length) return;
     await manager.query(`
       insert into clinical_audit.draft_reconciliation
         (report_id, target_type, target_id, losing_value, losing_author_id, losing_device_id,
          losing_client_time, losing_server_received_time, losing_base_revision,
          winning_revision, winning_idempotency_key, winning_author_id, winning_device_id,
          winning_client_time, winning_server_received_time, winning_base_revision, resolution)
-      values ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-    `, [reportId, audit.targetType, audit.targetId, JSON.stringify(audit.losing.value),
-      audit.losing.authorId, audit.losing.deviceId, audit.losing.clientTime,
-      audit.losing.serverReceivedTime, audit.losing.baseRevision, audit.winning.revision,
-      audit.winning.commandId, audit.winning.authorId, audit.winning.deviceId,
-      audit.winning.clientTime, audit.winning.serverReceivedTime,
-      audit.winning.baseRevision, audit.resolution]);
+      select $1, incoming.target_type, incoming.target_id, incoming.losing_value,
+             incoming.losing_author_id, incoming.losing_device_id, incoming.losing_client_time,
+             incoming.losing_server_received_time, incoming.losing_base_revision,
+             incoming.winning_revision, incoming.winning_idempotency_key,
+             incoming.winning_author_id, incoming.winning_device_id, incoming.winning_client_time,
+             incoming.winning_server_received_time, incoming.winning_base_revision,
+             incoming.resolution
+      from jsonb_to_recordset($2::jsonb) as incoming(
+        target_type text, target_id uuid, losing_value jsonb, losing_author_id uuid,
+        losing_device_id text, losing_client_time timestamptz, losing_server_received_time timestamptz,
+        losing_base_revision bigint, winning_revision bigint, winning_idempotency_key uuid,
+        winning_author_id uuid, winning_device_id text, winning_client_time timestamptz,
+        winning_server_received_time timestamptz, winning_base_revision bigint, resolution text)
+    `, [reportId, JSON.stringify(audits.map((audit) => ({
+      target_type: audit.targetType,
+      target_id: audit.targetId,
+      losing_value: audit.losing.value,
+      losing_author_id: audit.losing.authorId,
+      losing_device_id: audit.losing.deviceId,
+      losing_client_time: audit.losing.clientTime,
+      losing_server_received_time: audit.losing.serverReceivedTime,
+      losing_base_revision: audit.losing.baseRevision,
+      winning_revision: audit.winning.revision,
+      winning_idempotency_key: audit.winning.commandId,
+      winning_author_id: audit.winning.authorId,
+      winning_device_id: audit.winning.deviceId,
+      winning_client_time: audit.winning.clientTime,
+      winning_server_received_time: audit.winning.serverReceivedTime,
+      winning_base_revision: audit.winning.baseRevision,
+      resolution: audit.resolution
+    })))]);
   }
 
   async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
@@ -805,22 +865,30 @@ export class DraftReportService {
     const mutations = command.groups ?? [];
     const upserts = mutations.filter((group) => !group.tombstone);
     const inputIds = new Set(upserts.map((group) => group.id));
-    const ordered: typeof upserts = [];
+    const ordered: Array<typeof upserts> = [];
     const pending = [...upserts];
     while (pending.length) {
-      const ready = pending.findIndex((group) => !group.parentGroupInstanceId ||
-        !inputIds.has(group.parentGroupInstanceId) || ordered.some((done) => done.id === group.parentGroupInstanceId));
-      if (ready < 0) throw new UnprocessableEntityException("Group parent identities contain a cycle");
-      ordered.push(pending.splice(ready, 1)[0]!);
+      const savedIds = new Set(ordered.flat().map(({ id }) => id));
+      const ready = pending.filter((group) => !group.parentGroupInstanceId ||
+        !inputIds.has(group.parentGroupInstanceId) || savedIds.has(group.parentGroupInstanceId));
+      if (!ready.length) throw new UnprocessableEntityException("Group parent identities contain a cycle");
+      ordered.push(ready);
+      for (const group of ready) pending.splice(pending.indexOf(group), 1);
     }
-    for (const group of ordered) {
-      const sourceKind = group.customGroupDefinitionId ? "custom" : "nemsis";
+    for (const layer of ordered) {
       const saved = await manager.query<Array<{ id: string }>>(`
         insert into clinical.group_instance
           (id, report_id, catalog_release_id, parent_group_instance_id, group_id, source_kind,
            custom_group_definition_id, ordinal, correlation_id, documented_time,
            documented_utc_offset_minutes, created_by)
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        select incoming.id, $1, $2, incoming.parent_group_instance_id, incoming.group_id,
+               incoming.source_kind, incoming.custom_group_definition_id, incoming.ordinal,
+               incoming.correlation_id, incoming.documented_time,
+               incoming.documented_utc_offset_minutes, $3
+        from jsonb_to_recordset($4::jsonb) as incoming(
+          id uuid, parent_group_instance_id uuid, group_id text, source_kind text,
+          custom_group_definition_id uuid, ordinal integer, correlation_id text,
+          documented_time timestamptz, documented_utc_offset_minutes smallint)
         on conflict (id) do update set
           parent_group_instance_id = excluded.parent_group_instance_id,
           ordinal = excluded.ordinal, correlation_id = excluded.correlation_id,
@@ -832,18 +900,32 @@ export class DraftReportService {
           and clinical.group_instance.source_kind = excluded.source_kind
           and clinical.group_instance.custom_group_definition_id is not distinct from excluded.custom_group_definition_id
         returning id
-      `, [group.id, report.id, report.catalog_release_id, group.parentGroupInstanceId ?? null,
-        group.groupId, sourceKind, group.customGroupDefinitionId ?? null, group.ordinal,
-        group.correlationId ?? null, group.documentedTime ?? null,
-        group.documentedUtcOffsetMinutes ?? null, command.authorId]);
-      if (!saved[0]) throw new ConflictException(`Group identity ${group.id} already belongs to different data`);
+      `, [report.id, report.catalog_release_id, command.authorId, JSON.stringify(layer.map((group) => ({
+        id: group.id,
+        parent_group_instance_id: group.parentGroupInstanceId ?? null,
+        group_id: group.groupId,
+        source_kind: group.customGroupDefinitionId ? "custom" : "nemsis",
+        custom_group_definition_id: group.customGroupDefinitionId ?? null,
+        ordinal: group.ordinal,
+        correlation_id: group.correlationId ?? null,
+        documented_time: group.documentedTime ?? null,
+        documented_utc_offset_minutes: group.documentedUtcOffsetMinutes ?? null
+      }))) ]);
+      if (affectedRowCount(saved) !== layer.length) {
+        throw new ConflictException("One or more group identities already belong to different data");
+      }
     }
-    for (const group of mutations.filter((candidate) => candidate.tombstone)) {
+    const tombstones = mutations.filter((candidate) => candidate.tombstone);
+    if (tombstones.length) {
       const removed = await manager.query<Array<{ id: string }>>(`
-        update clinical.group_instance set tombstoned_at = now()
-        where id = $1 and report_id = $2 and group_id = $3 returning id
-      `, [group.id, report.id, group.groupId]);
-      if (!removed[0]) throw new ConflictException(`Group identity ${group.id} does not belong to this report and group`);
+        update clinical.group_instance saved set tombstoned_at = now()
+        from jsonb_to_recordset($2::jsonb) as incoming(id uuid, group_id text)
+        where saved.id = incoming.id and saved.report_id = $1 and saved.group_id = incoming.group_id
+        returning saved.id
+      `, [report.id, JSON.stringify(tombstones.map((group) => ({ id: group.id, group_id: group.groupId })))]);
+      if (affectedRowCount(removed) !== tombstones.length) {
+        throw new ConflictException("One or more group identities do not belong to this report and group");
+      }
     }
   }
 
@@ -853,21 +935,84 @@ export class DraftReportService {
     command: SaveDraftReportCommand,
     occurrence: DraftOccurrenceMutation
   ): Promise<void> {
-    if (occurrence.tombstone) {
+    const metadata = occurrence.tombstone
+      ? new Map<string, ElementMetadata>()
+      : await this.elementMetadataBatch(manager, report, [occurrence]);
+    await this.applyOccurrences(manager, report, command, [occurrence], metadata);
+  }
+
+  private async applyOccurrences(
+    manager: EntityManager,
+    report: ReportRow,
+    command: SaveDraftReportCommand,
+    occurrences: ReadonlyArray<DraftOccurrenceMutation>,
+    metadataByOccurrence: ReadonlyMap<string, ElementMetadata>
+  ): Promise<void> {
+    const tombstones = occurrences.filter((occurrence) => occurrence.tombstone);
+    if (tombstones.length) {
       const removed = await manager.query<Array<{ id: string }>>(`
-        update clinical.element_occurrence set tombstoned_at = now(), updated_at = now(), author_id = $4,
-          provenance_kind = 'clinician',
-          provenance_detail = coalesce(provenance_detail, '{}'::jsonb) || $5::jsonb
-        where id = $1 and report_id = $2 and element_id = $3 returning id
-      `, [occurrence.id, report.id, occurrence.elementId, command.authorId,
-        JSON.stringify({ ownershipAction: "clear", clinicianValue: null })]);
-      if (!removed[0]) throw new ConflictException(`Occurrence identity ${occurrence.id} does not belong to this report and element`);
-      return;
+        update clinical.element_occurrence saved
+        set tombstoned_at = now(), updated_at = now(), author_id = $3,
+            provenance_kind = 'clinician',
+            provenance_detail = coalesce(saved.provenance_detail, '{}'::jsonb) ||
+              '{"ownershipAction":"clear","clinicianValue":null}'::jsonb
+        from jsonb_to_recordset($2::jsonb) as incoming(id uuid, element_id text)
+        where saved.id = incoming.id and saved.report_id = $1 and saved.element_id = incoming.element_id
+        returning saved.id
+      `, [report.id, JSON.stringify(tombstones.map((occurrence) => ({
+        id: occurrence.id, element_id: occurrence.elementId
+      }))), command.authorId]);
+      if (affectedRowCount(removed) !== tombstones.length) {
+        throw new ConflictException("One or more occurrence identities do not belong to this report and element");
+      }
     }
-    const metadata = await this.elementMetadata(manager, report, occurrence);
-    const value = occurrence.value!;
-    this.validateDatatype(value, metadata, occurrence.elementId);
-    const columns = this.valueColumns(value);
+
+    const upserts = occurrences.filter((occurrence) => !occurrence.tombstone);
+    if (!upserts.length) return;
+    const rows = upserts.map((occurrence) => {
+      const metadata = metadataByOccurrence.get(occurrence.id)!;
+      const value = occurrence.value!;
+      this.validateDatatype(value, metadata, occurrence.elementId);
+      const columns = this.valueColumns(value);
+      return {
+        id: occurrence.id,
+        group_instance_id: occurrence.groupInstanceId ?? null,
+        element_identity_id: metadata.element_identity_id,
+        element_id: occurrence.elementId,
+        form_field_id: occurrence.formFieldId ?? null,
+        ordinal: occurrence.ordinal ?? 0,
+        analytical_repeatable: metadata.analytical_repeatable,
+        identifying: metadata.identifying,
+        value_kind: value.kind,
+        value_text: columns.valueText,
+        value_integer: columns.valueInteger,
+        value_numeric: columns.valueNumeric,
+        value_boolean: columns.valueBoolean,
+        value_date: columns.valueDate,
+        value_datetime: columns.valueDatetime,
+        value_time: columns.valueTime,
+        value_duration: columns.valueDuration,
+        value_binary: columns.valueBinary instanceof Buffer ? columns.valueBinary.toString("base64") : null,
+        value_lexical: columns.valueLexical,
+        value_utc_offset_minutes: columns.valueUtcOffsetMinutes,
+        value_precision: columns.valuePrecision,
+        code: columns.code,
+        code_system: columns.codeSystem,
+        code_display: columns.codeDisplay,
+        terminology_version: columns.terminologyVersion,
+        absence_code: columns.absenceCode,
+        absence_display: columns.absenceDisplay,
+        source_attributes: occurrence.sourceAttributes ?? null,
+        correlation_id: occurrence.correlationId ?? null,
+        provenance_kind: occurrence.provenanceKind === "demo" ? "demo" : "clinician",
+        provenance_detail: occurrence.provenanceKind === "demo"
+          ? { ...occurrence.provenanceDetail, ownershipAction: "demo-populate", clinicianValue: occurrence.value }
+          : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value },
+        documented_time: occurrence.documentedTime ?? null,
+        documented_utc_offset_minutes: occurrence.documentedUtcOffsetMinutes ?? null,
+        documented_precision: occurrence.documentedPrecision ?? null
+      };
+    });
     const saved = await manager.query<Array<{ id: string }>>(`
       insert into clinical.element_occurrence
         (id, report_id, catalog_release_id, group_instance_id, element_identity_id, element_id,
@@ -877,10 +1022,30 @@ export class DraftReportService {
          value_precision, code, code_system, code_display, terminology_version, absence_code,
          absence_display, source_attributes, correlation_id, provenance_kind, provenance_detail,
          documented_time, documented_utc_offset_minutes, documented_precision, author_id)
-      values
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-         $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
-         $25, $26, $27, $28, $29, $30::jsonb, $31, $32, $33::jsonb, $34, $35, $36, $37)
+      select incoming.id, $1, $2, incoming.group_instance_id, incoming.element_identity_id,
+             incoming.element_id, incoming.form_field_id, incoming.ordinal,
+             incoming.analytical_repeatable, incoming.identifying, incoming.value_kind,
+             incoming.value_text, incoming.value_integer, incoming.value_numeric,
+             incoming.value_boolean, incoming.value_date, incoming.value_datetime,
+             incoming.value_time, incoming.value_duration,
+             case when incoming.value_binary is null then null else decode(incoming.value_binary, 'base64') end,
+             incoming.value_lexical, incoming.value_utc_offset_minutes, incoming.value_precision,
+             incoming.code, incoming.code_system, incoming.code_display,
+             incoming.terminology_version, incoming.absence_code, incoming.absence_display,
+             incoming.source_attributes, incoming.correlation_id, incoming.provenance_kind,
+             incoming.provenance_detail, incoming.documented_time,
+             incoming.documented_utc_offset_minutes, incoming.documented_precision, $3
+      from jsonb_to_recordset($4::jsonb) as incoming(
+        id uuid, group_instance_id uuid, element_identity_id uuid, element_id text,
+        form_field_id uuid, ordinal integer, analytical_repeatable boolean, identifying boolean,
+        value_kind text, value_text text, value_integer bigint, value_numeric numeric,
+        value_boolean boolean, value_date date, value_datetime timestamptz, value_time time,
+        value_duration interval, value_binary text, value_lexical text,
+        value_utc_offset_minutes smallint, value_precision text, code text, code_system text,
+        code_display text, terminology_version text, absence_code text, absence_display text,
+        source_attributes jsonb, correlation_id text, provenance_kind text, provenance_detail jsonb,
+        documented_time timestamptz, documented_utc_offset_minutes smallint,
+        documented_precision text)
       on conflict (id) do update set
         group_instance_id = excluded.group_instance_id, form_field_id = excluded.form_field_id,
         ordinal = excluded.ordinal, value_kind = excluded.value_kind,
@@ -904,63 +1069,56 @@ export class DraftReportService {
         and clinical.element_occurrence.element_identity_id = excluded.element_identity_id
         and clinical.element_occurrence.element_id = excluded.element_id
       returning id
-    `, [occurrence.id, report.id, report.catalog_release_id, occurrence.groupInstanceId ?? null,
-      metadata.element_identity_id, occurrence.elementId, occurrence.formFieldId ?? null,
-      occurrence.ordinal ?? 0, metadata.analytical_repeatable, metadata.identifying, value.kind,
-      columns.valueText, columns.valueInteger, columns.valueNumeric, columns.valueBoolean,
-      columns.valueDate, columns.valueDatetime, columns.valueTime, columns.valueDuration,
-      columns.valueBinary, columns.valueLexical, columns.valueUtcOffsetMinutes,
-      columns.valuePrecision, columns.code, columns.codeSystem, columns.codeDisplay,
-      columns.terminologyVersion, columns.absenceCode, columns.absenceDisplay,
-      occurrence.sourceAttributes ? JSON.stringify(occurrence.sourceAttributes) : null,
-      occurrence.correlationId ?? null, occurrence.provenanceKind === "demo" ? "demo" : "clinician",
-      JSON.stringify(occurrence.provenanceKind === "demo"
-        ? { ...occurrence.provenanceDetail, ownershipAction: "demo-populate", clinicianValue: occurrence.value }
-        : { ownershipAction: "create-edit-or-affirm", clinicianValue: occurrence.value }),
-      occurrence.documentedTime ?? null, occurrence.documentedUtcOffsetMinutes ?? null,
-      occurrence.documentedPrecision ?? null, command.authorId]);
-    if (!saved[0]) throw new ConflictException(`Occurrence identity ${occurrence.id} already belongs to different data`);
+    `, [report.id, report.catalog_release_id, command.authorId, JSON.stringify(rows)]);
+    if (affectedRowCount(saved) !== upserts.length) {
+      throw new ConflictException("One or more occurrence identities already belong to different data");
+    }
   }
 
-  private async elementMetadata(
+  private async elementMetadataBatch(
     manager: EntityManager,
     report: ReportRow,
-    occurrence: DraftOccurrenceMutation
-  ): Promise<ElementMetadata> {
+    occurrences: ReadonlyArray<DraftOccurrenceMutation>
+  ): Promise<Map<string, ElementMetadata>> {
+    if (!occurrences.length) return new Map();
+    const elementIds = [...new Set(occurrences.map(({ elementId }) => elementId))];
     const standard = await manager.query<ElementMetadata[]>(`
-      select e.element_identity_id, e.base_datatype,
+      select e.element_id, e.element_identity_id, e.base_datatype,
              (m.analytical_location = 'repeatable') as analytical_repeatable,
              m.identifying,
              array(select o.source_kind || ':' || o.code from catalog.element_option o
                    where o.release_id = e.release_id and o.element_id = e.element_id) as allowed_absence_states
       from catalog.element_definition e
       join catalog.analytics_element_mapping m on m.release_id = e.release_id and m.element_id = e.element_id
-      where e.release_id = $1 and e.element_id = $2
-    `, [report.catalog_release_id, occurrence.elementId]);
-    let metadata = standard[0];
-    if (!metadata && occurrence.formFieldId) {
-      const custom = await manager.query<ElementMetadata[]>(`
-        select ced.id as element_identity_id, ced.base_datatype,
+      where e.release_id = $1 and e.element_id = any($2::text[])
+    `, [report.catalog_release_id, elementIds]);
+    const standardByElement = new Map(standard.map((metadata) => [metadata.element_id!, metadata]));
+    const formFieldIds = [...new Set(occurrences.flatMap(({ formFieldId }) => formFieldId ? [formFieldId] : []))];
+    const fields = formFieldIds.length ? await manager.query<ElementMetadata[]>(`
+        select ff.id as form_field_id, ced.namespace || '.' || ced.slug as element_id,
+               coalesce(ff.catalog_element_identity_id, ff.custom_element_definition_id) as element_identity_id,
+               ced.base_datatype,
                ff.analytical_repeatable, ced.identifying,
                array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff
-        join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
-        where ff.id = $1 and ff.form_version_id = $2
-          and ced.namespace || '.' || ced.slug = $3
-      `, [occurrence.formFieldId, report.form_version_id, occurrence.elementId]);
-      metadata = custom[0];
-    }
-    if (!metadata) throw new UnprocessableEntityException(`Element ${occurrence.elementId} is not in the pinned catalog or form`);
-    if (occurrence.formFieldId) {
-      const field = await manager.query<Array<{ identity_id: string }>>(`
-        select coalesce(catalog_element_identity_id, custom_element_definition_id) as identity_id
-        from forms.form_field where id = $1 and form_version_id = $2
-      `, [occurrence.formFieldId, report.form_version_id]);
-      if (!field[0] || field[0].identity_id !== metadata.element_identity_id) {
+        left join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
+        where ff.id = any($1::uuid[]) and ff.form_version_id = $2
+      `, [formFieldIds, report.form_version_id]) : [];
+    const fieldsById = new Map(fields.map((metadata) => [metadata.form_field_id!, metadata]));
+    const result = new Map<string, ElementMetadata>();
+    for (const occurrence of occurrences) {
+      let metadata = standardByElement.get(occurrence.elementId);
+      const field = occurrence.formFieldId ? fieldsById.get(occurrence.formFieldId) : undefined;
+      if (!metadata && field?.base_datatype && field.element_id === occurrence.elementId) metadata = field;
+      if (!metadata) {
+        throw new UnprocessableEntityException(`Element ${occurrence.elementId} is not in the pinned catalog or form`);
+      }
+      if (occurrence.formFieldId && (!field || field.element_identity_id !== metadata.element_identity_id)) {
         throw new UnprocessableEntityException(`formFieldId does not map to ${occurrence.elementId}`);
       }
+      result.set(occurrence.id, metadata);
     }
-    return metadata;
+    return result;
   }
 
   private validateDatatype(value: DraftValue, metadata: ElementMetadata, elementId: string): void {

@@ -126,6 +126,11 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
     revision += 1;
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: configured.report.id, status: "draft", revision }) });
   });
+  await page.route(`**/api/reports/${configured.report.id}/sign`, (route) => route.fulfill({
+    status: 201,
+    contentType: "application/json",
+    body: JSON.stringify({ id: configured.report.id, status: "signed", revision: revision + 1 }),
+  }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();

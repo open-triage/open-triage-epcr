@@ -429,9 +429,9 @@ input, select, textarea { touch-action: manipulation; }
   .stationary-inline-group { margin-left: 0; }
   .session-bar { grid-template-columns: auto minmax(0, 1fr) auto; }
   .presentation-selector { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: min(280px, 100%); }
-  .authenticated-shell .safety-notice { top: 98px; }
-  .authenticated-shell .quick-actions { top: 136px; }
-  .stationary-presentation { --stationary-top-bars: 136px; --stationary-call-header-height: 124px; }
+  .authenticated-shell .safety-notice { position: relative; top: auto; }
+  .authenticated-shell .quick-actions { top: 98px; }
+  .stationary-presentation { --stationary-top-bars: 98px; --stationary-call-header-height: 124px; }
   .stationary-presentation .encounter-header { grid-template-columns: 1fr auto; padding: 7px 10px; }
   .encounter-summary { grid-template-columns: repeat(2, minmax(90px, 1fr)); gap: 5px 10px; }
 }

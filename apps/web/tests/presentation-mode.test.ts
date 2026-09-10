@@ -34,4 +34,6 @@ test("capabilities control available modes and safe session defaults", () => {
   assert.equal(defaultPresentationMode(["installation:administer", "clinical:document"]), "mobile");
   assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["clinical:document"]), "mobile");
   assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["installation:administer"]), "admin");
+  assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["clinical:document"]), "stationary");
+  assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["installation:administer"]), "admin");
 });

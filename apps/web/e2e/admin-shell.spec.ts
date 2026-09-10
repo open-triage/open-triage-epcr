@@ -63,7 +63,7 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByText("Ongoing reports", { exact: true })).toBeVisible();
   await expect(page.getByText("10 MB", { exact: true })).toBeVisible();
   await expect(page.getByText("Used by new reports", { exact: true })).toHaveCount(0);
-  await expect(page.getByText(/Signed in as .* for/)).toHaveCount(0);
+  await expect(page.locator(".session-identity")).toHaveText("Signed in as Installation Owner");
   await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
   await page.getByRole("button", { name: "Users", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();

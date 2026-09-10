@@ -87,7 +87,7 @@ test("single-occurrence nested groups are flattened into their parent dialog", a
   await expect(etco2).toHaveValue("35");
 });
 
-test("removing the final required table row removes it and leaves bottom-rim validation", async ({ page }) => {
+test("removing the final required table row removes it and leaves scoped inline validation", async ({ page }) => {
   await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(demoOpenAssignment),
@@ -108,10 +108,8 @@ test("removing the final required table row removes it and leaves bottom-rim val
   await expect(procedures).toHaveClass(/stationary-validation-state error/);
   const message = procedures.getByText(/ProcedureGroup requires at least 1 occurrence/);
   await expect(message).toBeVisible();
-  const [box, text] = await Promise.all([procedures.boundingBox(), message.boundingBox()]);
-  expect(box).not.toBeNull();
-  expect(text).not.toBeNull();
-  expect(Math.abs((text!.y + text!.height / 2) - (box!.y + box!.height))).toBeLessThanOrEqual(3);
+  await expect(procedures.locator(".stationary-validation-messages")).toContainText("ProcedureGroup requires at least 1 occurrence");
+  await expect(procedures.locator(".stationary-table-scroll ~ .stationary-validation-messages")).toHaveCount(1);
 });
 
 test("nested repeating rows remain scoped to their originating parent workflow", async ({ page }) => {

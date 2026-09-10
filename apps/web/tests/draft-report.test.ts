@@ -197,6 +197,77 @@ test("signing sends the current revision, clinician attestation, and warning ack
   }
 });
 
+test("local demo sessions routed through the API still submit signatures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  let requestUrl: string | undefined;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestUrl = String(input);
+    return Response.json({ id: reportId, status: "signed" }, { status: 201 });
+  }) as typeof fetch;
+  try {
+    await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+    assert.equal(requestUrl, `/api/reports/${reportId}/sign`);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  }
+});
+
+test("the browser-only static demo never submits a signature to a nonexistent API", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  globalThis.fetch = (async () => { throw new Error("the static build must not call a signing API"); }) as typeof fetch;
+  try {
+    await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  }
+});
+
+test("signing surfaces revision, validation, session, server, and network failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const sign = () => signDraftReport(
+    "token", reportId, 9, "32000000-0000-4000-8000-000000000003", [],
+  );
+  try {
+    for (const [status, message] of [
+      [409, /record changed/i],
+      [422, /server validation/i],
+      [401, /session has ended/i],
+      [503, /could not be signed/i],
+    ] as const) {
+      globalThis.fetch = (async () => new Response(null, { status })) as typeof fetch;
+      await assert.rejects(sign(), message);
+    }
+    globalThis.fetch = (async () => { throw new TypeError("network unavailable"); }) as typeof fetch;
+    await assert.rejects(sign(), /check your connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  }
+});
+
 test("timeline edits become typed revisioned API mutations without changing their identities", () => {
   let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "note-1", date: "2026-09-03", time: "12:01" });
   shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Patient reassessed" });

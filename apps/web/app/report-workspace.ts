@@ -47,6 +47,7 @@ export interface ReportWorkspace {
   readonly dispatchCancellation: DispatchCancellation | null;
   readonly conflictError: string | null;
   readonly flushSave: () => Promise<void>;
+  readonly completeReport: () => void;
   readonly resolveConflict: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => Promise<void>;
 }
 
@@ -88,18 +89,21 @@ export function useReportWorkspace({
   const skipInitialQueue = useRef(false);
   const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
+  const completed = useRef(false);
 
   useEffect(() => { shellRef.current = shell; }, [shell]);
   useEffect(() => { presentationRef.current = presentationMode; }, [presentationMode]);
 
   const completeReport = useCallback(() => {
     if (!report) return;
+    completed.current = true;
     clearShellState(window.localStorage, report.id);
     removeSignedOfflineReport(window.localStorage, report.id);
     onReportCompleted();
   }, [onReportCompleted, report]);
 
   useEffect(() => {
+    completed.current = false;
     recoverConflictingQueue.current = false;
     conflictRecoveryUsed.current = false;
     persistedDraft.current = report?.document
@@ -187,7 +191,7 @@ export function useReportWorkspace({
   }, [completeReport, onSessionEnded, report, session.accessToken]);
 
   useEffect(() => {
-    if (!restored) return;
+    if (!restored || completed.current) return;
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
     cacheLocalReportDocument(window.localStorage, report.id, shell.encounter.document);
@@ -330,5 +334,5 @@ export function useReportWorkspace({
     }
   }, [report, session.accessToken]);
 
-  return { restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation, conflictError, flushSave, resolveConflict };
+  return { restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation, conflictError, flushSave, completeReport, resolveConflict };
 }

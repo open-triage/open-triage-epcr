@@ -43,6 +43,10 @@ async function installRoutes(context: BrowserContext, allowInitialSave: boolean)
     contentType: "application/json",
     body: JSON.stringify(openedAssignment),
   }));
+  await context.route("**/demo-open-assignment.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify(openedAssignment),
+  }));
   await context.route(`**/api/reports/${reportId}/reopen`, (route) => route.abort("internetdisconnected"));
   await context.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {
     if (!allowInitialSave) return route.abort("internetdisconnected");
