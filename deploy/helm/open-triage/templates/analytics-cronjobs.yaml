@@ -20,8 +20,15 @@ spec:
           containers:
             - name: projector
               image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+              imagePullPolicy: {{ .Values.api.image.pullPolicy }}
               command: ["npm", "run", "project", "-w", "@open-triage/database"]
               envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
+              env:
+                - name: ANALYTICS_PROJECTOR_BATCH_SIZE
+                  value: {{ .Values.analytics.batchSize | quote }}
+                - name: ANALYTICS_PROJECTOR_MAX_ATTEMPTS
+                  value: {{ .Values.analytics.maxAttempts | quote }}
+              resources: {{- toYaml .Values.analytics.resources | nindent 16 }}
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -44,6 +51,11 @@ spec:
           containers:
             - name: health
               image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+              imagePullPolicy: {{ .Values.api.image.pullPolicy }}
               command: ["npm", "run", "project:health", "-w", "@open-triage/database"]
               envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
+              env:
+                - name: ANALYTICS_PROJECTOR_FRESHNESS_TARGET_SECONDS
+                  value: {{ .Values.analytics.freshnessTargetSeconds | quote }}
+              resources: {{- toYaml .Values.analytics.healthResources | nindent 16 }}
 {{- end }}
