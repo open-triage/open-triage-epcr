@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
@@ -209,86 +209,99 @@ export class AssignedCallsService {
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
     const session = this.sessions.get(accessToken);
-    return this.dataSource.transaction(async (manager) => {
-      const assignments = await manager.query<OpenableAssignmentRow[]>(`
-        select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
-               organization.deployment_timezone as agency_time_zone,
-               ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-               ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
-        from clinical.call_assignment ca
-        join app_identity.operational_unit ou
-          on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
-        join app_identity.organization organization on organization.id = ca.organization_id
-        where ca.id = $1 and ca.organization_id = $2 and ou.active
-          and exists (
-            select 1 from app_identity.unit_clinician uc
-            where uc.organization_id = ca.organization_id and uc.unit_id = ca.unit_id
-              and uc.user_id = $3
-          )
-        for update of ca
-      `, [assignmentId, session.organization.id, session.user.id]);
-      const assignment = assignments[0];
-      if (!assignment) throw new NotFoundException(`Assignment ${assignmentId} was not found`);
-      if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
-      if (assignment.status === "opened") {
-        if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
-        return this.openResult(manager, assignment, assignment.report_id, session.user.id, null);
-      }
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const assignments = await manager.query<OpenableAssignmentRow[]>(`
+          select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
+                 organization.deployment_timezone as agency_time_zone,
+                 ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
+                 ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
+          from clinical.call_assignment ca
+          join app_identity.operational_unit ou
+            on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
+          join app_identity.organization organization on organization.id = ca.organization_id
+          where ca.id = $1 and ca.organization_id = $2 and ou.active
+            and exists (
+              select 1 from app_identity.unit_clinician uc
+              where uc.organization_id = ca.organization_id and uc.unit_id = ca.unit_id
+                and uc.user_id = $3
+            )
+          for update of ca
+        `, [assignmentId, session.organization.id, session.user.id]);
+        const assignment = assignments[0];
+        if (!assignment) throw new NotFoundException(`Assignment ${assignmentId} was not found`);
+        if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
+        if (assignment.status === "opened") {
+          if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
+          return this.openResult(manager, assignment, assignment.report_id, session.user.id, null);
+        }
 
-      const versions = await manager.query<Array<{ id: string; catalog_release_id: string }>>(`
-        select fv.id, fv.catalog_release_id
-        from forms.form_version fv
-        join forms.form f on f.id = fv.form_id
-        where fv.form_id = $1 and f.organization_id = $2 and fv.status = 'published'
-        order by fv.version desc
-        limit 1
-      `, [assignment.default_form_id, session.organization.id]);
-      const version = versions[0];
-      if (!version) throw new ConflictException("The unit default form has no published version");
+        const versions = await manager.query<Array<{ id: string; catalog_release_id: string }>>(`
+          select fv.id, fv.catalog_release_id
+          from forms.form_version fv
+          join forms.form f on f.id = fv.form_id
+          where fv.form_id = $1 and f.organization_id = $2 and fv.status = 'published'
+          order by fv.version desc
+          limit 1
+        `, [assignment.default_form_id, session.organization.id]);
+        const version = versions[0];
+        if (!version) throw new ConflictException("The unit default form has no published version");
 
-      const agencyVersions = await manager.query<Array<{ id: string }>>(`
-        select id from app_identity.agency_demographic_version
-        where organization_id = $1 and catalog_release_id = $2 and effective_from <= now()
-        order by version desc limit 1
-      `, [session.organization.id, version.catalog_release_id]);
-      const agencyVersion = agencyVersions[0];
-      if (!agencyVersion) throw new ConflictException("No compatible agency demographics are available");
+        const agencyVersions = await manager.query<Array<{ id: string }>>(`
+          select id from app_identity.agency_demographic_version
+          where organization_id = $1 and catalog_release_id = $2 and effective_from <= now()
+          order by version desc limit 1
+        `, [session.organization.id, version.catalog_release_id]);
+        const agencyVersion = agencyVersions[0];
+        if (!agencyVersion) throw new ConflictException("No compatible agency demographics are available");
 
-      const patientId = randomUUID();
-      const reportId = randomUUID();
-      const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
-      const patientKey = derivePatientKey(patientKeyConfig, session.organization.id, patientId);
-      await manager.query(`
-        insert into clinical.patient
-          (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
-        values ($1, $2, 'unknown', $3, $4)
-      `, [patientId, session.organization.id, patientKey, patientKeyConfig.keyVersion]);
-      await manager.query(`
-        insert into clinical.report
-          (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-           form_version_id, catalog_release_id, documenting_user_id, synthetic)
-        values ($1, $2, $3, $4, $5, $6, $7, $8, true)
-      `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
-        version.id, version.catalog_release_id, session.user.id]);
-      const receipts = assignment.dispatch_receipt_id
-        ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
-            select source_payload from clinical.dispatch_receipt
-            where id = $1 and organization_id = $2
-          `, [assignment.dispatch_receipt_id, session.organization.id])
-        : [];
-      await seedDispatchEncounter(manager, reportId, version.catalog_release_id, session.user.id,
-        receipts[0]?.source_payload ?? null, `PCR-${reportId}`);
-      await manager.query(`
-        update clinical.call_assignment
-        set status = 'opened', report_id = $2, updated_at = now()
-        where id = $1
-      `, [assignment.id, reportId]);
+        const patientId = randomUUID();
+        const reportId = randomUUID();
+        const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
+        const patientKey = derivePatientKey(patientKeyConfig, session.organization.id, patientId);
+        await manager.query(`
+          insert into clinical.patient
+            (id, organization_id, identity_state, pseudonymous_key, pseudonymous_key_version)
+          values ($1, $2, 'unknown', $3, $4)
+        `, [patientId, session.organization.id, patientKey, patientKeyConfig.keyVersion]);
+        await manager.query(`
+          insert into clinical.report
+            (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+             form_version_id, catalog_release_id, documenting_user_id, synthetic)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+        `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
+          version.id, version.catalog_release_id, session.user.id]);
+        const receipts = assignment.dispatch_receipt_id
+          ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
+              select source_payload from clinical.dispatch_receipt
+              where id = $1 and organization_id = $2
+            `, [assignment.dispatch_receipt_id, session.organization.id])
+          : [];
+        await seedDispatchEncounter(manager, reportId, version.catalog_release_id, session.user.id,
+          receipts[0]?.source_payload ?? null, `PCR-${reportId}`);
+        await manager.query(`
+          update clinical.call_assignment
+          set status = 'opened', report_id = $2, updated_at = now()
+          where id = $1
+        `, [assignment.id, reportId]);
 
-      const replacement = assignment.synthetic
-        ? await this.createReplacement(manager, assignment)
-        : null;
-      return this.openResult(manager, assignment, reportId, session.user.id, replacement);
-    });
+        const replacement = assignment.synthetic
+          ? await this.createReplacement(manager, assignment)
+          : null;
+        return this.openResult(manager, assignment, reportId, session.user.id, replacement);
+      });
+    } catch (error) {
+      this.rethrowDatabaseConflict(error);
+    }
+  }
+
+  private rethrowDatabaseConflict(error: unknown): never {
+    if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
+    if (typeof error === "object" && error !== null && "code" in error &&
+        ["23503", "23505", "23514", "23P01", "40001", "40P01"].includes(String(error.code))) {
+      throw new ConflictException("The call-opening command conflicts with existing clinical data");
+    }
+    throw error;
   }
 
   private async createReplacement(manager: EntityManager, source: OpenableAssignmentRow): Promise<AssignedCall> {

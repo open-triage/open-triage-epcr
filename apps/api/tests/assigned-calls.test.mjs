@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { UnauthorizedException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { AssignedCallsController } from "../dist/calls/assigned-calls.controller.js";
 import { AssignedCallsService, syntheticReplacementPayload } from "../dist/calls/assigned-calls.service.js";
 import { randomSyntheticDispatchPayload, SYNTHETIC_DISPATCH_PAYLOAD_COUNT, syntheticDispatchPayloads } from "../dist/calls/synthetic-dispatch-payloads.js";
@@ -224,4 +224,38 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(pseudonymousKey, derivePatientKey(patientKeyConfig, organizationId, patientId));
   assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
   assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
+});
+
+test("a serialization failure while opening an assignment surfaces as a retriable conflict, not a raw 500", async () => {
+  const dataSource = {
+    transaction: async () => {
+      const error = new Error("could not serialize access due to concurrent update");
+      error.code = "40001";
+      throw error;
+    }
+  };
+  const sessions = { get: (token) => {
+    assert.equal(token, session.accessToken);
+    return session;
+  } };
+  const service = new AssignedCallsService(dataSource, sessions);
+
+  await assert.rejects(
+    service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
+    (error) => error instanceof ConflictException && error.getStatus() === 409
+  );
+});
+
+test("a not-found error while opening an assignment keeps its original status instead of becoming a conflict", async () => {
+  const dataSource = { transaction: (work) => work({ query: async () => [] }) };
+  const sessions = { get: (token) => {
+    assert.equal(token, session.accessToken);
+    return session;
+  } };
+  const service = new AssignedCallsService(dataSource, sessions);
+
+  await assert.rejects(
+    service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
+    (error) => error instanceof NotFoundException && error.getStatus() === 404
+  );
 });

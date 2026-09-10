@@ -63,110 +63,114 @@ export class FormPublicationService {
       this.rethrowValidation(error);
     }
 
-    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
-      const rows = await manager.query<FormVersionRow[]>(`
-        select fv.id, fv.status, fv.canonical_definition, fv.definition_sha256,
-               fv.published_at, fv.catalog_release_id, f.organization_id
-        from forms.form_version fv
-        join forms.form f on f.id = fv.form_id
-        where fv.id = $1
-        for update
-      `, [formVersionId]);
-      const version = rows[0];
-      if (!version) throw new NotFoundException(`Form version ${formVersionId} was not found`);
+    try {
+      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        const rows = await manager.query<FormVersionRow[]>(`
+          select fv.id, fv.status, fv.canonical_definition, fv.definition_sha256,
+                 fv.published_at, fv.catalog_release_id, f.organization_id
+          from forms.form_version fv
+          join forms.form f on f.id = fv.form_id
+          where fv.id = $1
+          for update
+        `, [formVersionId]);
+        const version = rows[0];
+        if (!version) throw new NotFoundException(`Form version ${formVersionId} was not found`);
 
-      const digest = canonicalDefinitionSha256(version.canonical_definition);
-      if (version.status === "published") {
-        if (command.definitionSha256 !== version.definition_sha256 || digest !== version.definition_sha256) {
-          throw new ConflictException("The published form version has different canonical content");
+        const digest = canonicalDefinitionSha256(version.canonical_definition);
+        if (version.status === "published") {
+          if (command.definitionSha256 !== version.definition_sha256 || digest !== version.definition_sha256) {
+            throw new ConflictException("The published form version has different canonical content");
+          }
+          return this.publishedResult(manager, version.id, version.definition_sha256, version.published_at);
         }
-        return this.publishedResult(manager, version.id, version.definition_sha256, version.published_at);
-      }
-      if (command.definitionSha256 !== digest || version.definition_sha256 !== digest) {
-        throw new ConflictException("The draft content does not match its expected canonical SHA-256 digest");
-      }
+        if (command.definitionSha256 !== digest || version.definition_sha256 !== digest) {
+          throw new ConflictException("The draft content does not match its expected canonical SHA-256 digest");
+        }
 
-      let definition: CanonicalFormDefinition;
-      try {
-        definition = validateCanonicalFormDefinition(version.canonical_definition);
-      } catch (error) {
-        this.rethrowValidation(error);
-      }
+        let definition: CanonicalFormDefinition;
+        try {
+          definition = validateCanonicalFormDefinition(version.canonical_definition);
+        } catch (error) {
+          this.rethrowValidation(error);
+        }
 
-      const publisher = await manager.query<Array<{ id: string }>>(`
-        select id from app_identity.app_user
-        where id = $1 and organization_id = $2 and active
-      `, [command.publishedBy, version.organization_id]);
-      if (!publisher[0]) {
-        throw new UnprocessableEntityException("publishedBy must be an active user in the form organization");
-      }
+        const publisher = await manager.query<Array<{ id: string }>>(`
+          select id from app_identity.app_user
+          where id = $1 and organization_id = $2 and active
+        `, [command.publishedBy, version.organization_id]);
+        if (!publisher[0]) {
+          throw new UnprocessableEntityException("publishedBy must be an active user in the form organization");
+        }
 
-      const metadata = await this.resolveMetadata(manager, version, definition);
-      await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
-      await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
-      await manager.query("delete from forms.form_field where form_version_id = $1", [version.id]);
-      await manager.query("delete from forms.form_section where form_version_id = $1", [version.id]);
-      await manager.query("delete from forms.form_locale where form_version_id = $1", [version.id]);
+        const metadata = await this.resolveMetadata(manager, version, definition);
+        await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
+        await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
+        await manager.query("delete from forms.form_field where form_version_id = $1", [version.id]);
+        await manager.query("delete from forms.form_section where form_version_id = $1", [version.id]);
+        await manager.query("delete from forms.form_locale where form_version_id = $1", [version.id]);
 
-      const fieldIds = new Map<string, string>();
-      for (const [sectionPosition, section] of definition.sections.entries()) {
-        const sectionId = randomUUID();
-        await manager.query(`
-          insert into forms.form_section
-            (id, form_version_id, stable_key, position, presentation)
-          values ($1, $2, $3, $4, $5::jsonb)
-        `, [sectionId, version.id, section.key, sectionPosition, JSON.stringify(section.presentation ?? {})]);
-
-        for (const [fieldPosition, field] of section.fields.entries()) {
-          const fieldId = randomUUID();
-          fieldIds.set(field.key, fieldId);
-          const resolved = metadata.get(field.key)!;
+        const fieldIds = new Map<string, string>();
+        for (const [sectionPosition, section] of definition.sections.entries()) {
+          const sectionId = randomUUID();
           await manager.query(`
-            insert into forms.form_field
-              (id, form_version_id, section_id, stable_key, position, source_kind,
-               catalog_element_identity_id, custom_element_definition_id, custom_group_definition_id,
-               required, analytical_repeatable, allowed_absence_states, configuration)
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb)
-          `, [
-            fieldId, version.id, sectionId, field.key, fieldPosition, field.source.kind,
-            resolved.catalogElementIdentityId, resolved.customElementDefinitionId,
-            resolved.customGroupDefinitionId, field.required ?? false, resolved.analyticalRepeatable,
-            field.allowedAbsenceStates ?? [], JSON.stringify(field.configuration ?? {})
-          ]);
-        }
-      }
+            insert into forms.form_section
+              (id, form_version_id, stable_key, position, presentation)
+            values ($1, $2, $3, $4, $5::jsonb)
+          `, [sectionId, version.id, section.key, sectionPosition, JSON.stringify(section.presentation ?? {})]);
 
-      for (const field of definition.sections.flatMap((section) => section.fields)) {
-        for (const [position, rule] of (field.rules ?? []).entries()) {
+          for (const [fieldPosition, field] of section.fields.entries()) {
+            const fieldId = randomUUID();
+            fieldIds.set(field.key, fieldId);
+            const resolved = metadata.get(field.key)!;
+            await manager.query(`
+              insert into forms.form_field
+                (id, form_version_id, section_id, stable_key, position, source_kind,
+                 catalog_element_identity_id, custom_element_definition_id, custom_group_definition_id,
+                 required, analytical_repeatable, allowed_absence_states, configuration)
+              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb)
+            `, [
+              fieldId, version.id, sectionId, field.key, fieldPosition, field.source.kind,
+              resolved.catalogElementIdentityId, resolved.customElementDefinitionId,
+              resolved.customGroupDefinitionId, field.required ?? false, resolved.analyticalRepeatable,
+              field.allowedAbsenceStates ?? [], JSON.stringify(field.configuration ?? {})
+            ]);
+          }
+        }
+
+        for (const field of definition.sections.flatMap((section) => section.fields)) {
+          for (const [position, rule] of (field.rules ?? []).entries()) {
+            await manager.query(`
+              insert into forms.form_rule
+                (form_version_id, target_field_id, rule_kind, expression, position)
+              values ($1, $2, $3, $4::jsonb, $5)
+            `, [version.id, fieldIds.get(field.key), rule.kind, JSON.stringify(rule.expression), position]);
+          }
+        }
+
+        for (const locale of definition.locales ?? []) {
           await manager.query(`
-            insert into forms.form_rule
-              (form_version_id, target_field_id, rule_kind, expression, position)
-            values ($1, $2, $3, $4::jsonb, $5)
-          `, [version.id, fieldIds.get(field.key), rule.kind, JSON.stringify(rule.expression), position]);
+            insert into forms.form_locale (form_version_id, locale, translations)
+            values ($1, $2, $3::jsonb)
+          `, [version.id, locale.locale, JSON.stringify(locale.translations)]);
         }
-      }
 
-      for (const locale of definition.locales ?? []) {
-        await manager.query(`
-          insert into forms.form_locale (form_version_id, locale, translations)
-          values ($1, $2, $3::jsonb)
-        `, [version.id, locale.locale, JSON.stringify(locale.translations)]);
-      }
-
-      const published = await manager.query<Array<{ published_at: Date | string }>>(`
-        with updated as (
-          update forms.form_version
-          set status = 'published', change_note = $2, published_by = $3, published_at = now(),
-              publication_acknowledgements = $4::jsonb
-          where id = $1 and status = 'draft'
-          returning published_at
-        )
-        select published_at from updated
-      `, [version.id, command.changeNote.trim(), command.publishedBy,
-        JSON.stringify(command.warningAcknowledgements ?? {})]);
-      if (!published[0]) throw new ConflictException("Form version is no longer a draft");
-      return this.publishedResult(manager, version.id, digest, published[0].published_at);
-    });
+        const published = await manager.query<Array<{ published_at: Date | string }>>(`
+          with updated as (
+            update forms.form_version
+            set status = 'published', change_note = $2, published_by = $3, published_at = now(),
+                publication_acknowledgements = $4::jsonb
+            where id = $1 and status = 'draft'
+            returning published_at
+          )
+          select published_at from updated
+        `, [version.id, command.changeNote.trim(), command.publishedBy,
+          JSON.stringify(command.warningAcknowledgements ?? {})]);
+        if (!published[0]) throw new ConflictException("Form version is no longer a draft");
+        return this.publishedResult(manager, version.id, digest, published[0].published_at);
+      });
+    } catch (error) {
+      this.rethrowDatabaseConflict(error);
+    }
   }
 
   private async resolveMetadata(
@@ -294,6 +298,15 @@ export class FormPublicationService {
   private rethrowValidation(error: unknown): never {
     if (error instanceof FormPublicationValidationError) {
       throw new UnprocessableEntityException({ message: error.message, findings: error.findings });
+    }
+    throw error;
+  }
+
+  private rethrowDatabaseConflict(error: unknown): never {
+    if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
+    if (typeof error === "object" && error !== null && "code" in error &&
+        ["23503", "23505", "23514", "23P01", "40001", "40P01"].includes(String(error.code))) {
+      throw new ConflictException("The form publication command conflicts with existing form data");
     }
     throw error;
   }
