@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "1.0.0",
+  "sequence": 0,
+  "mappingSha256": "db13ca85a0fb7e7fc8f485db32f165c11c6d910795a7de93dccc55f8237938ec",
+  "migration": "202608300001_initial.sql"
+}

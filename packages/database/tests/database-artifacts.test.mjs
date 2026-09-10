@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,17 @@ import {
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
+const migrationsDirectory = path.join(repoRoot, "supabase/migrations");
+const analyticsMigrationFiles = (await readdir(migrationsDirectory))
+  .filter((name) => name === "202608300001_initial.sql" || name.includes("_nemsis_analytics_"))
+  .sort();
+const analyticsMigrations = await Promise.all(
+  analyticsMigrationFiles.map((name) => readFile(path.join(migrationsDirectory, name), "utf8"))
+);
+const analyticsMigrationSql = analyticsMigrations.join("\n");
+const currentAnalyticsViewMigration = analyticsMigrations.findLast((sql) =>
+  sql.includes("-- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS")
+);
 const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
@@ -236,12 +247,16 @@ test("commits generated columns and keeps identifying values out of the default 
   const wideMappings = mapping.elements.filter((element) => element.analyticalLocation === "wide");
   for (const element of wideMappings) {
     for (const column of element.columns) {
-      assert.match(migration, new RegExp(`\\n  ${column.name} ${column.type},`));
+      assert.match(
+        analyticsMigrationSql,
+        new RegExp(`(?:\\n  ${column.name} ${column.type},|add column if not exists ${column.name} ${column.type};)`)
+      );
     }
   }
-  const viewBlock = migration.slice(
-    migration.indexOf("-- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS"),
-    migration.indexOf("-- END GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS")
+  assert.ok(currentAnalyticsViewMigration);
+  const viewBlock = currentAnalyticsViewMigration.slice(
+    currentAnalyticsViewMigration.indexOf("-- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS"),
+    currentAnalyticsViewMigration.indexOf("-- END GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS")
   );
   for (const element of wideMappings.filter((element) => element.identifying)) {
     assert.ok(element.columns.every((column) => !viewBlock.includes(`\n  ${column.name}`)));

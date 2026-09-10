@@ -1,26 +1,32 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const catalogPath = path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json");
-const migrationPath = path.join(repoRoot, "supabase/migrations/202608300001_initial.sql");
-const identifyingPath = path.join(packageRoot, "config/identifying-elements.json");
-const groupTimesPath = path.join(packageRoot, "config/repeating-group-times.json");
-const outputPath = path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json");
+function option(name, fallback) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return fallback;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} requires a path`);
+  return path.resolve(value);
+}
+
+const catalogPath = option("--catalog", path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"));
+const identifyingPath = option("--identifying", path.join(packageRoot, "config/identifying-elements.json"));
+const groupTimesPath = option("--group-times", path.join(packageRoot, "config/repeating-group-times.json"));
+const outputPath = option("--output", path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"));
+const statePath = option("--state", path.join(packageRoot, "generated/nemsis-3.5.1-analytics-migration-state.json"));
+const migrationsDirectory = option("--migrations", path.join(repoRoot, "supabase/migrations"));
 const checkOnly = process.argv.includes("--check");
 
-const WIDE_START = "  -- BEGIN GENERATED NEMSIS WIDE COLUMNS";
-const WIDE_END = "  -- END GENERATED NEMSIS WIDE COLUMNS";
 const VIEW_START = "  -- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS";
 const VIEW_END = "  -- END GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS";
 const APPLICATION_NAMESPACE = "61c2071c-f6f0-4df5-82aa-f8461ad95dd6";
 
-const [catalogText, migration, identifyingText, groupTimesText] = await Promise.all([
+const [catalogText, identifyingText, groupTimesText] = await Promise.all([
   readFile(catalogPath, "utf8"),
-  readFile(migrationPath, "utf8"),
   readFile(identifyingPath, "utf8"),
   readFile(groupTimesPath, "utf8")
 ]);
@@ -210,11 +216,6 @@ const artifact = {
 };
 const output = `${JSON.stringify(artifact, null, 2)}\n`;
 
-const generatedColumnLines = wideMappings.flatMap((mapping) =>
-  mapping.columns.map((column) => `  ${column.name} ${column.type},`)
-);
-const wideBlock = [WIDE_START, ...generatedColumnLines, WIDE_END].join("\n");
-
 const baseViewColumns = [
   "reporting_date",
   "reporting_date_source",
@@ -253,26 +254,107 @@ const viewLines = pseudonymousColumns.map(
 );
 const viewBlock = [VIEW_START, ...viewLines, VIEW_END].join("\n");
 
-function replaceGeneratedBlock(source, start, end, replacement) {
-  const startIndex = source.indexOf(start);
-  const endIndex = source.indexOf(end, startIndex);
-  if (startIndex < 0 || endIndex < 0) throw new Error(`Could not find generated block ${start}`);
-  return `${source.slice(0, startIndex)}${replacement}${source.slice(endIndex + end.length)}`;
+function columnsByName(mappingArtifact) {
+  return new Map(
+    (mappingArtifact?.elements ?? [])
+      .filter((element) => element.analyticalLocation === "wide")
+      .flatMap((element) => element.columns)
+      .map((column) => [column.name, column.type])
+  );
 }
 
-let generatedMigration = replaceGeneratedBlock(migration, WIDE_START, WIDE_END, wideBlock);
-generatedMigration = replaceGeneratedBlock(generatedMigration, VIEW_START, VIEW_END, viewBlock);
+function renderForwardMigration(previousArtifact, mappingSha256) {
+  const previousColumns = columnsByName(previousArtifact);
+  const desiredColumns = columnsByName(artifact);
+  const additions = [...desiredColumns]
+    .filter(([name]) => !previousColumns.has(name))
+    .map(([name, type]) => `alter table analytics_private.epcr add column if not exists ${name} ${type};`);
+  const typeChanges = [...desiredColumns]
+    .filter(([name, type]) => previousColumns.has(name) && previousColumns.get(name) !== type)
+    .map(([name, type]) =>
+      `alter table analytics_private.epcr alter column ${name} type ${type} using ${name}::text::${type};`
+    );
+
+  return `-- Generated from NEMSIS analytics mapping SHA-256 ${mappingSha256}.
+-- Historical columns are retained so regenerated mappings cannot discard analytical data.
+
+drop view if exists analytics.epcr;
+drop view if exists analytics.epcr_identified;
+
+${[...additions, ...typeChanges].join("\n") || "-- No private wide-table column changes are required."}
+
+create view analytics.epcr
+with (security_barrier = true)
+as
+select
+${viewBlock}
+from analytics_private.epcr;
+
+create view analytics.epcr_identified
+with (security_barrier = true)
+as select * from analytics_private.epcr;
+
+grant select on analytics.epcr to open_triage_analyst, open_triage_identified_analyst;
+grant select on analytics.epcr_identified to open_triage_identified_analyst;
+
+comment on view analytics.epcr is 'One effective signed ePCR row; direct identifiers and narrative are excluded.';
+comment on view analytics.epcr_identified is 'Privileged one-row-per-ePCR view including identifying values and narrative.';
+`;
+}
+
+const mappingSha256 = createHash("sha256").update(output).digest("hex");
+const [committedOutput, stateText] = await Promise.all([
+  readFile(outputPath, "utf8").catch(() => ""),
+  readFile(statePath, "utf8").catch(() => "")
+]);
+const state = stateText ? JSON.parse(stateText) : null;
+const committedMappingSha256 = committedOutput ? createHash("sha256").update(committedOutput).digest("hex") : null;
+const stateTracksCommittedOutput = Boolean(
+  state &&
+  state.mappingSha256 === committedMappingSha256 &&
+  Number.isSafeInteger(state.sequence) &&
+  state.sequence >= 0 &&
+  typeof state.migration === "string"
+);
+const stateIsCurrent = stateTracksCommittedOutput && committedMappingSha256 === mappingSha256;
 
 if (checkOnly) {
-  const committedOutput = await readFile(outputPath, "utf8").catch(() => "");
-  if (committedOutput !== output || generatedMigration !== migration) {
+  if (committedOutput !== output || !stateIsCurrent) {
     console.error("NEMSIS database artifacts are stale. Run: npm run generate -w @open-triage/database");
     process.exitCode = 1;
+  } else {
+    await readFile(path.join(migrationsDirectory, state.migration), "utf8");
+    console.log("NEMSIS analytics mappings have no changes.");
   }
+} else if (committedOutput === output && stateIsCurrent) {
+  await readFile(path.join(migrationsDirectory, state.migration), "utf8");
+  console.log("NEMSIS analytics mappings have no changes; no migration generated.");
 } else {
+  if (committedOutput && !stateTracksCommittedOutput) {
+    throw new Error("The committed analytics mapping does not match its migration state; restore both before generating");
+  }
+  const previousArtifact = committedOutput ? JSON.parse(committedOutput) : null;
+  const sequence = (state?.sequence ?? 0) + 1;
+  if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("Invalid analytics migration sequence");
+  const version = (30000000000000n + BigInt(sequence)).toString();
+  const migrationName = `${version}_nemsis_analytics_${mappingSha256.slice(0, 12)}.sql`;
+  const migrationPath = path.join(migrationsDirectory, migrationName);
+  const migration = renderForwardMigration(previousArtifact, mappingSha256);
+  await mkdir(migrationsDirectory, { recursive: true });
+  try {
+    await writeFile(migrationPath, migration, { flag: "wx" });
+  } catch (error) {
+    if (error?.code !== "EEXIST" || await readFile(migrationPath, "utf8") !== migration) throw error;
+  }
+  await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, output);
-  await writeFile(migrationPath, generatedMigration);
+  await writeFile(statePath, `${JSON.stringify({
+    schemaVersion: "1.0.0",
+    sequence,
+    mappingSha256,
+    migration: migrationName
+  }, null, 2)}\n`);
   console.log(
-    `Generated ${wideMappings.length} wide and ${repeatMappings.length} repeatable NEMSIS mappings; ${timeMappings.filter((mapping) => mapping.flaggedCandidateMismatch).length} repeating groups have zero or multiple local time candidates.`
+    `Generated ${migrationName} for ${wideMappings.length} wide and ${repeatMappings.length} repeatable NEMSIS mappings.`
   );
 }
