@@ -9,9 +9,18 @@ function withoutTrailingSlash(value: string | undefined): string {
   return value?.replace(/\/$/, "") ?? "";
 }
 
+function publicBrowserEnvironment(): Record<string, string | undefined> {
+  return {
+    NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_BASE_PATH: process.env.NEXT_PUBLIC_BASE_PATH,
+    NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API,
+  };
+}
+
 /** Resolves the browser's server-backed or intentional static-demo request mode. */
 export function browserRequestConfiguration(
-  environment: Record<string, string | undefined> = process.env,
+  environment: Record<string, string | undefined> = publicBrowserEnvironment(),
 ): BrowserRequestConfiguration {
   const staticMode = environment.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true";
   return {
