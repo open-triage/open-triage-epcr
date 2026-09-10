@@ -24,6 +24,14 @@ const session = {
   expiresAt: "2026-09-03T22:00:00.000Z"
 };
 
+function transactional(manager, isolations = []) {
+  return { transaction(first, second) {
+    const work = typeof first === "function" ? first : second;
+    if (typeof first === "string") isolations.push(first);
+    return work(manager);
+  } };
+}
+
 test("a generated assignment carries forward the complete dispatch payload with next-call identities and times", () => {
   const earlierSample = structuredClone(dispatchSample);
   for (const instance of earlierSample.groups.flatMap((group) => group.instances)) {
@@ -152,6 +160,7 @@ test("opening and retrying one assignment creates one draft and skips stale repl
   };
   const reports = new Map();
   const writes = [];
+  const isolations = [];
   let patientInsertParameters = null;
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
@@ -216,7 +225,7 @@ test("opening and retrying one assignment creates one draft and skips stale repl
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
-  const dataSource = { transaction: (work) => work(manager), query: manager.query };
+  const dataSource = { ...transactional(manager, isolations), query: manager.query };
   const sessions = { get: (token) => {
     assert.equal(token, session.accessToken);
     return session;
@@ -250,6 +259,7 @@ test("opening and retrying one assignment creates one draft and skips stale repl
   assert.equal(pseudonymousKey, derivePatientKey(patientKeyConfig, organizationId, patientId));
   assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
   assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
+  assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ"]);
 });
 
 test("a serialization failure while opening an assignment surfaces as a retriable conflict, not a raw 500", async () => {
@@ -273,7 +283,7 @@ test("a serialization failure while opening an assignment surfaces as a retriabl
 });
 
 test("a not-found error while opening an assignment keeps its original status instead of becoming a conflict", async () => {
-  const dataSource = { transaction: (work) => work({ query: async () => [] }) };
+  const dataSource = transactional({ query: async () => [] });
   const sessions = { get: (token) => {
     assert.equal(token, session.accessToken);
     return session;
