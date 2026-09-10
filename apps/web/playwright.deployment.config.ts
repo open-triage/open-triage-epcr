@@ -16,7 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: deployedUrl ? undefined : {
-    command: "npm run serve:static",
+    command: "npm start",
     env: { PORT: "3109" },
     url: localUrl,
     reuseExistingServer: false,
