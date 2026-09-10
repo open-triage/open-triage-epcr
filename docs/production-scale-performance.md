@@ -24,22 +24,24 @@ storage headroom at or above 30%.
 
 ## Reproducible exercise
 
-`npm run scale:test:ci -w @open-triage/database` rebuilds only the dedicated `scale_validation`
-schema, loads a deterministic bounded distribution, runs real PostgreSQL statements, records
-`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans, evaluates the approved thresholds, and writes
-`packages/database/artifacts/scale-test-ci.json`. CI uploads that file even on failure.
+`npm run scale:test:ci -w @open-triage/database` creates a uniquely named scratch database, applies
+the production migration and synthetic bootstrap path, loads a deterministic bounded distribution
+into the production analytics tables, runs the production projector for signing and amendment
+batches, records `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans, evaluates the approved thresholds,
+and writes `packages/database/artifacts/scale-test-ci.json`. CI uploads that file even on failure.
 
 `npm run scale:test:production -w @open-triage/database` runs the same framework with exactly ten
 million reports. It must run against an isolated PostgreSQL 15 production-like environment with
-the intended instance, storage, connection pool, backup, and recovery topology. The scale schema is
-destructive to its own prior benchmark contents; it never writes clinical, catalog, or production
-analytics schemas.
+the intended instance, storage, connection pool, backup, and recovery topology. The scratch database
+is dropped after evidence is written. The configured database is used only as the administrative
+connection for creating that isolated database and is never migrated or loaded.
 
-The generated fixture covers ten years, sparse large values in otherwise wide rows, repeatable
-vitals/medications/procedures/history, signed write plus outbox work, projector batches, annual and
-monthly partitions, reconciliation, and amendments. Existing database integration tests continue
-to prove that these modeled operations map to the transactional signing, projector, replay, and
-reconciliation implementation.
+The generated fixture covers ten years in the deployed wide and repeatable tables. Its measured
+clinical batch uses real reports, occurrences, signed snapshots, transactional outbox events, the
+production projector, reconciliation, and amendments. Every threshold result carries its dataset
+size, PostgreSQL environment, measured query or executable path, production table names, migration
+count, and wide-table column count; the artifact also records migration/bootstrap and projector
+hash/run evidence.
 
 ## Evidence status and follow-up
 
@@ -55,21 +57,10 @@ archive its JSON artifact with the release evidence, and open a blocking issue f
 `pending-production-run`. Record remediation and rerun against the same policy hash. No pending or
 failed threshold may be interpreted as a capacity pass.
 
-## Recorded bounded run
+## Recorded bounded runs
 
-GitHub Actions run `33683532980` on 2026-09-02 executed the CI profile with PostgreSQL 15.19,
-128 MB shared buffers, and 4 MB work memory. Its uploaded `database-scale-test-ci` artifact contains
-the complete configuration, environment, samples, threshold evaluations, and JSON query plans. The
-policy SHA-256 was `1abfa4477731a93f5f7c32e4e00280e5cc9b3b2663dbb62304345155a2da8c73`.
-
-The measured distribution was 10,000 reports across all ten annual partitions, 38,000 repeatable
-rows across 120 monthly partitions, and 475 amendments. All ten CI-measurable thresholds passed:
-wide query 1.166 ms p95, repeatable query 2.817 ms p95, partition-pruned query 0.402 ms p95, signing
-63,027.858 reports/second, a 500-report projector batch in 11.429 ms (43,748.359 reports/second),
-reconciliation 2,901,073.397 reports/second, amendment replay 54,560.074 reports/second, and zero
-temporary-query bytes. These figures establish harness correctness and bounded behavior only; they
-do not extrapolate or assert ten-million-report capacity.
-
-The artifact records recovery RPO/RTO, CPU, connections, and storage headroom as
-`pending-production-run`, each with the production-like exercise as its explicit follow-up. There
-were no failed thresholds and no target was changed after the run.
+Artifacts produced before the production-schema harness are historical only: their simplified
+schema and duplicate projection SQL do not substantiate the current thresholds. New evidence must
+have artifact schema version 2 and include `productionSchemaEvidence`. The artifact continues to
+record recovery RPO/RTO, CPU, connections, and storage headroom as `pending-production-run` until a
+production-profile exercise supplies that environment evidence.

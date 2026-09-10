@@ -36,12 +36,19 @@ test("records approved production scale capacity and measurable thresholds", () 
 
 test("scale harness covers representative distributions and preserves executable plans", () => {
   for (const expected of [
-    "scale_validation.report_source", "scale_validation.analytics_wide",
-    "scale_validation.analytics_repeatable", "scale_validation.amendment",
+    "bootstrap:synthetic", "scripts/project-analytics.mjs",
+    "clinical.report", "integration.outbox_event", "analytics_private.epcr",
+    "analytics_private.epcr_repeatable_element", "supabase_migrations.schema_migrations",
     "explain (analyze, buffers, format json)", "for update skip locked",
     "commonWide", "commonRepeatable", "partitionPruning", "reconciliation", "amendmentReplay"
   ]) assert.ok(harness.includes(expected), `scale harness is missing ${expected}`);
-  assert.match(harness, /sparseNarrative/);
+  assert.doesNotMatch(harness, /scale_validation\.(report_source|analytics_wide|analytics_repeatable|amendment)/);
+  assert.match(harness, /productionSchemaEvidence/);
+  assert.match(harness, /wideColumnCount/);
+  assert.match(harness, /environment,/);
+  assert.match(harness, /dataset:/);
+  assert.match(harness, /productionSchema:/);
+  assert.match(harness, /query:/);
   assert.match(harness, /productionOnlyThresholds/);
   assert.match(harness, /pending-production-run/);
   assert.match(harness, /process\.exitCode = 1/);
