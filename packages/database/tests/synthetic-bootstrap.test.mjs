@@ -17,7 +17,11 @@ const [databasePackage, bootstrap, apiMain, apiModule, migration] = await Promis
 test("exposes the synthetic installation only through an explicit command", () => {
   assert.equal(
     databasePackage.scripts["bootstrap:synthetic"],
-    "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && node scripts/bootstrap-synthetic-installation.mjs --settings ../contracts/config/installation.synthetic-demo.json"
+    "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run bootstrap:synthetic:runtime"
+  );
+  assert.equal(
+    databasePackage.scripts["bootstrap:synthetic:runtime"],
+    "node scripts/bootstrap-synthetic-installation.mjs --settings ../contracts/config/installation.synthetic-demo.json"
   );
   for (const productionEntryPoint of [apiMain, apiModule, migration]) {
     assert.ok(!productionEntryPoint.includes("bootstrap-synthetic-installation"));
