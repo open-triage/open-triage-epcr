@@ -21,6 +21,8 @@ if (!Number.isInteger(MAX_ATTEMPTS) || MAX_ATTEMPTS < 1 || MAX_ATTEMPTS > 100) {
 
 const client = new pg.Client({ connectionString: databaseUrl });
 await client.connect();
+const analyticsMappingByRelease = new Map();
+const repeatingGroupTimeMappingByRelease = new Map();
 
 function parseArguments(args) {
   const options = { mode: "queue" };
@@ -111,6 +113,44 @@ async function finishRun(runId, status, metrics = {}, errorCode = null) {
 
 function sparseObject(value) {
   return Object.keys(value).length === 0 ? null : value;
+}
+
+async function analyticsMappings(releaseId) {
+  const cached = analyticsMappingByRelease.get(releaseId);
+  if (cached) return cached;
+  const result = await client.query(
+    "select mapping from catalog.analytics_element_mapping where release_id = $1",
+    [releaseId]
+  );
+  const mappings = new Map(result.rows.map((row) => [row.mapping.elementId, row.mapping]));
+  // Signed reports pin sealed catalog releases, whose projection mappings are immutable.
+  analyticsMappingByRelease.set(releaseId, mappings);
+  return mappings;
+}
+
+async function repeatingGroupTimeMappings(releaseId, organizationId, groups) {
+  let standardMappings = repeatingGroupTimeMappingByRelease.get(releaseId);
+  if (!standardMappings) {
+    standardMappings = (await client.query(
+      `select group_id, resolution, time_element_id, inherited_from_group_id
+       from catalog.repeating_group_time_mapping where release_id = $1`,
+      [releaseId]
+    )).rows;
+    repeatingGroupTimeMappingByRelease.set(releaseId, standardMappings);
+  }
+  if (!groups.some((group) => group.source_kind === "custom")) return standardMappings;
+  const customMappings = (await client.query(
+    `select
+       custom_group.namespace || '.' || custom_group.slug as group_id,
+       case when custom_group.temporal_kind = 'clinical' then 'element' else 'non-temporal' end as resolution,
+       time_identity.canonical_key as time_element_id,
+       null::text as inherited_from_group_id
+     from forms.custom_group_definition custom_group
+     left join catalog.element_identity time_identity on time_identity.id = custom_group.clinical_time_element_id
+     where custom_group.organization_id = $1`,
+    [organizationId]
+  )).rows;
+  return [...standardMappings, ...customMappings];
 }
 
 function valuePayload(row) {
@@ -308,7 +348,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
   if (reportResult.rowCount === 0) throw new Error(`Signed report ${reportId} was not found`);
   const report = reportResult.rows[0];
 
-  const [elementResult, groupResult, mappingResult, timeResult, amendmentResult] = await Promise.all([
+  const [elementResult, groupResult, mappingByElement, amendmentResult] = await Promise.all([
     client.query(
       `select * from clinical.element_occurrence
        where report_id = $1 and tombstoned_at is null
@@ -320,25 +360,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
        where report_id = $1 and tombstoned_at is null`,
       [reportId]
     ),
-    client.query(
-      `select mapping from catalog.analytics_element_mapping where release_id = $1`,
-      [report.catalog_release_id]
-    ),
-    client.query(
-      `select group_id, resolution, time_element_id, inherited_from_group_id
-       from catalog.repeating_group_time_mapping
-       where release_id = $1
-       union all
-       select
-         custom_group.namespace || '.' || custom_group.slug,
-         case when custom_group.temporal_kind = 'clinical' then 'element' else 'non-temporal' end,
-         time_identity.canonical_key,
-         null::text
-       from forms.custom_group_definition custom_group
-       left join catalog.element_identity time_identity on time_identity.id = custom_group.clinical_time_element_id
-       where custom_group.organization_id = $2`,
-      [report.catalog_release_id, report.organization_id]
-    ),
+    analyticsMappings(report.catalog_release_id),
     client.query(
       `select a.sequence, ac.action, ac.target_element_occurrence_id, ac.corrected_value
        from clinical.amendment a
@@ -348,6 +370,11 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       [reportId]
     )
   ]);
+  const timeMappings = await repeatingGroupTimeMappings(
+    report.catalog_release_id,
+    report.organization_id,
+    groupResult.rows
+  );
 
   const elementsById = new Map(elementResult.rows.map((row) => [row.id, row]));
   for (const change of amendmentResult.rows) {
@@ -384,8 +411,7 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
     quality.derivedValues.map((derived) => [derived.sourceOccurrenceId, derived])
   );
   const groupById = new Map(groupResult.rows.map((row) => [row.id, row]));
-  const mappingByElement = new Map(mappingResult.rows.map((row) => [row.mapping.elementId, row.mapping]));
-  const timeByGroup = new Map(timeResult.rows.map((row) => [row.group_id, row]));
+  const timeByGroup = new Map(timeMappings.map((row) => [row.group_id, row]));
   const elementsByGroupAndId = new Map(
     elements.map((row) => [`${row.group_instance_id ?? ""}:${row.element_id}`, row])
   );
