@@ -145,26 +145,33 @@ test("an invalid saved browser command is distinguished from a temporary outage"
   }), /invalid/);
 });
 
-test("the browser-only static build considers its durable local write synchronized", async () => {
+test("browser-only static builds at a root or subpath consider their durable local write synchronized", async () => {
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
   const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   const originalFetch = globalThis.fetch;
-  process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
   process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   globalThis.fetch = (async () => { throw new Error("the static build must not call a report API"); }) as typeof fetch;
   try {
-    const result = await saveDraftReport("token", reportId, {
-      commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
-      authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
-      clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
-    });
-    assert.deepEqual(result, { id: reportId, status: "draft", revision: 8 });
+    for (const basePath of [undefined, "/open-triage-epcr-demo"]) {
+      if (basePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+      else process.env.NEXT_PUBLIC_BASE_PATH = basePath;
+      const result = await saveDraftReport("token", reportId, {
+        commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+        authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+        clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+      });
+      assert.deepEqual(result, { id: reportId, status: "draft", revision: 8 });
+    }
   } finally {
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
     if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
   }
 });
 
@@ -201,9 +208,11 @@ test("local demo sessions routed through the API still submit signatures", async
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
   const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   let requestUrl: string | undefined;
   delete process.env.NEXT_PUBLIC_BASE_PATH;
   process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = "true";
   globalThis.fetch = (async (input: string | URL | Request) => {
     requestUrl = String(input);
     return Response.json({ id: reportId, status: "signed" }, { status: 201 });
@@ -217,24 +226,33 @@ test("local demo sessions routed through the API still submit signatures", async
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
     if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
   }
 });
 
-test("the browser-only static demo never submits a signature to a nonexistent API", async () => {
+test("browser-only static demos at a root or subpath never submit a signature to a nonexistent API", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
   const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   globalThis.fetch = (async () => { throw new Error("the static build must not call a signing API"); }) as typeof fetch;
   try {
-    await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+    for (const basePath of [undefined, "/open-triage-epcr-demo"]) {
+      if (basePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+      else process.env.NEXT_PUBLIC_BASE_PATH = basePath;
+      await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+    }
   } finally {
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
     if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
   }
 });
 
