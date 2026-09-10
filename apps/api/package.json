@@ -20,7 +20,6 @@
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/typeorm": "^12.0.1",
     "@open-triage/contracts": "0.1.0",
-    "@supabase/supabase-js": "^2.112.4",
     "dotenv": "^17.4.2",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
