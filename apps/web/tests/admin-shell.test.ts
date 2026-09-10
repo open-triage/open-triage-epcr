@@ -238,5 +238,5 @@ test("form search sends the searchable query without pagination", async (t) => {
     assert.match(String(input), /catalog-elements\?query=patient%20name$/);
     return Response.json({ items: [], nextOffset: null });
   };
-  await searchFormCatalog("csrf-proof", "draft-id", "patient name");
+  await searchFormCatalog("draft-id", "patient name");
 });

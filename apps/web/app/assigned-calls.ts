@@ -8,13 +8,14 @@ import type {
   ReopenOpenCallResponse
 } from "@open-triage/contracts";
 import { selectedInstallationSettings } from "./installation-settings";
+import {
+  apiRequestUrl,
+  browserRequestConfiguration,
+  browserRequestInit,
+  browserRouteUrl,
+} from "./browser-api";
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
-
-function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
-  return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
-}
 
 export async function resolveDispatchConflict(
   csrfToken: string,
@@ -22,62 +23,51 @@ export async function resolveDispatchConflict(
   conflictId: string,
   disposition: DispatchConflictDisposition
 ): Promise<DispatchConflict> {
-  const baseUrl = apiBaseUrl();
-  if (!baseUrl) throw new Error("Conflict dispositions require a connection to the report server.");
-  const response = await fetch(`${baseUrl}/api/reports/${reportId}/dispatch-conflicts/${conflictId}`, {
-    method: "POST", cache: "no-store",
-    credentials: "include",
+  const url = apiRequestUrl(`/api/reports/${reportId}/dispatch-conflicts/${conflictId}`);
+  if (!url) throw new Error("Conflict dispositions require a connection to the report server.");
+  const response = await fetch(url, browserRequestInit({
+    method: "POST",
     headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
     body: JSON.stringify({ commandId: crypto.randomUUID(), disposition })
-  });
+  }));
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The dispatch difference could not be resolved.");
   return response.json() as Promise<DispatchConflict>;
 }
 
 export function assignedCallsUrl(): string {
-  const baseUrl = apiBaseUrl();
-  if (baseUrl) return `${baseUrl}/api/calls/assigned`;
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
-  return `${basePath}/demo-assigned-calls.json`;
+  const configuration = browserRequestConfiguration();
+  return apiRequestUrl("/api/calls/assigned", configuration)
+    ?? `${configuration.basePath}/demo-assigned-calls.json`;
 }
 
-export async function fetchAssignedCalls(accessToken: string): Promise<AssignedCallsResponse> {
-  if (!apiBaseUrl() && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
+export async function fetchAssignedCalls(): Promise<AssignedCallsResponse> {
+  if (browserRequestConfiguration().mode === "static" && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
     return { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() };
   }
-  const response = await fetch(assignedCallsUrl(), {
-    cache: "no-store",
-    credentials: "include"
-  });
+  const response = await fetch(assignedCallsUrl(), browserRequestInit());
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Assigned calls could not be refreshed.");
   return response.json() as Promise<AssignedCallsResponse>;
 }
 
 export function openAssignmentUrl(assignmentId: string): string {
-  const baseUrl = apiBaseUrl();
-  if (baseUrl) return `${baseUrl}/api/calls/${assignmentId}/open`;
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
-  return `${basePath}/api/calls/${assignmentId}/open`;
+  return browserRouteUrl(`/api/calls/${assignmentId}/open`);
 }
 
 export function staticOpenAssignmentUrl(): string {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
-  return `${basePath}/demo-open-assignment.json`;
+  return `${browserRequestConfiguration().basePath}/demo-open-assignment.json`;
 }
 
 export async function openAssignedCall(csrfToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
   let response: Response;
   try {
-    const staticExport = apiBaseUrl() === null;
+    const staticExport = browserRequestConfiguration().mode === "static";
     if (staticExport && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
       throw new Error("Sample dispatch assignments are disabled for this installation.");
     }
-    response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), {
+    response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), browserRequestInit({
       method: staticExport ? "GET" : "POST",
-      cache: "no-store",
-      credentials: "include",
       headers: staticExport ? {} : { "x-csrf-token": csrfToken }
-    });
+    }));
   } catch {
     throw new Error("The call could not be opened. Check your connection and try again.");
   }
@@ -92,37 +82,28 @@ export async function openAssignedCall(csrfToken: string, assignmentId: string):
 }
 
 export function openCallsUrl(): string {
-  const baseUrl = apiBaseUrl();
-  if (baseUrl) return `${baseUrl}/api/reports/open`;
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
-  return `${basePath}/demo-open-calls.json`;
+  const configuration = browserRequestConfiguration();
+  return apiRequestUrl("/api/reports/open", configuration)
+    ?? `${configuration.basePath}/demo-open-calls.json`;
 }
 
-export async function fetchOpenCalls(_csrfToken: string): Promise<OpenCallsResponse> {
-  const response = await fetch(openCallsUrl(), {
-    cache: "no-store",
-    credentials: "include"
-  });
+export async function fetchOpenCalls(): Promise<OpenCallsResponse> {
+  const response = await fetch(openCallsUrl(), browserRequestInit());
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Open calls could not be refreshed.");
   return response.json() as Promise<OpenCallsResponse>;
 }
 
 export function reopenReportUrl(reportId: string): string {
-  const baseUrl = apiBaseUrl();
-  if (baseUrl) return `${baseUrl}/api/reports/${reportId}/reopen`;
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? "";
-  return `${basePath}/api/reports/${reportId}/reopen`;
+  return browserRouteUrl(`/api/reports/${reportId}/reopen`);
 }
 
 export async function reopenOpenCall(csrfToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
   let response: Response;
   try {
-    response = await fetch(reopenReportUrl(reportId), {
+    response = await fetch(reopenReportUrl(reportId), browserRequestInit({
       method: "POST",
-      cache: "no-store",
-      credentials: "include",
       headers: { "x-csrf-token": csrfToken }
-    });
+    }));
   } catch {
     throw new Error("The report could not be reopened. Check your connection and try again.");
   }

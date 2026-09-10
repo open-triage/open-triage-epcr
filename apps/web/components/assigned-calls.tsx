@@ -36,10 +36,11 @@ export function AssignedCalls({
   const [openingId, setOpeningId] = useState<string | null>(null);
   const callsRef = useRef<AssignedCall[]>([]);
   const handledRefreshRequest = useRef(refreshRequest);
+  const csrfToken = sessionRequestToken(session);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetchAssignedCalls(sessionRequestToken(session));
+      const response = await fetchAssignedCalls();
       const visible = response.assignedCalls.filter((call) => !suppressedCallNumbers.includes(call.callNumber));
       callsRef.current = visible;
       setCalls(visible);
@@ -48,13 +49,13 @@ export function AssignedCalls({
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : "Assigned calls could not be refreshed.");
     }
-  }, [session.accessToken, suppressedCallNumbers]);
+  }, [suppressedCallNumbers]);
 
   const open = useCallback(async (call: AssignedCall) => {
     setOpeningId(call.id);
     setError(null);
     try {
-      const opened = await openAssignedCall(sessionRequestToken(session), call.id);
+      const opened = await openAssignedCall(csrfToken, call.id);
       const nextCalls = callsRef.current.filter((candidate) => candidate.id !== call.id);
       if (opened.replacementAssignment && !nextCalls.some((candidate) => candidate.id === opened.replacementAssignment!.id)) {
         nextCalls.unshift(opened.replacementAssignment);
@@ -68,7 +69,7 @@ export function AssignedCalls({
     } finally {
       setOpeningId(null);
     }
-  }, [onOpened, session.accessToken]);
+  }, [csrfToken, onOpened]);
 
   useEffect(() => {
     let pollTimer: number | null = null;

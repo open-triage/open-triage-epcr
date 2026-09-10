@@ -38,6 +38,15 @@ test("stored clinician sessions remain active only before their fixed deadline",
   assert.equal(storage.getItem(CLINICIAN_SESSION_STORAGE_KEY), null);
 });
 
+test("cookie-backed sessions remain valid without an access token", () => {
+  const storage = memoryStorage();
+  const { accessToken: _accessToken, ...sessionWithoutToken } = session;
+  const cookieSession: ClinicianSession = { ...sessionWithoutToken, csrfToken: "csrf-proof" };
+  storeClinicianSession(storage, cookieSession);
+
+  assert.deepEqual(loadClinicianSession(storage, new Date("2026-09-03T21:00:00.000Z")), cookieSession);
+});
+
 test("manual logout removes the browser session immediately", () => {
   const storage = memoryStorage();
   storeClinicianSession(storage, session);

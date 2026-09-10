@@ -51,6 +51,7 @@ export function OpenCalls({
   const callsRef = useRef<OpenCall[]>([]);
   const syncingCachedReports = useRef(false);
   const handledRefreshRequest = useRef(refreshRequest);
+  const csrfToken = sessionRequestToken(session);
 
   const syncCachedReports = useCallback(async () => {
     if (activeReportId || syncingCachedReports.current) return;
@@ -62,7 +63,7 @@ export function OpenCalls({
           if (!queued) break;
           markDraftChangeAttempted(window.localStorage, cached.report.id, queued.command.commandId);
           try {
-            const saved = await saveDraftReport(sessionRequestToken(session), cached.report.id, queued.command);
+            const saved = await saveDraftReport(csrfToken, cached.report.id, queued.command);
             if (saved.status === "signed") {
               clearShellState(window.localStorage, cached.report.id);
               removeSignedOfflineReport(window.localStorage, cached.report.id);
@@ -80,11 +81,11 @@ export function OpenCalls({
     } finally {
       syncingCachedReports.current = false;
     }
-  }, [activeReportId, onSessionEnded, session.accessToken, session.user.id]);
+  }, [activeReportId, csrfToken, onSessionEnded, session.user.id]);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetchOpenCalls(sessionRequestToken(session));
+      const response = await fetchOpenCalls();
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
       const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
@@ -123,7 +124,7 @@ export function OpenCalls({
     try {
       let opened: ReopenOpenCallResponse;
       try {
-        opened = await reopenOpenCall(sessionRequestToken(session), call.reportId);
+        opened = await reopenOpenCall(csrfToken, call.reportId);
         cacheReopenedReport(window.localStorage, session, opened);
       } catch (error) {
         const cached = cachedReopenResponse(window.localStorage, session.user.id, call.reportId);
@@ -137,7 +138,7 @@ export function OpenCalls({
     } finally {
       setReopeningId(null);
     }
-  }, [onReopened, session]);
+  }, [csrfToken, onReopened, session]);
 
   useEffect(() => {
     let pollTimer: number | null = null;

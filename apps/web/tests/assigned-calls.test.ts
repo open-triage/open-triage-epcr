@@ -100,11 +100,11 @@ test("call-list adapters distinguish expired sessions from server failures", asy
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     globalThis.fetch = async () => new Response(null, { status: 401 });
-    await assert.rejects(fetchAssignedCalls("token"), /session has ended/i);
-    await assert.rejects(fetchOpenCalls("token"), /session has ended/i);
+    await assert.rejects(fetchAssignedCalls(), /session has ended/i);
+    await assert.rejects(fetchOpenCalls(), /session has ended/i);
     globalThis.fetch = async () => new Response(null, { status: 503 });
-    await assert.rejects(fetchAssignedCalls("token"), /could not be refreshed/i);
-    await assert.rejects(fetchOpenCalls("token"), /could not be refreshed/i);
+    await assert.rejects(fetchAssignedCalls(), /could not be refreshed/i);
+    await assert.rejects(fetchOpenCalls(), /could not be refreshed/i);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;

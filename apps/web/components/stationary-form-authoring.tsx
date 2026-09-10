@@ -72,11 +72,11 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, installat
 
   useEffect(() => {
     let current = true;
-    loadStationaryFormDraft(csrfToken).then((loadedDraft) => { if (current) setDraft(loadedDraft); })
+    loadStationaryFormDraft().then((loadedDraft) => { if (current) setDraft(loadedDraft); })
       .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); })
       .finally(() => { if (current) setLoaded(true); });
     return () => { current = false; };
-  }, [csrfToken]);
+  }, []);
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
@@ -84,12 +84,12 @@ export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, installat
     if (!draftId) return;
     let current = true;
     const timeout = window.setTimeout(() => {
-      searchFormCatalog(csrfToken, draftId, query).then((page) => { if (current) {
+      searchFormCatalog(draftId, query).then((page) => { if (current) {
         setResults(page.items);
       } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     }, 150);
     return () => { current = false; window.clearTimeout(timeout); };
-  }, [csrfToken, draftId, query]);
+  }, [draftId, query]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");

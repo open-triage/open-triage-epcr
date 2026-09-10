@@ -1,15 +1,14 @@
 import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import { apiRequestUrl, browserRequestInit } from "./browser-api";
 
-function apiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
-}
-
-async function catalogRequest<T>(path: string, csrfToken: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}/api/admin/${path}`, {
-    credentials: "include", cache: "no-store", ...init,
+async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit): Promise<T> {
+  const url = apiRequestUrl(`/api/admin/${path}`);
+  if (!url) throw new Error("Administration is unavailable in the static demonstration.");
+  const response = await fetch(url, browserRequestInit({
+    ...init,
     headers: { ...(init?.body ? { "content-type": "application/json" } : {}),
       ...(init?.method && init.method !== "GET" ? { "x-csrf-token": csrfToken } : {}), ...init?.headers }
-  });
+  }));
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { message?: string; findings?: string[] };
     const message = Array.isArray(body.findings) ? body.findings.join("; ") : body.message;
@@ -18,7 +17,7 @@ async function catalogRequest<T>(path: string, csrfToken: string, init?: Request
   return response.json() as Promise<T>;
 }
 
-export const loadCatalogDraft = (csrfToken: string) => catalogRequest<CatalogDraft | null>("catalog-draft", csrfToken);
+export const loadCatalogDraft = () => catalogRequest<CatalogDraft | null>("catalog-draft");
 export const cloneCatalogDraft = (csrfToken: string, displayName: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
   method: "POST", body: JSON.stringify({ displayName })
 });
@@ -29,7 +28,7 @@ export const validateCatalogDraft = (csrfToken: string, id: string) => catalogRe
 export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, displayName: string, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
   method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, displayName, changeNote })
 });
-export const loadStationaryFormDraft = (csrfToken: string) => catalogRequest<StationaryFormDraft | null>("form-draft", csrfToken);
+export const loadStationaryFormDraft = () => catalogRequest<StationaryFormDraft | null>("form-draft");
 export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
   method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
 });
@@ -46,11 +45,13 @@ export const activateStationaryForm = (csrfToken: string, formVersionId: string,
     method: "POST", body: JSON.stringify({ changeNote })
   });
 
-export const searchFormCatalog = (csrfToken: string, id: string, query: string) =>
-  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`, csrfToken);
+export const searchFormCatalog = (id: string, query: string) =>
+  catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
 
 export async function loadAdminContext(): Promise<AdminContext> {
-  const response = await fetch(`${apiBaseUrl()}/api/admin/context`, { credentials: "include" });
+  const url = apiRequestUrl("/api/admin/context");
+  if (!url) throw new Error("Administration is unavailable in the static demonstration.");
+  const response = await fetch(url, browserRequestInit());
   if (!response.ok) {
     throw new Error(response.status === 401 || response.status === 403
       ? "Your account is not authorized to administer this installation."

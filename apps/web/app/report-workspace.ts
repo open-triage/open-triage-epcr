@@ -78,6 +78,7 @@ export function useReportWorkspace({
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const revision = useRef(report?.revision ?? 0);
+  const csrfToken = sessionRequestToken(session);
   const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
   const activeEtag = useRef<string | undefined>(undefined);
   const shellRef = useRef(shell);
@@ -155,7 +156,7 @@ export function useReportWorkspace({
       markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
       const attempt = (async () => {
         try {
-          const saved = await saveDraftReport(sessionRequestToken(session), report.id, queued.command);
+          const saved = await saveDraftReport(csrfToken, report.id, queued.command);
           if (saved.status === "signed") {
             completeReport();
             return;
@@ -188,7 +189,7 @@ export function useReportWorkspace({
       activeSave.current = null;
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
-  }, [completeReport, onSessionEnded, report, session.accessToken]);
+  }, [completeReport, csrfToken, onSessionEnded, report]);
 
   useEffect(() => {
     if (!restored || completed.current) return;
@@ -269,7 +270,7 @@ export function useReportWorkspace({
       if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
       const previousEtag = activeEtag.current;
       try {
-        const response = await fetchActiveReport(sessionRequestToken(session), report.id, previousEtag);
+        const response = await fetchActiveReport(report.id, previousEtag);
         if (!response || stopped) return;
         activeEtag.current = response.etag || previousEtag;
         const local = shellRef.current.encounter.document;
@@ -320,19 +321,19 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, dispatch, onSessionEnded, report, restored, session.accessToken]);
+  }, [completeReport, dispatch, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;
     setConflictError(null);
     try {
-      const resolved = await resolveDispatchConflict(sessionRequestToken(session), report.id, conflict.id, disposition);
+      const resolved = await resolveDispatchConflict(csrfToken, report.id, conflict.id, disposition);
       setDispatchConflicts((current) => current.map((candidate) => candidate.id === resolved.id ? resolved : candidate));
       revision.current += 1;
     } catch (error) {
       setConflictError(error instanceof Error ? error.message : "The dispatch difference could not be resolved.");
     }
-  }, [report, session.accessToken]);
+  }, [csrfToken, report]);
 
   return { restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation, conflictError, flushSave, completeReport, resolveConflict };
 }

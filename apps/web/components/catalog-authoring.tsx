@@ -20,7 +20,7 @@ export function CatalogAuthoring({ csrfToken, installationSettings, onPublished 
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
-  useEffect(() => { loadCatalogDraft(csrfToken).then(setDraft).catch(showError).finally(() => setLoaded(true)); }, [csrfToken]);
+  useEffect(() => { loadCatalogDraft().then(setDraft).catch(showError).finally(() => setLoaded(true)); }, []);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     `${element.elementId} ${element.label}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query]);
   const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
