@@ -8,6 +8,11 @@ import {
   type EncounterValue,
 } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
+import {
+  scalarDatabaseMapping,
+  scalarDatabaseValue,
+  type ScalarDatabaseColumn,
+} from "./canonical-scalar.js";
 
 type Queryable = Pick<EntityManager, "query">;
 
@@ -120,16 +125,12 @@ function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
     return empty;
   }
   if (value.kind === "absent") return set("absent", 1, null);
-  const scalar = value.value;
-  if (baseDatatype === "integer") return set("integer", 2, scalar);
-  if (baseDatatype === "decimal") return set("numeric", 3, scalar);
-  if (baseDatatype === "boolean") return set("boolean", 4, scalar);
-  if (baseDatatype === "date") return set("date", 5, scalar);
-  if (baseDatatype === "dateTime") return set("datetime", 6, scalar);
-  if (baseDatatype === "time") return set("time", 7, scalar);
-  if (baseDatatype === "duration") return set("duration", 8, scalar);
-  if (baseDatatype === "binary") return set("binary", 9, Buffer.from(String(scalar), "base64"));
-  return set(baseDatatype === "anyURI" ? "uri" : "text", 1, scalar);
+  const mapping = scalarDatabaseMapping(baseDatatype);
+  const columnIndex: Record<ScalarDatabaseColumn, number> = {
+    value_text: 1, value_integer: 2, value_numeric: 3, value_boolean: 4, value_date: 5,
+    value_datetime: 6, value_time: 7, value_duration: 8, value_binary: 9,
+  };
+  return set(mapping.databaseKind, columnIndex[mapping.databaseColumn], scalarDatabaseValue(value.value, baseDatatype));
 }
 
 /** Seeds a newly created report from the accepted dispatch snapshot exactly once. */

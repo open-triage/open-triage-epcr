@@ -1,9 +1,40 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { UnauthorizedException } from "@nestjs/common";
 import { createPasswordVerifier, verifyPassword } from "../dist/identity/password.js";
 import { bearerToken, SESSION_COOKIE } from "../dist/sessions/clinician-session.controller.js";
+import { ClinicianSessionService } from "../dist/sessions/clinician-session.service.js";
 import { validateChangePassword } from "../dist/sessions/clinician-session.validation.js";
+
+const digest = (value) => createHash("sha256").update(value).digest("hex");
+
+function instrumentedDataSource(respond) {
+  const events = [];
+  const manager = { query: async (sql, parameters = []) => {
+    const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
+    events.push(statement);
+    return respond(statement);
+  } };
+  return {
+    events,
+    dataSource: {
+      manager: { query: async () => { throw new Error("non-transaction manager must not be used"); } },
+      query: async () => { throw new Error("pooled DataSource.query must not be used inside an account operation"); },
+      transaction: async (work) => {
+        events.push({ connection: "transaction-connection", sql: "begin" });
+        try {
+          const result = await work(manager);
+          events.push({ connection: "transaction-connection", sql: "commit" });
+          return result;
+        } catch (error) {
+          events.push({ connection: "transaction-connection", sql: "rollback" });
+          throw error;
+        }
+      }
+    }
+  };
+}
 
 test("local password verifiers are salted, one-way, and reject the wrong password", async () => {
   const first = await createPasswordVerifier("A strong password! 253");
@@ -27,4 +58,97 @@ test("password replacement validates a strong new secret and a CSRF proof", () =
   }), { currentPassword: "temporary password", newPassword: "replacement password!", csrfToken: "csrf-proof" });
   assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "short", csrfToken: "csrf" }), /12/);
   assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "long enough password" }), /CSRF/);
+});
+
+test("password replacement commits credential, revocation, audits, and its replacement session on one connection", async () => {
+  const currentPassword = "Temporary password 42!";
+  const csrfToken = "csrf-proof";
+  const verifier = await createPasswordVerifier(currentPassword);
+  const now = new Date("2026-09-10T10:00:00.000Z");
+  const sessionRow = {
+    session_id: "old-session", created_at: now, expires_at: new Date("2026-09-10T22:00:00.000Z"),
+    csrf_sha256: digest(csrfToken), session_credential_version: "1", revoked_at: null,
+    user_id: "user-id", display_name: "Clinician", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    must_change_password: true, credential_version: "1", capabilities: ["clinical:document"]
+  };
+  const credentialRow = { ...sessionRow, password_verifier: verifier };
+  const { dataSource, events } = instrumentedDataSource(({ sql }) => {
+    if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
+    if (sql.startsWith("select s.id as session_id")) return [sessionRow];
+    if (sql.startsWith("select c.password_verifier")) return [credentialRow];
+    if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
+    if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
+    if (sql.startsWith("select capability_key")) return [{ capability_key: "clinical:document" }];
+    return [];
+  });
+
+  const created = await new ClinicianSessionService(dataSource).changePassword("old-token", {
+    currentPassword, newPassword: "Permanent password 84!", csrfToken
+  }, now);
+
+  assert.equal(created.session.passwordChangeRequired, false);
+  assert.deepEqual(created.session.capabilities, ["clinical:document"]);
+  assert.equal(events[0].sql, "begin");
+  assert.equal(events.at(-1).sql, "commit");
+  assert.deepEqual(new Set(events.map(({ connection }) => connection)), new Set(["transaction-connection"]));
+  assert.ok(events.some(({ sql }) => sql.startsWith("update app_identity.local_credential")));
+  assert.ok(events.some(({ sql }) => sql.includes("revocation_reason = 'password_change'")));
+  assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"))
+    .map(({ parameters }) => parameters[2]), ["authentication.password_change", "authentication.sign_in"]);
+});
+
+test("a late password replacement audit failure rolls back credentials, revocations, and the replacement session", async () => {
+  const currentPassword = "Temporary password 42!";
+  const csrfToken = "csrf-proof";
+  const verifier = await createPasswordVerifier(currentPassword);
+  const now = new Date("2026-09-10T10:00:00.000Z");
+  const sessionRow = {
+    session_id: "old-session", created_at: now, expires_at: new Date("2026-09-10T22:00:00.000Z"),
+    csrf_sha256: digest(csrfToken), session_credential_version: "1", revoked_at: null,
+    user_id: "user-id", display_name: "Clinician", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    must_change_password: true, credential_version: "1", capabilities: ["clinical:document"]
+  };
+  const failure = new Error("sign-in audit failed");
+  const { dataSource, events } = instrumentedDataSource(({ sql, parameters }) => {
+    if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
+    if (sql.startsWith("select s.id as session_id")) return [sessionRow];
+    if (sql.startsWith("select c.password_verifier")) return [{ ...sessionRow, password_verifier: verifier }];
+    if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
+    if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
+    if (sql.startsWith("insert into app_identity.authentication_event") && parameters[2] === "authentication.sign_in") throw failure;
+    return [];
+  });
+
+  await assert.rejects(new ClinicianSessionService(dataSource).changePassword("old-token", {
+    currentPassword, newPassword: "Permanent password 84!", csrfToken
+  }, now), (error) => error === failure);
+  assert.ok(events.some(({ sql }) => sql.startsWith("update app_identity.local_credential")));
+  assert.ok(events.some(({ sql }) => sql.includes("revocation_reason = 'password_change'")));
+  assert.ok(events.some(({ sql }) => sql.startsWith("insert into app_identity.app_session")));
+  assert.equal(events.at(-1).sql, "rollback");
+  assert.equal(events.some(({ sql }) => sql === "commit"), false);
+});
+
+test("sign-out revocation and audit commit together and roll back together", async () => {
+  const csrfToken = "csrf-proof";
+  const respond = (failAudit) => ({ sql }) => {
+    if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
+    if (sql.startsWith("update app_identity.app_session")) {
+      return [{ id: "session-id", user_id: "user-id", organization_id: "organization-id" }];
+    }
+    if (failAudit && sql.startsWith("insert into app_identity.authentication_event")) throw new Error("audit failed");
+    return [];
+  };
+
+  const committed = instrumentedDataSource(respond(false));
+  await new ClinicianSessionService(committed.dataSource).end("session-token", csrfToken);
+  assert.equal(committed.events.at(-1).sql, "commit");
+  assert.deepEqual(new Set(committed.events.map(({ connection }) => connection)), new Set(["transaction-connection"]));
+
+  const rolledBack = instrumentedDataSource(respond(true));
+  await assert.rejects(new ClinicianSessionService(rolledBack.dataSource).end("session-token", csrfToken), /audit failed/);
+  assert.equal(rolledBack.events.at(-1).sql, "rollback");
+  assert.equal(rolledBack.events.some(({ sql }) => sql === "commit"), false);
 });

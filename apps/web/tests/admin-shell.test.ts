@@ -8,7 +8,7 @@ import { activateStationaryForm, loadAdminContext, publishStationaryFormDraft, s
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
-import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring, StationarySectionControls } from "../components/stationary-form-authoring";
+import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
@@ -22,6 +22,10 @@ const session: ClinicianSession = {
   capabilities: ["installation:administer", "clinical:document"]
 };
 const productionSettings = parseInstallationSettings(production);
+const unavailablePanels = [
+  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
+  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
+] as const;
 
 test("Admin panels use one persistent side-tab navigator", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
@@ -29,7 +33,8 @@ test("Admin panels use one persistent side-tab navigator", () => {
   assert.match(markup, /class="admin-tabs"/);
   assert.match(markup, />Element catalog<\/button>/);
   assert.match(markup, />Stationary form<\/button>/);
-  assert.match(markup, />Audit Log<\/button>/);
+  for (const panel of unavailablePanels) assert.match(markup, new RegExp(`>${panel}<\\/button>`));
+  assert.equal((markup.match(/<button type="button"/g) ?? []).length, 14);
   assert.doesNotMatch(markup, /admin-placeholder-grid/);
 });
 
@@ -96,19 +101,17 @@ test("section operations preserve canonical content while changing only section 
   assert.throws(() => removeFormSection(removed, 0), /at least one section/);
 });
 
-test("Stationary section controls are named, keyboard-operable buttons with affected-field confirmation", () => {
+test("live form section controls expose named keyboard-operable move and removal actions", () => {
   const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
     csrfToken: "csrf", catalogReleaseId: "catalog-id", installationSettings: productionSettings,
   }));
   assert.match(markup, /Loading Stationary form draft/);
-  const controls = renderToStaticMarkup(createElement(StationarySectionControls, { definition: formDefinition, pendingRemoval: 0,
-    onMove: () => {}, onRequestRemoval: () => {}, onConfirmRemoval: () => {}, onCancelRemoval: () => {} }));
+  const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,
+    onChange: () => {}, onMoveSection: () => {}, onRequestRemoveSection: () => {} }));
   assert.match(controls, /aria-label="Move patient down"/);
   assert.match(controls, /aria-label="Move assessment up"/);
-  assert.match(controls, /role="alertdialog"/);
-  assert.match(controls, /2 affected fields/);
-  assert.match(controls, /name \(ePatient\.02\)/);
-  assert.match(controls, /Confirm removal/);
+  assert.match(controls, /aria-label="Remove patient"/);
+  assert.match(controls, /aria-label="Remove assessment"/);
 });
 
 test("draft preview projects only configured sections and fields through Stationary groups", () => {

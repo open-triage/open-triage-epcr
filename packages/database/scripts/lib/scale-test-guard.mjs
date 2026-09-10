@@ -1,11 +1,9 @@
 // Safety guard for the scale-test harness (scripts/run-scale-tests.mjs).
 //
-// The harness starts by running `drop schema if exists scale_validation cascade` against
-// whatever `DATABASE_URL` points at. That is safe against a disposable scratch database, but
-// nothing about the harness itself stops someone from accidentally pointing it at a real
-// installation's database. This module is the last checkpoint before that statement runs: it
-// requires either a recognizable non-production marker in the connection string, or an explicit
-// operator override, before allowing the caller to proceed.
+// The harness creates and drops a dedicated database on the server identified by `DATABASE_URL`.
+// This module is the last checkpoint before that destructive lifecycle starts: it requires either
+// a recognizable non-production marker in the connection string, or an explicit operator
+// override, before allowing the caller to proceed.
 
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]", ""]);
 const SCRATCH_DATABASE_NAME_MARKERS = ["scratch", "test", "sandbox", "scale_validation"];
@@ -50,8 +48,7 @@ export function assertScratchDatabaseTarget(databaseUrl, { env = process.env } =
   if (isLocalHost || hasScratchMarker) return;
 
   throw new Error(
-    "Refusing to run the destructive scale-test harness (which starts with " +
-      "`drop schema if exists scale_validation cascade`) against " +
+    "Refusing to run the destructive scale-test harness (scratch database creation/deletion) against " +
       `DATABASE_URL "${redactCredentials(databaseUrl)}": it is not recognizable as a scratch ` +
       "database. The connection's host must be localhost/127.0.0.1, or its database name must " +
       `contain one of: ${SCRATCH_DATABASE_NAME_MARKERS.join(", ")}. If this really is a disposable ` +

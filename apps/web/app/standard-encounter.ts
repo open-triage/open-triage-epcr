@@ -364,18 +364,6 @@ export function configuredEventType(event: EncounterEvent): ConfiguredEventType 
   return null;
 }
 
-/** Orders configurable clinical event types for the completed summary, preserving order within each type. */
-export function completedSummaryEvents(events: ReadonlyArray<EncounterEvent>, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<EncounterEvent> {
-  const typeOrder = new Map(definition.composition.summary.eventTypeOrder.map((type, index) => [type, index]));
-  return events.map((event, index) => ({ event, index })).sort((a, b) => {
-    const aType = configuredEventType(a.event);
-    const bType = configuredEventType(b.event);
-    const aOrder = aType ? typeOrder.get(aType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
-    const bOrder = bType ? typeOrder.get(bType) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
-    return aOrder - bOrder || a.index - b.index;
-  }).map(({ event }) => event);
-}
-
 export function vitalSummary(values: VitalValues, definition: EncounterDefinition = bundledEncounterDefinition): string {
   const config = definition.events.vitals;
   return config.summary.map((item) => {

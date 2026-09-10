@@ -1,12 +1,35 @@
 # Analytics projection operations
 
-The production scheduler is [`deploy/kubernetes/analytics-projector-cronjobs.yaml`](../../deploy/kubernetes/analytics-projector-cronjobs.yaml).
-Pin both jobs to the same immutable release image used by the application, create
-the referenced database secret, and apply the manifest in the deployment
-namespace. The projector runs one bounded batch every two minutes with overlapping
-runs forbidden. This cadence leaves normal operating margin inside the five-minute
-signed-to-analytical freshness target. Scale the batch size from observed arrival
-volume; never replace it with an unbounded drain loop.
+The production scheduler is defined only by the
+[`analytics-cronjobs.yaml` Helm template](../../deploy/helm/open-triage/templates/analytics-cronjobs.yaml).
+Configure it through the chart's `analytics` values. Both jobs use the immutable
+`api.image` selected for the application, the configured `imagePullSecrets`, and
+the database Secret selected by `secrets.existingSecret`; that Secret must expose
+`DATABASE_URL`.
+
+The default projector schedule runs one bounded batch every two minutes with
+overlapping runs forbidden. This cadence leaves normal operating margin inside
+the five-minute signed-to-analytical freshness target. Scale `analytics.batchSize`
+from observed arrival volume; never replace it with an unbounded drain loop.
+`analytics.maxAttempts`, `analytics.freshnessTargetSeconds`,
+`analytics.resources`, and `analytics.healthResources` control the remaining
+operational limits.
+
+When an operator or deployment system needs raw Kubernetes YAML, render only the
+canonical analytics template with the installation's private values:
+
+```sh
+helm template open-triage ./deploy/helm/open-triage \
+  --namespace open-triage \
+  --values /private/path/installation.values.yaml \
+  --show-only templates/analytics-cronjobs.yaml \
+  > /tmp/open-triage-analytics-cronjobs.yaml
+kubectl apply --namespace open-triage \
+  --filename /tmp/open-triage-analytics-cronjobs.yaml
+```
+
+Do not edit or commit the rendered file. Update the chart or installation values
+and render it again so Helm installs and raw-manifest consumers stay identical.
 
 The companion health job runs each minute. It emits one structured JSON record and
 exits non-zero when the oldest backlog exceeds 300 seconds or a terminal failure

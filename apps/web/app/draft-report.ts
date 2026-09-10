@@ -238,10 +238,6 @@ export function applyDraftMutationDelta(
   return { groups: [...groups.values()], occurrences: [...occurrences.values()] };
 }
 
-export function usesLocalDemoDrafts(): boolean {
-  return browserRequestConfiguration().mode === "static";
-}
-
 export function draftChangesUrl(reportId: string): string {
   return browserRouteUrl(`/api/reports/${reportId}/draft-changes`);
 }

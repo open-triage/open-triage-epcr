@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
-import { loadShellState, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { EMPTY_VITALS, INITIAL_SHELL_STATE, MISSING_VITALS_FINDING_ID, encounterEventDetail, encounterEventPresentation, reviewEncounter, bundledEncounterDefinition, transitionShell, vitalSummary, type ShellState, type VitalValues } from "../app/standard-encounter";
 import { nullOptionsFor, validateVitals } from "../app/vital-validation";
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";

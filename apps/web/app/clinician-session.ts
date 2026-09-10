@@ -4,7 +4,6 @@ import { selectedInstallationSettings } from "./installation-settings";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
-export const DEMO_ADMIN_USERNAME = SYNTHETIC_DEMO_FIXTURE.administratorUsername;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 
@@ -43,11 +42,6 @@ export function storeClinicianSession(storage: Pick<Storage, "setItem">, session
 
 export function clearClinicianSession(storage: Pick<Storage, "removeItem">): void {
   storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
-}
-
-/** Server-backed demos default to the administrator; static exports retain the clinician-only identity. */
-export function defaultDemoUsername(): string {
-  return browserRequestConfiguration().mode === "server" ? DEMO_ADMIN_USERNAME : DEMO_CLINICIAN_USERNAME;
 }
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {

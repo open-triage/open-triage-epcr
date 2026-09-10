@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
-import { DataSource } from "typeorm";
+import { DataSource, type EntityManager } from "typeorm";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
@@ -39,7 +39,7 @@ export class ClinicianSessionService {
     const account = rows[0];
     const passwordMatches = await verifyPassword(command.password, account?.password_verifier ?? await dummyVerifier);
     if (!account || !passwordMatches || !account.active) {
-      await this.audit(account, "authentication.sign_in", "failed");
+      await this.audit(this.dataSource.manager, account, "authentication.sign_in", "failed");
       throw new UnauthorizedException("The username or password is incorrect");
     }
     const sessionToken = randomBytes(32).toString("base64url");
@@ -50,12 +50,12 @@ export class ClinicianSessionService {
         (user_id, token_sha256, csrf_sha256, credential_version, created_at, expires_at)
       values ($1, $2, $3, $4, $5, $6) returning id
     `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt]);
-    await this.audit(account, "authentication.sign_in", "succeeded", inserted[0]?.id);
+    await this.audit(this.dataSource.manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
     return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken) };
   }
 
-  async get(sessionToken: string, now = new Date(), allowPasswordChange = false): Promise<ClinicianSession> {
-    const rows = await this.dataSource.query<SessionRow[]>(`
+  async get(sessionToken: string, now = new Date(), allowPasswordChange = false, manager = this.dataSource.manager): Promise<ClinicianSession> {
+    const rows = await manager.query<SessionRow[]>(`
       select s.id as session_id, s.created_at, s.expires_at, s.csrf_sha256,
              s.credential_version as session_credential_version, s.revoked_at,
              u.id as user_id, u.display_name, u.active, o.id as organization_id,
@@ -78,59 +78,73 @@ export class ClinicianSessionService {
     return this.publicSession(row, new Date(row.created_at), new Date(row.expires_at), undefined, row.capabilities ?? []);
   }
 
-  async assertCsrf(sessionToken: string, csrfToken: string | undefined): Promise<void> {
+  async assertCsrf(sessionToken: string, csrfToken: string | undefined, manager = this.dataSource.manager): Promise<void> {
     if (!csrfToken) throw new UnauthorizedException("A valid CSRF token is required");
-    const rows = await this.dataSource.query<Array<{ csrf_sha256: string }>>(
+    const rows = await manager.query<Array<{ csrf_sha256: string }>>(
       "select csrf_sha256 from app_identity.app_session where token_sha256 = $1 and revoked_at is null", [digest(sessionToken)]
     );
     if (!rows[0] || rows[0].csrf_sha256 !== digest(csrfToken)) throw new UnauthorizedException("A valid CSRF token is required");
   }
 
   async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date()): Promise<CreatedSession> {
-    await this.assertCsrf(sessionToken, command.csrfToken);
-    const current = await this.get(sessionToken, now, true);
-    const rows = await this.dataSource.query<CredentialRow[]>(`
-      select c.password_verifier, c.credential_version, c.must_change_password,
-             u.id as user_id, u.display_name, u.active, u.organization_id,
-             o.name as organization_name, o.shift_session_duration_hours
-      from app_identity.local_credential c join app_identity.app_user u on u.id = c.user_id
-      join app_identity.organization o on o.id = u.organization_id where u.id = $1
-    `, [current.user.id]);
-    const account = rows[0];
-    if (!account || !await verifyPassword(command.currentPassword, account.password_verifier)) {
-      await this.audit(account, "authentication.password_change", "failed");
-      throw new UnauthorizedException("The current password is incorrect");
-    }
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
-    await this.dataSource.query("begin");
-    try {
-      await this.dataSource.query(`update app_identity.local_credential set password_verifier = $2,
+    const result = await this.dataSource.transaction(async (manager) => {
+      await this.assertCsrf(sessionToken, command.csrfToken, manager);
+      const current = await this.get(sessionToken, now, true, manager);
+      const rows = await manager.query<CredentialRow[]>(`
+        select c.password_verifier, c.credential_version, c.must_change_password,
+               u.id as user_id, u.display_name, u.active, u.organization_id,
+               o.name as organization_name, o.shift_session_duration_hours
+        from app_identity.local_credential c join app_identity.app_user u on u.id = c.user_id
+        join app_identity.organization o on o.id = u.organization_id where u.id = $1
+        for update of c
+      `, [current.user.id]);
+      const account = rows[0];
+      if (!account || !await verifyPassword(command.currentPassword, account.password_verifier)) {
+        await this.audit(manager, account, "authentication.password_change", "failed");
+        return undefined;
+      }
+      const credentials = await manager.query<Array<{ credential_version: string }>>(`update app_identity.local_credential set password_verifier = $2,
         must_change_password = false, credential_version = credential_version + 1,
-        password_changed_at = $3, updated_at = $3 where user_id = $1`, [account.user_id, passwordVerifier, now]);
-      await this.dataSource.query(`update app_identity.app_session set revoked_at = $2,
+        password_changed_at = $3, updated_at = $3 where user_id = $1
+        returning credential_version`, [account.user_id, passwordVerifier, now]);
+      await manager.query(`update app_identity.app_session set revoked_at = $2,
         revocation_reason = 'password_change' where user_id = $1 and revoked_at is null`, [account.user_id, now]);
-      await this.audit(account, "authentication.password_change", "succeeded");
-      await this.dataSource.query("commit");
-    } catch (error) {
-      await this.dataSource.query("rollback");
-      throw error;
-    }
-    return this.create({ username: await this.username(account.user_id), password: command.newPassword }, now);
+      await this.audit(manager, account, "authentication.password_change", "succeeded");
+
+      const replacementSessionToken = randomBytes(32).toString("base64url");
+      const csrfToken = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
+      const inserted = await manager.query<Array<{ id: string }>>(`
+        insert into app_identity.app_session
+          (user_id, token_sha256, csrf_sha256, credential_version, created_at, expires_at)
+        values ($1, $2, $3, $4, $5, $6) returning id
+      `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0]!.credential_version, now, expiresAt]);
+      await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
+      return {
+        sessionToken: replacementSessionToken,
+        session: await this.publicSession({ ...account, must_change_password: false }, now, expiresAt, csrfToken, undefined, manager)
+      };
+    });
+    if (!result) throw new UnauthorizedException("The current password is incorrect");
+    return result;
   }
 
   async end(sessionToken: string, csrfToken?: string): Promise<void> {
-    await this.assertCsrf(sessionToken, csrfToken);
-    const rows = await this.dataSource.query<Array<{ id: string; user_id: string; organization_id: string }>>(`
-      update app_identity.app_session s set revoked_at = now(), revocation_reason = 'logout'
-      from app_identity.app_user u where s.user_id = u.id and s.token_sha256 = $1 and s.revoked_at is null
-      returning s.id, s.user_id, u.organization_id
-    `, [digest(sessionToken)]);
-    const ended = rows[0];
-    if (!ended) throw new UnauthorizedException("The clinician session has ended");
-    await this.dataSource.query(`insert into app_identity.authentication_event
-      (organization_id, actor_id, action, result, target_user_id, session_id)
-      values ($1, $2, 'authentication.sign_out', 'succeeded', $2, $3)`,
-    [ended.organization_id, ended.user_id, ended.id]);
+    await this.dataSource.transaction(async (manager) => {
+      await this.assertCsrf(sessionToken, csrfToken, manager);
+      const rows = await manager.query<Array<{ id: string; user_id: string; organization_id: string }>>(`
+        update app_identity.app_session s set revoked_at = now(), revocation_reason = 'logout'
+        from app_identity.app_user u where s.user_id = u.id and s.token_sha256 = $1 and s.revoked_at is null
+        returning s.id, s.user_id, u.organization_id
+      `, [digest(sessionToken)]);
+      const ended = rows[0];
+      if (!ended) throw new UnauthorizedException("The clinician session has ended");
+      await manager.query(`insert into app_identity.authentication_event
+        (organization_id, actor_id, action, result, target_user_id, session_id)
+        values ($1, $2, 'authentication.sign_out', 'succeeded', $2, $3)`,
+      [ended.organization_id, ended.user_id, ended.id]);
+    });
   }
 
   async requireCapability(sessionToken: string, capability: string): Promise<ClinicianSession> {
@@ -139,16 +153,8 @@ export class ClinicianSessionService {
     return session;
   }
 
-  private async username(userId: string): Promise<string> {
-    const rows = await this.dataSource.query<Array<{ username: string }>>(
-      "select username from app_identity.local_credential where user_id = $1", [userId]
-    );
-    if (!rows[0]) throw new UnauthorizedException("The local credential is unavailable");
-    return rows[0].username;
-  }
-
-  private async audit(account: Partial<CredentialRow> | undefined, action: string, result: string, sessionId?: string): Promise<void> {
-    await this.dataSource.query(`insert into app_identity.authentication_event
+  private async audit(manager: EntityManager, account: Partial<CredentialRow> | undefined, action: string, result: string, sessionId?: string): Promise<void> {
+    await manager.query(`insert into app_identity.authentication_event
       (organization_id, actor_id, action, result, target_user_id, session_id)
       values ($1, $2, $3, $4, $2, $5)`,
     [account?.organization_id ?? null, account?.user_id ?? null, action, result, sessionId ?? null]);
@@ -156,9 +162,9 @@ export class ClinicianSessionService {
 
   private async publicSession(
     account: Pick<CredentialRow, "user_id" | "display_name" | "organization_id" | "organization_name" | "must_change_password">,
-    startedAt: Date, expiresAt: Date, csrfToken?: string, capabilities?: string[]
+    startedAt: Date, expiresAt: Date, csrfToken?: string, capabilities?: string[], manager = this.dataSource.manager
   ): Promise<ClinicianSession> {
-    const resolvedCapabilities = capabilities ?? (await this.dataSource.query<Array<{ capability_key: string }>>(
+    const resolvedCapabilities = capabilities ?? (await manager.query<Array<{ capability_key: string }>>(
       "select capability_key from app_identity.user_capability where user_id = $1 order by capability_key", [account.user_id]
     )).map(({ capability_key }) => capability_key);
     return {
