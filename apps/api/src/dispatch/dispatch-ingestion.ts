@@ -144,11 +144,18 @@ export async function ingestDispatchDelivery(
       revision: sourceIdentity.revision, receiptId: receipt.id, findings: validation.findings };
   }
 
+  // The (organization_id, dispatch_source_id, dispatch_source_record_id) triple is unique on
+  // clinical.call_assignment, so this normally matches at most one row. The explicit ordering
+  // and limit are a deterministic safety net: if that invariant is ever relaxed, the most
+  // recently dispatched assignment (tie-broken by call_assignment id) always decides the
+  // signed/unsigned branch below, rather than depending on incidental row order.
   const reports = await writer.query<Array<{ id: string; status: string }>>(`
     select r.id, r.status from clinical.call_assignment ca
     join clinical.report r on r.id = ca.report_id
     where ca.organization_id = $1 and ca.dispatch_source_id = $2
       and ca.dispatch_source_record_id = $3
+    order by ca.dispatched_at desc, ca.id desc
+    limit 1
   `, [input.organizationId, input.sourceId, sourceIdentity.sourceRecordId]);
   if (reports[0]?.status === "signed") {
     const receipt = await persistDispatchReceipt(writer, {
