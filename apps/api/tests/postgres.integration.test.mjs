@@ -101,12 +101,31 @@ async function ensureFoundation(client) {
   }
 }
 
+function singleClientDataSource(client) {
+  const manager = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  return {
+    manager,
+    query: manager.query,
+    transaction: async (work) => {
+      await client.query("begin");
+      try {
+        const result = await work(manager);
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+    }
+  };
+}
+
 integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const database = singleClientDataSource(client);
   const accounts = new AccountService(database);
   const sessions = new ClinicianSessionService(database);
   const organizationId = randomUUID();
@@ -167,7 +186,7 @@ integrationTest("authorized Admin context resolves only the session organization
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const database = singleClientDataSource(client);
   const accounts = new AccountService(database);
   const sessions = new ClinicianSessionService(database);
   const admin = new AdminService(database, sessions);
