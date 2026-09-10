@@ -109,7 +109,7 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     queries.push(normalized);
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("select * from clinical.command_receipt")) return [];
-    if (normalized.includes("select * from clinical.report") && normalized.includes("for update")) return [report];
+    if (normalized.includes("from clinical.report") && normalized.includes("for update")) return [report];
     if (normalized.includes("from app_identity.app_user")) return [{ id: userId }];
     if (normalized.includes("clock_timestamp()")) return [{ received_at: new Date() }];
     if (normalized.includes("from clinical.draft_target_state") && normalized.includes("for update")) return [];
@@ -121,14 +121,12 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
       const rows = JSON.parse(parameters[3]).map(({ id }) => ({ id }));
       return [rows, rows.length];
     }
-    if (normalized.startsWith("update clinical.report set revision")) {
+    if (normalized.startsWith("with updated as") && normalized.includes("insert into clinical.report_change")) {
       report.revision = 1;
       return [];
     }
-    if (normalized.startsWith("insert into clinical.report_change") ||
-        normalized.startsWith("insert into clinical.draft_target_state") ||
+    if (normalized.startsWith("insert into clinical.draft_target_state") ||
         normalized.startsWith("insert into clinical.command_receipt")) return [];
-    if (normalized.startsWith("select id, status, revision")) return [report];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { transaction: async (_isolation, operation) => operation(manager) };

@@ -47,6 +47,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   documenting_user_id: string;
+  server_received_time?: Date | string;
 };
 
 type ElementMetadata = {
@@ -257,7 +258,7 @@ export class DraftReportService {
       return await this.dataSource.transaction("READ COMMITTED", async (manager) => {
         await this.lockCommand(manager, command.commandId);
         const rows = await manager.query<ReportRow[]>(`
-          select * from clinical.report
+          select clinical.report.*, clock_timestamp() as server_received_time from clinical.report
           where id = $1 and organization_id = $2 and documenting_user_id = $3
           for update
         `, [reportId, session.organization.id, session.user.id]);
@@ -282,8 +283,7 @@ export class DraftReportService {
         }
 
         const nextRevision = revision + 1;
-        const received = await manager.query<Array<{ received_at: Date | string }>>("select clock_timestamp() as received_at");
-        const serverReceivedTime = received[0]!.received_at;
+        const serverReceivedTime = report.server_received_time ?? new Date();
         const winningGroups: DraftGroupMutation[] = [];
         const winningOccurrences: DraftOccurrenceMutation[] = [];
         const winningTargets: IncomingTarget[] = [];
@@ -342,12 +342,13 @@ export class DraftReportService {
         await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
 
         await manager.query(`
-          update clinical.report set revision = $2, updated_at = now() where id = $1
-        `, [reportId, nextRevision]);
-        await manager.query(`
+          with updated as (
+            update clinical.report set revision = $2, updated_at = now()
+            where id = $1 returning id
+          )
           insert into clinical.report_change
             (report_id, revision, idempotency_key, author_id, device_id, client_time, changes)
-          values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+          select updated.id, $2, $3, $4, $5, $6, $7::jsonb from updated
         `, [reportId, nextRevision, command.commandId, command.authorId,
           command.deviceId ?? null, command.clientTime ?? null, JSON.stringify({
             baseRevision: command.expectedRevision,
@@ -355,7 +356,7 @@ export class DraftReportService {
           })]);
         await this.storeTargetStates(manager, report.id, winningTargets);
         await this.storeReconciliationAudits(manager, report.id, audits);
-        const result = await this.reportResult(manager, reportId);
+        const result = this.draftResult(report, nextRevision);
         await this.storeReceipt(manager, command.commandId, reportId, "save-draft", digest, result);
         return result;
       });
@@ -1185,8 +1186,12 @@ export class DraftReportService {
     const row = rows[0];
     if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
     if (row.status !== "draft") throw new ConflictException("Report is no longer a draft");
+    return this.draftResult(row, Number(row.revision));
+  }
+
+  private draftResult(row: ReportRow, revision: number): DraftReportResult {
     return {
-      id: row.id, status: row.status, revision: Number(row.revision), organizationId: row.organization_id,
+      id: row.id, status: "draft", revision, organizationId: row.organization_id,
       incidentId: row.incident_id, patientId: row.patient_id,
       agencyDemographicVersionId: row.agency_demographic_version_id,
       formVersionId: row.form_version_id, catalogReleaseId: row.catalog_release_id,

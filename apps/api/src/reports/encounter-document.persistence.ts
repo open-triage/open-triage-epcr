@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { DispatchConflict, EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
+type Queryable = Pick<EntityManager, "query">;
+
 type JsonRecord = Record<string, unknown>;
 type DispatchElement = JsonRecord & { id: string; values: JsonRecord[] };
 type DispatchInstance = JsonRecord & { instanceId: string; parentInstanceId?: string; elements: DispatchElement[] };
@@ -125,7 +127,7 @@ function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
 
 /** Seeds a newly created report from the accepted dispatch snapshot exactly once. */
 export async function seedDispatchEncounter(
-  manager: EntityManager,
+  manager: Queryable,
   reportId: string,
   catalogReleaseId: string,
   authorId: string,
@@ -170,17 +172,24 @@ export async function seedDispatchEncounter(
   const bySourceId = new Map(instances.map(({ instance }) => [String(instance.instanceId), dispatchEntityId(reportId, `group:${String(instance.instanceId)}`)]));
   const pending = [...instances];
   while (pending.length) {
-    const index = pending.findIndex(({ instance }) => instance.parentInstanceId === undefined ||
+    const ready = pending.filter(({ instance }) => instance.parentInstanceId === undefined ||
       !pending.some(({ instance: candidate }) => candidate.instanceId === instance.parentInstanceId));
-    if (index < 0) throw new TypeError("Accepted dispatch group hierarchy contains a cycle");
-    const { groupId, instance, ordinal } = pending.splice(index, 1)[0]!;
+    if (!ready.length) throw new TypeError("Accepted dispatch group hierarchy contains a cycle");
     await manager.query(`
       insert into clinical.group_instance
         (id, report_id, catalog_release_id, parent_group_instance_id, group_id, ordinal, created_by)
-      values ($1, $2, $3, $4, $5, $6, $7)
-    `, [bySourceId.get(String(instance.instanceId)), reportId, catalogReleaseId,
-      instance.parentInstanceId === undefined ? null : bySourceId.get(String(instance.parentInstanceId)),
-      groupId, ordinal, authorId]);
+      select incoming.id, $1, $2, incoming.parent_group_instance_id,
+             incoming.group_id, incoming.ordinal, $3
+      from jsonb_to_recordset($4::jsonb) as incoming(
+        id uuid, parent_group_instance_id uuid, group_id text, ordinal integer)
+    `, [reportId, catalogReleaseId, authorId, JSON.stringify(ready.map(({ groupId, instance, ordinal }) => ({
+      id: bySourceId.get(String(instance.instanceId)),
+      parent_group_instance_id: instance.parentInstanceId === undefined
+        ? null : bySourceId.get(String(instance.parentInstanceId)),
+      group_id: groupId,
+      ordinal,
+    })))]);
+    for (const item of ready) pending.splice(pending.indexOf(item), 1);
   }
 
   const elementIds = [...new Set(instances.flatMap(({ instance }) => Array.isArray(instance.elements)
@@ -193,6 +202,7 @@ export async function seedDispatchEncounter(
     where e.release_id = $1 and e.element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]);
   const definitions = new Map(metadata.map((item) => [item.element_id, item]));
+  const occurrenceRows: Array<Record<string, unknown>> = [];
   for (const { instance } of instances) {
     const groupInstanceId = bySourceId.get(String(instance.instanceId))!;
     for (const element of Array.isArray(instance.elements) ? instance.elements.filter(record) : []) {
@@ -201,23 +211,51 @@ export async function seedDispatchEncounter(
       for (const [ordinal, value] of (Array.isArray(element.values) ? element.values.filter(record) : []).entries()) {
         const occurrenceId = dispatchEntityId(reportId, `occurrence:${String(value.occurrenceId)}`);
         const columns = valueColumns(value, definition.base_datatype);
-        await manager.query(`
-          insert into clinical.element_occurrence
-            (id, report_id, catalog_release_id, group_instance_id, element_identity_id, element_id,
-             ordinal, analytical_repeatable, identifying, value_kind, value_text, value_integer, value_numeric,
-             value_boolean, value_date, value_datetime, value_time, value_duration, value_binary,
-             value_lexical, value_utc_offset_minutes, value_precision, code, code_system, code_display,
-             terminology_version, absence_code, absence_display, source_attributes,
-             provenance_kind, provenance_detail, author_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                  $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                  $28, $29::jsonb, 'dispatch', $30::jsonb, $31)
-        `, [occurrenceId, reportId, catalogReleaseId, groupInstanceId, definition.element_identity_id,
-          element.id, ordinal, definition.analytical_repeatable, definition.identifying, ...columns,
-          value.attributes ? JSON.stringify(value.attributes) : null,
-          JSON.stringify({ sourceOccurrenceId: value.occurrenceId, sourceValue: value }), authorId]);
+        occurrenceRows.push({
+          id: occurrenceId, group_instance_id: groupInstanceId,
+          element_identity_id: definition.element_identity_id, element_id: element.id,
+          ordinal, analytical_repeatable: definition.analytical_repeatable, identifying: definition.identifying,
+          value_kind: columns[0], value_text: columns[1], value_integer: columns[2],
+          value_numeric: columns[3], value_boolean: columns[4], value_date: columns[5],
+          value_datetime: columns[6], value_time: columns[7], value_duration: columns[8],
+          value_binary: columns[9] instanceof Buffer ? columns[9].toString("base64") : columns[9],
+          value_lexical: columns[10], value_utc_offset_minutes: columns[11], value_precision: columns[12],
+          code: columns[13], code_system: columns[14], code_display: columns[15],
+          terminology_version: columns[16], absence_code: columns[17], absence_display: columns[18],
+          source_attributes: value.attributes ?? null,
+          provenance_detail: { sourceOccurrenceId: value.occurrenceId, sourceValue: value },
+        });
       }
     }
+  }
+  if (occurrenceRows.length) {
+    await manager.query(`
+      insert into clinical.element_occurrence
+        (id, report_id, catalog_release_id, group_instance_id, element_identity_id, element_id,
+         ordinal, analytical_repeatable, identifying, value_kind, value_text, value_integer, value_numeric,
+         value_boolean, value_date, value_datetime, value_time, value_duration, value_binary,
+         value_lexical, value_utc_offset_minutes, value_precision, code, code_system, code_display,
+         terminology_version, absence_code, absence_display, source_attributes,
+         provenance_kind, provenance_detail, author_id)
+      select incoming.id, $1, $2, incoming.group_instance_id, incoming.element_identity_id,
+             incoming.element_id, incoming.ordinal, incoming.analytical_repeatable, incoming.identifying,
+             incoming.value_kind, incoming.value_text, incoming.value_integer, incoming.value_numeric,
+             incoming.value_boolean, incoming.value_date, incoming.value_datetime, incoming.value_time,
+             incoming.value_duration, case when incoming.value_binary is null then null
+               else decode(incoming.value_binary, 'base64') end,
+             incoming.value_lexical, incoming.value_utc_offset_minutes, incoming.value_precision,
+             incoming.code, incoming.code_system, incoming.code_display, incoming.terminology_version,
+             incoming.absence_code, incoming.absence_display, incoming.source_attributes,
+             'dispatch', incoming.provenance_detail, $3
+      from jsonb_to_recordset($4::jsonb) as incoming(
+        id uuid, group_instance_id uuid, element_identity_id uuid, element_id text,
+        ordinal integer, analytical_repeatable boolean, identifying boolean, value_kind text,
+        value_text text, value_integer bigint, value_numeric numeric, value_boolean boolean,
+        value_date date, value_datetime timestamptz, value_time time, value_duration interval,
+        value_binary text, value_lexical text, value_utc_offset_minutes smallint, value_precision text,
+        code text, code_system text, code_display text, terminology_version text,
+        absence_code text, absence_display text, source_attributes jsonb, provenance_detail jsonb)
+    `, [reportId, catalogReleaseId, authorId, JSON.stringify(occurrenceRows)]);
   }
 }
 
@@ -242,7 +280,7 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
 }
 
 /** Rehydrates the portable encounter document from normalized canonical storage. */
-export async function encounterDocument(manager: EntityManager, reportId: string): Promise<EncounterDocument> {
+export async function encounterDocument(manager: Queryable, reportId: string): Promise<EncounterDocument> {
   const reports = await manager.query<ReportDocumentRow[]>(`
     select r.id, r.created_at, r.updated_at, f.id as form_id, fv.version as form_version,
            cr.standard as catalog_standard,
@@ -302,7 +340,7 @@ export async function encounterDocument(manager: EntityManager, reportId: string
   };
 }
 
-export async function dispatchConflicts(manager: EntityManager, reportId: string): Promise<DispatchConflict[]> {
+export async function dispatchConflicts(manager: Queryable, reportId: string): Promise<DispatchConflict[]> {
   const rows = await manager.query<Array<{
     id: string; occurrence_id: string; element_id: string; clinician_value: EncounterValue | null;
     dispatch_value: EncounterValue | null; dispatch_revision: string | number; dispatch_receipt_id: string;

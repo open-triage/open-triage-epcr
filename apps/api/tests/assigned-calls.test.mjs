@@ -205,7 +205,7 @@ test("opening and retrying one assignment creates one draft and skips stale repl
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
-  const dataSource = { transaction: (work) => work(manager) };
+  const dataSource = { transaction: (work) => work(manager), query: manager.query };
   const sessions = { get: (token) => {
     assert.equal(token, session.accessToken);
     return session;

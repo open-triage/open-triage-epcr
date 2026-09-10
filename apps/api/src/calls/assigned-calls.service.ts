@@ -216,7 +216,7 @@ export class AssignedCallsService {
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
     const session = await this.sessions.get(accessToken);
-    return this.dataSource.transaction(async (manager) => {
+    const opened = await this.dataSource.transaction(async (manager) => {
       const assignments = await manager.query<OpenableAssignmentRow[]>(`
         select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                organization.deployment_timezone as agency_time_zone,
@@ -239,7 +239,7 @@ export class AssignedCallsService {
       if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
       if (assignment.status === "opened") {
         if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
-        return this.openResult(manager, assignment, assignment.report_id, session.user.id, null);
+        return { assignment, reportId: assignment.report_id, replacement: null };
       }
 
       const versions = await manager.query<Array<{ id: string; catalog_release_id: string }>>(`
@@ -294,8 +294,9 @@ export class AssignedCallsService {
       const replacement = shouldCreateSampleReplacement(assignment.synthetic)
         ? await this.createReplacement(manager, assignment)
         : null;
-      return this.openResult(manager, assignment, reportId, session.user.id, replacement);
+      return { assignment, reportId, replacement };
     });
+    return this.openResult(opened.assignment, opened.reportId, session.user.id, opened.replacement);
   }
 
   private async createReplacement(manager: EntityManager, source: OpenableAssignmentRow): Promise<AssignedCall> {
@@ -389,13 +390,12 @@ export class AssignedCallsService {
   }
 
   private async openResult(
-    manager: EntityManager,
     assignment: OpenableAssignmentRow,
     reportId: string,
     documentingUserId: string,
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
-    const reports = await manager.query<ReportRow[]>(`
+    const reports = await this.dataSource.query<ReportRow[]>(`
       select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
              dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
       from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -403,9 +403,13 @@ export class AssignedCallsService {
     const report = reports[0];
     if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
     if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
-    const document = await encounterDocument(manager, report.id);
-    const conflicts = await dispatchConflicts(manager, report.id);
-    const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id);
+    // These immutable/read-only projections are independent. Loading them after commit both
+    // shortens the assignment lock and lets the connection pool overlap their database waits.
+    const [document, conflicts, clinicalForm] = await Promise.all([
+      encounterDocument(this.dataSource, report.id),
+      dispatchConflicts(this.dataSource, report.id),
+      clinicalFormConfiguration(this.dataSource, report.form_version_id, report.catalog_release_id),
+    ]);
     return {
       assignmentId: assignment.id,
       report: {
