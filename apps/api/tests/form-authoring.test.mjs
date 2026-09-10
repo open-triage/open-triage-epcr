@@ -32,6 +32,7 @@ function element(element_id, overrides = {}) {
 
 test("cloning copies compatible references, reports conflicts, and leaves the source aggregate unchanged", async () => {
   const original = structuredClone(definition);
+  const queries = [];
   const sourceElements = definition.sections[0].fields.map(({ source }) => element(source.elementId));
   const targetElements = [
     element("ePatient.01"),
@@ -40,8 +41,9 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
   ];
   const manager = {
     async query(sql, parameters) {
+      queries.push(sql);
       if (sql.includes("pg_advisory_xact_lock")) return [];
-      if (sql.includes("join catalog.authoring_draft")) return [{ id: catalogId }];
+      if (sql.includes("select r.id from catalog.release")) return [{ id: catalogId }];
       if (sql.includes("join forms.agency_stationary_default active")) return [{
         id: sourceFormId, form_id: formId, catalog_release_id: sourceCatalogId, version: 1,
         canonical_definition: definition
@@ -75,6 +77,9 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
   assert.deepEqual(definition, original, "the published source definition was not mutated");
   assert.equal(draft.catalogReleaseId, catalogId);
   assert.equal(draft.clonedFromId, sourceFormId);
+  const targetAuthorization = queries.find((sql) => sql.includes("select r.id from catalog.release"));
+  assert.match(targetAuthorization, /catalog\.authoring_draft/);
+  assert.match(targetAuthorization, /or exists[\s\S]*agency_stationary_default/);
 });
 
 test("a stale form save fails before any content is overwritten", async () => {

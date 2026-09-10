@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, loadAdminContext, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, loadAdminContext, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
@@ -43,6 +43,14 @@ test("Admin context reports direct authorization failures without trusting clien
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response("Unauthorized", { status: 401 });
   await assert.rejects(loadAdminContext(), /not authorized/);
+});
+
+test("nullable admin draft endpoints accept an empty successful response", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => new Response(null, { status: 200 });
+  assert.equal(await loadCatalogDraft(), null);
+  assert.equal(await loadStationaryFormDraft(), null);
 });
 
 test("catalog saves send the current revision and CSRF proof", async (t) => {

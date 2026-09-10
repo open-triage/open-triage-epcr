@@ -41,8 +41,19 @@ export class FormAuthoringService {
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-draft:${session.organization.id}`]);
       const target = await manager.query<Array<{ id: string }>>(`
-        select r.id from catalog.release r join catalog.authoring_draft d on d.published_release_id=r.id
-        where r.id=$1 and r.sealed and d.organization_id=$2
+        select r.id from catalog.release r
+        where r.id=$1 and r.sealed and (
+          exists (
+            select 1 from catalog.authoring_draft d
+            where d.published_release_id=r.id and d.organization_id=$2
+          ) or exists (
+            select 1 from forms.form_version fv
+            join forms.form f on f.id=fv.form_id
+            join forms.agency_stationary_default active on active.organization_id=f.organization_id
+              and active.form_version_id=fv.id
+            where f.organization_id=$2 and fv.status='published' and fv.catalog_release_id=r.id
+          )
+        )
       `, [catalogReleaseId, session.organization.id]);
       if (!target[0]) throw new NotFoundException("The selected published catalog was not found for this organization");
       const source = await manager.query<Array<VersionRow & { version: number }>>(`
