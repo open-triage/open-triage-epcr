@@ -1,5 +1,6 @@
 import type { EncounterDocument, EncounterGroup, EncounterValue } from "@open-triage/contracts";
 import { loadEncounterDocument } from "./encounter-document";
+import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { getNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent } from "./standard-encounter";
 
@@ -125,7 +126,7 @@ export function migrateLegacyIncidentDocument(source: EncounterDocument, legacy:
     if (!event || typeof event.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) {
       throw new Error("saved incident timeline does not match the supported legacy shape");
     }
-    const date = typeof event.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event.date) ? event.date : "2026-04-18";
+    const date = typeof event.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event.date) ? event.date : DEMO_FALLBACK_DATE;
     return { id, values: [scalar(occurrenceId, `${date}T${event.time}:00-04:00`, typeof event.detail === "string" ? { timelineDetail: event.detail } : undefined)] };
   };
   const groups: EncounterGroup[] = [

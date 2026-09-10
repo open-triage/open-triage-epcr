@@ -10,6 +10,7 @@ import syntheticEncounterDocument from "./data/synthetic-encounter-document.json
 import { loadEncounterDocument } from "./encounter-document";
 import { encounterEvents, removeCanonicalEvent, saveCanonicalEvent } from "./canonical-events";
 import { clearStationaryDemoData, populateStationaryDemoData } from "./stationary-demo-data";
+import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { getNemsisDataElement } from "./nemsis-data-model";
 
 export type ShellView = "timeline" | "checklist" | "review";
@@ -288,7 +289,7 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       return [...errors, ...warnings];
     }
     if (event.medication) {
-      const validation = validateMedication({ id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false }, definition);
+      const validation = validateMedication({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, ...event.medication, isNew: false }, definition);
       const presentation = encounterEventPresentation(event, definition);
       return [
         ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
@@ -298,7 +299,7 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
     if (event.procedure) {
       const procedureDefinition = definition.events.procedure;
       const validation = validateProcedure({
-        id: event.id, date: event.date ?? "2026-04-18", time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
+        id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
         attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
         complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
       }, procedureDefinition);
@@ -421,10 +422,10 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
           : state.acknowledgedWarnings.filter((id) => id !== action.id),
       };
     case "note-started":
-      return { ...state, noteDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, summary: "", isNew: true } };
+      return { ...state, noteDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time, summary: "", isNew: true } };
     case "note-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "note");
-      return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, summary: event.detail, isNew: false } } : state;
+      return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, summary: event.detail, isNew: false } } : state;
     }
     case "note-draft-changed":
       return state.noteDraft ? { ...state, noteDraft: { ...state.noteDraft, [action.field]: action.value } } : state;
@@ -457,7 +458,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         ...state,
         procedureDraft: {
           id: action.id,
-          date: action.date ?? "2026-04-18",
+          date: action.date ?? DEMO_FALLBACK_DATE,
           time: action.time,
           procedureCode: "",
           procedureLabel: "",
@@ -476,7 +477,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         ...state,
         procedureDraft: {
           id: event.id,
-          date: event.date ?? "2026-04-18",
+          date: event.date ?? DEMO_FALLBACK_DATE,
           time: event.time,
           procedureCode: event.procedure.code,
           procedureLabel: event.procedure.label,
@@ -561,11 +562,11 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "medication-started":
       return {
         ...state,
-        medicationDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
+        medicationDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time, medicationCode: "", codeType: "RxNorm", label: "", dose: "", unit: "", route: "", response: "", warningAcknowledged: false, isNew: true },
       };
     case "medication-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
-      return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, ...event.medication, isNew: false } } : state;
+      return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, ...event.medication, isNew: false } } : state;
     }
     case "medication-selected":
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, medicationCode: action.code, codeType: action.codeType, label: action.label } } : state;
@@ -605,10 +606,10 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, presentedMedicationEvent, definition) } };
     }
     case "vitals-started":
-      return { ...state, vitalDraft: { id: action.id, date: action.date ?? "2026-04-18", time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
+      return { ...state, vitalDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.vitals);
-      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? "2026-04-18", time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
     }
     case "vitals-time-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
