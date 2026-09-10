@@ -45,48 +45,6 @@ export function formStructuralSummary(definition: FormDraftDefinition): string {
   return `${definition.sections.length} ${definition.sections.length === 1 ? "section" : "sections"} and ${fields} ${fields === 1 ? "element" : "elements"}`;
 }
 
-export function StationarySectionControls({ definition, pendingRemoval, busy = false, confirmationRef, onMove, onRequestRemoval,
-  onConfirmRemoval, onCancelRemoval }: {
-  readonly definition: FormDraftDefinition;
-  readonly pendingRemoval: number | null;
-  readonly busy?: boolean;
-  readonly confirmationRef?: React.RefObject<HTMLDivElement | null>;
-  readonly onMove: (from: number, to: number) => void;
-  readonly onRequestRemoval: (index: number) => void;
-  readonly onConfirmRemoval: (index: number) => void;
-  readonly onCancelRemoval: () => void;
-}) {
-  const removal = pendingRemoval === null ? null : definition.sections[pendingRemoval];
-  const affected = removal ? affectedFieldNames(removal) : [];
-  return <>
-    <ol className="form-sections" aria-label="Stationary form sections">
-      {definition.sections.map((section, index) => <li key={section.key}>
-        <div className="form-section-summary">
-          <div><strong>{section.key}</strong><small>{section.fields.length} {section.fields.length === 1 ? "field" : "fields"}</small></div>
-          <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
-            <button type="button" disabled={busy || index === 0} aria-label={`Move ${section.key} up`}
-              onClick={() => onMove(index, index - 1)}>Move up</button>
-            <button type="button" disabled={busy || index === definition.sections.length - 1} aria-label={`Move ${section.key} down`}
-              onClick={() => onMove(index, index + 1)}>Move down</button>
-            <button type="button" disabled={busy || definition.sections.length === 1}
-              aria-label={`Remove ${section.key}`} onClick={() => onRequestRemoval(index)}>Remove section</button>
-          </div>
-        </div>
-      </li>)}
-    </ol>
-    {removal && <div className="form-remove-confirmation" role="alertdialog" aria-modal="false"
-      aria-labelledby="remove-section-heading" aria-describedby="remove-section-description" tabIndex={-1} ref={confirmationRef}>
-      <h3 id="remove-section-heading">Remove {removal.key}?</h3>
-      <p id="remove-section-description">This removes the section and its {affected.length} affected {affected.length === 1 ? "field" : "fields"} from this draft:</p>
-      {affected.length ? <ul>{affected.map((field) => <li key={field}>{field}</li>)}</ul> : <p>This section contains no fields.</p>}
-      <div>
-        <button type="button" onClick={() => onConfirmRemoval(pendingRemoval!)}>Confirm removal</button>
-        <button type="button" onClick={onCancelRemoval}>Keep section</button>
-      </div>
-    </div>}
-  </>;
-}
-
 export function StationaryFormAuthoring({ csrfToken, catalogReleaseId, installationSettings, onActivated }: {
   readonly csrfToken: string;
   readonly catalogReleaseId: string;
