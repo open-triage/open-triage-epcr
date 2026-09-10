@@ -26,6 +26,11 @@ export type StationaryValidationFinding = {
   readonly acknowledged: boolean;
 };
 
+type ClinicalReviewFinding = {
+  readonly severity: "error" | "warning";
+  readonly target: { readonly groupId: string; readonly elementId?: string };
+};
+
 const groupPresentation = new Map(COMPILED_STATIONARY_LAYOUT.groups.map((group) => [group.id, group]));
 const elementPresentation = new Map(COMPILED_STATIONARY_LAYOUT.elements.map((element) => [element.id, element]));
 
@@ -39,6 +44,25 @@ function sectionId(groupId: string): string {
 
 function idPart(value: string | undefined): string {
   return encodeURIComponent(value ?? "root");
+}
+
+/**
+ * A pinned form owns structural/requiredness errors, while the encounter review
+ * still owns clinical plausibility warnings. Limit those warnings to clinical
+ * groups represented by the pinned form so a deliberately omitted workflow
+ * does not produce irrelevant findings.
+ */
+export function stationaryReviewFindings<T extends ClinicalReviewFinding>(
+  findings: ReadonlyArray<T>,
+  clinicalForm?: ClinicalFormConfiguration,
+): ReadonlyArray<T> {
+  if (!clinicalForm) return findings;
+  const configuredElements = new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+    field.source.kind === "nemsis" ? [field.source.elementId] : [])));
+  const configuredGroups = new Set(NEMSIS_DATA_MODEL.elements.filter(({ id }) => configuredElements.has(id))
+    .flatMap(({ groupPath }) => groupPath));
+  return findings.filter(({ severity, target }) => severity === "warning"
+    && (configuredElements.has(target.elementId ?? "") || configuredGroups.has(target.groupId)));
 }
 
 function finding(

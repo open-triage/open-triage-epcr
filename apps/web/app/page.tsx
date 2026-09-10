@@ -38,7 +38,7 @@ import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
-import { validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
+import { stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 
@@ -97,10 +97,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm), [encounter.document, report?.clinicalForm]);
-  const signingFindings: ReadonlyArray<SigningFinding> = useMemo(
-    () => [...stationaryFindings, ...reviewFindings], [reviewFindings, stationaryFindings],
+  const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
+    () => [...stationaryFindings, ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
+    [report?.clinicalForm, reviewFindings, stationaryFindings],
   );
-  const configuredStationaryFindings: ReadonlyArray<SigningFinding> = report?.clinicalForm ? stationaryFindings : signingFindings;
   const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");

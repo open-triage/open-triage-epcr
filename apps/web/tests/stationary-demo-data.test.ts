@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
@@ -10,6 +11,16 @@ import { clearStationaryDemoData, populateStationaryDemoData } from "../app/stat
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
 import { editScalarOccurrence } from "../app/stationary-scalar";
 import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
+
+const configuredVitalsForm: ClinicalFormConfiguration = {
+  definition: { schemaVersion: 1, sections: [{ key: "vitals", fields: [
+    { key: "respiratory-rate", source: { kind: "nemsis", elementId: "eVitals.14" } },
+  ] }] },
+  catalogFields: {
+    "eVitals.14": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: true },
+  },
+};
 
 const editableGroups = new Set(COMPILED_STATIONARY_LAYOUT.groups.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 const editableElements = new Set(COMPILED_STATIONARY_LAYOUT.elements.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
@@ -98,23 +109,24 @@ test("editing a generated value transfers ownership to the clinician before Clea
   assert.equal(hasDemoProvenance(retained.attributes), false);
 });
 
-test("vital dialog findings follow the displayed draft and clear after a corrected value loses focus", () => {
+test("configured vital dialog warns for zero and clears after a corrected value loses focus", () => {
   const populated = populateStationaryDemoData(syntheticEncounter.document);
   const vital = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!;
   const respiratory = vital.elements.find(({ id }) => id === "eVitals.14")!.values[0]!;
   const unusual = editScalarOccurrence(populated, {
     groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId, elementId: "eVitals.14",
-    occurrenceId: respiratory.occurrenceId, input: "60",
+    occurrenceId: respiratory.occurrenceId, input: "0",
   });
   assert.equal(unusual.ok, true);
-  assert.ok(stationaryDialogFindings(unusual.document).some(({ message }) => message?.includes("Clinically unusual respiratory rate")));
+  assert.ok(stationaryDialogFindings(unusual.document, configuredVitalsForm)
+    .some(({ message }) => message?.includes("Clinically unusual respiratory rate")));
 
   const corrected = editScalarOccurrence(unusual.document, {
     groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId, elementId: "eVitals.14",
     occurrenceId: respiratory.occurrenceId, input: "16",
   });
   assert.equal(corrected.ok, true);
-  const findings = stationaryDialogFindings(corrected.document);
+  const findings = stationaryDialogFindings(corrected.document, configuredVitalsForm);
   assert.equal(findings.some(({ message }) => message?.includes("Clinically unusual respiratory rate")), false);
   assert.equal(findings.some(({ severity, target }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(target.fieldId ?? target.elementId ?? "")), false);
 });

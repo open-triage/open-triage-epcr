@@ -5,11 +5,11 @@ import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 const assignmentId = demoAssignedCalls.assignedCalls[0]!.id;
 
-async function openStationaryRecord(page: import("@playwright/test").Page) {
+async function openStationaryRecord(page: import("@playwright/test").Page, assignment = demoOpenAssignment) {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(demoOpenAssignment),
+    body: JSON.stringify(assignment),
   }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
@@ -76,12 +76,22 @@ test("complete-record findings open and focus their stable editable target", asy
 
 test("nested findings open their row dialog and highlight only the affected picker", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
-  await openStationaryRecord(page);
+  const configured = structuredClone(demoOpenAssignment);
+  Object.assign(configured.report, { clinicalForm: {
+    definition: { schemaVersion: 1, sections: [{ key: "vitals", presentation: { title: "Vitals" }, fields: [
+      { key: "respiratory-rate", source: { kind: "nemsis", elementId: "eVitals.14" } },
+    ] }] },
+    catalogFields: {
+      "eVitals.14": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, supportsPertinentNegatives: true },
+    },
+  } });
+  await openStationaryRecord(page, configured);
   await page.getByRole("button", { name: "Populate" }).click();
   const vitals = page.locator('[data-group-id="eVitals.VitalGroup"]');
   await vitals.getByRole("button", { name: /Edit Vital/ }).first().click();
   const initialDialog = page.getByRole("dialog");
-  await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("60");
+  await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("0");
   await initialDialog.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("button", { name: "Review & sign" }).click();
 

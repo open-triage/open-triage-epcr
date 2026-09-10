@@ -69,6 +69,16 @@ test("NEMSIS ranges block errors while plausible-range warnings remain saveable"
   assert.match(invalid.errors.spo2 ?? "", /eVitals\.12/);
   const unusual = validateVitals("09:00", { ...normal, systolic: "60" });
   assert.equal(unusual.valid, true); assert.match(unusual.warnings.systolic ?? "", /Clinically unusual/);
+  const zero = validateVitals("09:00", {
+    ...normal, systolic: "0", diastolic: "0", heartRate: "0", spo2: "0", respiratoryRate: "0", pain: "0",
+  });
+  assert.equal(zero.valid, true, "catalog-valid zero values remain saveable warnings");
+  for (const field of ["systolic", "diastolic", "heartRate", "spo2", "respiratoryRate"] as const) {
+    assert.match(zero.warnings[field] ?? "", /Clinically unusual/, `${field}=0 warns`);
+  }
+  assert.equal(zero.warnings.pain, undefined, "a zero pain score is clinically plausible");
+  assert.match(validateVitals("09:00", { ...normal, gcs: "0" }).errors.gcs ?? "", /integer from 3 to 15/,
+    "a zero GCS remains a catalog-range error rather than a warning");
 });
 
 test("curated fields accept allowed NV/PN and prohibit codes on the wrong element", () => {
