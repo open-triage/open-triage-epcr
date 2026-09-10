@@ -78,7 +78,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     ];
   } };
   const service = new DraftReportService(dataSource, sessions());
-  const controller = new DraftReportController(service, {}, {});
+  const controller = new DraftReportController(service, {});
 
   const result = await controller.listOpen(`Bearer ${ownerSession.accessToken}`);
 
@@ -171,7 +171,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     }
   };
   const service = new DraftReportService(dataSource, sessions());
-  const controller = new DraftReportController(service, {}, {});
+  const controller = new DraftReportController(service, {});
 
   const reopened = await controller.reopen(reportId, `Bearer ${ownerSession.accessToken}`);
 
@@ -223,7 +223,7 @@ test("the conditional controller emits a bodyless 304 with the current ETag", as
     assert.equal(etag, '"report-9-dispatch-4"');
     return { etag, resource: null };
   } };
-  const controller = new DraftReportController(reports, {}, {});
+  const controller = new DraftReportController(reports, {});
   const body = await controller.active("42000000-0000-4000-8000-000000000002",
     `Bearer ${ownerSession.accessToken}`, '"report-9-dispatch-4"', response);
   assert.equal(body, undefined);
@@ -288,7 +288,7 @@ test("another clinician cannot read, write, reopen, or replay a queued draft com
 });
 
 test("open-call endpoints require a clinician session", () => {
-  const controller = new DraftReportController({ listOpen() {} }, {}, {});
+  const controller = new DraftReportController({ listOpen() {} }, {});
   assert.throws(() => controller.listOpen(), UnauthorizedException);
   assert.throws(() => controller.reopen("42000000-0000-4000-8000-000000000002"), UnauthorizedException);
 });
