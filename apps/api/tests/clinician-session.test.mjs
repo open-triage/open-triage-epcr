@@ -67,3 +67,44 @@ test("incorrect demo credentials are rejected", async () => {
     UnauthorizedException
   );
 });
+
+test("an expired session is pruned opportunistically by a later create(), without being looked up", async () => {
+  const { service } = fixture();
+  const start = new Date("2026-09-03T08:00:00.000Z");
+  const expired = await service.create({
+    username: DEMO_CLINICIAN_USERNAME,
+    password: DEMO_CLINICIAN_PASSWORD
+  }, start);
+
+  assert.equal(service.sessions.has(expired.accessToken), true);
+
+  // The shift is 14 hours long, so this is well past expiry. Creating another
+  // session should sweep the expired entry out of the map on its own, with no
+  // individual lookup of the expired token ever occurring.
+  const afterExpiry = new Date("2026-09-04T08:00:00.000Z");
+  await service.create({
+    username: DEMO_CLINICIAN_USERNAME,
+    password: DEMO_CLINICIAN_PASSWORD
+  }, afterExpiry);
+
+  assert.equal(service.sessions.has(expired.accessToken), false);
+});
+
+test("an active, non-expired session survives the opportunistic prune triggered by other creates", async () => {
+  const { service } = fixture();
+  const start = new Date("2026-09-03T08:00:00.000Z");
+  const active = await service.create({
+    username: DEMO_CLINICIAN_USERNAME,
+    password: DEMO_CLINICIAN_PASSWORD
+  }, start);
+
+  // Still well within the 14 hour shift when the next session is created.
+  const stillActiveAt = new Date("2026-09-03T09:00:00.000Z");
+  await service.create({
+    username: DEMO_CLINICIAN_USERNAME,
+    password: DEMO_CLINICIAN_PASSWORD
+  }, stillActiveAt);
+
+  assert.equal(service.sessions.has(active.accessToken), true);
+  assert.deepEqual(service.get(active.accessToken, stillActiveAt), active);
+});
