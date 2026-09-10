@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import type { EncounterValue } from "@open-triage/contracts";
 import type { DispatchReceiptWriter } from "./dispatch-receipt.persistence.js";
 import { dispatchEntityId } from "../reports/encounter-document.persistence.js";
 import { comparableScalar, scalarDatabaseMapping, scalarDatabaseValue } from "../reports/canonical-scalar.js";

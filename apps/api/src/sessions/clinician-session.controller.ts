@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
-import type { ChangePasswordCommand, ClinicianSession, EndClinicianSessionResponse } from "@open-triage/contracts";
+import type { ClinicianSession, EndClinicianSessionResponse } from "@open-triage/contracts";
 import { ClinicianSessionService } from "./clinician-session.service.js";
 import { validateChangePassword, validateCreateClinicianSession } from "./clinician-session.validation.js";
 
