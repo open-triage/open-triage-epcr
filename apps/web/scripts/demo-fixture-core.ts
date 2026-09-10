@@ -15,8 +15,6 @@ import {
 } from "../../api/src/dispatch/dispatch-assignment.validation.js";
 import { DEMO_CLINICIAN_ID } from "../app/demo-identity.js";
 
-type JsonRecord = Record<string, unknown>;
-
 export type GeneratedDemoFixtures = {
   readonly assignedCalls: AssignedCallsResponse & { readonly generatedFrom: DemoFixtureSource };
   readonly openAssignment: OpenAssignmentResponse & { readonly generatedFrom: DemoFixtureSource };

@@ -1,6 +1,6 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { DEMO_FALLBACK_DATE, hasDemoProvenance } from "./demo-provenance";
-import type { EncounterDefinition, VitalField } from "./encounter-definition";
+import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent, MedicationAdministration, VitalValues } from "./standard-encounter";
 

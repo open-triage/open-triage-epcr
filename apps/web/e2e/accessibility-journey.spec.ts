@@ -6,7 +6,6 @@ import { incidentSummary } from "../app/incident-document";
 import type { EncounterDocument } from "@open-triage/contracts";
 
 const assignmentId = demoAssignedCalls.assignedCalls[0]!.id;
-const reportId = demoOpenAssignment.report.id;
 const summary = incidentSummary(demoOpenAssignment.report.document as EncounterDocument);
 
 async function openCall(page: Page) {

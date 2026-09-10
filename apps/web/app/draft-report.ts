@@ -237,10 +237,6 @@ function apiBaseUrl(): string | null {
   return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
 }
 
-export function usesLocalDemoDrafts(): boolean {
-  return apiBaseUrl() === null;
-}
-
 function routesLocalDemoMutationsToApi(): boolean {
   return process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API === "true";
 }
