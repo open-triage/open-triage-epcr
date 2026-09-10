@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
-import { NEMSIS_DATA_MODEL, NEMSIS_ELEMENT_IDS, getNemsisDataElement, resolveNemsisElementValues } from "../app/nemsis-data-model";
+import { NEMSIS_DATA_MODEL, NEMSIS_ELEMENT_IDS, getNemsisDataElement, requireNemsisDataElement, resolveNemsisElementValues } from "../app/nemsis-data-model";
 import catalog from "../app/data/nemsis-data-model-3.5.1.json";
 
 const catalogPath = fileURLToPath(new URL("../app/data/nemsis-data-model-3.5.1.json", import.meta.url));
@@ -119,6 +119,17 @@ test("regenerates byte-for-byte deterministically without network access", async
   const { generateCatalog } = await import("../scripts/generate-nemsis-data-model.mjs") as { generateCatalog: () => Promise<string> };
   assert.equal(await generateCatalog(), await generateCatalog());
   assert.equal(await generateCatalog(), readFileSync(catalogPath, "utf8"));
+});
+
+test("looks up every element by id via the indexed map, including the first, last, and unknown ids", () => {
+  for (const element of catalog.elements) assert.equal(getNemsisDataElement(element.id), NEMSIS_DATA_MODEL.elements.find((candidate) => candidate.id === element.id));
+  const first = catalog.elements[0]!;
+  const last = catalog.elements[catalog.elements.length - 1]!;
+  assert.equal(getNemsisDataElement(first.id)?.id, first.id);
+  assert.equal(getNemsisDataElement(last.id)?.id, last.id);
+  assert.equal(getNemsisDataElement("eNotAnElement.99"), undefined);
+  assert.equal(requireNemsisDataElement(first.id).id, first.id);
+  assert.throws(() => requireNemsisDataElement("eNotAnElement.99"), /Unknown NEMSIS data element eNotAnElement\.99/);
 });
 
 test("production loader reads only the bundled catalog", () => {
