@@ -6,6 +6,7 @@ import { pendingDraftTargets, reconcileActiveReportDocument } from "../app/activ
 import { encounterEvents } from "../app/canonical-events";
 import { encounterDocumentToDraftMutations, stableDraftId } from "../app/draft-report";
 import { editNonRepeatingScalarValue } from "../app/stationary-non-repeating";
+import { removeScalarOccurrence } from "../app/stationary-scalar";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
@@ -68,4 +69,34 @@ test("target-aware reconciliation keeps a stationary field edit and a disjoint s
   };
   assert.equal(scalar("ePatient.02"), "Server last name");
   assert.equal(scalar("ePatient.03"), "Local first name");
+});
+
+test("target-aware reconciliation keeps a pending occurrence deletion during a server refresh", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const nameInstance = baseline.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!;
+  const nameElements = nameInstance.elements;
+  const occurrenceId = (elementId: string) => nameElements.find((element) => element.id === elementId)!.values[0]!.occurrenceId;
+  const localDeletion = removeScalarOccurrence(
+    baseline,
+    "ePatient.PatientNameGroup",
+    nameInstance.instanceId,
+    "ePatient.03",
+    occurrenceId("ePatient.03"),
+  );
+  const serverEdit = editNonRepeatingScalarValue(baseline, {
+    groupId: "ePatient.PatientNameGroup",
+    elementId: "ePatient.02",
+    occurrenceId: occurrenceId("ePatient.02"),
+  }, "Server last name", () => "unused");
+  assert.ok(localDeletion.ok, "expected the local scalar deletion to succeed");
+  assert.ok(serverEdit.ok, "expected the server scalar edit to succeed");
+  const persisted = encounterDocumentToDraftMutations(reportId, baseline);
+  const command = encounterDocumentToDraftMutations(reportId, localDeletion.document, persisted);
+  const targets = pendingDraftTargets(command, persisted);
+
+  const merged = reconcileActiveReportDocument(reportId, localDeletion.document, serverEdit.document, true, targets);
+  const values = merged.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements;
+  assert.equal(values.find(({ id }) => id === "ePatient.03"), undefined);
+  const lastName = values.find(({ id }) => id === "ePatient.02")!.values[0]!;
+  assert.equal(lastName.kind === "scalar" ? lastName.value : null, "Server last name");
 });
