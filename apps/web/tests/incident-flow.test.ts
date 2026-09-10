@@ -3,9 +3,7 @@ import test from "node:test";
 import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incidentSummary } from "../app/incident-document";
 import { RECOVERY_STORAGE_KEY, STORAGE_KEY, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
-import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
-import { encounterEvents } from "../app/canonical-events";
-import { standardEncounterDefinition } from "../app/standard-encounter-definition";
+import { INITIAL_SHELL_STATE } from "../app/standard-encounter";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {
@@ -16,24 +14,6 @@ function memoryStorage(): LocalStoragePort & { readonly values: Map<string, stri
     setItem: (key, value) => { values.set(key, value); },
     removeItem: (key) => { values.delete(key); },
   };
-}
-
-const legacyEvents = [
-  { id: "baseline-1", time: "08:01", kind: "transport", title: "Arrived on scene", detail: "Legacy scene", reference: "eTimes.07" },
-  { id: "baseline-2", time: "07:54", kind: "transport", title: "Unit en route", detail: "Routine response", reference: "eTimes.06" },
-  { id: "baseline-3", time: "07:52", kind: "transport", title: "Unit notified", detail: "CAD-LEGACY", reference: "eTimes.03" },
-  { id: "baseline-4", time: "07:50", kind: "transport", title: "Call received", detail: "Legacy complaint", reference: "eTimes.01" },
-] as const;
-
-function legacyVersionTwoState() {
-  const state = structuredClone(INITIAL_SHELL_STATE) as unknown as { encounter: Record<string, unknown> } & Record<string, unknown>;
-  const document = state.encounter.document as typeof INITIAL_SHELL_STATE.encounter.document;
-  state.encounter.document = { ...document, groups: document.groups.filter(({ id }) => !["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"].includes(id)) };
-  state.encounter.currentTime = "08:01";
-  state.encounter.crew = "ZX";
-  state.encounter.incident = { number: "LEGACY-INCIDENT · CAD-LEGACY", complaint: "Legacy complaint", address: "9 Recovery Road" };
-  state.encounter.events = [...legacyEvents, { id: "visitor-note", date: "2026-04-18", time: "08:02", kind: "note", title: "Clinical note", detail: "Keep me", reference: "eNarrative.01", visitorEntered: true }];
-  return { persistenceVersion: 2, state };
 }
 
 test("response, dispatch, crew, scene, and timing values live at their catalog identities", () => {
@@ -147,49 +127,18 @@ test("a current draft reopens when an optional canonical incident group is absen
   assert.equal(restored.state.encounter.document.groups.some(({ id }) => id === "eCrew.CrewGroup"), false);
 });
 
-test("version two browser state upgrades deterministically and removes the parallel incident shape", () => {
-  const serialized = JSON.stringify(legacyVersionTwoState());
-  const restore = () => {
+test("unsupported persistence versions are preserved byte-for-byte for explicit recovery", () => {
+  for (const persistenceVersion of [undefined, 2, 3, 6]) {
     const storage = memoryStorage();
-    storage.setItem(STORAGE_KEY, serialized);
-    return { storage, result: loadShellStateResult(storage) };
-  };
-  const first = restore();
-  const second = restore();
-  assert.equal(first.result.status, "restored");
-  assert.equal(second.result.status, "restored");
-  if (first.result.status !== "restored" || second.result.status !== "restored") return;
-  assert.equal(first.result.migrated, true);
-  assert.deepEqual(first.result.state.encounter.document, second.result.state.encounter.document);
-  assert.deepEqual(incidentSummary(first.result.state.encounter.document), {
-    incidentNumber: "LEGACY-INCIDENT", responseNumber: "CAD-LEGACY", callSign: "ZX", dispatchPriority: "Routine response", location: "9 Recovery Road",
-  });
-  assert.deepEqual(documentTimeline(first.result.state.encounter.document).map(({ reference, time }) => ({ reference, time })), [
-    { reference: "eTimes.06", time: "08:01" },
-    { reference: "eTimes.05", time: "07:54" },
-    { reference: "eTimes.03", time: "07:52" },
-    { reference: "eTimes.02", time: "07:50" },
-  ]);
-  assert.deepEqual(encounterEvents(first.result.state.encounter.document, standardEncounterDefinition).map(({ id }) => id), ["visitor-note"]);
-  assert.equal("incident" in first.result.state.encounter, false);
-  assert.equal("crew" in first.result.state.encounter, false);
-  saveShellState(first.storage, first.result.state);
-  assert.match(first.storage.getItem(STORAGE_KEY)!, /"persistenceVersion":5/);
-  assert.doesNotMatch(first.storage.getItem(STORAGE_KEY)!, /"state":/);
-});
-
-test("malformed supported-version incident state is preserved and reported for recovery", () => {
-  const storage = memoryStorage();
-  const saved = legacyVersionTwoState();
-  saved.state.encounter.crew = "";
-  const original = JSON.stringify(saved);
-  storage.setItem(STORAGE_KEY, original);
-  const result = loadShellStateResult(storage);
-  assert.deepEqual(result, {
-    status: "invalid",
-    reason: "saved incident data does not match the supported legacy shape",
-    recoveryKey: RECOVERY_STORAGE_KEY,
-  });
-  assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
-  assert.equal(storage.getItem(STORAGE_KEY), null);
+    const versionMember = persistenceVersion === undefined ? "" : `"persistenceVersion": ${persistenceVersion}, `;
+    const original = ` { ${versionMember}"state": { "clinicalDraft": "retain exactly" } }\n`;
+    storage.setItem(STORAGE_KEY, original);
+    assert.deepEqual(loadShellStateResult(storage), {
+      status: "invalid",
+      reason: `saved persistence version ${persistenceVersion} is not supported`,
+      recoveryKey: RECOVERY_STORAGE_KEY,
+    });
+    assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
+    assert.equal(storage.getItem(STORAGE_KEY), null);
+  }
 });

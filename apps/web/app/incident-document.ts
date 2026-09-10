@@ -1,6 +1,4 @@
-import type { EncounterDocument, EncounterGroup, EncounterValue } from "@open-triage/contracts";
-import { loadEncounterDocument } from "./encounter-document";
-import { DEMO_FALLBACK_DATE } from "./demo-provenance";
+import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import { getNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent } from "./standard-encounter";
 
@@ -98,58 +96,4 @@ export function documentTimeline(document: EncounterDocument, timeZone = DEFAULT
     });
   })));
   return entries.sort((a, b) => Date.parse(b.dateTime ?? "") - Date.parse(a.dateTime ?? ""));
-}
-
-const INCIDENT_GROUP_IDS = new Set(["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"]);
-
-type LegacyIncidentState = {
-  readonly crew: unknown;
-  readonly incident: unknown;
-  readonly events: ReadonlyArray<Record<string, unknown>>;
-};
-
-/** Deterministically upgrades the one previously supported incident shape. */
-export function migrateLegacyIncidentDocument(source: EncounterDocument, legacy: LegacyIncidentState): EncounterDocument {
-  if (typeof legacy.crew !== "string" || legacy.crew.length < 2 || !legacy.incident || typeof legacy.incident !== "object") {
-    throw new Error("saved incident data does not match the supported legacy shape");
-  }
-  const incident = legacy.incident as Record<string, unknown>;
-  if ([incident.number, incident.complaint, incident.address].some((value) => typeof value !== "string" || !value.trim())) {
-    throw new Error("saved incident data does not match the supported legacy shape");
-  }
-  const [incidentNumber = "", responseNumber = ""] = (incident.number as string).split(" · ", 2);
-  const scalar = (occurrenceId: string, value: string, attributes?: Record<string, string>) => ({ kind: "scalar" as const, occurrenceId, value, ...(attributes ? { attributes } : {}) });
-  const coded = (occurrenceId: string, code: string, display: string) => ({ kind: "coded" as const, occurrenceId, code, display });
-  const eventById = new Map(legacy.events.map((event) => [event.id, event]));
-  const timeElement = (id: string, legacyId: string, occurrenceId: string) => {
-    const event = eventById.get(legacyId);
-    if (!event || typeof event.time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time)) {
-      throw new Error("saved incident timeline does not match the supported legacy shape");
-    }
-    const date = typeof event.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(event.date) ? event.date : DEMO_FALLBACK_DATE;
-    return { id, values: [scalar(occurrenceId, `${date}T${event.time}:00-04:00`, typeof event.detail === "string" ? { timelineDetail: event.detail } : undefined)] };
-  };
-  const groups: EncounterGroup[] = [
-    { id: "eResponseSection", instances: [{ instanceId: "response-1", elements: [
-      { id: "eResponse.03", values: [scalar("incident-number-1", incidentNumber)] },
-      ...(responseNumber ? [{ id: "eResponse.04", values: [scalar("response-number-1", responseNumber)] }] : []),
-      { id: "eResponse.14", values: [scalar("call-sign-1", legacy.crew)] },
-    ] }] },
-    { id: "eDispatchSection", instances: [{ instanceId: "dispatch-1", elements: [
-      { id: "eDispatch.01", values: [coded("dispatch-reason-1", "2301051", incident.complaint as string)] },
-      { id: "eDispatch.02", values: [coded("emd-1", "2302005", "Yes, Without Pre-Arrival Instructions")] },
-      { id: "eDispatch.05", values: [coded("dispatch-priority-1", "2305005", "Routine response")] },
-      ...(responseNumber ? [{ id: "eDispatch.06", values: [scalar("cad-record-1", responseNumber)] }] : []),
-    ] }] },
-    { id: "eCrew.CrewGroup", instances: [{ instanceId: "crew-1", elements: [{ id: "eCrew.01", values: [scalar("crew-member-1", legacy.crew)] }] }] },
-    { id: "eSceneSection", instances: [{ instanceId: "scene-1", elements: [{ id: "eScene.15", values: [scalar("street-address-1", incident.address as string)] }] }] },
-    { id: "eTimesSection", instances: [{ instanceId: "times-1", elements: [
-      timeElement("eTimes.02", "baseline-4", "dispatch-time-1"),
-      timeElement("eTimes.03", "baseline-3", "unit-notified-time-1"),
-      timeElement("eTimes.05", "baseline-2", "unit-en-route-time-1"),
-      timeElement("eTimes.06", "baseline-1", "unit-arrived-scene-time-1"),
-    ] }] },
-  ];
-  const updated = { ...source, groups: [...source.groups.filter(({ id }) => !INCIDENT_GROUP_IDS.has(id)), ...groups] };
-  return loadEncounterDocument(updated, { formProfiles: { [updated.formProfile.id]: [updated.formProfile.version] } });
 }

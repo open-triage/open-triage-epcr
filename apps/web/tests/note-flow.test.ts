@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ENCOUNTER_MODEL_VERSION } from "@open-triage/contracts";
-import { clearShellState, ENCOUNTER_EXTENSION_KEY, ENCOUNTER_EXTENSION_VERSION, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, PERSISTENCE_VERSION, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
+import { clearShellState, ENCOUNTER_EXTENSION_KEY, ENCOUNTER_EXTENSION_VERSION, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, PERSISTENCE_VERSION, PREVIOUS_PERSISTENCE_VERSION, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, transitionShell, type EncounterEvent, type ShellState } from "../app/standard-encounter";
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
+import { OFFLINE_REPORTS_STORAGE_KEY } from "../app/offline-reports";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -109,6 +110,36 @@ test("the phone flow survives refresh with an in-progress draft and saved encoun
   saveShellState(storage, resumed);
   resumed = loadShellState(storage)!;
   assert.equal(encounterEvents(resumed.encounter.document, standardEncounterDefinition).find((event) => event.id === "visitor-note-1")?.detail, "Draft before refresh");
+});
+
+test("the immediately previous persistence version migrates its document and pending draft losslessly", () => {
+  const storage = memoryStorage();
+  let state = beginNote("08:36");
+  state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Pending across upgrade" });
+  state = { ...state, encounter: { ...state.encounter, document: { ...state.encounter.document, "x-agency:retained": { revision: 7 } } } };
+  saveShellState(storage, state);
+  const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
+  envelope.persistenceVersion = PREVIOUS_PERSISTENCE_VERSION;
+  envelope.document[ENCOUNTER_EXTENSION_KEY].events = [{
+    id: "saved-before-upgrade", date: "2026-04-18", time: "08:30", kind: "note",
+    title: "Clinical note", detail: "Saved before upgrade", reference: "eNarrative.01", visitorEntered: true,
+  }];
+  storage.setItem(STORAGE_KEY, JSON.stringify(envelope));
+  const pendingCommandBytes = ` [{"queuedChanges":[{"command":{"commandId":"pending-before-upgrade"},"attempted":false}]}]\n`;
+  storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, pendingCommandBytes);
+
+  const result = loadShellStateResult(storage);
+  assert.equal(result.status, "restored");
+  if (result.status !== "restored") return;
+  assert.equal(result.migrated, true);
+  assert.deepEqual(result.state.noteDraft, state.noteDraft);
+  assert.deepEqual(result.state.encounter.document["x-agency:retained"], { revision: 7 });
+  assert.equal(encounterEvents(result.state.encounter.document, standardEncounterDefinition).find(({ id }) => id === "saved-before-upgrade")?.detail, "Saved before upgrade");
+  assert.equal(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY), pendingCommandBytes);
+
+  saveShellState(storage, result.state);
+  assert.equal(JSON.parse(storage.getItem(STORAGE_KEY)!).persistenceVersion, PERSISTENCE_VERSION);
+  assert.deepEqual(loadShellState(storage)?.noteDraft, state.noteDraft);
 });
 
 test("browser persistence stores one versioned canonical document and preserves compatible extensions", () => {
