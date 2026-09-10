@@ -158,10 +158,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function selectPresentationMode(mode: PresentationMode) {
-    if (mode === "admin" && activeReport) {
-      setModeMessage("Save and close the open report before entering Admin mode.");
-      return;
-    }
+    if (mode === "admin" && activeReport) return;
     setModeMessage(null);
     storePresentationMode(window.localStorage, mode);
     setPresentationMode(mode);
@@ -254,7 +251,9 @@ export function ClinicianSessionGate({ children }: {
             <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
             <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
           </>}
-          {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"} onClick={() => selectPresentationMode("admin")}>Admin</button>}
+          {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
+            disabled={activeReport !== null}
+            onClick={() => selectPresentationMode("admin")}>Admin</button>}
         </div>
         <button type="button" onClick={logOut}>Log out</button>
       </header>

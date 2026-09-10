@@ -80,7 +80,7 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   }
 });
 
-test("an open clinical report blocks entry into Admin until Save and close", async ({ page }) => {
+test("an open clinical report disables Admin until Save and close", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json",
@@ -89,10 +89,12 @@ test("an open clinical report blocks entry into Admin until Save and close", asy
   await signInAsCombinedOwner(page);
 
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await page.getByRole("button", { name: "Admin" }).click();
-  await expect(page.locator(".admin-entry-blocked")).toHaveText("Save and close the open report before entering Admin mode.");
+  await expect(page.getByRole("button", { name: "Admin" })).toBeDisabled();
+  await expect(page.locator(".admin-entry-blocked")).toHaveCount(0);
   await expect(page.locator(".app-shell")).toHaveAttribute("data-presentation-mode", "mobile");
   await expect(page.getByRole("heading", { name: "Dashboard" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.getByRole("button", { name: "Admin" })).toBeEnabled();
 });
 
 test("a forged browser capability cannot bypass direct Admin API authorization", async ({ page }) => {

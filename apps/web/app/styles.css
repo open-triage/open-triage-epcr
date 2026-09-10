@@ -31,6 +31,7 @@ input, select, textarea { touch-action: manipulation; }
 .login-message { margin: 0; padding: 10px 12px; border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; font-size: var(--text-caption); }
 .session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: var(--text-caption); }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
+.session-bar button:disabled { border-color: rgb(255 255 255 / 30%); color: rgb(255 255 255 / 45%); cursor: not-allowed; }
 .session-identity { min-width: 0; text-align: center; }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
 .session-bar-placeholder { display: block; min-height: 40px; }
