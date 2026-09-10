@@ -76,6 +76,53 @@ test("payload identities map stably while nested and hidden values are seeded wi
   assert.match(dispatchEntityId(reportId, "group:patient"), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
 
+test("all supported canonical scalar datatypes retain their database and transport values", async () => {
+  const cases = [
+    ["string", "alpha", "text", "value_text", "alpha"],
+    ["anyURI", "https://example.test/record", "uri", "value_text", "https://example.test/record"],
+    ["integer", 42, "integer", "value_integer", 42],
+    ["decimal", 37.5, "numeric", "value_numeric", 37.5],
+    ["boolean", true, "boolean", "value_boolean", true],
+    ["date", "2026-09-10", "date", "value_date", "2026-09-10"],
+    ["dateTime", "2026-09-10T10:20:30+00:00", "datetime", "value_datetime", "2026-09-10T10:20:30+00:00"],
+    ["time", "10:20:30", "time", "value_time", "10:20:30"],
+    ["duration", "PT5M", "duration", "value_duration", "PT5M"],
+    ["binary", "AQID", "binary", "value_binary", "AQID"],
+  ];
+  const occurrences = [];
+  const manager = { query: async (sql, parameters) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("insert into clinical.group_instance")) return [];
+    if (normalized.includes("from catalog.element_definition")) return parameters[1].map((elementId, index) => ({
+      element_id: elementId,
+      element_identity_id: `52000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      base_datatype: elementId === "eRecord.01" ? "string" : elementId.slice("custom:test:".length),
+      analytical_repeatable: false,
+      identifying: false,
+    }));
+    if (normalized.includes("insert into clinical.element_occurrence")) {
+      occurrences.push(...JSON.parse(parameters[3]));
+      return [];
+    }
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const elements = cases.map(([datatype, value]) => ({
+    id: `custom:test:${datatype}`,
+    values: [{ kind: "scalar", occurrenceId: `source-${datatype}`, value }],
+  }));
+
+  await seedDispatchEncounter(manager, reportId, "catalog", "clinician", {
+    groups: [{ id: "custom:test-group", instances: [{ instanceId: "test-instance", elements }] }],
+  }, "PCR-TEST");
+
+  for (const [datatype, _input, databaseKind, databaseColumn, expectedValue] of cases) {
+    const row = occurrences.find((candidate) => candidate.element_id === `custom:test:${datatype}`);
+    assert.equal(row.value_kind, databaseKind, `${datatype} discriminator`);
+    assert.equal(row[databaseColumn], expectedValue, `${datatype} database value`);
+    assert.equal(storedEncounterValue({ ...row, provenance_detail: null }).value, expectedValue, `${datatype} transport value`);
+  }
+});
+
 test("rehydrated encounter documents stamp the schema, document type, and model version from @open-triage/contracts, not a stale local literal", async () => {
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
