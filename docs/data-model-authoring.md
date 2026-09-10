@@ -29,9 +29,19 @@ datatypes, constraints, cardinality, coded values, NV, and PN are catalog-owned.
 For custom elements, use `nemsis-custom-configuration.schema-1.0.0.json` and the
 example configuration. Use stable reverse-DNS group/element IDs and declare all
 metadata. Load configuration with `createElementCatalog`, reference its IDs in a
-configured form, and validate capture with `validateCustomDataSet`. No component
-change is required. Custom fixtures/profiles must never be imported by production
-entry points.
+configured form, and validate the configuration with
+`validateCustomConfiguration`. No component change is required. Custom
+fixtures/profiles must never be imported by production entry points.
+
+The supported custom-data surface comprises configuration validation, combined
+standard/custom catalog lookup, configured-form resolution, and the
+`CustomDataSet` compatibility type. The application treats persisted
+`CustomDataSet` values as opaque extension data: application save and recovery
+pass their complete structure through losslessly, including unknown namespaced
+results and vendor properties. There is intentionally no standalone custom-result
+resolver, loader, setter, validator, serializer, or deserializer API. The
+versioned encounter document and application persistence boundary own storage
+and recovery.
 
 ## Compatibility and interchange guarantees
 

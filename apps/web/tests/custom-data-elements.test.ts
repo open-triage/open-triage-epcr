@@ -5,13 +5,9 @@ import {
   CustomConfigurationError,
   createElementCatalog,
   customConfigurationDiagnostics,
-  deserializeCustomDataSet,
-  loadCustomDataSet,
   resolveConfiguredElementForm,
-  serializeCustomDataSet,
-  setCustomResult,
-  validateCustomDataSet,
   validateCustomConfiguration,
+  type CustomDataSet,
 } from "../app/custom-data-elements";
 import { loadShellState, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { INITIAL_SHELL_STATE, type ShellState } from "../app/standard-encounter";
@@ -70,15 +66,6 @@ test("one catalog queries standard and deployment-owned elements with explicit p
   assert.equal(catalog.resolveValues("org.example.ems:stroke-score").notValues[0]?.code, "7701003");
 });
 
-test("known custom result values enforce recurrence, datatype, constraints, codes, NV, and PN", () => {
-  const catalog = createElementCatalog(exampleConfiguration);
-  const invalid = { results: [{ elementId: "org.example.ems:stroke-score", values: [{ value: "11" }, { NV: "unsupported" }] }] };
-  assert.throws(() => validateCustomDataSet(catalog, invalid), (error: unknown) => error instanceof Error
-    && error.message.includes("must be at most 10")
-    && error.message.includes("code unsupported is not permitted"));
-  assert.deepEqual(validateCustomDataSet(catalog, { results: [{ elementId: "org.example.ems:stroke-score", values: [{ value: "7" }] }] }).results[0]?.values, [{ value: "7" }]);
-});
-
 test("a test form selects a new custom element through JSON configuration only", () => {
   const deployment = structuredClone(exampleConfiguration) as unknown as { namespace: string; owner: string; elements: Array<Record<string, unknown>>; groups: unknown[]; $schema: string; schemaVersion: string };
   deployment.elements.push({
@@ -90,19 +77,13 @@ test("a test form selects a new custom element through JSON configuration only",
   assert.equal(fields[1]?.element.id, "org.example.ems:destination-notes");
 });
 
-test("unknown compatible custom results survive load, edit, app persistence, and serialization", () => {
-  const unknown = {
+test("persisted custom data survives application save and recovery without interpretation", () => {
+  const customData: CustomDataSet = {
     formatExtension: { vendor: 2 },
     results: [{ elementId: "net.partner.registry:unknown-score", correlationId: "assessment-1", partnerMetadata: { revision: 7 }, values: [{ value: "4", units: "points" }] }],
   };
-  const loaded = loadCustomDataSet(unknown);
-  const edited = setCustomResult(loaded, { elementId: "org.example.ems:stroke-score", correlationId: "assessment-1", values: [{ value: "6" }] });
-  const roundTrip = deserializeCustomDataSet(serializeCustomDataSet(edited));
-  assert.deepEqual(roundTrip.results[0], unknown.results[0]);
-  assert.deepEqual(roundTrip.formatExtension, unknown.formatExtension);
-
-  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, customData: roundTrip } } as ShellState;
+  const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, customData } } as ShellState;
   const local = storage(); saveShellState(local, state);
   const restored = loadShellState(local)!;
-  assert.deepEqual(restored.encounter.customData?.results[0], unknown.results[0]);
+  assert.deepEqual(restored.encounter.customData, customData);
 });
