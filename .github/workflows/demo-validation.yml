@@ -61,45 +61,9 @@ jobs:
   database-validation:
     name: Validate / PostgreSQL 15
     needs: validate-deployment-revision
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_DB: open_triage_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d open_triage_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Verify generated database artifacts
-        run: npm run check:database
-      - name: Run database integration tests
-        run: npm run test:integration -w @open-triage/database
-      - name: Run API integration tests
-        run: npm run test:integration -w @open-triage/api
-      - name: Run CI scale checks
-        run: npm run scale:test:ci -w @open-triage/database
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: database-scale-test-ci
-          path: packages/database/artifacts/scale-test-ci.json
+    uses: ./.github/workflows/database-postgresql.yml
+    with:
+      checkout_ref: ${{ inputs.deployment_revision || github.sha }}
 
   web-deployment-validation:
     name: Validate / Web deployment

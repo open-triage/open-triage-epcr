@@ -8,6 +8,7 @@ import {
 } from "../scripts/require-demo-validation.mjs";
 
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
+const databaseWorkflowPath = new URL("../.github/workflows/database-postgresql.yml", import.meta.url);
 
 test("the required gate fails closed when any validation is unsuccessful", () => {
   const results = {
@@ -53,7 +54,10 @@ test("the workflow exposes a least-privilege, stable required check", async () =
 });
 
 test("the gate depends on every application, database, web, and Helm validation", async () => {
-  const workflow = await readFile(workflowPath, "utf8");
+  const [workflow, databaseWorkflow] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(databaseWorkflowPath, "utf8"),
+  ]);
   const gate = workflow.slice(workflow.indexOf("  validation-gate:"));
 
   for (const job of [
@@ -70,15 +74,50 @@ test("the gate depends on every application, database, web, and Helm validation"
     "npm run lint",
     "npm test",
     "npm run build",
-    "npm run check:database",
-    "npm run test:integration -w @open-triage/database",
-    "npm run test:integration -w @open-triage/api",
-    "npm run scale:test:ci -w @open-triage/database",
     "npm run test:deployment -w @open-triage/web",
     "helm lint",
     "helm template",
   ]) {
     assert.ok(workflow.includes(command), `missing required workflow command: ${command}`);
+  }
+
+  assert.match(workflow, /^    uses: \.\/\.github\/workflows\/database-postgresql\.yml$/m);
+  for (const command of [
+    "npm run check:database",
+    "npm run test:integration -w @open-triage/database",
+    "npm run test:integration -w @open-triage/api",
+    "npm run scale:test:ci -w @open-triage/database",
+  ]) {
+    assert.ok(databaseWorkflow.includes(command), `missing required database workflow command: ${command}`);
+  }
+});
+
+test("database validation is reused once across non-overlapping event coverage", async () => {
+  const [demoWorkflow, databaseWorkflow] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(databaseWorkflowPath, "utf8"),
+  ]);
+
+  assert.match(demoWorkflow, /^  push:\n    branches: \[main\]$/m);
+  assert.match(demoWorkflow, /^  pull_request:\n    branches: \[main, feature\/ci-cd-deployment\]$/m);
+  assert.match(databaseWorkflow, /^  push:\n    branches: \[feature\/database-foundation\]$/m);
+  assert.match(databaseWorkflow, /^  pull_request:\n    branches: \[feature\/database-foundation\]$/m);
+  assert.match(databaseWorkflow, /^  workflow_dispatch:$/m);
+  assert.match(databaseWorkflow, /^  workflow_call:$/m);
+  assert.doesNotMatch(databaseWorkflow, /branches: \[[^\]]*main/);
+  assert.match(demoWorkflow, /checkout_ref: \$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/);
+
+  for (const command of [
+    "npm run check:database",
+    "npm run test:integration -w @open-triage/database",
+    "npm run test:integration -w @open-triage/api",
+    "npm run scale:test:ci -w @open-triage/database",
+  ]) {
+    assert.equal(
+      [demoWorkflow, databaseWorkflow].reduce((count, source) => count + (source.split(command).length - 1), 0),
+      1,
+      `${command} must have exactly one workflow definition`,
+    );
   }
 });
 
