@@ -12,7 +12,17 @@ export function ServiceWorkerRegistration() {
       if ("caches" in window) void caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("open-triage-")).map((key) => caches.delete(key))));
       return;
     }
-    void navigator.serviceWorker.register(`${basePath}/sw.js`);
+    const controlledAtLoad = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+    const useUpdatedShell = () => {
+      if (!controlledAtLoad || refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", useUpdatedShell);
+    void navigator.serviceWorker.register(`${basePath}/sw.js`, { updateViaCache: "none" })
+      .then((registration) => registration.update());
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", useUpdatedShell);
   }, []);
   return null;
 }

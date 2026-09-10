@@ -61,6 +61,10 @@ an explicit **Sign in** action. The seeded organization fixes that session at 14
 hours from login; the API automatically rejects it at that deadline, and **Log out**
 ends it immediately. Deployments can change `shift_session_duration_hours` on the
 organization until the stationary administration interface is available.
+Select `OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the API and
+`NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the web app when
+running this fixture. With no selection, both applications use the safe production
+baseline and synthetic fixtures, sample assignment generation, and the banner stay off.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. The API derives the analytical patient
@@ -74,32 +78,16 @@ disjoint edits merge, collisions prefer the latest client time within the five-m
 future-skew guard, and equal or untrustworthy times follow server receipt order. Losing
 values and both commands' lineage remain in append-only reconciliation audit data.
 
-## Static prototype
+## Kubernetes demo
 
-The browser-only MVP is published at
-[https://annakopp.github.io/open-triage-epcr-demo/](https://annakopp.github.io/open-triage-epcr-demo/).
-It is a synthetic-data-only usability prototype and is not for clinical use.
+The synthetic-data-only demo is deployed to DigitalOcean Kubernetes after every
+successful validation of `main`. The web application is available at
+[https://demo.opentriage.org](https://demo.opentriage.org), with its API at
+[https://api.demo.opentriage.org](https://api.demo.opentriage.org).
 
-The web app exports to static files and does not require the API, PostgreSQL,
-Supabase, authentication, or runtime terminology access:
-
-```sh
-NEXT_PUBLIC_BASE_PATH=/open-triage-epcr-demo npm run build -w @open-triage/web
-npm run test:deployment -w @open-triage/web
-```
-
-Pushes and pull requests targeting `main` run the `Verify static prototype`
-workflow. It type-checks, lints, tests, exports, and exercises the browser-only
-journey before uploading `apps/web/out` as the `static-prototype` workflow
-artifact. A successful workflow run does **not** update GitHub Pages by itself.
-
-The private source repository cannot use GitHub Pages on the account's current
-plan. The public site is served from the root of the `main` branch in the
-separate public `annakopp/open-triage-epcr-demo` repository. To publish a verified
-build, a collaborator with write access to that repository must download the
-`static-prototype` artifact, replace the hosting repository's generated site
-files with the artifact contents, and push the result to `main`. GitHub Pages
-then rebuilds [the public demo](https://annakopp.github.io/open-triage-epcr-demo/).
+Operators should follow the [demo deployment runbook](docs/demo-deployment.md)
+for required credentials and infrastructure, release safeguards, failure
+recovery, and the strict synthetic-data boundary.
 
 ## Prototype interaction model
 

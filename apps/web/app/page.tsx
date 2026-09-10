@@ -7,7 +7,6 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import { purgeCompletedReportCaches } from "./local-persistence";
 import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
@@ -33,12 +32,13 @@ import {
   dispatchCancellationNotice,
 } from "./draft-report";
 import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
-import { nextDraftChange, removeSignedOfflineReport } from "./offline-reports";
+import { sessionRequestToken } from "./clinician-session";
+import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { DEMO_CLEAR_EVENT, DEMO_FALLBACK_DATE, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
-import { validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
+import { stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 
@@ -61,13 +61,14 @@ function localClinicalTime(): string {
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
 
-function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded }: {
+function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly presentationMode: PresentationMode;
   readonly onSaveAndClose: () => void;
   readonly onReportCompleted: () => void;
   readonly onSessionEnded: () => void;
+  readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [procedureSearch, setProcedureSearch] = useState("");
@@ -95,22 +96,26 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const medicationDefinition = bundledEncounterDefinition.events.medication;
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
-  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document), [encounter.document]);
-  const signingFindings: ReadonlyArray<SigningFinding> = useMemo(
-    () => [...stationaryFindings, ...reviewFindings], [reviewFindings, stationaryFindings],
+  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm), [encounter.document, report?.clinicalForm]);
+  const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
+    () => [...stationaryFindings, ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
+    [report?.clinicalForm, reviewFindings, stationaryFindings],
   );
-  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? signingFindings : reviewFindings;
+  const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
     restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
-    conflictError, flushSave, resolveConflict,
+    conflictError, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
     validationErrorCount: reviewErrors.length,
     onSessionEnded,
     onReportCompleted,
   });
+  useEffect(() => {
+    onErrorStateChange(reviewErrors.length > 0 || Boolean(recoveryNotice || signError || conflictError));
+  }, [conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -317,10 +322,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     try {
-      await signDraftReport(session.accessToken, report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
-      purgeCompletedReportCaches(window.localStorage, [report.id]);
-      removeSignedOfflineReport(window.localStorage, report.id);
-      onReportCompleted();
+      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
+      completeWorkspaceReport();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : "The record could not be signed.");
     } finally {
@@ -393,7 +396,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <div hidden={shell.view === "review"}>
           <StationaryRecord
             document={encounter.document}
-            findings={signingFindings}
+            findings={configuredStationaryFindings}
+            formDefinition={report?.clinicalForm?.definition}
+            catalogFields={report?.clinicalForm?.catalogFields}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
           />
         </div>
@@ -489,7 +494,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       {presentationMode === "stationary" && shell.view === "review" && (
         <>
         <ReviewPanel
-          findings={signingFindings}
+          findings={configuredStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
           groups={bundledEncounterDefinition.composition.review.groups}
@@ -607,8 +612,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
   )}</ClinicianSessionGate>;
 }
 

@@ -7,6 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
+import { UnauthorizedException } from "@nestjs/common";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -16,6 +17,10 @@ import {
   DEMO_CLINICIAN_USERNAME,
   ClinicianSessionService
 } from "../dist/sessions/clinician-session.service.js";
+import { AccountService } from "../dist/identity/account.service.js";
+import { AdminService } from "../dist/admin/admin.service.js";
+import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
+import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +42,57 @@ async function ensureFoundation(client) {
     const migration = await readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8");
     await client.query(migration);
   }
+  const identitySessions = await client.query("select to_regclass('app_identity.app_session') as app_session");
+  if (!identitySessions.rows[0].app_session) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906193136_identity_sessions.sql"), "utf8");
+    await client.query(migration);
+  }
+  const catalogDrafts = await client.query("select to_regclass('catalog.authoring_draft') as authoring_draft");
+  if (!catalogDrafts.rows[0].authoring_draft) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906210000_catalog_authoring.sql"), "utf8");
+    await client.query(migration);
+  }
+  const codeListConfiguration = await client.query("select to_regclass('catalog.value_set_option_configuration') as configuration");
+  if (!codeListConfiguration.rows[0].configuration) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260906230000_code_list_authoring.sql"), "utf8");
+    await client.query(migration);
+  }
+  const inlineCodeListConfiguration = await client.query("select to_regclass('catalog.element_option_configuration') as configuration");
+  if (!inlineCodeListConfiguration.rows[0].configuration) {
+    const migration = await readFile(path.join(repoRoot,
+      "supabase/migrations/20260908114126_catalog_requiredness_and_inline_options.sql"), "utf8");
+    await client.query(migration);
+  }
+  const formRevision = await client.query(`select 1 from information_schema.columns
+    where table_schema='forms' and table_name='form_version' and column_name='revision'`);
+  if (!formRevision.rows[0]) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907010000_form_authoring.sql"), "utf8");
+    await client.query(migration);
+  }
+  const agencyDefault = await client.query("select to_regclass('forms.agency_stationary_default') as agency_default");
+  if (!agencyDefault.rows[0].agency_default) {
+    const migration = await readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8");
+    await client.query(migration);
+  }
+  const reportPinValidator = await client.query(
+    "select to_regprocedure('clinical.validate_report_configuration_pin()') as validator"
+  );
+  if (!reportPinValidator.rows[0].validator) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"),
+      "utf8"
+    );
+    await client.query(migration);
+  }
+  const versionDisplayNames = await client.query(`select 1 from information_schema.columns
+    where table_schema='forms' and table_name='form_version' and column_name='display_name'`);
+  if (!versionDisplayNames.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"),
+      "utf8"
+    );
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -44,6 +100,265 @@ async function ensureFoundation(client) {
     });
   }
 }
+
+integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Local identity', 'UTC')", [organizationId]);
+
+  const provisioned = await accounts.provision({
+    organizationId, username: `owner.${randomUUID()}`, displayName: "Installation Owner",
+    role: "owner", temporaryPassword: "Temporary!Password-253"
+  });
+  const credential = await client.query(
+    "select username, password_verifier, must_change_password from app_identity.local_credential where user_id = $1",
+    [provisioned.userId]
+  );
+  assert.equal(credential.rows[0].must_change_password, true);
+  assert.doesNotMatch(credential.rows[0].password_verifier, /Temporary!Password-253/);
+
+  const limited = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" });
+  assert.equal(limited.session.passwordChangeRequired, true);
+  assert.equal(limited.session.accessToken, undefined);
+  assert.ok(limited.session.capabilities.includes("installation:administer"));
+  await assert.rejects(sessions.get(limited.sessionToken), /password change is required/i);
+
+  const active = await sessions.changePassword(limited.sessionToken, {
+    currentPassword: "Temporary!Password-253", newPassword: "Permanent!Password-253",
+    csrfToken: limited.session.csrfToken
+  });
+  assert.equal(active.session.passwordChangeRequired, false);
+  await assert.rejects(sessions.get(limited.sessionToken), UnauthorizedException);
+  assert.equal((await sessions.get(active.sessionToken)).organization.id, organizationId);
+  assert.equal((await sessions.requireCapability(active.sessionToken, "installation:administer")).user.id, provisioned.userId);
+  await assert.rejects(sessions.get(active.sessionToken, new Date(active.session.expiresAt)), UnauthorizedException);
+  await assert.rejects(sessions.end(active.sessionToken, "forged-csrf"), /CSRF/);
+  await sessions.end(active.sessionToken, active.session.csrfToken);
+  await assert.rejects(sessions.get(active.sessionToken), UnauthorizedException);
+
+  const beforeReset = await sessions.create({ username: provisioned.username, password: "Permanent!Password-253" });
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "wrong password value" }), UnauthorizedException);
+  await accounts.resetPassword(provisioned.username, "Reset!Temporary-Password-253");
+  await assert.rejects(sessions.get(beforeReset.sessionToken), UnauthorizedException);
+  const reset = await sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" });
+  assert.equal(reset.session.passwordChangeRequired, true);
+  await client.query("update app_identity.app_user set active = false, deactivated_at = now() where id = $1", [provisioned.userId]);
+  await assert.rejects(sessions.get(reset.sessionToken, new Date(), true), UnauthorizedException);
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" }), UnauthorizedException);
+
+  const audit = await client.query(
+    "select action, result, details::text from app_identity.authentication_event where target_user_id = $1 order by id",
+    [provisioned.userId]
+  );
+  assert.ok(audit.rows.some(({ action, result }) => action === "authentication.password_change" && result === "succeeded"));
+  assert.ok(audit.rows.some(({ action }) => action === "account.reset_password"));
+  assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
+  await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const admin = new AdminService(database, sessions);
+  const organizationId = randomUUID();
+  const formId = randomUUID();
+  const formVersionId = randomUUID();
+  const unitId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Admin shell', 'UTC')", [organizationId]);
+  const owner = await accounts.provision({
+    organizationId, username: `admin.${randomUUID()}`, displayName: "Installation Owner",
+    role: "owner", temporaryPassword: "Temporary!Password-254"
+  });
+  const temporary = await sessions.create({ username: owner.username, password: "Temporary!Password-254" });
+  const active = await sessions.changePassword(temporary.sessionToken, {
+    currentPassword: "Temporary!Password-254", newPassword: "Permanent!Password-254",
+    csrfToken: temporary.session.csrfToken
+  });
+  const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1' limit 1");
+  await client.query(`insert into app_identity.agency_demographic_version
+    (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
+     definition_sha256,effective_from,created_by)
+    values ($1,$2,1,'INTEGRATION-AGENCY','INTEGRATION-AGENCY-ID','00',$3,now(),$4)`,
+  [organizationId, release.rows[0].id, "c".repeat(64), owner.userId]);
+  const activeFormDefinition = { schemaVersion: 1, sections: [
+    { key: "dispatch", fields: [{ key: "dispatch-complaint", source: { kind: "nemsis", elementId: "eDispatch.01" } }] },
+    { key: "patient", fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.01" } }] },
+    { key: "situation", fields: [{ key: "situation-date", source: { kind: "nemsis", elementId: "eSituation.01" } }] }
+  ] };
+  const activeFormDigest = canonicalDefinitionSha256(activeFormDefinition);
+  await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'stationary', 'Agency Stationary')", [formId, organizationId]);
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+     change_note, created_by, published_by, published_at)
+    values ($1, $2, $3, 3, 'published', $4::jsonb, $5, 'Admin shell fixture', $6, $6, now())`,
+  [formVersionId, formId, release.rows[0].id, JSON.stringify(activeFormDefinition), activeFormDigest, owner.userId]);
+  await client.query(`insert into app_identity.operational_unit
+    (id, organization_id, call_sign, name, default_form_id)
+    values ($1, $2, 'ADMIN-254', 'Admin shell unit', $3)`, [unitId, organizationId, formId]);
+  await client.query(`insert into forms.agency_stationary_default
+    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, owner.userId]);
+
+  const context = await admin.context(active.sessionToken);
+  assert.equal(context.owner.id, owner.userId);
+  assert.equal(context.organization.id, organizationId);
+  assert.deepEqual(context.activeConfiguration, {
+    catalog: { id: release.rows[0].id, name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+    stationaryForm: { id: formVersionId, formId, name: "Agency Stationary", version: 3 }
+  });
+
+  const manager = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const transactionalDatabase = {
+    manager,
+    query: manager.query,
+    transaction: async (_isolation, work) => {
+      await client.query("begin");
+      try { const result = await work(manager); await client.query("commit"); return result; }
+      catch (error) { await client.query("rollback"); throw error; }
+    }
+  };
+  const activationForms = new FormAuthoringService(transactionalDatabase, sessions, {});
+  const activation = await activationForms.activate(active.sessionToken, formVersionId, { changeNote: "Confirm agency default" });
+  assert.equal(activation.formVersionId, formVersionId);
+  assert.equal(activation.previousFormVersionId, formVersionId);
+  const activationAudit = await client.query(`select action,actor_id,form_version_id,catalog_release_id,
+    previous_form_version_id,change_note,content_sha256 from app_identity.configuration_event
+    where organization_id=$1 order by id desc limit 1`, [organizationId]);
+  assert.deepEqual(activationAudit.rows[0], { action: "form.activate", actor_id: owner.userId,
+    form_version_id: formVersionId, catalog_release_id: release.rows[0].id,
+    previous_form_version_id: formVersionId, change_note: "Confirm agency default",
+    content_sha256: activeFormDigest });
+  await assert.rejects(client.query("update app_identity.configuration_event set change_note='changed' where organization_id=$1",
+    [organizationId]));
+  const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
+  const draft = await authoring.cloneActive(active.sessionToken, { displayName: "Integration catalog" });
+  assert.equal(draft.revision, 1);
+  const changedElement = draft.definition.elements[0];
+  const changedList = draft.definition.codeLists.find((list) => list.classification !== "inline");
+  assert.ok(changedList, "the NEMSIS catalog should expose a recommended list");
+  const changedInlineList = draft.definition.codeLists.find((list) => list.elementIds.includes("eAirway.03"));
+  assert.ok(changedInlineList, "eAirway.03 should expose its inline enumeration by element identifier");
+  const disabledValue = changedList.values[0];
+  const disabledInlineValue = changedInlineList.values[0];
+  const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
+    sourceLabel: "Locally managed choice", category: null, enabled: true };
+  const changedDefinition = { ...draft.definition, elements: draft.definition.elements.map((element) =>
+    element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
+    codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
+      values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
+        ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value)],
+      defaultValue: { code: localValue.code, codeSystem: localValue.codeSystem } } : list.listId === changedInlineList.listId
+      ? { ...list, values: list.values.map((value) => value.code === disabledInlineValue.code && value.codeSystem === disabledInlineValue.codeSystem
+        ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value) } : list) };
+  const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition });
+  await assert.rejects(authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition }),
+    /revision is stale/i);
+  const validation = await authoring.validate(active.sessionToken, draft.id);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.projectionsVerified, true);
+  const published = await authoring.publish(active.sessionToken, draft.id, {
+    expectedRevision: saved.revision, definitionSha256: saved.definitionSha256,
+    displayName: "Integration catalog",
+    changeNote: "Agency validation acceptance journey"
+  });
+  assert.equal(published.projectionsVerified, true);
+  const publishedDataModel = await client.query(
+    "select provenance->>'dataModelVersion' as version, display_name from catalog.release where id=$1",
+    [published.id]
+  );
+  assert.equal(publishedDataModel.rows[0].version, "3.5.1");
+  assert.equal(publishedDataModel.rows[0].display_name, "Integration catalog");
+  const requiredness = await client.query(`select
+    (select agency_required from catalog.element_definition where release_id=$1 and element_id=$3) source_required,
+    (select agency_required from catalog.element_definition where release_id=$2 and element_id=$3) published_required`,
+  [release.rows[0].id, published.id, changedElement.elementId]);
+  assert.equal(requiredness.rows[0].source_required, null);
+  assert.equal(requiredness.rows[0].published_required, true);
+  const carriedDemographics = await client.query(`select catalog_release_id,dagency_01,dagency_02,dagency_04,created_by
+    from app_identity.agency_demographic_version
+    where organization_id=$1 and catalog_release_id=$2`, [organizationId, published.id]);
+  assert.deepEqual(carriedDemographics.rows, [{
+    catalog_release_id: published.id,
+    dagency_01: "INTEGRATION-AGENCY",
+    dagency_02: "INTEGRATION-AGENCY-ID",
+    dagency_04: "00",
+    created_by: owner.userId
+  }]);
+  const sourceCode = await client.query(`select o.display, coalesce(c.enabled, true) enabled from catalog.value_set_option o
+    left join catalog.value_set_option_configuration c using (release_id, value_set_id, code_system, code)
+    where o.release_id=$1 and o.value_set_id=$2 and o.code_system=$3 and o.code=$4`,
+  [release.rows[0].id, changedList.listId, disabledValue.codeSystem, disabledValue.code]);
+  const publishedCodes = await client.query(`select o.code, o.display, c.enabled, c.sort_order, c.is_default
+    from catalog.value_set_option o join catalog.value_set_option_configuration c using (release_id, value_set_id, code_system, code)
+    where o.release_id=$1 and o.value_set_id=$2 and ((o.code_system=$3 and o.code=$4) or o.code=$5) order by c.sort_order`,
+  [published.id, changedList.listId, disabledValue.codeSystem, disabledValue.code, localValue.code]);
+  assert.equal(sourceCode.rows[0].display, disabledValue.label);
+  assert.equal(sourceCode.rows[0].enabled, true);
+  assert.deepEqual(publishedCodes.rows, [
+    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: true },
+    { code: disabledValue.code, display: `${disabledValue.label} (agency label)`, enabled: false, sort_order: 1, is_default: false }
+  ]);
+  const publishedInlineCode = await client.query(`select o.display,c.enabled,c.sort_order
+    from catalog.element_option o join catalog.element_option_configuration c
+      using (release_id,element_id,source_kind,code_system,code)
+    where o.release_id=$1 and o.element_id='eAirway.03' and o.code_system=$2 and o.code=$3`,
+  [published.id, disabledInlineValue.codeSystem, disabledInlineValue.code]);
+  assert.deepEqual(publishedInlineCode.rows[0], {
+    display: `${disabledInlineValue.label} (agency label)`, enabled: false, sort_order: 0
+  });
+  await assert.rejects(client.query("update catalog.element_definition set name='mutated' where release_id=$1 and element_id=$2",
+    [published.id, changedElement.elementId]), /immutable/);
+  await assert.rejects(client.query(`insert into catalog.element_option
+    (release_id, element_id, source_kind, code, display, code_system) values ($1,$2,'inline','late-code','Late','')`,
+    [published.id, changedElement.elementId]), /sealed and immutable/);
+  await assert.rejects(client.query("update catalog.value_set_option set display='mutated' where release_id=$1 and value_set_id=$2",
+    [published.id, changedList.listId]), /immutable/);
+  await assert.rejects(client.query("update catalog.value_set_option_configuration set enabled=true where release_id=$1 and value_set_id=$2",
+    [published.id, changedList.listId]), /immutable/);
+  await assert.rejects(client.query("update catalog.element_option_configuration set enabled=true where release_id=$1 and element_id='eAirway.03'",
+    [published.id]), /immutable/);
+  const event = await client.query("select result, change_note from catalog.publication_event where release_id=$1", [published.id]);
+  assert.deepEqual(event.rows[0], { result: "succeeded", change_note: "Agency validation acceptance journey" });
+
+  const forms = new FormAuthoringService(transactionalDatabase, sessions);
+  const formDraft = await forms.clone(active.sessionToken, {
+    catalogReleaseId: published.id, displayName: "Agency Stationary validation draft"
+  });
+  assert.equal(formDraft.catalogReleaseId, published.id);
+  assert.equal(formDraft.clonedFromId, formVersionId);
+  assert.deepEqual(formDraft.definition, activeFormDefinition);
+  assert.deepEqual(formDraft.diagnostics, []);
+  const editedFormDefinition = { ...formDraft.definition,
+    sections: [formDraft.definition.sections[2], formDraft.definition.sections[0]] };
+  const formSaved = await forms.save(active.sessionToken, formDraft.id, {
+    expectedRevision: formDraft.revision, definition: editedFormDefinition
+  });
+  assert.equal(formSaved.revision, formDraft.revision + 1);
+  assert.deepEqual(formSaved.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  const persistedFormDraft = await forms.current(active.sessionToken);
+  assert.deepEqual(persistedFormDraft.definition.sections.map(({ key }) => key), ["situation", "dispatch"]);
+  assert.equal(persistedFormDraft.definition.sections.some(({ key }) => key === "patient"), false);
+  await assert.rejects(forms.save(active.sessionToken, formDraft.id, {
+    expectedRevision: formDraft.revision, definition: formDraft.definition
+  }), /revision is stale/i);
+  const sourceAfterClone = await client.query(`select catalog_release_id,canonical_definition,status
+    from forms.form_version where id=$1`, [formVersionId]);
+  assert.deepEqual(sourceAfterClone.rows[0], {
+    catalog_release_id: release.rows[0].id, canonical_definition: activeFormDefinition, status: "published"
+  });
+  await assert.rejects(client.query("update forms.form_version set canonical_definition='{}' where id=$1", [formVersionId]),
+    /immutable/);
+});
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
@@ -174,6 +489,12 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Publisher')", [userId, organizationId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
+  app.get(ClinicianSessionService).requireCapability = async () => ({
+    user: { id: userId, displayName: "Publisher" }, organization: { id: organizationId, name: "Publication API" },
+    startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    capabilities: ["installation:administer"]
+  });
+  app.get(ClinicianSessionService).assertCsrf = async () => {};
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -183,7 +504,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   async function publish(versionId, body) {
     const response = await fetch(`${baseUrl}/form-versions/${versionId}/publish`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: "Bearer publication-owner", "x-csrf-token": "csrf" },
       body: JSON.stringify(body)
     });
     const payload = await response.json();
@@ -222,6 +543,12 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     });
     assert.equal(response.status, 201, JSON.stringify(payload));
     assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1, locales: 1 });
+    const event = await client.query(`select action,actor_id,form_version_id,catalog_release_id,change_note,content_sha256
+      from app_identity.configuration_event where form_version_id=$1`, [draft.versionId]);
+    assert.equal(event.rows[0].action, "form.publish");
+    assert.equal(event.rows[0].actor_id, userId);
+    assert.equal(event.rows[0].change_note, "Initial publication");
+    assert.equal(event.rows[0].content_sha256, draft.digest);
 
     const stored = await client.query(`
       select fv.status, fv.catalog_release_id, fv.canonical_definition,
@@ -366,7 +693,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
@@ -384,8 +711,11 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   });
   assert.equal(signIn.status, 201);
   const session = await signIn.json();
+  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
+  assert.match(signIn.headers.get("set-cookie") ?? "", /HttpOnly.*Secure.*SameSite=Strict/i);
+  assert.equal(session.accessToken, undefined);
   const response = await fetch(`${baseUrl}/calls/assigned`, {
-    headers: { authorization: `Bearer ${session.accessToken}` }
+    headers: { cookie: sessionCookie }
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
@@ -407,7 +737,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   try {
     await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
     const canceled = await fetch(`${baseUrl}/calls/assigned`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: { cookie: sessionCookie }
     });
     const canceledPayload = await canceled.json();
     assert.deepEqual(canceledPayload.assignedCalls, []);
@@ -418,11 +748,17 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
 });
 
 integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
+  const originalInstallationSettings = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+  t.after(() => {
+    if (originalInstallationSettings === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = originalInstallationSettings;
+  });
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
@@ -438,6 +774,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
   });
   const session = await signIn.json();
+  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
   const assignmentId = (await client.query(`
     select id from clinical.call_assignment
     where organization_id = '32000000-0000-4000-8000-000000000001'
@@ -455,7 +792,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     const requestOpen = async () => {
       const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
         method: "POST",
-        headers: { authorization: `Bearer ${session.accessToken}` }
+        headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
       });
       const payload = await response.json();
       assert.equal(response.status, 200, JSON.stringify(payload));
@@ -505,7 +842,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     });
 
     const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { authorization: `Bearer ${session.accessToken}` }
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
     });
     assert.equal(reopenedResponse.status, 200);
     const reopened = await reopenedResponse.json();
@@ -513,7 +850,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
     assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
 
     const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
-      headers: { authorization: `Bearer ${session.accessToken}` }
+      headers: { cookie: sessionCookie }
     });
     assert.equal(openCallsResponse.status, 200);
     const openCalls = await openCallsResponse.json();
@@ -521,6 +858,9 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
       { code: "2305003", display: "Emergent" });
 
     const laterVersionId = randomUUID();
+    const laterDefinition = { schemaVersion: 1, sections: [{
+      key: "replacement", presentation: { title: "Replacement configuration" }, fields: []
+    }] };
     await client.query(`
       insert into forms.form_version
         (id, form_id, catalog_release_id, version, status, canonical_definition,
@@ -528,14 +868,30 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
          publication_acknowledgements)
       select $1, fv.form_id, fv.catalog_release_id,
              (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
-             'published', fv.canonical_definition, fv.definition_sha256,
+             'published', $3::jsonb, repeat('f', 64),
              'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
       from forms.form_version fv where fv.id = $2
-    `, [laterVersionId, latestBeforeOpen]);
-    assert.equal((await client.query("select form_version_id from clinical.report where id = $1", [opened.report.id])).rows[0].form_version_id,
-      latestBeforeOpen);
+    `, [laterVersionId, latestBeforeOpen, JSON.stringify(laterDefinition)]);
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = $2, activated_by = $3, activated_at = now()
+      where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
+
+    const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
+      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
+    });
+    assert.equal(reopenedAfterActivationResponse.status, 200);
+    const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
+    assert.equal(reopenedAfterActivation.report.formVersionId, latestBeforeOpen);
+    assert.equal(reopenedAfterActivation.report.catalogReleaseId, opened.report.catalogReleaseId);
+    assert.deepEqual(reopenedAfterActivation.report.clinicalForm, opened.report.clinicalForm);
+    assert.deepEqual(reopenedAfterActivation.report.document, opened.report.document);
+    await assert.rejects(client.query("update clinical.report set form_version_id = $2 where id = $1",
+      [opened.report.id, laterVersionId]), /identity and pinned configuration are immutable/);
   } finally {
-    if (opened) {
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = $2, activated_by = $3, activated_at = now()
+      where organization_id = $1`, [session.organization.id, latestBeforeOpen, session.user.id]);
+    if (opened?.replacementAssignment) {
       await client.query("begin");
       try {
         const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
@@ -576,13 +932,6 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   [agencyVersionId, organizationId, releaseId, "a".repeat(64), userId]);
   await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, $3, 'Draft command form')",
     [formId, organizationId, `draft-${formId}`]);
-  await client.query(`insert into forms.form_version
-    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
-     change_note, created_by, published_by, published_at)
-    values ($1, $2, $3, 1, 'published', '{"schemaVersion":1,"sections":[]}', $4,
-            'Draft API integration fixture', $5, $5, now())`,
-  [formVersionId, formId, releaseId, "b".repeat(64), userId]);
-
   const selected = await client.query(`
     select
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
@@ -613,6 +962,42 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.ok(coded, "catalog fixture requires an inline coded value");
   const notValue = await option(ids.null_id, "not-value");
   const negative = await option(ids.negative_id, "pertinent-negative");
+  const signingSectionId = randomUUID();
+  const presentFieldId = randomUUID();
+  const requiredFieldId = randomUUID();
+  const requiredElement = (await client.query(`select e.element_id, e.element_identity_id,
+      (m.analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.element_definition e join catalog.analytics_element_mapping m
+      on m.release_id = e.release_id and m.element_id = e.element_id
+    where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
+      and e.element_id <> $2 order by e.element_id limit 1`, [releaseId, ids.text_id])).rows[0];
+  assert.ok(requiredElement, "catalog fixture requires a second singleton text element");
+  const presentIdentity = (await client.query(`select element_identity_id,
+      (analytical_location = 'repeatable') as analytical_repeatable
+    from catalog.analytics_element_mapping where release_id = $1 and element_id = $2`,
+  [releaseId, ids.text_id])).rows[0];
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
+    values ($1, $2, $3, 1, '{"schemaVersion":1,"sections":[]}', $4, $5)`,
+  [formVersionId, formId, releaseId, "d".repeat(64), userId]);
+  await client.query(`insert into forms.form_section (id, form_version_id, stable_key, position)
+    values ($1, $2, 'signing', 0)`, [signingSectionId, formVersionId]);
+  await client.query(`insert into forms.form_field
+    (id, form_version_id, section_id, stable_key, position, source_kind,
+     catalog_element_identity_id, required, analytical_repeatable)
+    values ($1, $3, $4, 'present', 0, 'nemsis', $5, false, $6),
+           ($2, $3, $4, 'required-when-present', 1, 'nemsis', $7, true, $8)`,
+  [presentFieldId, requiredFieldId, formVersionId, signingSectionId,
+    presentIdentity.element_identity_id, presentIdentity.analytical_repeatable,
+    requiredElement.element_identity_id, requiredElement.analytical_repeatable]);
+  await client.query(`insert into forms.form_rule
+    (form_version_id, target_field_id, rule_kind, expression)
+    values ($1, $2, 'requiredness', '{"operator":"exists","field":"present"}')`,
+  [formVersionId, requiredFieldId]);
+  await client.query(`update forms.form_version set status = 'published', change_note = 'Signing fixture',
+    published_by = $2, published_at = now() where id = $1`, [formVersionId, userId]);
+  await client.query(`insert into forms.agency_stationary_default
+    (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, userId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   const integrationAccessToken = "draft-api-owner-token";
@@ -949,43 +1334,6 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   await assert.rejects(client.query("update clinical_audit.draft_reconciliation set resolution = resolution where report_id = $1",
     [mergeReportId]), /append-only/);
 
-  const signingFormVersionId = randomUUID();
-  const signingSectionId = randomUUID();
-  const presentFieldId = randomUUID();
-  const requiredFieldId = randomUUID();
-  const requiredElement = (await client.query(`select e.element_id, e.element_identity_id,
-      (m.analytical_location = 'repeatable') as analytical_repeatable
-    from catalog.element_definition e join catalog.analytics_element_mapping m
-      on m.release_id = e.release_id and m.element_id = e.element_id
-    where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
-      and e.element_id <> $2 order by e.element_id limit 1`, [releaseId, ids.text_id])).rows[0];
-  assert.ok(requiredElement, "catalog fixture requires a second singleton text element");
-  const presentIdentity = (await client.query(`select element_identity_id,
-      (analytical_location = 'repeatable') as analytical_repeatable
-    from catalog.analytics_element_mapping where release_id = $1 and element_id = $2`,
-  [releaseId, ids.text_id])).rows[0];
-  await client.query(`insert into forms.form_version
-    (id, form_id, catalog_release_id, version, canonical_definition, definition_sha256, created_by)
-    values ($1, $2, $3, 2, '{"schemaVersion":1,"sections":[]}', $4, $5)`,
-  [signingFormVersionId, formId, releaseId, "d".repeat(64), userId]);
-  await client.query(`insert into forms.form_section (id, form_version_id, stable_key, position)
-    values ($1, $2, 'signing', 0)`, [signingSectionId, signingFormVersionId]);
-  await client.query(`insert into forms.form_field
-    (id, form_version_id, section_id, stable_key, position, source_kind,
-     catalog_element_identity_id, required, analytical_repeatable)
-    values ($1, $3, $4, 'present', 0, 'nemsis', $5, false, $6),
-           ($2, $3, $4, 'required-when-present', 1, 'nemsis', $7, true, $8)`,
-  [presentFieldId, requiredFieldId, signingFormVersionId, signingSectionId,
-    presentIdentity.element_identity_id, presentIdentity.analytical_repeatable,
-    requiredElement.element_identity_id, requiredElement.analytical_repeatable]);
-  await client.query(`insert into forms.form_rule
-    (form_version_id, target_field_id, rule_kind, expression)
-    values ($1, $2, 'requiredness', '{"operator":"exists","field":"present"}')`,
-  [signingFormVersionId, requiredFieldId]);
-  await client.query(`update forms.form_version set status = 'published', change_note = 'Signing fixture',
-    published_by = $2, published_at = now() where id = $1`, [signingFormVersionId, userId]);
-  await client.query("update clinical.report set form_version_id = $2 where id = $1", [reportId, signingFormVersionId]);
-
   const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
   const missingRequired = await sign({
     commandId: randomUUID(), expectedRevision: 5, signerId: userId,
@@ -1044,7 +1392,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     where id = $1`, [requiredOccurrenceId]);
 
   const codedOccurrence = (await client.query(`select id, code from clinical.element_occurrence
-    where report_id = $1 and element_id = $2 and tombstoned_at is null`, [reportId, ids.coded_id])).rows[0];
+    where report_id = $1 and element_id = $2 and value_kind = 'coded' and tombstoned_at is null`,
+  [reportId, ids.coded_id])).rows[0];
   await client.query("update clinical.element_occurrence set code = 'INVALID-VALUE-SET-CODE' where id = $1", [codedOccurrence.id]);
   const invalidValueSet = await sign({
     commandId: randomUUID(), expectedRevision: 8, signerId: userId,

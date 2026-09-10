@@ -9,8 +9,10 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   draftCommandUsesLegacyDerivedIds,
+  deleteDraftReport,
   fetchActiveReport,
   saveDraftReport,
+  shouldQueueInitialDraftSnapshot,
   signDraftReport,
   shellStateToDraftMutations,
   stableDraftId,
@@ -18,6 +20,14 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("only a brand-new server report queues an initial persistence snapshot", () => {
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, false), true);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 11, true, false), false,
+    "reopening an existing report must not create a no-op synchronization write");
+  assert.equal(shouldQueueInitialDraftSnapshot("restored", 0, true, false), false);
+  assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, true), false);
+});
 
 test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
   const notice = dispatchCancellationNotice({
@@ -77,6 +87,21 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
   }
 });
 
+test("prototype record deletion uses a confirmed server-side DELETE with CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let request: { input: string; init?: RequestInit } | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    request = { input: String(input), init };
+    return Response.json({ deleted: true, reportId });
+  }) as typeof fetch;
+
+  assert.deepEqual(await deleteDraftReport("csrf-proof", reportId), { deleted: true, reportId });
+  assert.equal(request?.input, `http://localhost:3001/api/reports/${reportId}`);
+  assert.equal(request?.init?.method, "DELETE");
+  assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+});
+
 test("active polling and draft saves identify a report completed by another client", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
@@ -103,22 +128,50 @@ test("active polling and draft saves identify a report completed by another clie
   }
 });
 
-test("the browser-only static build considers its durable local write synchronized", async () => {
-  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+test("an invalid saved browser command is distinguished from a temporary outage", async (t) => {
   const originalFetch = globalThis.fetch;
-  process.env.NEXT_PUBLIC_BASE_PATH = "/open-triage-epcr-demo";
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  });
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  globalThis.fetch = (async () => Response.json({ message: "Invalid stale command" }, { status: 422 })) as typeof fetch;
+  await assert.rejects(saveDraftReport("token", reportId, {
+    commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+    authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+    clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+  }), /invalid/);
+});
+
+test("browser-only static builds at a root or subpath consider their durable local write synchronized", async () => {
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+  const originalFetch = globalThis.fetch;
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
   globalThis.fetch = (async () => { throw new Error("the static build must not call a report API"); }) as typeof fetch;
   try {
-    const result = await saveDraftReport("token", reportId, {
-      commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
-      authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
-      clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
-    });
-    assert.deepEqual(result, { id: reportId, status: "draft", revision: 8 });
+    for (const basePath of [undefined, "/open-triage-epcr-demo"]) {
+      if (basePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+      else process.env.NEXT_PUBLIC_BASE_PATH = basePath;
+      const result = await saveDraftReport("token", reportId, {
+        commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+        authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
+        clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+      });
+      assert.deepEqual(result, { id: reportId, status: "draft", revision: 8 });
+    }
   } finally {
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
   }
 });
 
@@ -142,6 +195,88 @@ test("signing sends the current revision, clinician attestation, and warning ack
     assert.equal(body.signerId, "32000000-0000-4000-8000-000000000003");
     assert.deepEqual(body.warningAcknowledgements, { "missing-vitals": true });
     assert.equal(body.attestation.meaning, "clinician approval");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  }
+});
+
+test("local demo sessions routed through the API still submit signatures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+  let requestUrl: string | undefined;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = "true";
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestUrl = String(input);
+    return Response.json({ id: reportId, status: "signed" }, { status: 201 });
+  }) as typeof fetch;
+  try {
+    await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+    assert.equal(requestUrl, `/api/reports/${reportId}/sign`);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
+  }
+});
+
+test("browser-only static demos at a root or subpath never submit a signature to a nonexistent API", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalRouteDemoMutations = process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+  globalThis.fetch = (async () => { throw new Error("the static build must not call a signing API"); }) as typeof fetch;
+  try {
+    for (const basePath of [undefined, "/open-triage-epcr-demo"]) {
+      if (basePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+      else process.env.NEXT_PUBLIC_BASE_PATH = basePath;
+      await signDraftReport("token", reportId, 9, "32000000-0000-4000-8000-000000000003", []);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
+    else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+    if (originalRouteDemoMutations === undefined) delete process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API;
+    else process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API = originalRouteDemoMutations;
+  }
+});
+
+test("signing surfaces revision, validation, session, server, and network failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_BASE_PATH;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const sign = () => signDraftReport(
+    "token", reportId, 9, "32000000-0000-4000-8000-000000000003", [],
+  );
+  try {
+    for (const [status, message] of [
+      [409, /record changed/i],
+      [422, /server validation/i],
+      [401, /session has ended/i],
+      [503, /could not be signed/i],
+    ] as const) {
+      globalThis.fetch = (async () => new Response(null, { status })) as typeof fetch;
+      await assert.rejects(sign(), message);
+    }
+    globalThis.fetch = (async () => { throw new TypeError("network unavailable"); }) as typeof fetch;
+    await assert.rejects(sign(), /check your connection/i);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
@@ -202,7 +337,7 @@ test("removing a persisted timeline event emits explicit group and occurrence to
   });
 });
 
-test("the web adapter sends bearer-authenticated commands to the report draft endpoint", async () => {
+test("the web adapter sends cookie credentials and a CSRF proof to the report draft endpoint", async () => {
   const originalFetch = globalThis.fetch;
   let request: { input: string; init?: RequestInit } | undefined;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -218,7 +353,8 @@ test("the web adapter sends bearer-authenticated commands to the report draft en
     assert.equal(result.revision, 8);
     assert.equal(request?.input, draftChangesUrl(reportId));
     assert.equal(request?.init?.method, "POST");
-    assert.equal((request?.init?.headers as Record<string, string>).authorization, "Bearer token");
+    assert.equal(request?.init?.credentials, "include");
+    assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "token");
   } finally {
     globalThis.fetch = originalFetch;
   }

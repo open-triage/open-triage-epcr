@@ -33,13 +33,22 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export { parseInstallationSettings, type InstallationSettings } from "./installation-settings.js";
+export {
+  SYNTHETIC_DEMO_FIXTURE,
+  type PublicInstallationConfiguration,
+} from "./synthetic-demo.js";
+
 export interface CreateClinicianSessionCommand {
   username: string;
   password: string;
 }
 
 export interface ClinicianSession {
-  accessToken: string;
+  /** Present only in the static, serverless demonstration build. */
+  accessToken?: string;
+  /** Non-secret token echoed on cookie-authenticated state changes. */
+  csrfToken?: string;
   user: {
     id: string;
     displayName: string;
@@ -50,10 +59,227 @@ export interface ClinicianSession {
   };
   startedAt: string;
   expiresAt: string;
+  passwordChangeRequired?: boolean;
+  capabilities?: string[];
+}
+
+export interface ChangePasswordCommand {
+  currentPassword: string;
+  newPassword: string;
+  csrfToken: string;
 }
 
 export interface EndClinicianSessionResponse {
   ended: true;
+}
+
+export interface DeleteDraftReportResponse {
+  deleted: true;
+  reportId: string;
+}
+
+export interface AdminContext {
+  owner: ClinicianSession["user"];
+  organization: ClinicianSession["organization"];
+  activeConfiguration: {
+    catalog: {
+      id: string;
+      name: string;
+      standard: string;
+      version: string;
+    };
+    stationaryForm: {
+      id: string;
+      formId: string;
+      name: string;
+      version: number;
+    };
+  } | null;
+  dashboard: {
+    availableCalls: number;
+    ongoingReports: number;
+    signedReports: number;
+    signedLast24Hours: number;
+    reportsWithErrors: number;
+    activeUsers: number;
+    activeUnits: number;
+    databaseSizeBytes: number;
+    databaseConnections: number;
+    maxDatabaseConnections: number;
+    generatedAt: string;
+  };
+}
+
+export interface CatalogDraftElement {
+  elementId: string;
+  /** Agency-editable clinical label; the stable element identity remains elementId. */
+  label: string;
+  identityId: string;
+  baseDatatype: string;
+  storageSemantics: {
+    sourceDatatype: string;
+    groupPath: string[];
+    analyticalLocation: "wide" | "repeatable" | "unmapped";
+    sqlType: string;
+  };
+  /** Null is optional; otherwise controls whether a missing value blocks signing or produces an acknowledgement warning. */
+  requirednessSeverity: "warning" | "error" | null;
+  constraints: {
+    minOccurs: number;
+    maxOccurs: number | null;
+    nillable: boolean;
+    supportsNotValues: boolean;
+    supportsPertinentNegatives: boolean;
+  };
+}
+
+export interface CatalogDraftCodeValue {
+  code: string;
+  codeSystem: string;
+  label: string;
+  sourceLabel: string;
+  category: string | null;
+  enabled: boolean;
+}
+
+export interface CatalogDraftCodeList {
+  listId: string;
+  name: string;
+  classification: "defined" | "suggested" | "agency" | "inline";
+  elementIds: string[];
+  values: CatalogDraftCodeValue[];
+  defaultValue: { code: string; codeSystem: string } | null;
+}
+
+export interface CatalogDraftDefinition {
+  schemaVersion: 1;
+  sourceReleaseId: string;
+  elements: CatalogDraftElement[];
+  codeLists: CatalogDraftCodeList[];
+}
+
+export interface CatalogDraft {
+  id: string;
+  displayName?: string;
+  sourceReleaseId: string;
+  revision: number;
+  definitionSha256: string;
+  definition: CatalogDraftDefinition;
+  updatedAt: string;
+}
+
+export interface CatalogValidationResult {
+  valid: boolean;
+  findings: string[];
+  definitionSha256: string;
+  projectionsVerified: boolean;
+}
+
+export interface PublishedCatalog {
+  id: string;
+  displayName: string;
+  status: "published";
+  version: string;
+  definitionSha256: string;
+  publishedAt: string;
+  projectionsVerified: true;
+}
+
+export interface FormDraftRule {
+  kind: "visibility" | "requiredness";
+  expression: Record<string, unknown>;
+}
+
+export interface FormDraftField {
+  key: string;
+  source: { kind: "nemsis"; elementId: string } |
+    { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
+  required?: boolean;
+  allowedAbsenceStates?: string[];
+  configuration?: Record<string, unknown>;
+  rules?: FormDraftRule[];
+}
+
+export interface FormDraftDefinition {
+  schemaVersion: 1;
+  sections: Array<{ key: string; presentation?: Record<string, unknown>; fields: FormDraftField[] }>;
+  locales?: Array<{ locale: string; translations: Record<string, unknown> }>;
+}
+
+/** Runtime projection of the immutable form and catalog versions pinned to a report. */
+export interface ClinicalFormConfiguration {
+  definition: FormDraftDefinition;
+  catalogFields: Record<string, {
+    agencyRequired: boolean;
+    requirednessSeverity?: "warning" | "error" | null;
+    minOccurs: number;
+    maxOccurs: number | null;
+    nillable: boolean;
+    supportsNotValues: boolean;
+    supportsPertinentNegatives: boolean;
+    codeChoices?: Array<{
+      code: string;
+      codeSystem: string;
+      label: string;
+      terminologyVersion?: string;
+    }>;
+  }>;
+}
+
+export interface FormCloneDiagnostic {
+  code: "missing-reference" | "disabled-reference" | "incompatible-reference";
+  path: string;
+  message: string;
+}
+
+export interface StationaryFormDraft {
+  id: string;
+  displayName?: string;
+  formId: string;
+  catalogReleaseId: string;
+  clonedFromId: string;
+  revision: number;
+  definitionSha256: string;
+  definition: FormDraftDefinition;
+  /** Published catalog configuration used by the detached authoring preview. */
+  catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  diagnostics: FormCloneDiagnostic[];
+  updatedAt: string;
+}
+
+export interface PublishedStationaryForm {
+  id: string;
+  displayName: string;
+  formId: string;
+  catalogReleaseId: string;
+  version: number;
+  status: "published";
+  definitionSha256: string;
+  publishedAt: string;
+  structuralSummary: { sections: number; fields: number; rules: number; locales: number };
+}
+
+export interface StationaryFormActivation {
+  organizationId: string;
+  formVersionId: string;
+  formId: string;
+  catalogReleaseId: string;
+  activatedAt: string;
+  previousFormVersionId: string | null;
+  previousCatalogReleaseId: string | null;
+}
+
+export interface FormCatalogElement {
+  elementId: string;
+  name: string;
+  description: string;
+  baseDatatype: string;
+  groupPath: string[];
+}
+
+export interface FormCatalogElementPage {
+  items: FormCatalogElement[];
+  nextOffset: number | null;
 }
 
 export type AssignmentStatus = "assigned";
@@ -92,6 +318,8 @@ export interface OpenAssignmentResponse {
     documentingUserId: string;
     formVersionId: string;
     catalogReleaseId: string;
+    /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
+    clinicalForm?: ClinicalFormConfiguration;
     revision: number;
     status: "draft";
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */

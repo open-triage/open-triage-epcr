@@ -1,0 +1,34 @@
+{{- if .Values.migration.enabled }}
+{{- $secretName := required "secrets.existingSecret is required when migration.enabled is true; create the cluster-owned Secret before deploying" .Values.secrets.existingSecret }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "open-triage.fullname" . }}-migration
+  labels: {{- include "open-triage.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    # A completed Job is retained. The next release replaces only the Job;
+    # committed database migrations remain recorded and are safely skipped.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  backoffLimit: 0
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: migration, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          {{- if .Values.migration.bootstrapSynthetic }}
+          command: ["npm", "run", "bootstrap:synthetic", "-w", "@open-triage/database"]
+          {{- else }}
+          command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
+          {{- end }}
+          envFrom: [{ secretRef: { name: {{ $secretName }} } }]
+          resources: {{- toYaml .Values.migration.resources | nindent 12 }}
+{{- end }}

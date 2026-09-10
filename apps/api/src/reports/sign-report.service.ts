@@ -49,6 +49,8 @@ type FieldRow = {
   catalog_element_identity_id: string | null;
   custom_element_definition_id: string | null;
   min_occurs: number | null;
+  agency_required: boolean | null;
+  agency_required_severity: "warning" | "error" | null;
 };
 
 type RuleRow = {
@@ -83,6 +85,14 @@ type OccurrenceRow = {
 
 type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
 
+type CodedValidationRow = {
+  id: string;
+  disabled_configured: boolean;
+  disabled_inline: boolean;
+  invalid_inline: boolean;
+  exhaustive_value_set_ids: string | null;
+};
+
 const RULE_VERSION = "signing-1.0.0";
 
 export function unresolvedDispatchConflictFindings(
@@ -105,7 +115,7 @@ export class SignReportService {
   ) {}
 
   async sign(accessToken: string, reportId: string, input: unknown): Promise<SignedReportResult> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     let command: SignReportCommand;
     try {
       command = validateSignReportCommand(input);
@@ -157,11 +167,17 @@ export class SignReportService {
         `, [report.id]);
         findings.push(...unresolvedDispatchConflictFindings(unresolvedDispatch));
         await manager.query("delete from clinical.validation_finding where report_id = $1", [report.id]);
-        for (const finding of findings) {
+        if (findings.length) {
           await manager.query(`insert into clinical.validation_finding
             (report_id, revision, severity, code, path, message, rule_version)
-            values ($1, $2, $3, $4, $5, $6, $7)`,
-          [report.id, revision, finding.severity, finding.code, finding.path, finding.message, finding.ruleVersion]);
+            select $1, $2, incoming.severity, incoming.code, incoming.path,
+                   incoming.message, incoming.rule_version
+            from jsonb_to_recordset($3::jsonb) as incoming(
+              severity text, code text, path text, message text, rule_version text)`,
+          [report.id, revision, JSON.stringify(findings.map((finding) => ({
+            severity: finding.severity, code: finding.code, path: finding.path,
+            message: finding.message, rule_version: finding.ruleVersion,
+          })))]);
         }
         if (findings.some((finding) => finding.severity === "error")) return { findings };
 
@@ -254,7 +270,9 @@ export class SignReportService {
       return findings;
     }
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
-      ff.catalog_element_identity_id, ff.custom_element_definition_id, e.min_occurs
+      ff.catalog_element_identity_id, ff.custom_element_definition_id,
+      case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
+      e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
@@ -286,6 +304,10 @@ export class SignReportService {
       if (field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
+      }
+      if (field.agency_required === true && values.length === 0) {
+        findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
+          `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
       if (field.min_occurs !== null && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
@@ -321,35 +343,85 @@ export class SignReportService {
         findings.push(this.finding("catalog.datatype", `${path}.value`,
           `${occurrence.element_id} requires ${occurrence.base_datatype}, not ${occurrence.value_kind}`));
       }
-      if (occurrence.value_kind === "coded") {
-        const invalidInline = await manager.query<Array<{ element_id: string }>>(`
-          select e.element_id from catalog.element_definition e
-          where e.release_id = $1 and e.element_id = $2
-            and e.definition #>> '{valueSource,kind}' = 'inline-enumerated'
-            and (e.definition #>> '{valueSource,exhaustive}')::boolean
-            and not exists (select 1 from catalog.element_option option
-              where option.release_id = e.release_id and option.element_id = e.element_id
-                and option.source_kind = 'inline' and option.code = $3
-                and option.code_system = coalesce($4, ''))
-        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
-        if (invalidInline[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
+    }
+    const codedOccurrences = occurrences.filter((occurrence) => occurrence.value_kind === "coded");
+    if (codedOccurrences.length) {
+      const codedValidation = await manager.query<CodedValidationRow[]>(`
+        with incoming as (
+          select * from jsonb_to_recordset($2::jsonb) as item(
+            id uuid, element_id text, code text, code_system text)
+        )
+        select incoming.id,
+          exists (
+            select 1 from catalog.value_set_element mapped
+            join catalog.value_set_option_configuration configured
+              on configured.release_id = mapped.release_id
+              and configured.value_set_id = mapped.value_set_id
+            where mapped.release_id = $1 and mapped.element_id = incoming.element_id
+              and not configured.enabled and configured.code = incoming.code
+              and configured.code_system = coalesce(incoming.code_system, '')
+          ) as disabled_configured,
+          exists (
+            select 1 from catalog.element_option_configuration configured
+            where configured.release_id = $1 and configured.element_id = incoming.element_id
+              and configured.source_kind = 'inline' and configured.code = incoming.code
+              and configured.code_system = coalesce(incoming.code_system, '') and not configured.enabled
+          ) as disabled_inline,
+          exists (
+            select 1 from catalog.element_definition e
+            where e.release_id = $1 and e.element_id = incoming.element_id
+              and e.definition #>> '{valueSource,kind}' = 'inline-enumerated'
+              and (e.definition #>> '{valueSource,exhaustive}')::boolean
+              and not exists (
+                select 1 from catalog.element_option option
+                where option.release_id = e.release_id and option.element_id = e.element_id
+                  and option.source_kind = 'inline' and option.code = incoming.code
+                  and option.code_system = coalesce(incoming.code_system, '')
+              )
+          ) as invalid_inline,
+          (
+            select string_agg(vse.value_set_id, ', ' order by vse.value_set_id)
+            from catalog.value_set_element vse
+            join catalog.value_set vs on vs.release_id = vse.release_id
+              and vs.value_set_id = vse.value_set_id
+            where vse.release_id = $1 and vse.element_id = incoming.element_id and vs.exhaustive
+              and not exists (
+                select 1 from catalog.value_set_element valid_element
+                join catalog.value_set valid_set on valid_set.release_id = valid_element.release_id
+                  and valid_set.value_set_id = valid_element.value_set_id and valid_set.exhaustive
+                join catalog.value_set_option option on option.release_id = valid_element.release_id
+                  and option.value_set_id = valid_element.value_set_id
+                left join catalog.value_set_option_configuration configured
+                  on configured.release_id = option.release_id
+                  and configured.value_set_id = option.value_set_id
+                  and configured.code_system = option.code_system and configured.code = option.code
+                where valid_element.release_id = vse.release_id
+                  and valid_element.element_id = vse.element_id and option.code = incoming.code
+                  and option.code_system = coalesce(incoming.code_system, '')
+                  and coalesce(configured.enabled, true)
+              )
+          ) as exhaustive_value_set_ids
+        from incoming
+      `, [report.catalog_release_id, JSON.stringify(codedOccurrences.map((occurrence) => ({
+        id: occurrence.id, element_id: occurrence.element_id,
+        code: occurrence.code, code_system: occurrence.code_system,
+      })))]);
+      const validationById = new Map(codedValidation.map((row) => [row.id, row]));
+      for (const occurrence of codedOccurrences) {
+        const validation = validationById.get(occurrence.id);
+        const path = `$.occurrences.${occurrence.id}.code`;
+        if (validation?.disabled_configured) {
+          findings.push(this.finding("catalog.value-set-disabled", path,
+            `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
+        }
+        if (validation?.disabled_inline) {
+          findings.push(this.finding("catalog.value-set-disabled", path,
+            `Code ${occurrence.code} is disabled by the pinned catalog for ${occurrence.element_id}`));
+        }
+        if (validation?.invalid_inline) findings.push(this.finding("catalog.value-set", path,
           `Code ${occurrence.code} is not in the exhaustive inline value set for ${occurrence.element_id}`));
-        const exhaustive = await manager.query<Array<{ value_set_ids: string }>>(`
-          select string_agg(vse.value_set_id, ', ' order by vse.value_set_id) as value_set_ids
-          from catalog.value_set_element vse
-          join catalog.value_set vs on vs.release_id = vse.release_id and vs.value_set_id = vse.value_set_id
-          where vse.release_id = $1 and vse.element_id = $2 and vs.exhaustive
-            and not exists (select 1 from catalog.value_set_element valid_element
-              join catalog.value_set valid_set on valid_set.release_id = valid_element.release_id
-                and valid_set.value_set_id = valid_element.value_set_id and valid_set.exhaustive
-              join catalog.value_set_option option on option.release_id = valid_element.release_id
-                and option.value_set_id = valid_element.value_set_id
-              where valid_element.release_id = vse.release_id and valid_element.element_id = vse.element_id
-                and option.code = $3 and option.code_system = coalesce($4, ''))
-          having count(*) > 0
-        `, [report.catalog_release_id, occurrence.element_id, occurrence.code, occurrence.code_system]);
-        if (exhaustive[0]) findings.push(this.finding("catalog.value-set", `${path}.code`,
-          `Code ${occurrence.code} is not in exhaustive value set(s) ${exhaustive[0].value_set_ids} for ${occurrence.element_id}`));
+        if (validation?.exhaustive_value_set_ids) findings.push(this.finding("catalog.value-set", path,
+          `Code ${occurrence.code} is not in exhaustive value set(s) ${validation.exhaustive_value_set_ids} for ${occurrence.element_id}`));
       }
     }
     const byElementAndParent = new Map<string, OccurrenceRow[]>();
@@ -468,8 +540,9 @@ export class SignReportService {
       previousHash, eventHash]);
   }
 
-  private finding(code: string, path: string, message: string): SigningFinding {
-    return { severity: "error", code, path, message, ruleVersion: RULE_VERSION };
+  private finding(code: string, path: string, message: string,
+    severity: SigningFinding["severity"] = "error"): SigningFinding {
+    return { severity, code, path, message, ruleVersion: RULE_VERSION };
   }
 
   private async replay(

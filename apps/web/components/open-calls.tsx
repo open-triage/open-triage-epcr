@@ -1,6 +1,7 @@
 "use client";
 
 import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
 import { saveDraftReport } from "../app/draft-report";
@@ -78,7 +79,7 @@ export function OpenCalls({
           if (!queued) break;
           markDraftChangeAttempted(window.localStorage, cached.report.id, queued.command.commandId);
           try {
-            const saved = await saveDraftReport(session.accessToken, cached.report.id, queued.command);
+            const saved = await saveDraftReport(sessionRequestToken(session), cached.report.id, queued.command);
             if (saved.status === "signed") {
               clearShellState(window.localStorage, cached.report.id);
               removeSignedOfflineReport(window.localStorage, cached.report.id);
@@ -100,7 +101,7 @@ export function OpenCalls({
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetchOpenCalls(session.accessToken);
+      const response = await fetchOpenCalls(sessionRequestToken(session));
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
       const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
@@ -139,7 +140,7 @@ export function OpenCalls({
     try {
       let opened: ReopenOpenCallResponse;
       try {
-        opened = await reopenOpenCall(session.accessToken, call.reportId);
+        opened = await reopenOpenCall(sessionRequestToken(session), call.reportId);
         cacheReopenedReport(window.localStorage, session, opened);
       } catch (error) {
         const cached = cachedReopenResponse(window.localStorage, session.user.id, call.reportId);

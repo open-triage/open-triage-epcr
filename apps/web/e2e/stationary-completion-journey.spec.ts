@@ -7,15 +7,28 @@ const assignedCall = demoAssignedCalls.assignedCalls[0]!;
 const reportId = demoOpenAssignment.report.id;
 
 test("mobile capture reconciles into a complete stationary record that alone can sign", async ({ page, context }) => {
+  test.setTimeout(60_000);
   let revision = demoOpenAssignment.report.revision;
+  const savedCommands: Array<{ expectedRevision: number; occurrences: Array<{ elementId: string; value?: { value?: unknown } }> }> = [];
+  let signAttempts = 0;
+  let signCommand: { expectedRevision: number; signerId: string; warningAcknowledgements: Record<string, boolean> } | undefined;
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json", body: JSON.stringify(demoOpenAssignment),
   }));
   await page.route(`**/api/reports/${reportId}/reopen`, (route) => route.abort("internetdisconnected"));
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
-    const command = route.request().postDataJSON() as { expectedRevision: number };
+    const command = route.request().postDataJSON() as typeof savedCommands[number];
+    savedCommands.push(command);
     revision = Math.max(revision, command.expectedRevision) + 1;
     await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: reportId, status: "draft", revision }) });
+  });
+  await page.route(`**/api/reports/${reportId}/sign`, async (route) => {
+    signAttempts += 1;
+    signCommand = route.request().postDataJSON() as NonNullable<typeof signCommand>;
+    if (signAttempts === 1) return route.fulfill({ status: 503, body: "temporarily unavailable" });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({
+      id: reportId, status: "signed", signedRevision: signCommand!.expectedRevision,
+    }) });
   });
 
   await page.goto("/");
@@ -63,11 +76,21 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await page.getByRole("button", { name: "Populate" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  await page.getByRole("button", { name: "Return to record" }).click();
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("EDITED AFTER POPULATE");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
+  await expect(page.locator(".sync-status")).toHaveText("Saving");
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
   await expect(page.getByText("0 errors · 5 warnings")).toBeVisible();
   for (const acknowledgement of await page.getByLabel("I reviewed and acknowledge this warning").all()) await acknowledgement.check();
   const audit = await new AxeBuilder({ page }).include(".review-panel").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  await page.getByRole("button", { name: "Sign record" }).click();
+  await expect(page.getByText("The record could not be signed.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
+  expect(await page.evaluate((id) => localStorage.getItem(`open-triage:standard-encounter-v1:report:${id}`), reportId)).not.toBeNull();
   await page.getByRole("button", { name: "Sign record" }).click();
 
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
@@ -78,4 +101,10 @@ test("mobile capture reconciles into a complete stationary record that alone can
     offline: JSON.parse(localStorage.getItem("open-triage:offline-reports-v1") ?? "[]").some((item: { report: { id: string } }) => item.report.id === id),
   }), reportId);
   expect(cache).toEqual({ shell: null, offline: false });
+  expect(savedCommands.some(({ occurrences }) => occurrences.some(({ elementId, value }) =>
+    elementId === "ePatient.03" && value?.value === "EDITED AFTER POPULATE"))).toBe(true);
+  expect(signCommand).toBeDefined();
+  expect(signAttempts).toBe(2);
+  expect(signCommand!.expectedRevision).toBe(revision);
+  expect(signCommand!.signerId).toBe(demoOpenAssignment.report.documentingUserId);
 });

@@ -1,4 +1,5 @@
 web:
+  strategy: Recreate
   image:
     repository: ghcr.io/open-triage/open-triage-web
     tag: latest
@@ -10,6 +11,8 @@ web:
     limits: { cpu: 250m, memory: 128Mi }
 
 api:
+  installationSettingsBaseline: synthetic-demo
+  strategy: Recreate
   image:
     repository: ghcr.io/open-triage/open-triage-api
     tag: latest
@@ -18,6 +21,14 @@ api:
   host: api.demo.opentriage.org
   resources:
     requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+migration:
+  enabled: true
+  bootstrapSynthetic: false
+  activeDeadlineSeconds: 600
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
 
 analytics:
@@ -31,6 +42,9 @@ ingress:
   tls: []
 
 secrets:
+  # The demo Secret is cluster-owned. When this is set, the chart only
+  # references it and ignores the managed Secret values below.
+  existingSecret: open-triage-database
   databaseUrl: ""
   supabaseUrl: ""
   supabaseSecretKey: ""

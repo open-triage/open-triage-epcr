@@ -127,6 +127,26 @@ test("retained patient data, refresh recovery, and reset keep incident display o
   assert.deepEqual(INITIAL_SHELL_STATE.encounter.document, baselineDocument);
 });
 
+test("a current draft reopens when an optional canonical incident group is absent", () => {
+  const storage = memoryStorage();
+  const withoutCrew = {
+    ...INITIAL_SHELL_STATE,
+    encounter: {
+      ...INITIAL_SHELL_STATE.encounter,
+      document: {
+        ...INITIAL_SHELL_STATE.encounter.document,
+        groups: INITIAL_SHELL_STATE.encounter.document.groups.filter(({ id }) => id !== "eCrew.CrewGroup"),
+      },
+    },
+  };
+  saveShellState(storage, withoutCrew);
+
+  const restored = loadShellStateResult(storage);
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") return;
+  assert.equal(restored.state.encounter.document.groups.some(({ id }) => id === "eCrew.CrewGroup"), false);
+});
+
 test("version two browser state upgrades deterministically and removes the parallel incident shape", () => {
   const serialized = JSON.stringify(legacyVersionTwoState());
   const restore = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
   addRepeatingGroupOccurrence,
@@ -15,7 +15,7 @@ import {
 } from "../app/stationary-repeating-group";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
 import { editScalarOccurrence, scalarControlPresentation, stationaryDateTimeDefault, type ScalarControlPresentation, type ScalarValidationFinding } from "../app/stationary-scalar";
-import { editStationaryCodedValue, stationaryCodedField } from "../app/stationary-coded-value";
+import { configuredStationaryCodedField, editStationaryCodedValue } from "../app/stationary-coded-value";
 import type { CompiledStationaryGroup, StationaryElementPlacement } from "../app/stationary-layout";
 import { stationaryActionLabel, stationaryDisplayLabel } from "../app/stationary-label";
 import { StationaryCodedOccurrencesField, StationaryCodedValueField } from "./stationary-coded-field";
@@ -23,13 +23,14 @@ import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import type { StationarySectionFinding } from "../app/stationary-record";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
-import { validateStationaryRecord } from "../app/stationary-validation";
+import { stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 
-export function stationaryDialogFindings(document: EncounterDocument): ReadonlyArray<StationarySectionFinding> {
+export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
+  const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
   return [
-    ...validateStationaryRecord(document),
-    ...reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition),
+    ...validateStationaryRecord(document, clinicalForm),
+    ...stationaryReviewFindings(reviewFindings, clinicalForm),
   ];
 }
 
@@ -48,12 +49,13 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
   });
 }
 
-function GroupField({ document, instance, placement, findings = [], initialFocus = false, onDocumentChange }: {
+function GroupField({ document, instance, placement, findings = [], initialFocus = false, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly instance: EncounterGroupInstance;
   readonly placement: StationaryElementPlacement;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   readonly initialFocus?: boolean;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const catalogElement = requireNemsisDataElement(placement.id);
@@ -64,24 +66,27 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
     {control}<StationaryValidationMessages findings={validationFindings} />
   </div>;
   if (catalogElement.valueSource.kind !== "scalar") {
-    const field = stationaryCodedField(catalogElement);
+    const field = configuredStationaryCodedField(catalogElement, catalogFields[placement.id]);
     const presentation = { ...field, label: placement.label ?? field.label, help: placement.help ?? field.help };
     const values = element?.values ?? [];
     const repeatable = catalogElement.occurrence.max === "unbounded" || catalogElement.occurrence.max > 1;
     if (repeatable) return withValidation(<StationaryCodedOccurrencesField field={presentation} values={values} onChange={(value, selection) => onDocumentChange(editStationaryCodedValue(document, {
       groupId: placement.groupId, instanceId: instance.instanceId, elementId: placement.id,
       ...(value ? { occurrenceId: value.occurrenceId } : {}),
+      codedField: presentation,
     }, selection))} />);
     return withValidation(<div className="stationary-group-coded-occurrences" data-element-id={placement.id}>
       {[values[0]].filter((value): value is EncounterValue => Boolean(value)).map((value) => (
         <StationaryCodedValueField key={value.occurrenceId} field={presentation} value={value}
           onChange={(selection) => onDocumentChange(editStationaryCodedValue(document, {
             groupId: placement.groupId, instanceId: instance.instanceId, elementId: placement.id, occurrenceId: value.occurrenceId,
+            codedField: presentation,
           }, selection))} />
       ))}
       {!values.length && <StationaryCodedValueField field={presentation}
         onChange={(selection) => onDocumentChange(editStationaryCodedValue(document, {
           groupId: placement.groupId, instanceId: instance.instanceId, elementId: placement.id,
+          codedField: presentation,
         }, selection))} />}
     </div>);
   }
@@ -125,12 +130,13 @@ function SingleScalarGroupField({ document, instance, placement, presentation, v
     onBlur={commit} /></div>;
 }
 
-function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus, onDraftChange, onCancel, onSave }: {
+function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus, clinicalForm, onDraftChange, onCancel, onSave }: {
   readonly placement: CompiledStationaryGroup;
   readonly draft: EncounterDocument;
   readonly instanceId: string;
   readonly isNew: boolean;
   readonly returnFocus?: HTMLElement | null;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDraftChange: (document: EncounterDocument) => void;
   readonly onCancel: () => void;
   readonly onSave: () => void;
@@ -140,7 +146,7 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   const [focusTarget] = useState(returnFocus);
   const cancelDialog = useEffectEvent(onCancel);
   const instance = repeatingGroupInstances(draft, placement.id).find((candidate) => candidate.instanceId === instanceId);
-  const liveFindings = useMemo(() => stationaryDialogFindings(draft), [draft]);
+  const liveFindings = useMemo(() => stationaryDialogFindings(draft, clinicalForm), [clinicalForm, draft]);
   useEffect(() => {
     const animationFrame = window.requestAnimationFrame(() => {
       const initial = frame.current?.querySelector<HTMLElement>("[autofocus]")
@@ -187,11 +193,11 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
       </div>
       <div className="stationary-group-dialog-fields">
         {placement.elements.map((element, index) => editable
-          ? <GroupField key={element.id} document={draft} instance={instance} placement={element} findings={validationFindings} initialFocus={index === 0} onDocumentChange={onDraftChange} />
+          ? <GroupField key={element.id} document={draft} instance={instance} placement={element} findings={validationFindings} initialFocus={index === 0} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDraftChange} />
           : <div key={element.id}><strong>{element.label ?? requireNemsisDataElement(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : "Exceptional value").join(", ") || "Not recorded"}</p></div>)}
         {!placement.elements.length && <p>No fields are stored directly on this structural group.</p>}
       </div>
-      <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} onDocumentChange={onDraftChange} />
+      <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} clinicalForm={clinicalForm} onDocumentChange={onDraftChange} />
       {editable && <div className="note-dialog-actions">
         <button type="button" onClick={onCancel}>Cancel</button>
         <button type="button" onClick={onSave}>{isNew ? "Add row" : "Save changes"}</button>
@@ -201,11 +207,12 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   </div>;
 }
 
-function NestedSingleGroup({ document, placement, parentInstanceId, findings, onDocumentChange }: {
+function NestedSingleGroup({ document, placement, parentInstanceId, findings, clinicalForm, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly placement: CompiledStationaryGroup;
   readonly parentInstanceId: string;
   readonly findings: ReadonlyArray<StationarySectionFinding>;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const catalog = requireNemsisDataElement;
@@ -220,19 +227,20 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, on
   return <div className="stationary-nested-single" aria-label={`${label} fields`} data-group-id={placement.id} data-group-instance-id={instance.instanceId} data-parent-instance-id={parentInstanceId}>
     <div className="stationary-group-dialog-fields">
       {placement.elements.map((element) => editable
-        ? <GroupField key={element.id} document={document} instance={instance} placement={element} findings={validationFindings} onDocumentChange={onDocumentChange} />
+        ? <GroupField key={element.id} document={document} instance={instance} placement={element} findings={validationFindings} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDocumentChange} />
         : <div key={element.id}><strong>{element.label ?? catalog(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : "Exceptional value").join(", ") || "Not recorded"}</p></div>)}
     </div>
-    <NestedGroupContents document={document} placement={placement} parentInstanceId={instance.instanceId} findings={findings} onDocumentChange={onDocumentChange} />
+    <NestedGroupContents document={document} placement={placement} parentInstanceId={instance.instanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />
     <StationaryValidationMessages findings={validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId))} />
   </div>;
 }
 
-function NestedGroupContents({ document, placement, parentInstanceId, findings, onDocumentChange }: {
+function NestedGroupContents({ document, placement, parentInstanceId, findings, clinicalForm, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly placement: CompiledStationaryGroup;
   readonly parentInstanceId: string;
   readonly findings: ReadonlyArray<StationarySectionFinding>;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   useEffect(() => {
@@ -253,16 +261,17 @@ function NestedGroupContents({ document, placement, parentInstanceId, findings, 
   if (!placement.children.length) return null;
   return <div className="stationary-nested-groups">
     {placement.children.map((child) => child.presentation.kind === "table"
-      ? <RepeatingGroupTable key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} onDocumentChange={onDocumentChange} />
-      : <NestedSingleGroup key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} onDocumentChange={onDocumentChange} />)}
+      ? <RepeatingGroupTable key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />
+      : <NestedSingleGroup key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}
   </div>;
 }
 
-export function RepeatingGroupTable({ document, placement, parentInstanceId, findings = [], onDocumentChange }: {
+export function RepeatingGroupTable({ document, placement, parentInstanceId, findings = [], clinicalForm, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly placement: CompiledStationaryGroup;
   readonly parentInstanceId?: string;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const headingId = useId();
@@ -301,20 +310,21 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
     </div>
     {!instances.length && <p className="stationary-empty-table">No rows.</p>}
     <StationaryValidationMessages findings={validationFindings} />
-    {dialogState && <RepeatingGroupDialog key={`${dialogState.instanceId}:${dialogState.isNew}`} placement={placement} draft={dialogState.draft} instanceId={dialogState.instanceId} isNew={dialogState.isNew} returnFocus={dialogState.returnFocus}
+    {dialogState && <RepeatingGroupDialog key={`${dialogState.instanceId}:${dialogState.isNew}`} placement={placement} draft={dialogState.draft} instanceId={dialogState.instanceId} isNew={dialogState.isNew} returnFocus={dialogState.returnFocus} clinicalForm={clinicalForm}
       onDraftChange={(draft) => setDialogState((current) => current ? { ...current, draft } : current)} onCancel={() => setDialogState(undefined)}
       onSave={() => { onDocumentChange(dialogState.draft); setDialogState(undefined); }} />}
   </section>;
 }
 
 /** Renders every catalogue-configured repeating group through canonical instance identities. */
-export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], onDocumentChange }: {
+export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], clinicalForm, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly groups?: ReadonlyArray<CompiledStationaryGroup>;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultGroups = useMemo(() => configuredRepeatingGroupRoots(), []);
   const groups = configuredGroups ?? defaultGroups;
-  return <div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} onDocumentChange={onDocumentChange} />)}</div>;
+  return <div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div>;
 }

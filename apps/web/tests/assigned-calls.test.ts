@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AssignedCall } from "@open-triage/contracts";
-import { ASSIGNED_CALL_POLL_INTERVAL_MS, canceledAssignedCalls, openAssignedCall, resolveDispatchConflict } from "../app/assigned-calls";
+import {
+  ASSIGNED_CALL_POLL_INTERVAL_MS,
+  canceledAssignedCalls,
+  fetchAssignedCalls,
+  fetchOpenCalls,
+  openAssignedCall,
+  reopenOpenCall,
+  resolveDispatchConflict,
+} from "../app/assigned-calls";
 import { purgeCompletedReportCaches, reportStorageKey, reportSyncStorageKey } from "../app/local-persistence";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 
@@ -33,8 +41,12 @@ test("first-open has no offline fallback and requires the server to create autho
 test("the static export opens the generated sample fixture with a cacheable GET", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalBaseline = process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
   let request: { url: string; method?: string } | undefined;
   process.env.NEXT_PUBLIC_BASE_PATH = "/demo";
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
   globalThis.fetch = async (input, init) => {
     request = { url: String(input), method: init?.method };
     return new Response(JSON.stringify(demoOpenAssignment), { status: 200 });
@@ -47,6 +59,10 @@ test("the static export opens the generated sample fixture with a cacheable GET"
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+    if (originalBaseline === undefined) delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = originalBaseline;
   }
 });
 
@@ -75,6 +91,45 @@ test("dispatch conflict dispositions are posted to the report server", async () 
     globalThis.fetch = originalFetch;
     if (originalBasePath === undefined) delete process.env.NEXT_PUBLIC_BASE_PATH;
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
+  }
+});
+
+test("call-list adapters distinguish expired sessions from server failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  try {
+    globalThis.fetch = async () => new Response(null, { status: 401 });
+    await assert.rejects(fetchAssignedCalls("token"), /session has ended/i);
+    await assert.rejects(fetchOpenCalls("token"), /session has ended/i);
+    globalThis.fetch = async () => new Response(null, { status: 503 });
+    await assert.rejects(fetchAssignedCalls("token"), /could not be refreshed/i);
+    await assert.rejects(fetchOpenCalls("token"), /could not be refreshed/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
+});
+
+test("opening and reopening map stale, missing, mismatched, and network responses", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  try {
+    globalThis.fetch = async () => new Response(null, { status: 409 });
+    await assert.rejects(openAssignedCall("token", "assignment"), /can no longer be opened/i);
+    await assert.rejects(reopenOpenCall("token", "report"), /no longer available/i);
+    globalThis.fetch = async () => new Response(null, { status: 404 });
+    await assert.rejects(reopenOpenCall("token", "report"), /no longer available/i);
+    globalThis.fetch = async () => Response.json({ ...demoOpenAssignment, assignmentId: "different" });
+    await assert.rejects(openAssignedCall("token", "assignment"), /does not match/i);
+    globalThis.fetch = async () => { throw new TypeError("network unavailable"); };
+    await assert.rejects(reopenOpenCall("token", "report"), /connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
   }
 });
 

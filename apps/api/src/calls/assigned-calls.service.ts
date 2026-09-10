@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignedCall, AssignedCallsResponse, OpenAssignmentResponse } from "@open-triage/contracts";
+import type { AssignedCall, AssignedCallsResponse, InstallationSettings, OpenAssignmentResponse } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 type AssignedCallRow = {
   id: string;
@@ -27,7 +29,6 @@ type OpenableAssignmentRow = AssignedCallRow & {
   incident_id: string;
   report_id: string | null;
   synthetic: boolean;
-  default_form_id: string;
   dispatch_receipt_id: string | null;
 };
 
@@ -169,6 +170,13 @@ function assignedCall(row: AssignedCallRow): AssignedCall {
   };
 }
 
+export function shouldCreateSampleReplacement(
+  syntheticAssignment: boolean,
+  settings: InstallationSettings = selectedInstallationSettings(),
+): boolean {
+  return syntheticAssignment && settings.sampleDispatchAssignment.enabled;
+}
+
 @Injectable()
 export class AssignedCallsService {
   constructor(
@@ -177,7 +185,7 @@ export class AssignedCallsService {
   ) {}
 
   async list(accessToken: string, now = new Date()): Promise<AssignedCallsResponse> {
-    const session = this.sessions.get(accessToken, now);
+    const session = await this.sessions.get(accessToken, now);
     const rows = await this.dataSource.query<AssignedCallRow[]>(`
       select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
              organization.deployment_timezone as agency_time_zone,
@@ -208,14 +216,14 @@ export class AssignedCallsService {
   }
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
-    const session = this.sessions.get(accessToken);
+    const session = await this.sessions.get(accessToken);
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const opened = await this.dataSource.transaction(async (manager) => {
         const assignments = await manager.query<OpenableAssignmentRow[]>(`
           select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                  organization.deployment_timezone as agency_time_zone,
                  ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-                 ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign, ou.default_form_id
+                 ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign
           from clinical.call_assignment ca
           join app_identity.operational_unit ou
             on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
@@ -233,19 +241,20 @@ export class AssignedCallsService {
         if (assignment.status === "canceled") throw new ConflictException("The assignment was canceled before it could be opened");
         if (assignment.status === "opened") {
           if (!assignment.report_id) throw new ConflictException("The opened assignment has no report");
-          return this.openResult(manager, assignment, assignment.report_id, session.user.id, null);
+          return { assignment, reportId: assignment.report_id, replacement: null };
         }
 
         const versions = await manager.query<Array<{ id: string; catalog_release_id: string }>>(`
           select fv.id, fv.catalog_release_id
           from forms.form_version fv
           join forms.form f on f.id = fv.form_id
-          where fv.form_id = $1 and f.organization_id = $2 and fv.status = 'published'
-          order by fv.version desc
+          join forms.agency_stationary_default active on active.form_version_id = fv.id
+            and active.organization_id = f.organization_id
+          where f.organization_id = $1 and fv.status = 'published'
           limit 1
-        `, [assignment.default_form_id, session.organization.id]);
+        `, [session.organization.id]);
         const version = versions[0];
-        if (!version) throw new ConflictException("The unit default form has no published version");
+        if (!version) throw new ConflictException("The agency Stationary default is unavailable");
 
         const agencyVersions = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.agency_demographic_version
@@ -285,11 +294,12 @@ export class AssignedCallsService {
           where id = $1
         `, [assignment.id, reportId]);
 
-        const replacement = assignment.synthetic
+        const replacement = shouldCreateSampleReplacement(assignment.synthetic)
           ? await this.createReplacement(manager, assignment)
           : null;
-        return this.openResult(manager, assignment, reportId, session.user.id, replacement);
+        return { assignment, reportId, replacement };
       });
+      return await this.openResult(opened.assignment, opened.reportId, session.user.id, opened.replacement);
     } catch (error) {
       this.rethrowDatabaseConflict(error);
     }
@@ -305,10 +315,10 @@ export class AssignedCallsService {
   }
 
   private async createReplacement(manager: EntityManager, source: OpenableAssignmentRow): Promise<AssignedCall> {
-    const callNumber = nextCallNumber(source.call_number);
+    let callNumber = nextCallNumber(source.call_number);
     const incidentId = randomUUID();
     const assignmentId = randomUUID();
-    const dispatchedAt = new Date(new Date(source.dispatched_at).getTime() + 15 * 60 * 1_000);
+    let dispatchedAt = new Date(new Date(source.dispatched_at).getTime() + 15 * 60 * 1_000);
     const sourceReceipts = source.dispatch_receipt_id
       ? await manager.query<SyntheticReceiptRow[]>(`
           select source_id, source_payload from clinical.dispatch_receipt
@@ -316,28 +326,48 @@ export class AssignedCallsService {
         `, [source.dispatch_receipt_id, source.organization_id])
       : [];
     const sourceReceipt = sourceReceipts[0];
-    const receiptId = randomUUID();
-    const sourceRecordId = sourceReceipt
+    let sourceRecordId = sourceReceipt
       ? nextCallNumber(String(sourceReceipt.source_payload.sourceRecordId))
       : syntheticSourceRecordId(callNumber);
-    const payload = syntheticReplacementPayload(
-      randomSyntheticDispatchPayload(), callNumber, dispatchedAt, randomUUID(), sourceRecordId,
-    );
+    const priorReceipts = await manager.query<Array<{ source_record_id: string }>>(`
+      select source_record_id from clinical.dispatch_receipt
+      where organization_id = $1 and source_id = $2
+    `, [source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator"]);
+    const occupiedSourceRecords = new Set(priorReceipts.map(({ source_record_id }) => source_record_id));
+    while (occupiedSourceRecords.has(sourceRecordId)) {
+      callNumber = nextCallNumber(callNumber);
+      sourceRecordId = nextCallNumber(sourceRecordId);
+      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
+    }
+
+    let receiptId: string;
+    let payload: Record<string, unknown>;
+    while (true) {
+      receiptId = randomUUID();
+      payload = syntheticReplacementPayload(
+        randomSyntheticDispatchPayload(), callNumber, dispatchedAt, randomUUID(), sourceRecordId,
+      );
+      const insertedReceipts = await manager.query<Array<{ id: string }>>(`
+        insert into clinical.dispatch_receipt
+          (id, organization_id, source_id, message_id, source_record_id, source_revision,
+           source_bytes, source_payload, status, result)
+        values ($1, $2, $3, $4, $5, 1, $6, $7::jsonb, 'applied', $8::jsonb)
+        on conflict (organization_id, source_id, source_record_id, source_revision) do nothing
+        returning id
+      `, [receiptId, source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator", payload.messageId,
+        payload.sourceRecordId, Buffer.from(JSON.stringify(payload), "utf8"), JSON.stringify(payload), JSON.stringify({
+          synthetic: true, generatedFromAssignmentId: source.id
+        })]);
+      if (insertedReceipts.length > 0) break;
+      callNumber = nextCallNumber(callNumber);
+      sourceRecordId = nextCallNumber(sourceRecordId);
+      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
+    }
     const dispatchReason = records(payloadElement(payload, "eDispatch.01")?.values)[0]?.display;
     const generatedDispatchReason = typeof dispatchReason === "string" ? dispatchReason : source.dispatch_reason;
     const priority = records(payloadElement(payload, "eDispatch.05")?.values)[0];
     const priorityCode = typeof priority?.code === "string" ? priority.code : null;
     const priorityDisplay = typeof priority?.display === "string" ? priority.display : priorityCode;
-    const sourceBytes = Buffer.from(JSON.stringify(payload), "utf8");
-    await manager.query(`
-      insert into clinical.dispatch_receipt
-        (id, organization_id, source_id, message_id, source_record_id, source_revision,
-         source_bytes, source_payload, status, result)
-      values ($1, $2, $3, $4, $5, 1, $6, $7::jsonb, 'applied', $8::jsonb)
-    `, [receiptId, source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator", payload.messageId,
-      payload.sourceRecordId, sourceBytes, JSON.stringify(payload), JSON.stringify({
-        synthetic: true, generatedFromAssignmentId: source.id
-      })]);
     await manager.query(`
       insert into clinical.incident
         (id, organization_id, operational_state, dispatch_provenance, synthetic)
@@ -375,13 +405,12 @@ export class AssignedCallsService {
   }
 
   private async openResult(
-    manager: EntityManager,
     assignment: OpenableAssignmentRow,
     reportId: string,
     documentingUserId: string,
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
-    const reports = await manager.query<ReportRow[]>(`
+    const reports = await this.dataSource.query<ReportRow[]>(`
       select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
              dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
       from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -389,8 +418,13 @@ export class AssignedCallsService {
     const report = reports[0];
     if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
     if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
-    const document = await encounterDocument(manager, report.id);
-    const conflicts = await dispatchConflicts(manager, report.id);
+    // These immutable/read-only projections are independent. Loading them after commit both
+    // shortens the assignment lock and lets the connection pool overlap their database waits.
+    const [document, conflicts, clinicalForm] = await Promise.all([
+      encounterDocument(this.dataSource, report.id),
+      dispatchConflicts(this.dataSource, report.id),
+      clinicalFormConfiguration(this.dataSource, report.form_version_id, report.catalog_release_id),
+    ]);
     return {
       assignmentId: assignment.id,
       report: {
@@ -398,6 +432,7 @@ export class AssignedCallsService {
         documentingUserId: report.documenting_user_id,
         formVersionId: report.form_version_id,
         catalogReleaseId: report.catalog_release_id,
+        clinicalForm,
         revision: Number(report.revision),
         status: "draft",
         document,

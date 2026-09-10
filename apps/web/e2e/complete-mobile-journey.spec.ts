@@ -50,6 +50,12 @@ interface JourneyState {
 }
 
 async function installJourneyRoutes(context: BrowserContext, state: JourneyState) {
+  const openAssignment = (route: Route) => {
+    if (!state.backendOnline) return route.abort("internetdisconnected");
+    state.assignmentOpened = true;
+    state.openRequests += 1;
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
+  };
   await context.route("**/demo-assigned-calls.json", (route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     const assignedCalls = state.assignmentOpened ? [replacementCall] : [assignedCall];
@@ -79,12 +85,8 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
       }),
     });
   });
-  await context.route(`**/api/calls/${assignedCall.id}/open`, (route) => {
-    if (!state.backendOnline) return route.abort("internetdisconnected");
-    state.assignmentOpened = true;
-    state.openRequests += 1;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
-  });
+  await context.route("**/demo-open-assignment.json", openAssignment);
+  await context.route(`**/api/calls/${assignedCall.id}/open`, openAssignment);
   await context.route(`**/api/reports/${reportId}/reopen`, (route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     return route.fulfill({

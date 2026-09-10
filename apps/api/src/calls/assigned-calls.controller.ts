@@ -8,16 +8,17 @@ export class AssignedCallsController {
   constructor(private readonly calls: AssignedCallsService) {}
 
   @Get("assigned")
-  list(@Headers("authorization") authorization?: string): Promise<AssignedCallsResponse> {
-    return this.calls.list(bearerToken(authorization));
+  list(@Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<AssignedCallsResponse> {
+    return this.calls.list(bearerToken(authorization, cookie));
   }
 
   @Post(":assignmentId/open")
   @HttpCode(200)
   open(
     @Param("assignmentId") assignmentId: string,
-    @Headers("authorization") authorization?: string
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string
   ): Promise<OpenAssignmentResponse> {
-    return this.calls.open(bearerToken(authorization), assignmentId);
+    return this.calls.open(bearerToken(authorization, cookie), assignmentId);
   }
 }

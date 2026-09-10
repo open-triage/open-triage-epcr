@@ -1,3 +1,4 @@
+import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 import type { EncounterDefinition } from "./encounter-definition";
 import { EncounterDocumentError, loadEncounterDocument } from "./encounter-document";
 import { migrateLegacyIncidentDocument } from "./incident-document";
@@ -27,7 +28,11 @@ export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string
 }
 
 export type LocalStoragePort = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-export interface PersistedFormProfile { readonly id: string; readonly version: string }
+export interface PersistedFormProfile {
+  readonly id: string;
+  readonly version: string;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+}
 
 export type ShellStateLoadResult =
   | { readonly status: "empty" }
@@ -132,11 +137,13 @@ export function loadShellStateResult(
     const needsIncidentMigration = !isCurrentEnvelope && !isCanonicalEventsEnvelope && record.persistenceVersion !== 3;
     const migrated = !isCurrentEnvelope;
     let document = currentDocument
-      ? loadEncounterDocument(currentDocument, { formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] } })
+      ? loadEncounterDocument(currentDocument, {
+          formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] },
+          catalogFields: pinnedProfile.catalogFields,
+        })
       : candidateEncounter?.document
       ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
       : initialDocument;
-    const hasCanonicalIncident = ["eResponseSection", "eDispatchSection", "eCrew.CrewGroup", "eSceneSection", "eTimesSection"].every((id) => document.groups.some((group) => group.id === id));
     const hasLegacyIncident = candidateEncounter?.crew !== undefined || candidateEncounter?.incident !== undefined;
     if (needsIncidentMigration && hasLegacyIncident) {
       document = migrateLegacyIncidentDocument(document, {
@@ -144,8 +151,6 @@ export function loadShellStateResult(
         incident: candidateEncounter.incident,
         events: persistedEvents as ReadonlyArray<Record<string, unknown>>,
       });
-    } else if (!hasCanonicalIncident) {
-      throw new Error("saved canonical incident data is incomplete");
     }
     if (!isCurrentEnvelope && record.persistenceVersion === 3 && ["currentTime", "crew", "incident"].some((key) => key in candidateEncounter!)) {
       throw new Error("saved state contains parallel legacy incident data");

@@ -5,11 +5,11 @@ import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 const assignmentId = demoAssignedCalls.assignedCalls[0]!.id;
 
-async function openStationaryRecord(page: import("@playwright/test").Page) {
+async function openStationaryRecord(page: import("@playwright/test").Page, assignment = demoOpenAssignment) {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
+  await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(demoOpenAssignment),
+    body: JSON.stringify(assignment),
   }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
@@ -76,12 +76,22 @@ test("complete-record findings open and focus their stable editable target", asy
 
 test("nested findings open their row dialog and highlight only the affected picker", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 900 });
-  await openStationaryRecord(page);
+  const configured = structuredClone(demoOpenAssignment);
+  Object.assign(configured.report, { clinicalForm: {
+    definition: { schemaVersion: 1, sections: [{ key: "vitals", presentation: { title: "Vitals" }, fields: [
+      { key: "respiratory-rate", source: { kind: "nemsis", elementId: "eVitals.14" } },
+    ] }] },
+    catalogFields: {
+      "eVitals.14": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, supportsPertinentNegatives: true },
+    },
+  } });
+  await openStationaryRecord(page, configured);
   await page.getByRole("button", { name: "Populate" }).click();
   const vitals = page.locator('[data-group-id="eVitals.VitalGroup"]');
   await vitals.getByRole("button", { name: /Edit Vital/ }).first().click();
   const initialDialog = page.getByRole("dialog");
-  await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("60");
+  await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("0");
   await initialDialog.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("button", { name: "Review & sign" }).click();
 
@@ -93,4 +103,66 @@ test("nested findings open their row dialog and highlight only the affected pick
   await expect(affected).toHaveClass(/stationary-validation-state warning/);
   await expect(affected.locator("input")).toBeFocused();
   await expect(dialog.locator('.stationary-dialog-field[data-element-id="eVitals.01"]')).not.toHaveClass(/stationary-validation-state/);
+});
+
+test("an opened report uses its pinned form and catalog without changing Mobile", async ({ page }) => {
+  const configured = structuredClone(demoOpenAssignment);
+  let revision = configured.report.revision;
+  Object.assign(configured.report, { clinicalForm: {
+    definition: { schemaVersion: 1, sections: [{
+      key: "patient", presentation: { title: "Configured patient" }, fields: [
+        { key: "sex", source: { kind: "nemsis", elementId: "ePatient.25" } },
+        { key: "first-name", source: { kind: "nemsis", elementId: "ePatient.02" } },
+      ],
+    }, {
+      key: "scene", presentation: { title: "Configured scene" }, fields: [
+        { key: "address", source: { kind: "nemsis", elementId: "eScene.15" } },
+      ],
+    }] },
+    catalogFields: {
+      "ePatient.25": { agencyRequired: true, minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, supportsPertinentNegatives: true,
+        codeChoices: [{ code: "9919005", codeSystem: "", label: "Configured unknown" }] },
+      "ePatient.02": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, supportsPertinentNegatives: false },
+      "eScene.15": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+        supportsNotValues: true, supportsPertinentNegatives: false },
+    },
+  } });
+  await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(configured),
+  }));
+  await page.route("**/draft-changes", async (route) => {
+    revision += 1;
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: configured.report.id, status: "draft", revision }) });
+  });
+  await page.route(`**/api/reports/${configured.report.id}/sign`, (route) => route.fulfill({
+    status: 201,
+    contentType: "application/json",
+    body: JSON.stringify({ id: configured.report.id, status: "signed", revision: revision + 1 }),
+  }));
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.getByRole("navigation", { name: "Quick documentation" })).toBeVisible();
+  await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
+
+  const rail = page.getByRole("navigation", { name: "Stationary record sections" });
+  await expect(rail.getByRole("link")).toHaveText([/Configured patient/, /Configured scene/]);
+  const configuredPatient = page.locator('[data-stationary-section="draft-0-patient"]');
+  await expect(configuredPatient.locator('[data-element-id="ePatient.25"] select')).toContainText("Configured unknown");
+  await expect(page.locator('[data-element-id="eVitals.06"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await page.getByRole("button", { name: "Reopen call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 4_000 });
+  await page.getByRole("button", { name: "Review & sign" }).click();
+  await expect(page.getByText("0 errors · 0 warnings")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign record" })).toBeEnabled();
+  const accessibility = await new AxeBuilder({ page }).include(".review-panel")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
+  await page.getByRole("button", { name: "Sign record" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "was signed and removed from active calls" })).toBeVisible();
 });

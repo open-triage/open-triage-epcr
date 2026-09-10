@@ -1,0 +1,17 @@
+# Non-secret values for the fixed public DOKS demo deployment.
+imagePullSecrets:
+  - name: ghcr-pull
+
+ingress:
+  className: nginx
+  tls:
+    - secretName: open-triage-tls
+      hosts:
+        - demo.opentriage.org
+        - api.demo.opentriage.org
+
+secrets:
+  existingSecret: open-triage-database
+
+migration:
+  bootstrapSynthetic: true
