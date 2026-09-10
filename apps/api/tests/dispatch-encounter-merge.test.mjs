@@ -43,6 +43,19 @@ test("dispatch retraction of clinician-owned source content is retained as a lin
   assert.equal(actions[0].dispatchValue, null);
 });
 
+test("different canonical scalar values with the same occurrence ID produce a dispatch update", () => {
+  const actions = planDispatchMerge([{
+    id: "same-occurrence", elementId: "ePatient.17", provenanceKind: "dispatch",
+    clinicianValue: { kind: "scalar", occurrenceId: "source-occurrence", value: "1980-01-01" },
+    tombstoned: false,
+  }], [{
+    occurrenceId: "same-occurrence", elementId: "ePatient.17", groupInstanceId: "group", ordinal: 0,
+    value: { kind: "scalar", occurrenceId: "source-occurrence", value: "1990-01-01" },
+  }]);
+
+  assert.deepEqual(actions.map(({ kind }) => kind), ["apply"]);
+});
+
 test("database merge retains canonical clinician and dispatch values with receipt lineage", async () => {
   const reportId = "10000000-0000-4000-8000-000000000001";
   const ownedId = dispatchEntityId(reportId, "occurrence:owned-source");
@@ -79,4 +92,38 @@ test("database merge retains canonical clinician and dispatch values with receip
   assert.equal(JSON.parse(conflict.parameters[4]).code, "vendor");
   assert.equal(conflict.parameters[5], "20000000-0000-4000-8000-000000000002");
   assert.ok(queries.some(({ sql }) => sql.includes("insert into clinical.element_occurrence")));
+});
+
+test("database merge stores catalog decimals with the numeric discriminator and value", async () => {
+  const queries = [];
+  const writer = { query: async (sql, parameters = []) => {
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    queries.push({ sql: normalized, parameters });
+    if (normalized.includes("select catalog_release_id")) return [{
+      catalog_release_id: "catalog", documenting_user_id: "clinician", revision: 1,
+    }];
+    if (normalized.includes("from clinical.element_occurrence where report_id")) return [];
+    if (normalized.includes("from catalog.element_definition")) return [{
+      element_id: "eVitals.10", element_identity_id: "identity", base_datatype: "decimal",
+      analytical_repeatable: true, identifying: false,
+    }];
+    return [];
+  } };
+
+  const result = await mergeDispatchEncounter(writer, {
+    reportId: "10000000-0000-4000-8000-000000000001",
+    receiptId: "20000000-0000-4000-8000-000000000002",
+    dispatchRevision: 2,
+    canonical: { groups: [{ id: "VitalGroup", instances: [{
+      instanceId: "vital-source", elements: [{ id: "eVitals.10", values: [{
+        kind: "scalar", occurrenceId: "temperature-source", value: 37.5, lexical: "37.5",
+      }] }],
+    }] }] },
+  });
+
+  assert.deepEqual(result, { applied: 1, conflicts: 0, revision: 2 });
+  const insert = queries.find(({ sql }) => sql.includes("insert into clinical.element_occurrence"));
+  assert.equal(insert.parameters[9], "numeric");
+  assert.equal(insert.parameters[12], 37.5);
+  assert.equal(insert.parameters[19], "37.5");
 });

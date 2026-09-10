@@ -25,7 +25,7 @@ spec:
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           {{- if .Values.migration.bootstrapSynthetic }}
-          command: ["npm", "run", "bootstrap:synthetic", "-w", "@open-triage/database"]
+          command: ["npm", "run", "bootstrap:synthetic:runtime", "-w", "@open-triage/database"]
           {{- else }}
           command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
           {{- end }}

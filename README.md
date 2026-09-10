@@ -116,6 +116,10 @@ recovery, and the strict synthetic-data boundary.
   choices behind the compact `×` control.
 - Timeline dots summarize each event's current validation state: green is clear,
   amber is warning, and red is error.
+- Product owner decision (2026-09-10): the obsolete completed-summary view and its configurable
+  event ordering are unsupported and are not mapped to the live timeline. Stored browser state that
+  still selects that view is moved intact to the explicit raw-recovery key. The live timeline,
+  clinical note summary field, and vital-sign summary remain independent supported behavior.
 - Patient quick capture covers selected demographics plus medical history,
   current medications, and allergies from the NEMSIS `ePatient` and `eHistory`
   domains.

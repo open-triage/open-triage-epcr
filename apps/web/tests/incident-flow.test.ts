@@ -4,6 +4,8 @@ import { assignmentSummary, documentTimeline, INCIDENT_FIELD_LOCATIONS, incident
 import { RECOVERY_STORAGE_KEY, STORAGE_KEY, loadShellStateResult, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { INITIAL_SHELL_STATE } from "../app/standard-encounter";
+import { encounterEvents } from "../app/canonical-events";
+import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 
 function memoryStorage(): LocalStoragePort & { readonly values: Map<string, string> } {

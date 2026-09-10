@@ -5,6 +5,19 @@ import {
   AmendReportValidationError,
   validateAmendReportCommand
 } from "../dist/reports/amend-report.validation.js";
+import { DraftReportController } from "../dist/reports/draft-report.controller.js";
+
+test("amendments are not exposed through the reports HTTP controller", () => {
+  const routePaths = Object.getOwnPropertyNames(DraftReportController.prototype)
+    .flatMap((property) => {
+      const handler = Object.getOwnPropertyDescriptor(DraftReportController.prototype, property)?.value;
+      const path = typeof handler === "function" ? Reflect.getMetadata("path", handler) : undefined;
+      return typeof path === "string" ? [path] : [];
+    });
+
+  assert.ok(routePaths.includes(":id/sign"), "route inspection must include decorated report handlers");
+  assert.ok(!routePaths.some((path) => path.includes("amendment")));
+});
 
 test("amendment commands require independent signing, a reason, sequence, and typed overlays", () => {
   const target = randomUUID();

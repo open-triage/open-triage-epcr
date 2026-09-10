@@ -35,6 +35,15 @@ analytics:
   enabled: true
   schedule: "*/2 * * * *"
   healthSchedule: "* * * * *"
+  batchSize: 500
+  maxAttempts: 12
+  freshnessTargetSeconds: 300
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  healthResources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 100m, memory: 128Mi }
 
 imagePullSecrets: []
 ingress:

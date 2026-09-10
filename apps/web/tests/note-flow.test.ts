@@ -176,6 +176,24 @@ test("an incompatible canonical extension is preserved with an explicit diagnost
   assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
 });
 
+test("an obsolete stored summary view is preserved for raw recovery instead of mapped to timeline", () => {
+  const storage = memoryStorage();
+  saveShellState(storage, INITIAL_SHELL_STATE);
+  const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
+  envelope.workflow.view = "summary";
+  const original = JSON.stringify(envelope);
+  storage.setItem(STORAGE_KEY, original);
+
+  assert.deepEqual(loadShellStateResult(storage), {
+    status: "invalid",
+    reason: "saved view is not supported",
+    recoveryKey: RECOVERY_STORAGE_KEY,
+  });
+  assert.equal(storage.getItem(STORAGE_KEY), null);
+  assert.equal(storage.getItem(RECOVERY_STORAGE_KEY), original);
+  assert.equal(loadShellState(storage), null);
+});
+
 test("reset clears local progress and restores the version-controlled baseline", () => {
   const storage = memoryStorage();
   let state = beginNote();

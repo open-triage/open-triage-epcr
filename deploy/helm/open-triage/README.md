@@ -5,6 +5,23 @@ PostgreSQL remains in Supabase Free. By default the chart references the
 cluster-owned `open-triage-database` Secret; Helm neither renders its values nor
 updates the Secret during upgrades.
 
+The chart is the canonical source for both analytics CronJobs. Configure their
+schedules, batch/retry/freshness limits, and resources under `analytics` in a
+values file. They use `api.image` (including its pull policy),
+`imagePullSecrets`, and the Secret selected by `secrets.existingSecret`.
+Generate standalone YAML for inspection or another deployment tool from the
+chart rather than maintaining a second manifest:
+
+```sh
+helm template open-triage ./deploy/helm/open-triage \
+  --values /private/path/installation.values.yaml \
+  --show-only templates/analytics-cronjobs.yaml \
+  > /tmp/open-triage-analytics-cronjobs.yaml
+```
+
+Treat that file as generated output: change the chart or values and render it
+again instead of editing it.
+
 Build the web image with the public API hostname embedded at build time:
 
 ```sh

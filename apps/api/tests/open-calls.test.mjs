@@ -20,6 +20,14 @@ function sessions() {
   } };
 }
 
+function transactional(manager, isolations = []) {
+  return { transaction(first, second) {
+    const work = typeof first === "function" ? first : second;
+    if (typeof first === "string") isolations.push(first);
+    return work(manager);
+  } };
+}
+
 test("prototype deletion atomically removes a clinician-owned synthetic draft without reassigning its call", async () => {
   const reportId = "42000000-0000-4000-8000-000000000009";
   const calls = [];
@@ -29,7 +37,7 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
     if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
     return [];
   } };
-  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+  const service = new DraftReportService(transactional(manager), sessions());
 
   assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId), { deleted: true, reportId });
   assert.match(calls[0].sql, /status = 'draft' and synthetic/);
@@ -42,7 +50,7 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
 
 test("prototype deletion refuses reports outside the owned synthetic-draft boundary", async () => {
   const manager = { query: async () => [] };
-  const service = new DraftReportService({ transaction: async (work) => work(manager) }, sessions());
+  const service = new DraftReportService(transactional(manager), sessions());
   await assert.rejects(
     service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"),
     ConflictException,
@@ -78,7 +86,7 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     ];
   } };
   const service = new DraftReportService(dataSource, sessions());
-  const controller = new DraftReportController(service, {}, {});
+  const controller = new DraftReportController(service, {});
 
   const result = await controller.listOpen(`Bearer ${ownerSession.accessToken}`);
 
@@ -119,6 +127,30 @@ test("stationary-completed reports are returned as reconciliation identities, no
   assert.deepEqual(result.completedReportIds, [completedReportId]);
 });
 
+test("raw draft loading assembles report metadata and content in one repeatable-read snapshot", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000004";
+  const isolations = [];
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from clinical.report where id")) return [{
+      id: reportId, status: "draft", revision: "6", organization_id: ownerSession.organization.id,
+      incident_id: "incident", patient_id: "patient", agency_demographic_version_id: "agency",
+      form_version_id: "form", catalog_release_id: "catalog", documenting_user_id: ownerSession.user.id,
+    }];
+    if (normalized.includes("from clinical.group_instance")) return [{ id: "group-at-6" }];
+    if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-at-6" }];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+
+  const result = await new DraftReportService(transactional(manager, isolations), sessions())
+    .get(ownerSession.accessToken, reportId);
+
+  assert.equal(result.revision, 6);
+  assert.deepEqual(result.groups, [{ id: "group-at-6" }]);
+  assert.deepEqual(result.occurrences, [{ id: "occurrence-at-6" }]);
+  assert.deepEqual(isolations, ["REPEATABLE READ"]);
+});
+
 test("reopening restores the creator's report with its pinned form and saved content", async () => {
   const reportId = "42000000-0000-4000-8000-000000000002";
   const queries = [];
@@ -127,6 +159,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     incident_id: "incident", patient_id: "patient", agency_demographic_version_id: "agency",
     form_version_id: "pinned-form", catalog_release_id: "pinned-catalog", documenting_user_id: ownerSession.user.id
   };
+  const isolations = [];
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     queries.push({ sql: normalized, parameters });
@@ -154,24 +187,19 @@ test("reopening restores the creator's report with its pinned form and saved con
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.call_assignment ca")) return [{
+      call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
+      dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
+      dispatch_priority_code: "2305003", dispatch_priority_display: "Emergent",
+      unit_call_sign: "Medic 32", dispatch_canceled_at: "2026-09-03T12:18:31.000Z",
+      dispatch_cancellation_revision: "3", dispatch_cancellation_receipt_id: "dispatch-receipt",
+      agency_time_zone: "America/New_York"
+    }];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
-  const dataSource = {
-    transaction: (work) => work(manager),
-    query: async (sql, parameters) => {
-      queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
-      return [{
-        call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
-        dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
-        dispatch_priority_code: "2305003", dispatch_priority_display: "Emergent",
-        unit_call_sign: "Medic 32", dispatch_canceled_at: "2026-09-03T12:18:31.000Z",
-        dispatch_cancellation_revision: "3", dispatch_cancellation_receipt_id: "dispatch-receipt",
-        agency_time_zone: "America/New_York"
-      }];
-    }
-  };
+  const dataSource = transactional(manager, isolations);
   const service = new DraftReportService(dataSource, sessions());
-  const controller = new DraftReportController(service, {}, {});
+  const controller = new DraftReportController(service, {});
 
   const reopened = await controller.reopen(reportId, `Bearer ${ownerSession.accessToken}`);
 
@@ -191,24 +219,24 @@ test("reopening restores the creator's report with its pinned form and saved con
   assert.equal(patient.elements[0].values[0].value, "1980-01-01");
   assert.ok(queries.every(({ parameters }) => !parameters || !parameters.includes("another-user")));
   assert.deepEqual(queries[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
+  assert.deepEqual(isolations, ["REPEATABLE READ"]);
 });
 
 test("active report polling returns separate revisions and omits the document for a matching ETag", async () => {
   const reportId = "42000000-0000-4000-8000-000000000002";
-  let transactions = 0;
-  const dataSource = {
+  const isolations = [];
+  const manager = {
     query: async (sql, parameters) => {
       assert.match(sql, /ca\.dispatch_revision/);
       assert.deepEqual(parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
       return [{ revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
         dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }];
     },
-    transaction: async () => { transactions += 1; throw new Error("unchanged polling must not load a document"); },
   };
-  const service = new DraftReportService(dataSource, sessions());
+  const service = new DraftReportService(transactional(manager, isolations), sessions());
   const result = await service.active(ownerSession.accessToken, reportId, '"report-9-dispatch-4"');
   assert.deepEqual(result, { etag: '"report-9-dispatch-4"', resource: null });
-  assert.equal(transactions, 0);
+  assert.deepEqual(isolations, ["REPEATABLE READ"]);
 });
 
 test("the conditional controller emits a bodyless 304 with the current ETag", async () => {
@@ -223,7 +251,7 @@ test("the conditional controller emits a bodyless 304 with the current ETag", as
     assert.equal(etag, '"report-9-dispatch-4"');
     return { etag, resource: null };
   } };
-  const controller = new DraftReportController(reports, {}, {});
+  const controller = new DraftReportController(reports, {});
   const body = await controller.active("42000000-0000-4000-8000-000000000002",
     `Bearer ${ownerSession.accessToken}`, '"report-9-dispatch-4"', response);
   assert.equal(body, undefined);
@@ -232,9 +260,14 @@ test("the conditional controller emits a bodyless 304 with the current ETag", as
 });
 
 test("changed active report polling returns the provenance-merged canonical document", async () => {
+  const isolations = [];
   const reportId = "42000000-0000-4000-8000-000000000002";
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("select r.revision, ca.dispatch_revision")) return [{
+      revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
+      dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null
+    }];
     if (normalized.includes("join forms.form_version")) return [{
       id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:09:00.000Z",
       form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -247,16 +280,53 @@ test("changed active report polling returns the provenance-merged canonical docu
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
-  const dataSource = {
-    query: async () => [{ revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
-      dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }],
-    transaction: (work) => work(manager),
-  };
-  const service = new DraftReportService(dataSource, sessions());
+  const service = new DraftReportService(transactional(manager, isolations), sessions());
   const result = await service.active(ownerSession.accessToken, reportId, '"report-8-dispatch-3"');
   assert.equal(result.resource.reportRevision, 9);
   assert.equal(result.resource.dispatchRevision, 4);
   assert.equal(result.resource.document.groups[0].instances[0].elements[0].values[0].value, "CAD-UPDATED");
+  assert.deepEqual(isolations, ["REPEATABLE READ"]);
+});
+
+test("a concurrent save cannot pair revision R with document content from R+1", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000002";
+  let committed = { revision: "9", value: "CAD-REVISION-9" };
+  const isolations = [];
+  const dataSource = { transaction: async (isolation, work) => {
+    isolations.push(isolation);
+    const snapshot = structuredClone(committed);
+    const manager = { query: async (sql) => {
+      const normalized = sql.replace(/\s+/g, " ");
+      if (normalized.includes("select r.revision, ca.dispatch_revision")) {
+        committed = { revision: "10", value: "CAD-REVISION-10" };
+        return [{ revision: snapshot.revision, dispatch_revision: "4", dispatch_canceled_at: null,
+          dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }];
+      }
+      if (normalized.includes("join forms.form_version")) return [{
+        id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:09:00.000Z",
+        form_id: "form", form_version: 7, catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+      }];
+      if (normalized.includes("select id, parent_group_instance_id")) return [{
+        id: "dispatch-group", parent_group_instance_id: null, group_id: "eDispatchSection", ordinal: 0
+      }];
+      if (normalized.includes("select id, group_instance_id")) return [{
+        id: "dispatch-occurrence", group_instance_id: "dispatch-group", element_id: "eDispatch.06", ordinal: 0,
+        value_kind: "text", value_text: snapshot.value, provenance_kind: "dispatch",
+        provenance_detail: null, source_attributes: null
+      }];
+      if (normalized.includes("from clinical.dispatch_conflict")) return [];
+      throw new Error(`Unexpected SQL: ${normalized}`);
+    } };
+    return work(manager);
+  } };
+
+  const result = await new DraftReportService(dataSource, sessions())
+    .active(ownerSession.accessToken, reportId, '"report-8-dispatch-4"');
+
+  assert.equal(committed.revision, "10", "the simulated save committed while the response was loading");
+  assert.equal(result.resource.reportRevision, 9);
+  assert.equal(result.resource.document.groups[0].instances[0].elements[0].values[0].value, "CAD-REVISION-9");
+  assert.deepEqual(isolations, ["REPEATABLE READ"]);
 });
 
 test("another clinician cannot read, write, reopen, or replay a queued draft command", async () => {
@@ -288,7 +358,7 @@ test("another clinician cannot read, write, reopen, or replay a queued draft com
 });
 
 test("open-call endpoints require a clinician session", () => {
-  const controller = new DraftReportController({ listOpen() {} }, {}, {});
+  const controller = new DraftReportController({ listOpen() {} }, {});
   assert.throws(() => controller.listOpen(), UnauthorizedException);
   assert.throws(() => controller.reopen("42000000-0000-4000-8000-000000000002"), UnauthorizedException);
 });

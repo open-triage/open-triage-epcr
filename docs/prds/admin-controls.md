@@ -254,7 +254,7 @@ Good tests verify externally observable behavior and durable safety properties r
 2. **Authorization**
    - Exercise every protected API capability with allowed, denied, stale-session, disabled-user, and wrong-organization cases.
    - Test owner-transfer invariants, last-owner protection, self-modification prohibitions, protected-role assignment, non-escalation, and hidden Reviewer behavior.
-   - Verify the UI hides unavailable panels while direct API calls remain denied.
+   - For the current release, verify the eleven product-approved unavailable panels remain visible, select only their explicit non-interactive placeholder, and do not weaken denial of unsupported direct API calls.
 
 3. **Configuration registry and packages**
    - Unit-test schema parsing, canonical hashing, qualified identity resolution, dependency validation, security floors, and safe diff generation.

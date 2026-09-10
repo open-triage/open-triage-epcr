@@ -9,7 +9,7 @@
     "prebuild": "npm run build -w @open-triage/contracts && tsx scripts/generate-demo-fixtures.ts --check && tsx scripts/build-service-worker.ts",
     "build": "next build",
     "serve:static": "node scripts/serve-static.mjs",
-    "start": "next start",
+    "start": "npm run serve:static",
     "lint": "eslint .",
     "pretest": "npm run build -w @open-triage/contracts",
     "test": "node --import tsx --test tests/*.test.ts",
@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@open-triage/contracts": "0.1.0",
-    "@supabase/supabase-js": "^2.112.4",
     "next": "^16.3.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

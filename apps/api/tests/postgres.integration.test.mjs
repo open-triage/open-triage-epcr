@@ -21,6 +21,7 @@ import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
+import { AmendReportService } from "../dist/reports/amend-report.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -101,12 +102,31 @@ async function ensureFoundation(client) {
   }
 }
 
+function singleClientDataSource(client) {
+  const manager = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  return {
+    manager,
+    query: manager.query,
+    transaction: async (work) => {
+      await client.query("begin");
+      try {
+        const result = await work(manager);
+        await client.query("commit");
+        return result;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+    }
+  };
+}
+
 integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const database = singleClientDataSource(client);
   const accounts = new AccountService(database);
   const sessions = new ClinicianSessionService(database);
   const organizationId = randomUUID();
@@ -167,7 +187,7 @@ integrationTest("authorized Admin context resolves only the session organization
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  const database = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const database = singleClientDataSource(client);
   const accounts = new AccountService(database);
   const sessions = new ClinicianSessionService(database);
   const admin = new AdminService(database, sessions);
@@ -1026,6 +1046,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     });
     return { response, payload: await response.json() };
   };
+  const amendments = app.get(AmendReportService);
 
   const reportId = randomUUID();
   const createCommand = {
@@ -1590,6 +1611,19 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       } }
     ]
   };
+  const unauthenticatedAmendment = await fetch(`${baseUrl}/reports/${reportId}/amendments`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(amendmentCommand)
+  });
+  assert.equal(unauthenticatedAmendment.status, 404);
+  const authenticatedAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
+  assert.equal(authenticatedAmendment.response.status, 404);
+  assert.deepEqual((await client.query(`select
+      (select count(*)::integer from clinical.amendment where report_id = $1) as amendments,
+      (select count(*)::integer from clinical_audit.event where report_id = $1 and action = 'amend') as audits`,
+  [reportId])).rows[0], { amendments: 0, audits: 0 });
+
   await client.query(`create function clinical.integration_reject_amendment_audit()
     returns trigger language plpgsql as $$ begin
       if new.device_id = 'force-amendment-rollback' then raise exception 'forced amendment rollback'; end if;
@@ -1598,8 +1632,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     create trigger integration_reject_amendment_audit before insert on clinical_audit.event
     for each row execute function clinical.integration_reject_amendment_audit()`);
   try {
-    const rolledBackAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
-    assert.equal(rolledBackAmendment.response.status, 500);
+    await assert.rejects(amendments.amend(reportId, amendmentCommand), /forced amendment rollback/);
   } finally {
     await client.query("drop trigger integration_reject_amendment_audit on clinical_audit.event");
     await client.query("drop function clinical.integration_reject_amendment_audit()");
@@ -1614,12 +1647,11 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   { amendments: 0, changes: 0, audits: 0, events: 0, receipts: 0 });
 
   amendmentCommand.deviceId = "unit-7";
-  const amended = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
-  assert.equal(amended.response.status, 201, JSON.stringify(amended.payload));
-  assert.equal(amended.payload.amendmentSequence, 1);
-  assert.equal(amended.payload.changeCount, 3);
-  assert.equal(amended.payload.reason, amendmentCommand.reason);
-  assert.match(amended.payload.canonicalSha256, /^[a-f0-9]{64}$/);
+  const amended = await amendments.amend(reportId, amendmentCommand);
+  assert.equal(amended.amendmentSequence, 1);
+  assert.equal(amended.changeCount, 3);
+  assert.equal(amended.reason, amendmentCommand.reason);
+  assert.match(amended.canonicalSha256, /^[a-f0-9]{64}$/);
   const amendmentState = (await client.query(`select a.sequence, a.author_id, a.reason, a.attestation,
       count(ac.id)::integer as changes,
       (select canonical_sha256 from clinical.signed_snapshot where report_id = a.report_id) as signed_hash,
@@ -1634,17 +1666,23 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     attestation: amendmentCommand.attestation, changes: 3, signed_hash: signedHash,
     original_value: "required", added_in_original: 0, audits: 1, events: 1
   });
-  const replayedAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
-  assert.equal(replayedAmendment.response.status, 201);
-  assert.deepEqual(replayedAmendment.payload, amended.payload);
-  const staleAmendment = await request(`/reports/${reportId}/amendments`, "POST", {
+  const unauthenticatedReplay = await fetch(`${baseUrl}/reports/${reportId}/amendments`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(amendmentCommand)
+  });
+  assert.equal(unauthenticatedReplay.status, 404);
+  assert.equal((await client.query("select count(*)::integer as count from clinical.amendment where report_id = $1", [reportId])).rows[0].count, 1);
+
+  const replayedAmendment = await amendments.amend(reportId, amendmentCommand);
+  assert.deepEqual(replayedAmendment, amended);
+  await assert.rejects(amendments.amend(reportId, {
     ...amendmentCommand, commandId: randomUUID(), changes: [
       { action: "replace", targetElementOccurrenceId: requiredOccurrenceId, value: { kind: "text", value: "stale" } }
     ]
-  });
-  assert.equal(staleAmendment.response.status, 409);
+  }), (error) => error?.getStatus?.() === 409);
   assert.equal((await client.query("select count(*)::integer as count from clinical.amendment where report_id = $1", [reportId])).rows[0].count, 1);
-  await assert.rejects(client.query("update clinical.amendment set reason = 'mutated' where id = $1", [amended.payload.amendmentId]),
+  await assert.rejects(client.query("update clinical.amendment set reason = 'mutated' where id = $1", [amended.amendmentId]),
     (error) => error.code === "P0001");
 
   const history = await client.query(`select event_type, report_revision, amendment_sequence,

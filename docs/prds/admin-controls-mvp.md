@@ -90,6 +90,20 @@ Success means a representative agency administrator completes the entire configu
 
 ### Admin Application Shell
 
+#### Approved unavailable-capability treatment
+
+The product owner approved the current-release visibility rule on 2026-09-10
+under cleanup issue 021: all eleven deferred Admin destinations remain visible
+and selectable in the Administration panels navigation. Selecting one shows its
+named panel with the explicit message `Unavailable in this release`; it must not
+show controls, issue a mutation, or imply that the capability is operational.
+This applies to Users, Roles, Units, Agency Profile, Validation, Appearance,
+System Settings, Configuration History, Audit Log, Integrations, and Advanced
+Dashboard. The rule is deliberate release communication, not an indication
+that these capabilities are implemented. Revisit it when a panel gains a real,
+authorized workflow or when product research calls for a different disclosure
+policy.
+
 - Extend the existing presentation selector at the same application endpoint to support the role-aware values Mobile, Stationary, and Admin.
 - Combined clinician-administrator users begin in clinical mode. Admin-only users begin in Admin mode.
 - Block entry into Admin while a clinical report is open and direct the user to save and close it.

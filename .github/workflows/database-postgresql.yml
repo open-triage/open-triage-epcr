@@ -2,16 +2,23 @@ name: Verify database foundation
 
 on:
   push:
-    branches: [main, feature/database-foundation]
+    branches: [feature/database-foundation]
   pull_request:
-    branches: [main, feature/database-foundation]
+    branches: [feature/database-foundation]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Commit or ref to validate
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
   postgresql-15:
+    name: Validate / PostgreSQL 15
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -31,15 +38,21 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check:database
-      - run: npm run test:integration -w @open-triage/database
-      - run: npm run test:integration -w @open-triage/api
-      - run: npm run scale:test:ci -w @open-triage/database
+      - name: Verify generated database artifacts
+        run: npm run check:database
+      - name: Run database integration tests
+        run: npm run test:integration -w @open-triage/database
+      - name: Run API integration tests
+        run: npm run test:integration -w @open-triage/api
+      - name: Run CI scale checks
+        run: npm run scale:test:ci -w @open-triage/database
       - uses: actions/upload-artifact@v4
         if: always()
         with:
