@@ -119,6 +119,8 @@ jobs:
           NEXT_PUBLIC_API_URL: https://api.demo.opentriage.org
           NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE: synthetic-demo
         run: npm run build -w @open-triage/web
+      - name: Require the generated service worker
+        run: test -s apps/web/out/sw.js
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Test the root-hosted web artifact
