@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { AssignedCallsController } from "../dist/calls/assigned-calls.controller.js";
 import { AssignedCallsService, syntheticReplacementPayload } from "../dist/calls/assigned-calls.service.js";
 import { randomSyntheticDispatchPayload, SYNTHETIC_DISPATCH_PAYLOAD_COUNT, syntheticDispatchPayloads } from "../dist/calls/synthetic-dispatch-payloads.js";
+import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
+
+process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
+process.env.PATIENT_KEY_VERSION ??= "1";
+process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 const dispatchSample = JSON.parse(readFileSync(new URL("../../../packages/contracts/examples/dispatch/synthetic-assignment-01.json", import.meta.url), "utf8"));
 
@@ -144,6 +150,7 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   };
   const reports = new Map();
   const writes = [];
+  let patientInsertParameters = null;
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("for update of ca")) return [assignment];
@@ -165,7 +172,11 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
       element_id: "eRecord.01", element_identity_id: "record-identity", base_datatype: "string", analytical_repeatable: false, identifying: false
     }];
     if (normalized.includes("insert into clinical.element_occurrence")) return [];
-    if (normalized.includes("insert into clinical.patient")) { writes.push("patient"); return []; }
+    if (normalized.includes("insert into clinical.patient")) {
+      writes.push("patient");
+      patientInsertParameters ??= parameters;
+      return [];
+    }
     if (normalized.includes("update clinical.call_assignment")) {
       assignment.status = "opened";
       assignment.report_id = parameters[1];
@@ -205,6 +216,14 @@ test("opening and retrying one assignment creates one pinned creator-owned draft
   assert.equal(opened.replacementAssignment.agencyTimeZone, "America/New_York");
   assert.equal(retried.replacementAssignment, null);
   assert.deepEqual(writes, ["patient", "report", "replacement-receipt", "replacement-incident", "replacement-assignment"]);
+
+  const [patientId, organizationId, pseudonymousKey, pseudonymousKeyVersion] = patientInsertParameters;
+  const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
+  assert.equal(organizationId, session.organization.id);
+  assert.equal(pseudonymousKeyVersion, patientKeyConfig.keyVersion);
+  assert.equal(pseudonymousKey, derivePatientKey(patientKeyConfig, organizationId, patientId));
+  assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
+  assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
 });
 
 test("a serialization failure while opening an assignment surfaces as a retriable conflict, not a raw 500", async () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ENCOUNTER_MODEL_VERSION } from "@open-triage/contracts";
 import { clearShellState, ENCOUNTER_EXTENSION_KEY, ENCOUNTER_EXTENSION_VERSION, LEGACY_STORAGE_KEYS, loadShellState, loadShellStateResult, PERSISTENCE_VERSION, RECOVERY_STORAGE_KEY, saveShellState, STORAGE_KEY, type LocalStoragePort } from "../app/local-persistence";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import type { EncounterDefinition } from "../app/encounter-definition";
@@ -123,7 +124,7 @@ test("browser persistence stores one versioned canonical document and preserves 
   const envelope = JSON.parse(storage.getItem(STORAGE_KEY)!);
   assert.equal(envelope.persistenceVersion, PERSISTENCE_VERSION);
   assert.equal(envelope.state, undefined);
-  assert.equal(envelope.document.modelVersion, "1.1.0");
+  assert.equal(envelope.document.modelVersion, ENCOUNTER_MODEL_VERSION);
   assert.equal(envelope.document.dataModel.version, "3.5.1");
   assert.deepEqual(envelope.document.formProfile, { id: "standard-encounter-v1", version: "1" });
   assert.equal(envelope.document[ENCOUNTER_EXTENSION_KEY].version, ENCOUNTER_EXTENSION_VERSION);

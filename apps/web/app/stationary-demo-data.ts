@@ -1,11 +1,11 @@
 import type { EncounterDocument, EncounterGroup, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { stableDraftId } from "./draft-report";
-import { demoAttributes, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
+import { demoAttributes, DEMO_FALLBACK_DATE, hasDemoProvenance, withoutDemoProvenance } from "./demo-provenance";
 import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { scalarEncounterValue, validateScalarInput } from "./stationary-scalar";
 
-const DEMO_TIME = "2026-04-18T14:35:00-04:00";
+const DEMO_TIME = `${DEMO_FALLBACK_DATE}T14:35:00-04:00`;
 const editableGroups = new Set(COMPILED_STATIONARY_LAYOUT.groups.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 const editableElements = new Set(COMPILED_STATIONARY_LAYOUT.elements.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 

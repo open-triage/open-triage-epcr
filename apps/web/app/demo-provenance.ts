@@ -8,6 +8,13 @@ export const DEMO_POPULATE_EVENT = "open-triage:demo-populate";
 export const DEMO_CLEAR_EVENT = "open-triage:demo-clear";
 export const CLINICIAN_OWNER_ATTRIBUTE = "x-open-triage-owner";
 
+/**
+ * Fallback calendar date substituted whenever an encounter event, draft, or
+ * demo value is missing an explicit date. Centralized so every fallback site
+ * shares one source of truth instead of repeating the literal.
+ */
+export const DEMO_FALLBACK_DATE = "2026-04-18";
+
 export function demoAttributes(extra: EncounterAttributes = {}): EncounterAttributes {
   return { ...extra, [DEMO_PROVENANCE_ATTRIBUTE]: DEMO_PROVENANCE_VALUE };
 }

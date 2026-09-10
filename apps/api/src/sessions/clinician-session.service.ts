@@ -30,6 +30,8 @@ export class ClinicianSessionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async create(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {
+    this.pruneExpired(now);
+
     if (!matchesCredential(command.username, DEMO_CLINICIAN_USERNAME) ||
         !matchesCredential(command.password, DEMO_CLINICIAN_PASSWORD)) {
       throw new UnauthorizedException("The username or password is incorrect");
@@ -82,5 +84,19 @@ export class ClinicianSessionService {
   private publicSession(session: StoredSession): ClinicianSession {
     const { revoked: _revoked, ...result } = session;
     return result;
+  }
+
+  /**
+   * The session map has no background sweep, so expired sessions would otherwise
+   * accumulate indefinitely until individually looked up. Piggyback a prune on every
+   * `create()` call instead of standing up timer-based infrastructure for it.
+   */
+  private pruneExpired(now: Date): void {
+    const nowMs = now.getTime();
+    for (const [accessToken, session] of this.sessions) {
+      if (session.revoked || Date.parse(session.expiresAt) <= nowMs) {
+        this.sessions.delete(accessToken);
+      }
+    }
   }
 }

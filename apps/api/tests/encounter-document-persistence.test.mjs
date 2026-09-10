@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dispatchEntityId, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
+import { ENCOUNTER_DOCUMENT_SCHEMA, ENCOUNTER_DOCUMENT_TYPE, ENCOUNTER_MODEL_VERSION } from "@open-triage/contracts";
+import { dispatchEntityId, encounterDocument, seedDispatchEncounter, storedEncounterValue } from "../dist/reports/encounter-document.persistence.js";
 
 const reportId = "42000000-0000-4000-8000-000000000002";
 
@@ -40,6 +41,26 @@ test("payload identities map stably while nested and hidden values are seeded wi
   assert.equal(record[10], "PCR-AGENCY-0001");
   assert.equal(dispatchEntityId(reportId, "group:patient"), dispatchEntityId(reportId, "group:patient"));
   assert.match(dispatchEntityId(reportId, "group:patient"), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("rehydrated encounter documents stamp the schema, document type, and model version from @open-triage/contracts, not a stale local literal", async () => {
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from clinical.report")) return [{
+      id: reportId, created_at: new Date("2026-09-04T00:00:00Z"), updated_at: new Date("2026-09-04T01:00:00Z"),
+      form_id: "standard-encounter-v1", form_version: "1",
+      catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet",
+    }];
+    if (normalized.includes("from clinical.group_instance")) return [];
+    if (normalized.includes("from clinical.element_occurrence")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+
+  const document = await encounterDocument(manager, reportId);
+
+  assert.equal(document.$schema, ENCOUNTER_DOCUMENT_SCHEMA);
+  assert.equal(document.documentType, ENCOUNTER_DOCUMENT_TYPE);
+  assert.equal(document.modelVersion, ENCOUNTER_MODEL_VERSION);
 });
 
 test("stored scalar values rehydrate lexical, precision, offset, binary, and source attributes", () => {

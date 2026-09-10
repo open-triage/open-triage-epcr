@@ -1,4 +1,9 @@
-import type { EncounterDocument } from "@open-triage/contracts";
+import {
+  ENCOUNTER_DOCUMENT_SCHEMA,
+  ENCOUNTER_DOCUMENT_TYPE,
+  ENCOUNTER_MODEL_VERSION,
+  type EncounterDocument,
+} from "@open-triage/contracts";
 import {
   NEMSIS_DATA_MODEL,
   getNemsisDataElement,
@@ -7,9 +12,7 @@ import {
   type NemsisDataElement,
 } from "./nemsis-data-model";
 
-export const ENCOUNTER_DOCUMENT_SCHEMA = "./encounter-document.schema-1.0.0.json" as const;
-export const ENCOUNTER_DOCUMENT_TYPE = "open-triage.encounter" as const;
-export const ENCOUNTER_MODEL_VERSION = "1.1.0" as const;
+export { ENCOUNTER_DOCUMENT_SCHEMA, ENCOUNTER_DOCUMENT_TYPE, ENCOUNTER_MODEL_VERSION };
 
 export type EncounterDocumentDiagnostic = { readonly path: string; readonly message: string };
 export type EncounterDocumentCompatibility = {
