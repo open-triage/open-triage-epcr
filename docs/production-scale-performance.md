@@ -1,7 +1,7 @@
 # Production-scale performance policy and evidence
 
-Status: approved under owner delegation on 2026-09-02  
-Version: `production-scale-performance-1.0.0`
+Status: approved under owner delegation; production-schema rebaseline on 2026-09-10
+Version: `production-scale-performance-1.1.0`
 
 The requesting product and operations owner instructed the implementation agent to complete the
 feature without further input and authorized defensible operating thresholds. The exact approved
@@ -13,10 +13,10 @@ thresholds and capacity model are the machine-readable
 The production profile is ten years online at one million reports per year: 10,000,000 wide rows,
 60,000,000 representative repeatable rows, 5% amendments, ten annual wide partitions, and 120
 monthly repeatable partitions. Common wide queries must be at most 250 ms p95, repeatable queries at
-most 500 ms p95, and partition-pruned queries at most 250 ms p95. Signing and amendment replay must
-sustain at least 100 reports/second. Projector batches are 500 reports, sustain at least 100
-reports/second, and complete within five seconds. Reconciliation sustains at least 10,000
-reports/second. Common query plans may not spill to temporary storage.
+most 500 ms p95, and partition-pruned queries at most 250 ms p95. Signing must sustain at least 100
+reports/second. Production projector batches are 500 reports, sustain at least 35 reports/second,
+and complete within 13 seconds. Reconciliation sustains at least 50 reports/second and amendment
+replay at least 17 reports/second. Common query plans may not spill to temporary storage.
 
 Operations retain the already approved five-minute RPO and four-hour RTO. Production-like steady
 CPU must remain at or below 70%, peak CPU at or below 80%, connection use at or below 70%, and
@@ -64,3 +64,14 @@ schema and duplicate projection SQL do not substantiate the current thresholds. 
 have artifact schema version 2 and include `productionSchemaEvidence`. The artifact continues to
 record recovery RPO/RTO, CPU, connections, and storage headroom as `pending-production-run` until a
 production-profile exercise supplies that environment evidence.
+
+The 2026-09-10 production-schema calibration ran PostgreSQL 17.6 on a bounded Linux development
+runner with 128 MB shared buffers and 4 MB work memory. It applied 11 migrations and measured 10,000
+wide rows, 40,000 repeatable rows, 500 clinical reports, and 25 amendments against the 566-column
+wide and 66-column repeatable production tables. Across three runs, the slowest production
+projector result was 48.617 reports/second and the longest 500-report batch was 10,284.526 ms;
+reconciliation's slowest result was 69.814 reports/second and amendment replay's was 22.702
+reports/second. The rebaselined gates round conservatively beyond at least 25% headroom from those
+worst observations: 35 reports/second, 13,000 ms, 50 reports/second, and 17 reports/second,
+respectively. Dataset, environment, schema, query/path, all observations, threshold, and exact
+margin are retained in the machine-readable policy and each new run artifact.

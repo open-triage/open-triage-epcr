@@ -327,7 +327,8 @@ try {
       ? "packages/database/scripts/project-analytics.mjs" : "clinical signing transaction"),
     productionSchema: { tables: ["clinical.report", "integration.outbox_event", "analytics_private.epcr",
       "analytics_private.epcr_repeatable_element"], wideColumnCount: schema.wide_column_count,
-      repeatableColumnCount: schema.repeatable_column_count, appliedMigrations: schema.applied_migrations } });
+      repeatableColumnCount: schema.repeatable_column_count, appliedMigrations: schema.applied_migrations },
+    calibration: policy.productionSchemaCalibration.thresholdBasis[name] ?? null });
   const comparisons = { commonWideQueryP95Ms: "max", commonRepeatableQueryP95Ms: "max",
     partitionPrunedQueryP95Ms: "max", signingWritesPerSecond: "min", projectorReportsPerSecond: "min",
     projectorBatchMaxMs: "max", reconciliationReportsPerSecond: "min",

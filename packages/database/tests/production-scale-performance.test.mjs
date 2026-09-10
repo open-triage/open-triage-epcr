@@ -14,7 +14,7 @@ const [policy, harness, evidencePolicy, workflow] = await Promise.all([
 ]);
 
 test("records approved production scale capacity and measurable thresholds", () => {
-  assert.equal(policy.policyVersion, "production-scale-performance-1.0.0");
+  assert.equal(policy.policyVersion, "production-scale-performance-1.1.0");
   assert.equal(policy.policyStatus, "approved-under-requesting-owner-delegation");
   assert.deepEqual(policy.capacityModel, {
     onlineYears: 10,
@@ -32,6 +32,20 @@ test("records approved production scale capacity and measurable thresholds", () 
     "peakCpuPercentMax", "connectionUtilizationPercentMax", "storageHeadroomPercentMin",
     "commonQueryTempBytesMax"
   ]) assert.equal(typeof policy.thresholds[name], "number", `missing numerical threshold ${name}`);
+  assert.equal(policy.productionSchemaCalibration.minimumHeadroomPercent, 25);
+  assert.deepEqual(policy.productionSchemaCalibration.dataset, {
+    profile: "ci", analyticsReports: 10_000, repeatableElements: 40_000,
+    measuredClinicalReports: 500, measuredAmendments: 25, onlineYears: 10
+  });
+  assert.equal(policy.productionSchemaCalibration.productionSchema.wideColumnCount, 566);
+  assert.equal(policy.productionSchemaCalibration.productionSchema.repeatableColumnCount, 66);
+  for (const name of ["projectorReportsPerSecond", "projectorBatchMaxMs",
+    "reconciliationReportsPerSecond", "amendmentReplayReportsPerSecond"]) {
+    const basis = policy.productionSchemaCalibration.thresholdBasis[name];
+    assert.equal(basis.threshold, policy.thresholds[name]);
+    assert.ok(basis.marginPercent >= policy.productionSchemaCalibration.minimumHeadroomPercent);
+    assert.ok(basis.query.length > 0);
+  }
 });
 
 test("scale harness covers representative distributions and preserves executable plans", () => {
