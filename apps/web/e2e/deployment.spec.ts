@@ -2,6 +2,12 @@ import { expect, test } from "@playwright/test";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import syntheticDemoSettings from "@open-triage/contracts/config/installation.synthetic-demo.json";
 
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+if (!apiBaseUrl) {
+  throw new Error("NEXT_PUBLIC_API_URL must be set for deployment tests");
+}
+const installationUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/installation`;
+
 test("the built static export starts and is served from the domain root", async ({ page, request }) => {
   const response = await request.get("/");
   expect(response.status()).toBe(200);
@@ -9,10 +15,8 @@ test("the built static export starts and is served from the domain root", async 
   expect(serviceWorker.status()).toBe(200);
   expect(await serviceWorker.text()).toContain("demo-assigned-calls.json");
 
-  const installationRequest = page.waitForRequest(
-    "https://api.demo.opentriage.org/api/installation",
-  );
-  await page.route("https://api.demo.opentriage.org/api/installation", async (route) =>
+  const installationRequest = page.waitForRequest(installationUrl);
+  await page.route(installationUrl, async (route) =>
     route.fulfill({
       json: {
         profile: "synthetic-demo",
