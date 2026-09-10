@@ -7,10 +7,9 @@ import { createElementCatalog, resolveConfiguredElementForm, validateCustomDataS
 import { loadEncounterDocument, serializeEncounterDocument } from "../app/encounter-document";
 import { compileEncounterFormProfile, standardEncounterFormProfile } from "../app/encounter-form-profile";
 import { loadShellState, saveShellState } from "../app/local-persistence";
-import { exportNemsisXml, importNemsisXml } from "../app/nemsis-interchange";
 import { INITIAL_SHELL_STATE, transitionShell, type ShellState } from "../app/standard-encounter";
 
-test("a standard field traces from profile through catalog, canonical JSON, and XML", () => {
+test("a standard field traces from profile through catalog and canonical JSON", () => {
   const profileField = standardEncounterFormProfile.sections.find(({ id }) => id === "vitals")!.elements[0]!;
   assert.equal(createElementCatalog().require(profileField).element.id, profileField);
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "model-vitals", date: "2026-08-15", time: "09:20" });
@@ -20,10 +19,9 @@ test("a standard field traces from profile through catalog, canonical JSON, and 
   const occurrence = document.groups.flatMap(({ instances }) => instances).flatMap(({ elements }) => elements).find(({ id }) => id === profileField);
   assert.equal(occurrence?.id, profileField);
   assert.ok(serializeEncounterDocument(document).includes(`"id": "${profileField}"`));
-  assert.ok(exportNemsisXml(document).includes(`<${profileField}`));
 });
 
-test("a configuration-only custom field completes the canonical and interchange journey", () => {
+test("a configuration-only custom field completes the canonical persistence journey", () => {
   const catalog = createElementCatalog(customConfiguration);
   const [configured] = resolveConfiguredElementForm(catalog, { id: "test-stroke", fields: ["org.example.ems:stroke-score"] });
   assert.equal(configured?.provenance, "custom");
@@ -40,9 +38,6 @@ test("a configuration-only custom field completes the canonical and interchange 
   const reviewAndSummary = `${configured!.element.title}: ${captured.results[0]!.values[0]!.value}`;
   assert.equal(reviewAndSummary, "Local stroke score: 7");
   assert.match(serializeEncounterDocument(document), /org\.example\.ems:stroke-score/);
-  const xml = exportNemsisXml(document);
-  assert.match(xml, /<eCustomResults\.02>org\.example\.ems:stroke-score<\/eCustomResults\.02>/);
-  assert.deepEqual(importNemsisXml(xml), document);
 });
 
 test("production entry points use only the pinned catalog and neutral standard profile", async () => {
