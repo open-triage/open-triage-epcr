@@ -1,4 +1,6 @@
-# Problem Statement
+# Stationary Workflow MVP PRD
+
+## Problem Statement
 
 OpenTriage's current documentation workflow is optimized for mobile field use. A clinician can sign in, see calls assigned through their unit association, open a call, document a focused set of clinical events, save locally while offline, synchronize revisions, and return to an unsigned report. The mobile form intentionally exposes only a small quick-documentation profile, so it cannot collect every required NEMSIS value and cannot currently produce a signable complete report.
 
@@ -6,7 +8,7 @@ Clinicians normally begin documentation on mobile and finish it later on a works
 
 The first stationary release must prove that the same clinician can continue the same canonical report on a stationary device, work with the complete NEMSIS hierarchy, retain the mobile workflow's offline and synchronization guarantees, validate the full record, and sign it. The initial layout will be controlled by canonical JSON rather than an administrator interface. Demo-only population controls are needed to exercise all generated fields and make a complete signing journey practical without prepopulating the report before the user requests it.
 
-# Solution
+## Solution
 
 Add a stationary presentation to the existing authenticated workflow. The application will retain the same login and home page for both device modes. A persisted Mobile/Stationary mode control in the top blue application banner, alongside controls such as Logout, will explicitly select the presentation; viewport resolution will affect responsive styling but will not determine workflow behavior or authorization.
 
@@ -18,7 +20,7 @@ The stationary form reuses the mobile workflow's immediate local persistence, of
 
 For demonstration and exhaustive renderer testing, the existing prototype notification will contain Populate and Clear controls. Populate deterministically fills every empty editable NEMSIS element with catalog-valid synthetic data and creates representative instances for repeating groups without overwriting dispatch, mobile, or manually entered data. Generated values carry demo provenance. Clear removes only Populate-generated values and group instances. Both operations pass through the same document mutation, persistence, synchronization, validation, and audit boundaries as ordinary edits, and neither signs the report automatically.
 
-# User Stories
+## User Stories
 
 1. As a clinician, I want to use the existing login on either mobile or stationary devices, so that I do not learn or maintain separate authentication workflows.
 2. As a clinician, I want the existing shared home page in both modes, so that assigned and open work is presented consistently.
@@ -83,9 +85,9 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 61. As a contributor, I want automated proof that every canonical NEMSIS element and group maps to a supported generated or read-only presentation, so that catalog completeness is measurable.
 62. As a contributor, I want an end-to-end mobile-to-stationary journey covering offline recovery and signing, so that the main workflow is protected against regression.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Modules
+### Modules
 
 1. **Shared workflow shell** owns the existing login and home-page experience, explicit presentation-mode selection, application-banner placement, clinician-unit assigned-call visibility, creator-owned open-call visibility, and navigation into the selected report presentation. Device mode is persisted locally and is not an authorization input.
 2. **Stationary definition compiler** owns the versioned canonical stationary JSON contract, references to the canonical element catalog, hierarchy and placement validation, presentation-only overrides, custom-element identity validation, and exhaustive catalog-coverage diagnostics. It exposes a compiled immutable stationary definition to the renderer.
@@ -94,7 +96,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 5. **Demo data controls** own deterministic catalog-valid generation, representative repeating-group creation, demo provenance, and provenance-scoped clearing. The module changes the canonical encounter document through the shared report workspace and does not write directly to storage or bypass validation.
 6. **Validation and completion** owns full-record validation projection, section and target association for findings, warning acknowledgements, dispatch-conflict completion gates, stationary-only signing, mobile signing removal or disabling, post-signature navigation, active-list reconciliation, and eligible actionable-cache cleanup.
 
-## Configuration and data model
+### Configuration and data model
 
 - The generated NEMSIS 3.5.1 catalog remains the semantic authority for all 453 elements and 88 structural groups, including 37 repeating groups.
 - The stationary layout is a checked-in canonical JSON artifact for the MVP. An administrator editor is not required.
@@ -106,7 +108,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 - Existing encounter group `instanceId` and value `occurrenceId` identities remain authoritative. UI row indices and component identities are never persisted as clinical identifiers.
 - Populate-generated group instances and occurrences carry explicit demo provenance. Clear targets that provenance and never infers ownership from synthetic-looking content.
 
-## Workflow and interactions
+### Workflow and interactions
 
 - The top blue application banner contains the persisted Mobile/Stationary switch alongside Logout and other application-level controls.
 - The prototype notification, rather than the application banner or clinical action ribbon, contains Populate and Clear.
@@ -124,7 +126,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 - Stationary uses the full definition for validation. Blocking errors, unacknowledged warnings, unresolved dispatch conflicts, pending synchronization, or offline state prevent signing.
 - Successful stationary signing makes the report immutable, removes it from the active call list, purges its eligible actionable cache, and returns the clinician to the home page.
 
-## Persistence and API contracts
+### Persistence and API contracts
 
 - The canonical encounter document and existing revisioned draft mutation contract remain the only clinical editing representation.
 - The mobile synchronization implementation is extracted behind the shared report-workspace boundary rather than copied into the stationary page.
@@ -136,7 +138,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 - Populate and Clear use ordinary draft mutations and revision checks. They do not update signed records or bypass authorization.
 - Successful signing must be followed by active-report reconciliation so the signed report is absent from subsequent active-call results and cannot be reopened as a draft.
 
-# Testing Decisions
+## Testing Decisions
 
 - Good tests verify externally observable behavior and durable contracts rather than component structure or private implementation details.
 - All six modules will be tested.
@@ -152,7 +154,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 - Accessibility coverage includes the long-page section navigation, active-section announcement, focus movement, table/dialog interaction, exceptional-value choices, validation navigation, and signing flow.
 - Existing mobile journey, browser-persistence, encounter-document, form-profile, model-completeness, interface-composition, review-flow, draft-report, active-report reconciliation, and signing tests provide prior art and regression coverage.
 
-# Out of Scope
+## Out of Scope
 
 - An administrator UI for configuring, previewing, or publishing stationary layouts.
 - True device-to-vehicle enrollment, pairing, reassignment, verification, or revocation.
@@ -171,7 +173,7 @@ For demonstration and exhaustive renderer testing, the existing prototype notifi
 - Performance optimization or virtualization without measurements showing that the complete page requires it.
 - Completed-record review, amendments, case review, billing review, or quality-assurance workflows.
 
-# Further Notes
+## Further Notes
 
 - The main assumption under test is that one catalog-driven renderer can handle every NEMSIS structural and datatype case while editing the same canonical document used by mobile. A need for many element-specific data models would disprove the intended generic boundary; bounded presentation enhancements do not.
 - MVP success requires both exhaustive automated catalog coverage and an end-to-end mobile-start, stationary-finish, offline/reconnect, sign-and-disappear journey.

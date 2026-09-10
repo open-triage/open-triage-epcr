@@ -1,10 +1,12 @@
-# Problem Statement
+# Admin Controls PRD
+
+## Problem Statement
 
 OpenTriage installations need a secure, understandable way to administer the people, permissions, operational resources, clinical configuration, and installation settings that make the documentation workflow function. Today, important behavior is spread across seeded database records, committed configuration, hard-coded demo credentials, generated catalogs, and application constants. An agency cannot safely manage users, tailor its stationary documentation, inspect configuration history, or transfer reusable configuration without developer or database access.
 
 The first administration release must serve one agency per installation. It must support real, database-backed administration without prematurely implementing multi-agency control, reviewer workflow, external identity providers, localization authoring, or integration credential management. It must also preserve the database-backed demonstration instance as an inspectable test installation whose intentionally extreme behaviors are selected through explicit configuration rather than hidden, hard-coded properties.
 
-# Solution
+## Solution
 
 Add an online-only Admin mode to the existing application endpoint alongside Mobile and Stationary modes. Access is derived from durable users, roles, and capabilities and is enforced by the API and database. The Admin experience uses the Stationary interface's tabbed, collapsible visual language and reusable controls.
 
@@ -16,7 +18,7 @@ Treat catalog validation as agency-authoritative. NEMSIS-derived rules and metad
 
 Represent demonstration behavior as independent, visible configuration controls. The demo configuration package selects the 24-hour clinical-record purge, synthetic data, sample dispatch assignment, synthetic-data banner, read-only administration, lax authentication values, and download/export restrictions. A safe production baseline selects production-appropriate values. No behavior may depend on recognizing one hard-coded demo organization or installation identifier.
 
-# User Stories
+## User Stories
 
 1. As an installation owner, I want a secure administration workspace, so that I can operate the installation without direct database access.
 2. As an authorized user, I want Mobile, Stationary, and Admin choices to appear according to my roles, so that one application supports my permitted work.
@@ -122,9 +124,9 @@ Represent demonstration behavior as independent, visible configuration controls.
 102. As an administrator, I want configuration lists to use indexed server-side search and cursor pagination, so that large agencies and catalogs remain responsive.
 103. As an administrator, I want Admin workflows usable with keyboard-only input at supported desktop and tablet sizes, so that administration meets accessibility requirements.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Modules
+### Modules
 
 1. **Identity and Session Service**
    - Extend the provider-neutral application identity model with local credentials, password state, durable sessions, revocation, and authentication events.
@@ -220,7 +222,7 @@ Represent demonstration behavior as independent, visible configuration controls.
    - Publish report expiry to clinical clients. Remove expired local records and prevent offline queues from recreating server-purged reports.
    - Keep the browser-only static prototype clinician-only; it does not include Admin mode or the database-backed admin fixture.
 
-## Interfaces and Data Boundaries
+### Interfaces and Data Boundaries
 
 - Expand the shared session contract with current roles/capabilities, password-change state, session metadata, and the information required to request clinician-only offline access. Do not trust client-submitted claims for authorization.
 - Add capability-protected API resources for the dashboard, identity, roles, units, profile, configuration domains, package operations, catalog/validation, Stationary forms, appearance/settings, history, audit, and integration status.
@@ -233,14 +235,14 @@ Represent demonstration behavior as independent, visible configuration controls.
 - Require reauthentication for ownership transfer, protected Administrator assignment, configuration import/rollback, and other high-impact security actions.
 - Use stable message keys and locale-ready configuration shapes, while deferring translation administration and complete UI localization.
 
-## Capacity and Performance
+### Capacity and Performance
 
 - Support at least 10,000 users/units, 100 form and catalog versions, the complete pinned NEMSIS catalog, and 1,000,000 administrative audit events per agency.
 - Use indexed server-side search, bounded filters, cursor pagination, and virtualized large code lists. Do not load full administrative collections into the browser.
 - Target 500 ms p95 for ordinary Admin reads under the administrative capacity profile, excluding full package validation/import.
 - Validate package content outside the activation transaction. Keep activation transactions short and acquire affected domain locks in a stable order.
 
-# Testing Decisions
+## Testing Decisions
 
 Good tests verify externally observable behavior and durable safety properties rather than internal class structure, SQL formatting, or component implementation details. All nine modules require automated coverage.
 
@@ -296,7 +298,7 @@ Good tests verify externally observable behavior and durable safety properties r
     - Verify indexes supporting foreign keys, organization predicates, capability lookups, active-version resolution, audit cursors, and selected JSON queries.
     - Test least-privilege database access and organization isolation as defense in depth, including direct attempts to bypass API filters.
 
-# Out of Scope
+## Out of Scope
 
 - Multi-agency administration, organization switching, cross-agency roles, and shared fleet or configuration ownership.
 - Reviewer role visibility, assignment, review queues, reviewer decisions, or any reviewer workflow.
@@ -316,7 +318,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Admin mode in the browser-only static prototype.
 - Explicit phone/mobile support for Admin mode.
 
-# Further Notes
+## Further Notes
 
 - The project already contains organization, user, capability, unit assignment, versioned agency demographic, custom element/group, versioned form, locale, publication validation, and immutable clinical-record foundations. This PRD extends and connects those foundations rather than introducing a parallel administration model.
 - The current database-backed login is a hard-coded synthetic clinician lookup with in-memory sessions. Replacing it is prerequisite infrastructure, not an optional polish item.

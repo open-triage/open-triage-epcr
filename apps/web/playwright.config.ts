@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./apps/web/e2e",
+  testDir: "./e2e",
   testIgnore: "deployment.spec.ts",
   fullyParallel: true,
   reporter: "line",
@@ -16,7 +16,7 @@ export default defineConfig({
     { name: "android-390x844", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, hasTouch: true } },
   ],
   webServer: {
-    command: "npm run dev -w @open-triage/web -- --hostname 127.0.0.1 --port 3108",
+    command: "npm run dev -- --hostname 127.0.0.1 --port 3108",
     env: {
       TMPDIR: process.platform === "darwin" ? "/private/tmp" : "/tmp",
       NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "true",

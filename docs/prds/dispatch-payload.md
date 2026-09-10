@@ -1,10 +1,12 @@
-# Problem Statement
+# Dispatch Payload PRD
+
+## Problem Statement
 
 OpenTriage currently synthesizes dispatch, incident, unit, patient, and timeline context across browser fixtures, API response properties, database columns, and a bundled encounter document. That makes the mobile demonstration usable, but it does not establish a single vendor-facing dispatch contract or prove that the application can operate from externally supplied NEMSIS-addressed data. Some duplicated projections are semantically incorrect, including treating `eScene.16` as a unit identifier even though it represents an apartment, suite, or room. The parallel browser `events` collection can also diverge from or discard values in the canonical encounter document.
 
 An EMD vendor needs a precise synthetic example and machine-readable schema to develop against before a production delivery endpoint exists. OpenTriage contributors need those same artifacts to be executable test fixtures. The server must be able to ingest a complete dispatch snapshot from a flat JSON file, validate included NEMSIS 3.5.1 content, route it to the configured unit, preserve all valid fields, project the mobile subset, merge later dispatch revisions without overwriting clinician-owned data, and retain an auditable record of rejected or conflicting content.
 
-# Solution
+## Solution
 
 Define a versioned OpenTriage dispatch-message envelope containing transport metadata and a partial NEMSIS 3.5.1 `EMSDataSet`-addressed document. Publish a strict JSON Schema, an integration guide, and three synthetic flat JSON examples for initial assignment, update, and cancellation. The examples use official NEMSIS group IDs, element IDs, datatypes, codes, and attributes, while clearly stating that they are partial dispatch snapshots rather than complete NEMSIS submissions.
 
@@ -12,7 +14,7 @@ Implement ingestion as a reusable server-side library with a file CLI. The CLI r
 
 Make the canonical NEMSIS encounter document the browser's sole durable encounter source. Opening and reopening a call returns the complete payload-derived document. Timeline and mobile summaries are derived from it, editor saves mutate it directly, and later dispatch snapshots are merged using per-occurrence provenance. Clinician-authored values always win automatically; unresolved differences appear in both Checklist and Review. Remove the patient-information editor and all patient presentation from this mobile workflow while continuing to retain and export valid patient data supplied by dispatch.
 
-# User Stories
+## User Stories
 
 1. As an EMD vendor, I want a versioned JSON Schema for dispatch messages, so that I can validate my integration before delivery.
 2. As an EMD vendor, I want a complete initial-assignment example, so that I can see the minimum required response, unit, and timing data.
@@ -75,9 +77,9 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 59. As a contributor, I want the committed examples to be executable contract tests, so that documentation cannot drift from behavior.
 60. As a maintainer, I want obsolete hardcoded dispatch fixtures, chief-complaint projections, patient editing code, and parallel event persistence removed, so that the new architecture has one clear source of truth.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Dispatch contract and vendor artifacts
+### Dispatch contract and vendor artifacts
 
 - Version 1 is a strict JSON envelope with a schema identity, schema version, immutable UUID message ID, stable vendor source-record ID, positive revision, `upsert` or `cancel` event type, offset-aware sent time, NEMSIS data-model declaration, and canonical groups.
 - Structural objects reject unknown properties. NEMSIS attributes are accepted only when valid for the pinned NEMSIS 3.5.1 XSD/catalog definition.
@@ -89,7 +91,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - The update and cancellation examples are complete snapshots of the same source record with increasing revisions. Cancellation uses `eventType: "cancel"` and includes `eTimes.14`.
 - The integration guide documents ownership, complete-snapshot semantics, validation behavior, canonical equality, revision rules, cancellation, required fields, examples, and the future single-message JSON REST shape. It does not claim full NEMSIS submission conformance.
 
-## Required and optional NEMSIS content
+### Required and optional NEMSIS content
 
 - Every accepted assignment revision requires concrete, non-null values for incident number (`eResponse.03`), EMS response number (`eResponse.04`), vehicle number (`eResponse.13`), unit call sign (`eResponse.14`), dispatch-notified time (`eTimes.02`), and unit-notified time (`eTimes.03`).
 - Dispatch reason (`eDispatch.01`) is optional. The sample includes it. When absent, the mobile projection uses “Dispatch reason not provided.”
@@ -97,7 +99,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - Version 1 rejects unknown and namespaced custom element IDs. It validates included content rather than requiring completion of every mandatory or required field in a finished NEMSIS ePCR.
 - Invalid required envelope, identity, routing, or timing data rejects the revision atomically. Invalid optional groups, elements, occurrences, or attributes are omitted from the canonical projection, preserved in the immutable source artifact, and returned as structured findings. A revision with such findings has an `applied_with_findings` result.
 
-## Ingestion, storage, and operational projection
+### Ingestion, storage, and operational projection
 
 - A reusable server-side ingestion library accepts parsed payload content, exact source bytes, authenticated-equivalent organization context, and source-integration context. It returns a structured receipt/result suitable for the CLI now and a REST adapter later.
 - A file CLI accepts a JSON path plus explicit organization and source IDs. It exits nonzero for rejected payloads and emits a machine-readable result for applied, replayed, applied-with-findings, quarantined, stale, conflicting, and post-signature outcomes.
@@ -114,7 +116,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - Dispatch and report revisions are separate. `dispatchRevision` follows the vendor stream; `reportRevision` advances for accepted clinician and dispatch changes and drives mobile ETags and synchronization.
 - Existing data may be discarded. Update the current foundation schema and make clean development/test bootstrap explicit. Normal application startup must never delete data.
 
-## Provenance, merge, cancellation, and signature behavior
+### Provenance, merge, cancellation, and signature behavior
 
 - Provenance is tracked per stable group, element occurrence, and value. Vendor revisions may replace or retract vendor-authored content until a clinician creates, edits, clears, or explicitly affirms that target.
 - Clinician action makes the target clinician-owned. Later dispatch may populate other untouched targets but cannot overwrite that target.
@@ -124,7 +126,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - A dispatch revision received after signature never mutates the signed snapshot. Its artifact and differences are retained and marked as requiring the existing amendment workflow.
 - Delivery and provenance metadata remain outside standard NEMSIS XML. Exports contain accepted NEMSIS groups, values, and valid NEMSIS attributes only; audit metadata may be represented separately.
 
-## Canonical encounter and mobile behavior
+### Canonical encounter and mobile behavior
 
 - The canonical encounter document becomes the only persisted encounter-content source. Remove the durable parallel timeline `events` representation. Temporary editor drafts may remain outside the document.
 - Editor Save writes directly to stable NEMSIS group and occurrence identities. Editor Remove deletes the selected canonical group instance. Timeline, validation, Checklist, Review, and completed summaries derive from the document.
@@ -139,13 +141,13 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - Previously opened reports cache the payload-derived document and remain usable offline. First opening requires connectivity for server-authoritative report creation, form selection, and catalog pinning.
 - Existing sign-in, Assigned/Open separation, foreground and manual refresh, polling pause in the background, quick clinical capture, autosave, Save & close, offline recovery, validation, review, and signing behavior otherwise remains intact.
 
-## Synthetic and static workflows
+### Synthetic and static workflows
 
 - Replace the existing synthetic dispatch/database constants and bundled synthetic encounter document with the versioned dispatch samples as the sole fixture source for call, unit, patient, scene, and operational timeline data.
 - Synthetic bootstrap loads only the initial-assignment sample so the normal demo begins with an actionable call. Update and cancellation examples are invoked explicitly by targeted tests or CLI demonstrations.
 - The browser-only static build runs the same validation/projection core against the committed sample and generates its lightweight fixtures. React and TypeScript contain no duplicated incident values.
 
-# Testing Decisions
+## Testing Decisions
 
 - Good tests verify externally observable behavior and durable contracts rather than private helper structure.
 - All new or materially changed modules are tested: dispatch schema and catalog validation, ingestion and revision handling, immutable artifact retention, operational projection, canonical encounter mutation, provenance merge and conflicts, mobile synchronization and projection, file CLI/bootstrap, and static fixture generation.
@@ -161,7 +163,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - The existing draft-report PostgreSQL integration suite provides prior art for stable identities, revisions, reconciliation audit, and signed immutability. Existing encounter-document, NEMSIS data-model, incident-flow, offline-report, review, accessibility, persistence, and static-deployment suites provide prior art for catalog validation, document preservation, UI projection, and end-to-end behavior.
 - A guard test changes fixture values or compares unique fixture markers to prove the UI source is the JSON sample rather than browser constants.
 
-# Out of Scope
+## Out of Scope
 
 - The production REST ingestion endpoint, HTTP controller, network delivery, bearer authentication, mutual TLS, vendor credential provisioning, rotation, revocation, or rate limiting.
 - A quarantine administration or reprocessing workflow.
@@ -176,7 +178,7 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - Backward-compatible migration of existing synthetic, database, or browser data.
 - Normal application-startup data deletion.
 
-# Further Notes
+## Further Notes
 
 - The implementation is intentionally broad below the UI: all valid NEMSIS 3.5.1 EMSDataSet elements are retained, while mobile presentation remains a small configured projection.
 - The current catalog model records core datatype and NV/PN capability but may need enrichment to validate named XSD attributes such as `PhoneNumberType`. Attribute validation must come from pinned source artifacts rather than permissive arbitrary metadata.
@@ -185,4 +187,4 @@ Make the canonical NEMSIS encounter document the browser's sole durable encounte
 - The canonical encounter model version bump is intentionally allowed because existing data may be discarded. Schema, TypeScript contracts, validators, persistence, API DTOs, and fixtures must advance together.
 - Source payloads contain patient identifiers and contact information even though mobile hides them. Tests and examples must remain conspicuously synthetic, and production storage must apply clinical-data security and retention controls.
 - Future REST behavior should preserve the agreed single-message JSON semantics and distinguish created, replayed, quarantined, conflicting, invalid, and applied-with-findings outcomes, but those HTTP mappings are documentation only in this feature.
-- The earlier red Remove-button work already present on the feature branch remains part of the direct canonical group-editing behavior. The unrelated deletion of `.humans/NOTES.md` must remain untouched.
+- The earlier red Remove-button work already present on the feature branch remains part of the direct canonical group-editing behavior.

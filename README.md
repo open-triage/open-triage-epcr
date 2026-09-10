@@ -8,6 +8,10 @@ Browser-based electronic patient care reporting, initially modeled on NEMSIS 3.5
 - `apps/api`: NestJS API
 - `packages/contracts`: shared, framework-independent types and form definitions
 - `supabase`: local Supabase configuration and SQL migrations
+- `docs`: product requirements, architecture notes, and operational runbooks
+
+The product requirements documents are indexed in
+[`docs/prds/README.md`](docs/prds/README.md).
 
 ## Start
 

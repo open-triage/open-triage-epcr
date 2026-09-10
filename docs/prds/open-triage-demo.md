@@ -1,4 +1,6 @@
-# Problem Statement
+# OpenTriage Demo PRD
+
+## Problem Statement
 
 Ambulance clinicians need an electronic patient care reporting system that supports rapid bedside capture, complete clinical documentation, trustworthy signing, and later correction without silently rewriting the medical record. Existing products may be costly, closed, difficult to adapt to regional practice, or structured around one interoperability standard rather than the needs of the clinicians and healthcare region using them.
 
@@ -8,7 +10,7 @@ The product must also establish its open-source promise early. The application m
 
 The current repository is an early scaffold. It has a Next.js web application, a NestJS API, shared TypeScript contracts, PostgreSQL/Supabase migrations, and a basic service worker, but it does not yet implement the clinical domain, NEMSIS catalog import, form configuration, offline report persistence, authoritative signing, amendments, audit history, demo lifecycle, or the agreed phone and desktop experiences.
 
-# Solution
+## Solution
 
 Build a synthetic-data-only OpenTriage demo that lets a shared Demo user receive a simulated dispatch assignment or start a blank ePCR, capture time-sensitive information on an Android phone, complete the full report on a PC or tablet, resolve validation findings, sign an immutable clinical snapshot, create structured amendments, inspect the audit history, and generate a watermarked print/PDF representation.
 
@@ -18,7 +20,7 @@ The Android phone experience will prioritize assigned calls, acknowledgement, op
 
 The demo will run as a guarded public sandbox using fixed Demo credentials and shared synthetic data. Seeded baseline records and the default form are immutable. Visitor-created records and temporary form versions are disposable, rate-limited, and retained for no more than 24 hours. An enforced demo deployment profile will prevent the environment from being mistaken for production clinical software.
 
-# User Stories
+## User Stories
 
 1. As an evaluator, I want to use OpenTriage without paying a license fee or creating a proprietary service account, so that I can assess and self-host the complete core product.
 2. As an open-source contributor, I want the application source and build process to be available under a strong copyleft license, so that hosted modifications remain available to their users.
@@ -138,16 +140,16 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 116. As an open-source consumer, I want no proprietary runtime dependency for core functionality, so that self-hosting remains meaningful.
 117. As an outside contributor, I want to retain copyright in my contribution while certifying my right to submit it, so that participation does not require broad copyright assignment.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Product and licensing
+### Product and licensing
 
 - The application is licensed under AGPL-3.0. Reusable interoperability libraries are licensed under Apache-2.0.
 - Contributions use Developer Certificate of Origin sign-off without copyright assignment.
 - Core installation and operation must not require a paid OpenTriage service or proprietary runtime dependency.
 - Third-party terminology packages are separate configuration artifacts unless their redistribution rights are verified.
 
-## NEMSIS Catalog and Terminology module
+### NEMSIS Catalog and Terminology module
 
 - A deterministic importer converts the supplied NEMSIS 3.5.1 XSD package into a versioned starter catalog and an import report.
 - The source manifest records the official source URL, asserted version, package checksum, and import timestamp.
@@ -159,7 +161,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Terminology snapshots are versioned, local, and available offline. A coded option preserves system, code, version, localized display, and active/deprecated state.
 - Live terminology service access may help future administrators but cannot be required during bedside entry.
 
-## Versioned Form Engine module
+### Versioned Form Engine module
 
 - A form definition contains stable sections, fields, repeatable groups, presentation metadata, rules, terminology bindings, translations, and validation policy.
 - Structural versions are language-neutral. Localized labels and help text are attached by locale, with visible fallback behavior.
@@ -175,7 +177,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - One Administrator may publish in the demo. The model leaves room for an optional future multi-approver policy.
 - Option label changes, additions, and removals create future code-list/form versions. Removal deprecates an option for future forms and never invalidates existing drafts or records.
 
-## Custom element mapping
+### Custom element mapping
 
 - Custom elements use an immutable application UUID plus a deployment namespace and human-readable slug. They never impersonate NEMSIS `e...` identifiers.
 - Every published custom element must be representable by NEMSIS `eCustomConfiguration` and `eCustomResults`.
@@ -185,7 +187,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Publication preview displays the projected `eCustom` representation. Incompatible custom elements block publication.
 - Patient-level NEMSIS XML import/export is not part of the demo; the compatibility rule preserves a viable future adapter boundary.
 
-## Clinical Record Domain module
+### Clinical Record Domain module
 
 - Incident/call and patient-care report are separate aggregates. One incident may link to several ePCRs; each ePCR has exactly one patient.
 - A report references its incident, patient identity state, form version, status, mutable draft revision, clinical entries, validation state, and eventual signed snapshot.
@@ -205,7 +207,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - The effective clinical view may present corrected values but must expose the original and complete amendment chain.
 - Operational call state and report completion are separate state machines. Clear never signs a report.
 
-## Clinical API and Persistence module
+### Clinical API and Persistence module
 
 - All report, entry, status, signing, amendment, user, form, publication, and audit mutations pass through the NestJS API.
 - The browser does not write clinical records directly to Supabase or PostgreSQL.
@@ -217,7 +219,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - The demo reduces report access to its shared synthetic account. Future access can use organizational, assignment, and care-team policy without encoding creator-only ownership.
 - The data model represents one regional organization per Live installation. Separate healthcare regions use separate installations; there is no initial healthcare multi-tenancy model.
 
-## Audit module
+### Audit module
 
 - Audit events cover report creation, viewing, committed editing, operational status changes, signing, amendment, export, user/capability changes, form publication, and administrative configuration.
 - Audit events are append-only. Correction creates a later event.
@@ -226,7 +228,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Administrators cannot edit or delete audit events.
 - Demo audit data is disposable with the synthetic artifact lifecycle. Production independent audit storage and retention are future work.
 
-## Offline Capture and Synchronization module
+### Offline Capture and Synchronization module
 
 - The installed PWA caches the application shell, current form version, assigned/current synthetic report, and locally queued commands.
 - IndexedDB stores the active draft and queue. Local storage intended for small preferences or tokens does not hold clinical payloads.
@@ -238,7 +240,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Reset, expiry, and clear-device operations wipe local demo clinical data.
 - The demo does not claim production-grade local encryption. HTTPS is required.
 
-## Phone Clinical Experience module
+### Phone Clinical Experience module
 
 - Android Chrome is the primary demo client. The minimum supported portrait viewport is 360 by 800 CSS pixels; landscape remains usable.
 - Phone design is a single-column, touch-first reworking of the attached visual prototype rather than a literal implementation.
@@ -251,7 +253,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Incomplete quick entries are permitted, labeled, and carried into signing validation.
 - The phone is not required to provide the complete narrative, signing, review, form-builder, or advanced administrative experience.
 
-## Desktop/Tablet Clinical Experience module
+### Desktop/Tablet Clinical Experience module
 
 - PC/tablet provides full form documentation, comprehensive validation cleanup, narrative editing, signing, amendment history, audit history, and report print/PDF.
 - No report search or flexible filtering is included. The UI provides only status-oriented lists needed for assigned, active, documentation-remaining, and recent signed synthetic reports.
@@ -259,7 +261,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - The Documenter can reopen their shared synthetic records and inspect immutable signed content and amendments.
 - PDF/print output is watermarked as synthetic and includes form version, signed revision, amendments, validation acknowledgements, and generation time. Generation creates an export audit event.
 
-## Administration Experience module
+### Administration Experience module
 
 - Advanced administration targets PC/tablet. Phone administration is not required.
 - The demo includes a synthetic personnel directory with activation/deactivation and assignment of Documenter and Administrator capability bundles.
@@ -268,7 +270,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - The form builder supports catalog lookup, curated addition, custom elements, field and section arrangement, visibility, requiredness, allowed absence states, terminology binding, option maintenance, conditional rules, localization, preview, validation, change notes, and publication.
 - The default published form and seeded baseline records are immutable in the public sandbox. Visitors may create temporary derived versions.
 
-## Shared Demo Sandbox module
+### Shared Demo Sandbox module
 
 - The public sandbox uses a fixed Demo username and password and a shared synthetic workspace. It intentionally does not implement visitor isolation or session transfer.
 - The same credentials can be used on phone and PC. All visitors can see the shared visitor-created data, subject to guarded demo behavior.
@@ -281,7 +283,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Production mode requires separate explicit configuration and refuses startup when demo credentials or synthetic-only shortcuts remain enabled.
 - Free-text areas retain warnings because automated PHI detection is not considered reliable enforcement.
 
-## Deployment and Open-Source Distribution module
+### Deployment and Open-Source Distribution module
 
 - Kubernetes is the supported deployment platform for the DigitalOcean demo and future regional installations.
 - A versioned Helm chart or equivalent manifests cover web, API, database migration execution, ingress, health checks, resource requests/limits, persistent services, secret references, and demo cleanup jobs.
@@ -291,14 +293,14 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Release builds generate an SBOM, scan for known vulnerable dependencies and incompatible licenses, publish license notices, and reject proprietary core-runtime requirements.
 - Telemetry is optional and self-hosted by default. Operational metrics and sanitized errors exclude report values, narratives, patient fields, credentials, and access tokens.
 
-## Accessibility and performance
+### Accessibility and performance
 
 - Core create, edit, validate, sign, amend, configure, and audit flows target WCAG 2.2 AA.
 - Controls provide screen-reader labels, visible focus, scalable text, sufficient contrast, keyboard access where applicable, non-color status cues, and at least 44 by 44 CSS-pixel primary touch targets.
 - On documented modest Android hardware and throttled test conditions, cached offline reopening targets approximately two seconds, ordinary field interaction targets under 100 milliseconds, and uncached usable load targets within five seconds on a reasonable 4G connection.
 - Autosave must not block typing.
 
-# Testing Decisions
+## Testing Decisions
 
 - Good tests verify externally observable behavior and stable module contracts rather than internal implementation details.
 - All ten major modules are in the required test scope: NEMSIS Catalog and Terminology, Versioned Form Engine, Clinical Record Domain, Clinical API and Persistence, Offline Capture and Synchronization, Phone Clinical Experience, Desktop/Tablet Clinical Experience, Administration Experience, Shared Demo Sandbox, and Deployment/Open-Source Distribution.
@@ -320,7 +322,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - At least one modest physical Android phone receives a manual release check; desktop emulation alone is insufficient.
 - End-to-end release acceptance covers both entry paths and the complete agreed workflow: simulate and acknowledge dispatch, start blank, phone quick capture, desktop completion, conditional validation, permitted absence, warning acknowledgement, signing, structured amendment, audit history, PDF/print, form publication, option deprecation, custom-element validation, offline recovery, idempotent retry, and demo expiry.
 
-# Out of Scope
+## Out of Scope
 
 - Real patient data or any claim that the public demo is suitable for clinical use.
 - Production-grade identity, password lifecycle, SITHS, legally verified electronic signatures, or production credential enforcement.
@@ -347,7 +349,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 - Kubernetes as a requirement for ordinary local development.
 - A prescribed proprietary telemetry, identity, storage, terminology, secrets, or deployment service.
 
-# Further Notes
+## Further Notes
 
 - The attached HTML prototype is design reference material rather than an exact implementation specification. Its clinical sections, event timeline, quick actions, validation cues, and visual language may inform the new UI, but the phone experience should be substantially reworked.
 - The public demo's shared credentials intentionally trade visitor isolation and reliable user attribution for minimal setup. Device/session identity supplements the shared persona in the audit trail, but it does not identify a real individual.

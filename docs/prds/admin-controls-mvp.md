@@ -1,10 +1,12 @@
-# Problem Statement
+# Admin Controls MVP PRD
+
+## Problem Statement
 
 A Swedish EMS agency cannot currently configure and activate its Stationary documentation form without developer or database assistance. Form behavior, catalog metadata, validation, synthetic fixtures, and session behavior are spread across generated assets, database records, and application constants. This prevents an installation owner from adapting the product to local clinical practice and leaves no safe end-to-end proof that self-service clinical configuration is viable.
 
 The complete administration vision includes users, roles, units, agency profile, appearance, settings, audit exploration, integrations, portable packages, and advanced catalog and form management. Building all of those areas before testing clinical configuration would delay the most consequential learning: whether a representative administrator can use guided controls to publish a valid Stationary form that clinicians can actually complete and sign against without changing historical reports.
 
-# Solution
+## Solution
 
 Build the smallest secure, database-backed Admin experience that lets one installation owner create a new immutable catalog version, tailor an immutable Stationary form version to that catalog, preview and activate it as the agency default, and prove that a clinician can use it successfully.
 
@@ -16,7 +18,7 @@ New reports will pin the newly active catalog and form versions. Existing report
 
 Success means a representative agency administrator completes the entire configuration journey in less than 30 minutes without developer or database help, after which a clinician successfully completes and signs a new report while an older report remains unchanged. Authorization bypass, clinical-data corruption, historical mutation, or failure to complete the configured report is an automatic MVP failure.
 
-# User Stories
+## User Stories
 
 1. As an installation owner, I want to administer Stationary clinical configuration without developer or database help, so that the agency can adapt documentation to Swedish practice.
 2. As an installation operator, I want to provision the first owner through a secure CLI, so that the installation does not ship with production default credentials.
@@ -72,9 +74,9 @@ Success means a representative agency administrator completes the entire configu
 52. As a keyboard-only owner, I want to complete the entire functional Admin journey without a pointer, so that the MVP is accessible.
 53. As a user with low vision, I want visible focus, labeled validation, sufficient contrast, and non-color-only states, so that the functional Admin journey meets WCAG 2.2 AA.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Identity, Sessions, and Authorization
+### Identity, Sessions, and Authorization
 
 - Extend the provider-neutral application identity model with local credentials, temporary-password state, durable sessions, revocation, and authentication audit events.
 - Provision and reset the MVP owner and clinician through operator CLI commands. Both roles use the same credential-reset service and forced-password-change behavior.
@@ -86,7 +88,7 @@ Success means a representative agency administrator completes the entire configu
 - Use least-privilege database access and organization/capability-aware database enforcement where practical. Index foreign keys and authorization predicates.
 - The new signed offline-grant architecture is deferred. Existing queued clinical-draft behavior should not be intentionally removed, but production-ready offline reload and expired-session recovery are not MVP claims.
 
-## Admin Application Shell
+### Admin Application Shell
 
 - Extend the existing presentation selector at the same application endpoint to support the role-aware values Mobile, Stationary, and Admin.
 - Combined clinician-administrator users begin in clinical mode. Admin-only users begin in Admin mode.
@@ -97,7 +99,7 @@ Success means a representative agency administrator completes the entire configu
 - Provide a minimal landing view with the current owner identity, active catalog version, active Stationary form version, and entry into the configuration journey.
 - Show placeholders for Users, Roles, Units, Agency Profile, Validation, Appearance, System Settings, Configuration History, Audit Log, Integrations, and advanced Dashboard content. Placeholders must be clearly non-interactive and announce that the capability is unavailable in this release.
 
-## Catalog Authoring
+### Catalog Authoring
 
 - Store canonical, schema-versioned catalog JSON as the authoritative representation. Use validated relational projections for integrity, runtime lookup, and performance where appropriate.
 - Support one editable catalog draft cloned from the active version. Apply revision preconditions to every save.
@@ -110,7 +112,7 @@ Success means a representative agency administrator completes the entire configu
 - Validate the complete canonical catalog, calculate its stable content hash, generate/verify projections, require a change note, and publish it as a new immutable version.
 - Do not activate a catalog independently for reports. It becomes clinically relevant through a published and activated form pinned to it.
 
-## Stationary Form Authoring
+### Stationary Form Authoring
 
 - Store canonical, schema-versioned form JSON as authoritative and preserve the existing normalized publication projections.
 - Provide one form draft at a time with revision-precondition saves.
@@ -124,7 +126,7 @@ Success means a representative agency administrator completes the entire configu
 - Require structural validation, a generated summary of the edited structure, and a change note before publication.
 - Make a published form and its child configuration immutable and permanently pinned to its creation catalog.
 
-## Activation and Clinical Runtime
+### Activation and Clinical Runtime
 
 - Keep form publication and agency activation as distinct explicit owner actions.
 - Maintain one agency-wide active Stationary form for the MVP. Unit-specific overrides are deferred.
@@ -134,14 +136,14 @@ Success means a representative agency administrator completes the entire configu
 - Do not change Mobile form configuration or treat Mobile rendering as an MVP administration target.
 - Preserve old catalog/form versions for all historical and in-progress reports. No rollback UI or historical recombination is included.
 
-## Minimal Audit Evidence
+### Minimal Audit Evidence
 
 - Record immutable events for successful and failed authentication, forced password changes, catalog publication, form publication, form activation, and denied privileged requests.
 - Include actor, organization, time, action, target/version IDs, result, change note where applicable, and safe content hashes.
 - Never store passwords, raw session tokens, secrets, or clinical content in administrative audit events.
 - Do not implement audit browsing, filtering, export, correction, or deletion UI in the MVP.
 
-## Selectable Test and Demo Configuration Foundation
+### Selectable Test and Demo Configuration Foundation
 
 - Define independent schema-validated JSON settings for synthetic fixture enablement, sample dispatch assignment, synthetic-data banner, retention duration, authentication-policy values, read-only administration, and download/export restrictions.
 - Ship distinct safe production and synthetic demo baseline JSON. Do not derive behavior from an organization ID, organization name, hostname, credential, or monolithic hard-coded `demo` branch.
@@ -150,38 +152,38 @@ Success means a representative agency administrator completes the entire configu
 - Define read-only-admin and download/export restriction values in the configuration schema, but defer the database-backed demo Admin showcase and its demo-admin login.
 - Do not expose a System Settings editor for these controls in the MVP.
 
-## Concurrency, Performance, and Accessibility
+### Concurrency, Performance, and Accessibility
 
 - Assume one active owner-author and one draft per catalog/form domain. Parallel drafts, collaborative editing, and merges are deferred.
 - Reject stale revisions to protect against overwrites from multiple tabs.
 - Support responsive server-side search and bounded pagination over the complete current element catalog. Broader administrative capacity benchmarks are deferred.
 - Meet WCAG 2.2 AA for the functional desktop journey, including keyboard navigation, focus management, accessible names, status announcements, non-color-only validation states, and contrast.
 
-# Testing Decisions
+## Testing Decisions
 
 Good tests verify externally observable behavior and durable safety properties rather than internal class structure, component boundaries, or SQL formatting. Every functional MVP module requires automated testing; placeholder panels require only shell, accessibility, and non-interaction coverage.
 
-## Identity and Authorization Tests
+### Identity and Authorization Tests
 
 - Database/API integration tests cover CLI-created users, temporary-password enforcement, successful and failed login, durable sessions, logout, reset revocation, expiry, disabled users, CSRF protection, and capability enforcement.
 - Test missing, wrong, or client-forged organization and capability claims.
 - Test direct API access to every MVP mutation rather than relying on hidden UI controls.
 - Extend the repository's existing clinician-session and PostgreSQL integration patterns.
 
-## Catalog Tests
+### Catalog Tests
 
 - Unit-test canonical schema parsing, hashing, element-identity/datatype immutability, supported constraint edits, code addition, label edits, enabled state, ordering, defaults, and duplicate-code rejection.
 - Database/API integration tests verify draft revision conflicts, validation failures, immutable publication, relational projection consistency, change notes, and preservation of old catalog versions.
 - Test that agency requiredness overrides imported NEMSIS requiredness in runtime validation.
 
-## Form Builder Tests
+### Form Builder Tests
 
 - Unit-test catalog-to-layout cloning, missing/disabled reference diagnostics, element addition, duplicate prevention, removal, and element/section ordering.
 - Database/API integration tests verify stale draft rejection, catalog pinning, structural validation, immutable publication, and separation of publication from activation.
 - Component tests cover the searchable catalog picker, accessible move controls, remove confirmations, collapsible sections, validation feedback, and change summary.
 - Extend the repository's existing form-publication, Stationary layout, and validation tests.
 
-## Preview and Clinical Acceptance Tests
+### Preview and Clinical Acceptance Tests
 
 - Verify preview uses the real Stationary rendering behavior while never creating or changing a clinical report.
 - Add an end-to-end browser journey in which the owner changes one code list and one requiredness rule; adds, removes, and reorders elements; removes and reorders sections; previews; publishes; and activates the form.
@@ -189,26 +191,26 @@ Good tests verify externally observable behavior and durable safety properties r
 - Verify a report created before activation retains its exact catalog, form structure, validation behavior, and rendering.
 - Extend existing Stationary navigation, completion, signing, presentation-mode, and browser-persistence journeys.
 
-## Shell, Audit, and Demo-Configuration Tests
+### Shell, Audit, and Demo-Configuration Tests
 
 - Test role-aware mode availability, clinical default mode, blocking Admin entry while a report is open, online-only behavior, and placeholder semantics.
 - Verify required audit events and redaction through database/API integration tests without building an Audit interface.
 - Test synthetic fixture, sample dispatch, and banner settings independently to prove they are not keyed to a hard-coded demo identity.
 - Verify production baseline settings do not inherit synthetic demo selections.
 
-## Accessibility Tests
+### Accessibility Tests
 
 - Combine automated accessibility checks with a keyboard-only Playwright journey covering Admin entry, catalog editing, form editing, preview, publication, and activation.
 - Test visible focus, accessible names/descriptions, dialog focus management, collapsible state, picker results, reorder announcements, validation status, and non-color-only feedback.
 - Follow the repository's existing accessibility journey and Stationary component precedents.
 
-## Success and Failure Evaluation
+### Success and Failure Evaluation
 
 - Observe at least one representative agency administrator attempting the complete journey without developer/database assistance.
 - Success requires completion in less than 30 minutes, successful clinician completion/signing, and unchanged behavior for an older report.
 - Treat authorization bypass, data corruption, mutation of a published version or historical report, duplicate form elements, or inability to sign the configured report as an automatic failure regardless of elapsed time.
 
-# Out of Scope
+## Out of Scope
 
 - Functional Users or Roles panels, custom roles, role-definition portability, ownership transfer UI, active-session UI, and routine web provisioning.
 - Functional Units, Vehicles, Agency Profile, Appearance, System Settings, Configuration History, Audit Log, Integrations, background-job, or advanced Dashboard panels.
@@ -230,7 +232,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Integration status content, integration mutation, endpoints, credentials, vendor mappings, and retry controls.
 - Tablet-specific Admin authoring polish, phone support, and broad administrative scale benchmarks.
 
-# Further Notes
+## Further Notes
 
 - The broader product vision remains documented separately. This MVP intentionally validates only self-service Stationary clinical configuration and its minimum security/runtime dependencies.
 - Existing organization, user, capability, form, catalog, clinical report, and version-pinning foundations should be extended rather than replaced with parallel concepts.

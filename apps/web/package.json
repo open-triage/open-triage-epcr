@@ -15,8 +15,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "generate:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts",
     "check:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts --check",
-    "test:a11y": "playwright test --config ../../playwright.config.ts",
-    "test:deployment": "playwright test --config ../../playwright.deployment.config.ts",
+    "test:a11y": "playwright test --config playwright.config.ts",
+    "test:deployment": "playwright test --config playwright.deployment.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

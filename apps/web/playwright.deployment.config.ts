@@ -4,7 +4,7 @@ const deployedUrl = process.env.PLAYWRIGHT_BASE_URL;
 const localUrl = "http://127.0.0.1:3109";
 
 export default defineConfig({
-  testDir: "./apps/web/e2e",
+  testDir: "./e2e",
   testMatch: "deployment.spec.ts",
   reporter: "line",
   use: {
@@ -16,7 +16,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: deployedUrl ? undefined : {
-    command: "npm run serve:static -w @open-triage/web",
+    command: "npm run serve:static",
     env: { PORT: "3109" },
     url: localUrl,
     reuseExistingServer: false,

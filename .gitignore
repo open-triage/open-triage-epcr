@@ -9,6 +9,8 @@ test-results/
 .env
 .env.local
 deploy/helm/open-triage/values.demo.yaml
+supabase/.branches/
+supabase/.temp/
 *.tsbuildinfo
 .DS_Store
 .claude

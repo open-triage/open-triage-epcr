@@ -1,4 +1,6 @@
-# Problem Statement
+# OpenTriage MVP PRD
+
+## Problem Statement
 
 Ambulance clinicians need to document patient care without a cumbersome interface interrupting clinical work or forcing them to reconstruct events afterward. Before OpenTriage invests in production infrastructure, comprehensive interoperability, administration, or regulatory hardening, it needs evidence that its core documentation interaction is meaningfully easier and smoother for care providers than their current workflow.
 
@@ -6,7 +8,7 @@ The current product roadmap describes a broad demo platform containing clinical 
 
 The MVP must therefore isolate the riskiest product assumption: that an event-first, phone-based workflow can help an ambulance clinician capture and finish a representative encounter smoothly while retaining essential, NEMSIS-derived validation.
 
-# Solution
+## Solution
 
 Build a static, synthetic-data-only Android-phone prototype centered on one prefilled adult chest-pain transport encounter. The clinician records timestamped vital sets, medications, procedures, and notes through persistent quick actions. These entries immediately appear in a chronological timeline. A compact checklist captures essential non-event information such as assessment, disposition, and narrative.
 
@@ -16,7 +18,7 @@ The full applicable NEMSIS recommended medication and procedure lists are pinned
 
 Care providers try the same facilitated scenario on an Android phone. The team observes hesitation, backtracking, missed information, entry flow, and validation recovery, then collects structured qualitative feedback about whether the workflow feels smoother than current documentation. The precise go/no-go threshold will be decided before making the later investment decision.
 
-# User Stories
+## User Stories
 
 1. As an ambulance clinician, I want a documentation workflow optimized for an Android phone, so that I can capture care without navigating a desktop-oriented form.
 2. As an ambulance clinician, I want the prototype to open directly into a synthetic encounter, so that I can evaluate documentation without login or setup friction.
@@ -55,16 +57,16 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 35. As a product evaluator, I want the prototype available at a stable HTTPS URL, so that it can be tested on a physical Android phone without local development setup.
 36. As a product decision-maker, I want to learn whether care providers find the workflow meaningfully smoother than current documentation, so that further investment is based on evidence.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## MVP boundary
+### MVP boundary
 
 - The primary user is an ambulance clinician. Administrator, Reviewer, interoperability, deployment, and audit personas are not MVP users.
 - The problem under test is documentation ease and smoothness, particularly capturing events during care and reviewing a coherent encounter afterward.
 - The MVP is a usability prototype and never accepts or claims suitability for real patient data.
 - The existing broader demo PRD remains a roadmap. It does not define the MVP build boundary.
 
-## Synthetic Encounter Definition module
+### Synthetic Encounter Definition module
 
 - The MVP contains one fixed, prefilled adult chest-pain transport encounter.
 - Patient and dispatch context is synthetic and loaded automatically.
@@ -74,7 +76,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Each included definition records its NEMSIS element or group identity and the subset of source requirements needed by the prototype.
 - The scenario and field mapping are version-controlled static assets.
 
-## NEMSIS Terminology Assets module
+### NEMSIS Terminology Assets module
 
 - The full applicable NEMSIS recommended medication and procedure lists are included rather than scenario-only subsets.
 - Lists are pinned to explicit source releases and converted into compact local searchable assets during development.
@@ -83,7 +85,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - The search interface exposes understandable labels while preserving the corresponding codes.
 - The module provides a small stable interface for searching and resolving coded concepts; generalized terminology administration is not included.
 
-## Event Documentation Model module
+### Event Documentation Model module
 
 - The prototype has one in-browser encounter state.
 - Vitals, medications, procedures, and notes are canonical timestamped repeatable entries with stable local identities.
@@ -93,7 +95,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - A compact checklist stores the curated non-event values, including assessment, disposition, and narrative.
 - Event state and checklist state feed one validation and review model.
 
-## Fixed NEMSIS Validation module
+### Fixed NEMSIS Validation module
 
 - Validation is mandatory in the MVP and is fixed to the curated scenario definition.
 - Every included field and group applies the relevant NEMSIS 3.5.1 datatype, cardinality, usage, and permitted `NV`/`PN` constraints extracted from the supplied schemas and associated lists.
@@ -103,7 +105,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Plausibility warnings may be included for curated vital-sign inputs when they are explicitly defined as prototype warnings rather than NEMSIS conformance rules.
 - There is no generalized expression language, Administrator rule builder, runtime XSD validation, XML generation, Schematron execution, or claim of full NEMSIS conformance.
 
-## Phone Clinical Experience module
+### Phone Clinical Experience module
 
 - Android Chrome is the target browser and a 360 by 800 CSS-pixel portrait viewport is the minimum design reference.
 - The interface is event-first rather than a conventional large section form.
@@ -115,7 +117,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Continue editing and reset are available because all data is synthetic and no legal signature boundary exists.
 - The prototype uses the attached design as visual context only and may substantially rework it for the phone experience.
 
-## Local Prototype Persistence module
+### Local Prototype Persistence module
 
 - Encounter state is saved immediately in browser-local storage appropriate for structured application data.
 - Refreshing or reopening the prototype on the same browser restores the in-progress encounter.
@@ -123,7 +125,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - There is no server, shared record, account, cross-device continuation, synchronization queue, or concurrent editing.
 - Service-worker caching and installable PWA behavior are not MVP requirements.
 
-## Prototype Safety and Hosting module
+### Prototype Safety and Hosting module
 
 - The prototype opens directly with no login.
 - A persistent notice identifies it as a synthetic-data-only usability prototype that is not for clinical use.
@@ -132,7 +134,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Kubernetes, persistent infrastructure, database migrations, secrets management, and server cleanup are not dependencies.
 - No embedded third-party analytics, session recording, or clinical-content telemetry is included.
 
-## Clinician Evaluation Protocol module
+### Clinician Evaluation Protocol module
 
 - Evaluation uses facilitated sessions with a consistent scenario prompt and task sequence.
 - Facilitators observe hesitation, backtracking, missed fields, quick-action use, terminology search, validation recovery, and completion behavior.
@@ -143,13 +145,13 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Consistent preference for existing workflows, confusion about the event-first model, or repeated missed critical information is failure evidence.
 - The exact quantitative go/no-go threshold is unresolved by decision and must be defined before using results for a consequential investment decision.
 
-## Accessibility fundamentals
+### Accessibility fundamentals
 
 - The MVP requires large touch targets, readable contrast and typography, non-color status cues, labeled controls, visible focus, and basic keyboard and screen-reader semantics.
 - Formal WCAG 2.2 AA certification and exhaustive assistive-technology testing are not prerequisites for initial clinician sessions.
 - Accessibility problems observed during evaluation are captured as product feedback.
 
-# Testing Decisions
+## Testing Decisions
 
 - Good tests verify externally observable behavior and stable module interfaces rather than component internals or implementation details.
 - All eight MVP modules are selected for testing: Synthetic Encounter Definition, NEMSIS Terminology Assets, Event Documentation Model, Fixed NEMSIS Validation, Phone Clinical Experience, Local Prototype Persistence, Prototype Safety and Hosting, and Clinician Evaluation Protocol.
@@ -168,7 +170,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - The evaluation protocol is dry-run before provider sessions to ensure the scenario instructions, observation prompts, and interview questions do not coach participants through the interface.
 - Qualitative clinician feedback is evidence, not an automated test result. The team records both positive and negative observations and does not treat visual preference alone as proof of smoother documentation.
 
-# Out of Scope
+## Out of Scope
 
 - Real patient data, clinical use, or claims of legal record completeness.
 - Dispatch queue, call simulation, assignment, acknowledgement, or blank-record creation.
@@ -197,7 +199,7 @@ Care providers try the same facilitated scenario on an Android phone. The team o
 - Kubernetes, production infrastructure, secrets management, backup, autoscaling, SBOM automation, or deployment portability.
 - Production regulatory, privacy, clinical-safety, identity, audit-retention, or security compliance.
 
-# Further Notes
+## Further Notes
 
 - The MVP intentionally leaves the existing backend scaffold unused. Removing it is unnecessary; making it a prerequisite would add work unrelated to the assumption under test.
 - NEMSIS remains the source for included validation requirements, but the MVP does not import the entire XSD package dynamically or claim that a completed prototype record is NEMSIS conformant.

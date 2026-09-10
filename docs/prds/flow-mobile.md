@@ -1,16 +1,18 @@
-# Problem Statement
+# Mobile Call Flow PRD
+
+## Problem Statement
 
 OpenTriage has a configurable clinical documentation interface and a revisioned clinical-report backend, but the mobile experience opens directly into one synthetic encounter. It does not represent the normal field workflow in which a clinician uses the phone associated operationally with an assigned unit, sees dispatched calls, opens a call exactly once, documents intermittently, and leaves an incomplete unsigned report available for later work.
 
 For this first linked workflow, a demo clinician needs to sign in at the beginning of a shift, see synthetic calls assigned to the demo unit, open a call into the existing configurable documentation form, save without resolving every validation finding, and reopen their unsigned calls. Ambulance connectivity may be intermittent, the browser may be terminated, and the same report may later change on a stationary interface. The system must preserve work without silently duplicating drafts or overwriting concurrent edits.
 
-# Solution
+## Solution
 
 Provide a synthetic-only mobile call workflow around the existing configurable documentation interface. A prefilled demo login establishes the clinician for a fixed, administrator-configurable shift session. The server maps that demo clinician to a demo unit with a default form and supplies a deterministic assigned call. The mobile call list polls for assignments, separates **Assigned calls** from creator-owned **Open calls**, and creates one form-version-pinned draft idempotently when an assignment is opened.
 
 The existing documentation interface remains unchanged. Edits persist immediately on the phone and synchronize to the revisioned backend after a short debounce. Opened calls remain usable offline and survive a complete browser-process restart. **Save & close** returns to the call list even when validation errors remain. Concurrent disjoint edits merge; same-field edits use a guarded latest-client-edit policy with audit retention. Once a stationary workflow completes a report, it leaves the mobile list and can no longer be edited there.
 
-# User Stories
+## User Stories
 
 1. As a demo clinician, I want the login fields prefilled with the demo account, so that I can exercise a recognizable login workflow without setup friction.
 2. As a demo clinician, I want one sign-in to establish my identity for the shift, so that I am not asked to authenticate between calls.
@@ -68,9 +70,9 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 54. As a contributor, I want the critical workflow covered at Android-sized viewports, so that regressions in the target presentation are detected.
 55. As a contributor, I want persistence tested across a complete Chromium process restart using the same browser profile, so that the test covers more than refresh or tab closure.
 
-# Implementation Decisions
+## Implementation Decisions
 
-## Modules
+### Modules
 
 1. **Shift identity and session policy** owns the prefilled demo login, clinician identity, organization-level session duration, automatic expiration, manual logout, and access to user-scoped local state. Its stable boundary exposes the current authenticated clinician and session deadline without coupling downstream modules to credential handling.
 2. **Unit assignment and demo-call generation** owns demo user-to-unit resolution, the unit's default form, assignment lifecycle, foreground/list polling, cancellation, and deterministic synthetic replacement generation. It exposes assignment summaries without exposing report internals.
@@ -79,7 +81,7 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 5. **Mobile workflow shell** owns login presentation, call-list presentation, navigation into the existing documentation interface, Save & close, refresh behavior, and status notices. The existing configurable form stays encapsulated and unchanged.
 6. **Completion reconciliation** owns detection of server-side completion, prevention of further mobile mutation, removal from Open calls, completion notices, and eligible local-cache cleanup.
 
-## Data and domain model
+### Data and domain model
 
 - Add an organization-level session-duration setting with a seeded 14-hour value for the demo organization. No administrator settings UI is included.
 - Represent the demo operational unit, its default form, the demo clinician's unit association, and call assignments as server-authoritative operational data rather than browser constants.
@@ -89,7 +91,7 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 - Existing report form-version pinning remains authoritative. The assignment supplies the unit default form identity; draft creation resolves and pins the latest published version at open time.
 - All new demo incidents, patients, assignments, and reports are explicitly synthetic.
 
-## API contracts and interactions
+### API contracts and interactions
 
 - Authentication establishes the demo clinician and returns or makes available the fixed session deadline. The login UI uses prefilled demo credentials but still requires the user to submit.
 - A clinician-facing call-list query returns authorized assigned-call summaries and creator-owned open-report summaries, including last activity, validation count, and sync-relevant status.
@@ -110,13 +112,13 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 - Completion reconciliation removes completed reports from mobile queries and locally cached actionable state. A client currently editing such a report stops accepting edits and returns to the list with a notice.
 - Existing validation and documentation-interface behavior remain unchanged except that the workflow adds Save & close outside the signing/completion boundary.
 
-## Deployment and configuration
+### Deployment and configuration
 
 - The session duration is server-side organization configuration with a 14-hour demo default. Direct deployment/database configuration is acceptable until a stationary administrator UI exists.
 - The first release uses foreground polling and does not require push infrastructure.
 - The browser cache remains an offline working copy, not the authoritative signed record.
 
-# Testing Decisions
+## Testing Decisions
 
 - Good tests verify externally observable behavior and durable contracts rather than internal component structure or private implementation details.
 - All six modules will be tested.
@@ -132,7 +134,7 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 - Existing API draft-report tests provide prior art for idempotent commands, revision conflicts, and stable identities. Existing web persistence, review-flow, interface-composition, accessibility, and static-deployment tests provide prior art for local recovery and externally observable mobile behavior.
 - Physical Android-device or emulator automation is deferred.
 
-# Out of Scope
+## Out of Scope
 
 - Device enrollment, hardware identification, verification, reassignment, revocation, or QR pairing.
 - CAD or dispatch-system integration.
@@ -150,10 +152,9 @@ The existing documentation interface remains unchanged. Edits persist immediatel
 - Opening a previously unopened assignment while offline.
 - Physical-device Android automation or proof of operating-system process-eviction behavior.
 
-# Further Notes
+## Further Notes
 
 - The current web application is a client-rendered single encounter shell backed by browser local storage. The current API and PostgreSQL schema already support idempotent draft creation, revisioned draft changes, client/device timing metadata, signed immutability, published form-version pinning, and an unsigned operational work queue. The feature should reuse those contracts while adding the missing identity, operational assignment, workflow, and synchronization linkage.
 - The current Playwright projects use desktop Chromium at 360-by-800 and 390-by-844 viewports with touch enabled. Persistent-profile restart coverage will materially improve lifecycle testing, but physical Android testing remains a separate confidence layer.
 - Client wall clocks are not fully trustworthy. Latest-client-edit conflict handling therefore depends on a bounded-skew policy, deterministic server-time fallback, and append-only audit preservation.
 - Local cached data must be keyed by authenticated user and report identity. Because this release is synthetic-only, production-grade at-rest protection and mobile-device management policy are future requirements rather than implied claims.
-- The existing `.humans/NOTES.md` worktree modification predates this feature work and must remain untouched.
