@@ -18,7 +18,6 @@ import {
   purgeCompletedOfflineReports,
   queueDraftChange,
   rebaseQueuedDraftChanges,
-  replaceQueuedDraftChanges,
   reconcileCachedActiveReport,
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
@@ -142,22 +141,6 @@ test("reconnect replay keeps attempted command identities and advances queued re
   assert.equal(cached.report.revision, 6);
   assert.equal(cached.syncStatus, "saved");
   assert.equal(nextDraftChange(storage, opened.report.id), null);
-});
-
-test("a known identity migration replaces the stale queue with one retryable latest command", () => {
-  const storage = memoryStorage();
-  cacheOpenedReport(storage, session, opened, "CALL-51");
-  queueDraftChange(storage, opened.report.id, command("command-1", 4));
-  markDraftChangeAttempted(storage, opened.report.id, "command-1");
-  queueDraftChange(storage, opened.report.id, command("command-2", 5));
-
-  replaceQueuedDraftChanges(storage, opened.report.id, command("replacement-command", 4));
-
-  assert.deepEqual(nextDraftChange(storage, opened.report.id), {
-    command: command("replacement-command", 4),
-    attempted: false,
-  });
-  assert.equal(cachedOpenReports(storage, session.user.id)[0]!.syncStatus, "pending");
 });
 
 test("dispatch reconciliation rebases pending work and updates the offline report snapshot", () => {

@@ -111,22 +111,6 @@ function draftTargetId(reportId: string, targetKind: "group" | "occurrence", ide
   return persistedDraftIdPattern.test(identity) ? identity : stableDraftId(reportId, `${targetKind}:${identity}`);
 }
 
-export function draftCommandUsesLegacyDerivedIds(
-  reportId: string,
-  shell: ShellState,
-  command: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
-): boolean {
-  const legacyGroupIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances
-    .filter((instance) => persistedDraftIdPattern.test(instance.instanceId))
-    .map((instance) => stableDraftId(reportId, `group:${instance.instanceId}`))));
-  const legacyOccurrenceIds = new Set(shell.encounter.document.groups.flatMap((group) => group.instances.flatMap((instance) =>
-    instance.elements.flatMap((element) => element.values
-      .filter((value) => persistedDraftIdPattern.test(value.occurrenceId))
-      .map((value) => stableDraftId(reportId, `occurrence:${value.occurrenceId}`))))));
-  return command.groups.some(({ id }) => legacyGroupIds.has(id))
-    || command.occurrences.some(({ id }) => legacyOccurrenceIds.has(id));
-}
-
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
   if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}), ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };

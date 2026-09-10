@@ -8,7 +8,6 @@ import {
   applyDraftMutationDelta,
   draftMutationDelta,
   draftChangesUrl,
-  draftCommandUsesLegacyDerivedIds,
   deleteDraftReport,
   fetchActiveReport,
   saveDraftReport,
@@ -61,11 +60,6 @@ test("the draft adapter preserves identities rehydrated from PostgreSQL", () => 
   const mutations = shellStateToDraftMutations(reportId, shell);
   assert.ok(mutations.groups.some(({ id }) => id === serverGroupId));
   if (value) assert.ok(mutations.occurrences.some(({ id }) => id === serverOccurrenceId));
-  assert.equal(draftCommandUsesLegacyDerivedIds(reportId, shell, {
-    groups: [{ ...mutations.groups.find(({ id }) => id === serverGroupId)!, id: stableDraftId(reportId, `group:${serverGroupId}`) }],
-    occurrences: value ? [{ ...mutations.occurrences.find(({ id }) => id === serverOccurrenceId)!, id: stableDraftId(reportId, `occurrence:${serverOccurrenceId}`) }] : [],
-  }), true);
-  assert.equal(draftCommandUsesLegacyDerivedIds(reportId, shell, mutations), false);
 });
 
 test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {

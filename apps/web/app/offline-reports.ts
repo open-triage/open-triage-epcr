@@ -204,13 +204,6 @@ export function queueDraftChange(storage: StoragePort, reportId: string, command
   replace(storage, { ...cached, syncStatus: "pending", queuedChanges: queued });
 }
 
-/** Rebuilds an unsynced queue from the latest local document after a known client-identity migration. */
-export function replaceQueuedDraftChanges(storage: StoragePort, reportId: string, command: SaveDraftReportCommand): void {
-  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
-  if (!cached) throw new Error(`Report ${reportId} is not cached for offline use`);
-  replace(storage, { ...cached, syncStatus: "pending", queuedChanges: [{ command, attempted: false }] });
-}
-
 export function nextDraftChange(storage: StoragePort, reportId: string): QueuedDraftChange | null {
   return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges[0] ?? null;
 }

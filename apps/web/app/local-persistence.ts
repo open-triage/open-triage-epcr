@@ -1,17 +1,16 @@
 import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 import type { EncounterDefinition } from "./encounter-definition";
 import { EncounterDocumentError, loadEncounterDocument } from "./encounter-document";
-import { migrateLegacyIncidentDocument } from "./incident-document";
 import { saveCanonicalEvent } from "./canonical-events";
 import { DEMO_FALLBACK_DATE } from "./demo-provenance";
-import { bundledEncounterDefinition, createInitialShellState, type EncounterEvent, type ShellState } from "./standard-encounter";
+import { bundledEncounterDefinition, type EncounterEvent, type ShellState } from "./standard-encounter";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
 export const REPORT_SYNC_STORAGE_PREFIX = "open-triage:report-sync-v1";
 export const RECOVERY_STORAGE_KEY = `${STORAGE_KEY}:recovery`;
 export const LEGACY_STORAGE_KEYS = ["open-triage:adult-chest-pain-v2"] as const;
 export const PERSISTENCE_VERSION = 5 as const;
-const LEGACY_PERSISTENCE_VERSIONS = [2, 3] as const;
+export const PREVIOUS_PERSISTENCE_VERSION = 4 as const;
 export const ENCOUNTER_EXTENSION_KEY = "x-open-triage-standard-form" as const;
 export const ENCOUNTER_EXTENSION_VERSION = "1.0.0" as const;
 
@@ -101,64 +100,38 @@ export function loadShellStateResult(
     if (!parsed || typeof parsed !== "object") return { status: "invalid", reason: "saved state must be an object", recoveryKey: preserveForRecovery(storage, serialized, key) };
     const record = parsed as Record<string, unknown>;
     const isCurrentEnvelope = record.persistenceVersion === PERSISTENCE_VERSION && record.document && typeof record.document === "object" && record.workflow && typeof record.workflow === "object";
-    const isCanonicalEventsEnvelope = record.persistenceVersion === 4 && record.document && typeof record.document === "object" && record.workflow && typeof record.workflow === "object";
-    const isPreviousEnvelope = LEGACY_PERSISTENCE_VERSIONS.includes(record.persistenceVersion as 2 | 3) && record.state && typeof record.state === "object";
-    if (record.persistenceVersion !== undefined && !isCurrentEnvelope && !isCanonicalEventsEnvelope && !isPreviousEnvelope) {
+    const isPreviousEnvelope = record.persistenceVersion === PREVIOUS_PERSISTENCE_VERSION && record.document && typeof record.document === "object" && record.workflow && typeof record.workflow === "object";
+    if (!isCurrentEnvelope && !isPreviousEnvelope) {
       return { status: "invalid", reason: `saved persistence version ${String(record.persistenceVersion)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
-    const currentDocument = isCurrentEnvelope || isCanonicalEventsEnvelope ? record.document as Record<string, unknown> : null;
-    const currentWorkflow = isCurrentEnvelope || isCanonicalEventsEnvelope ? record.workflow as Partial<ShellState> : null;
-    const isEnvelope = isPreviousEnvelope;
-    const candidate = (isCurrentEnvelope || isCanonicalEventsEnvelope ? currentWorkflow : isEnvelope ? record.state : record) as Partial<ShellState> & { encounter?: Record<string, unknown> };
+    const currentDocument = record.document as Record<string, unknown>;
+    const candidate = record.workflow as Partial<ShellState>;
     const extension = currentDocument?.[ENCOUNTER_EXTENSION_KEY] as Record<string, unknown> | undefined;
-    if ((isCurrentEnvelope || isCanonicalEventsEnvelope) && (!extension || extension.version !== ENCOUNTER_EXTENSION_VERSION)) {
+    if (!extension || extension.version !== ENCOUNTER_EXTENSION_VERSION) {
       return { status: "invalid", reason: `saved extension version ${String(extension?.version)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
-    const candidateEncounter = candidate.encounter;
     const savedDefinition = {
-      id: isCurrentEnvelope || isCanonicalEventsEnvelope ? (currentDocument?.formProfile as Record<string, unknown> | undefined)?.id as string ?? null : typeof candidateEncounter?.definitionId === "string" ? candidateEncounter.definitionId : null,
-      version: isCurrentEnvelope || isCanonicalEventsEnvelope ? Number((currentDocument?.formProfile as Record<string, unknown> | undefined)?.version) || null : Number.isInteger(candidateEncounter?.definitionVersion) ? candidateEncounter!.definitionVersion as number : null,
+      id: (currentDocument.formProfile as Record<string, unknown> | undefined)?.id as string ?? null,
+      version: Number((currentDocument.formProfile as Record<string, unknown> | undefined)?.version) || null,
     };
     const pinnedProfile = expectedFormProfile ?? { id: definition.id, version: String(definition.version) };
-    const expectedDefinition = isCurrentEnvelope || isCanonicalEventsEnvelope
-      ? { id: pinnedProfile.id, version: Number(pinnedProfile.version) }
-      : { id: definition.id, version: definition.version };
+    const expectedDefinition = { id: pinnedProfile.id, version: Number(pinnedProfile.version) };
     if (savedDefinition.id !== expectedDefinition.id || savedDefinition.version !== expectedDefinition.version) {
       return { status: "incompatible", savedDefinition, expectedDefinition, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
     if (!candidate.view || !["timeline", "checklist", "review"].includes(candidate.view)) return { status: "invalid", reason: "saved view is not supported", recoveryKey: preserveForRecovery(storage, serialized, key) };
-    const persistedEvents = isCanonicalEventsEnvelope ? extension?.events : isCurrentEnvelope ? [] : candidateEncounter?.events;
+    const persistedEvents = isPreviousEnvelope ? extension.events : [];
     if (!Array.isArray(persistedEvents)) return { status: "invalid", reason: "saved encounter events must be an array", recoveryKey: preserveForRecovery(storage, serialized, key) };
     if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
     if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
 
-    const initialDocument = createInitialShellState(definition).encounter.document;
-    const legacyEncounter = (candidateEncounter ?? {}) as Record<string, unknown>;
-    const needsIncidentMigration = !isCurrentEnvelope && !isCanonicalEventsEnvelope && record.persistenceVersion !== 3;
     const migrated = !isCurrentEnvelope;
-    let document = currentDocument
-      ? loadEncounterDocument(currentDocument, {
-          formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] },
-          catalogFields: pinnedProfile.catalogFields,
-        })
-      : candidateEncounter?.document
-      ? loadEncounterDocument(candidateEncounter.document, { formProfiles: { [definition.id]: [String(definition.version)] } })
-      : initialDocument;
-    const hasLegacyIncident = candidateEncounter?.crew !== undefined || candidateEncounter?.incident !== undefined;
-    if (needsIncidentMigration && hasLegacyIncident) {
-      document = migrateLegacyIncidentDocument(document, {
-        crew: candidateEncounter.crew,
-        incident: candidateEncounter.incident,
-        events: persistedEvents as ReadonlyArray<Record<string, unknown>>,
-      });
-    }
-    if (!isCurrentEnvelope && record.persistenceVersion === 3 && ["currentTime", "crew", "incident"].some((key) => key in candidateEncounter!)) {
-      throw new Error("saved state contains parallel legacy incident data");
-    }
-    const { patient: _legacyPatient, currentTime: _legacyCurrentTime, crew: _legacyCrew, incident: _legacyIncident, ...encounterWithoutLegacy } = legacyEncounter;
-    void [_legacyPatient, _legacyCurrentTime, _legacyCrew, _legacyIncident];
+    let document = loadEncounterDocument(currentDocument, {
+      formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] },
+      catalogFields: pinnedProfile.catalogFields,
+    });
     const baselineIds = new Set(["baseline-1", "baseline-2", "baseline-3", "baseline-4"]);
-    if ((isCurrentEnvelope || isCanonicalEventsEnvelope) && persistedEvents.some((event) => baselineIds.has(event.id))) {
+    if (persistedEvents.some((event) => baselineIds.has(event.id))) {
       throw new Error("saved state contains parallel legacy incident timeline data");
     }
     for (const event of persistedEvents.filter((event) => !baselineIds.has(event.id))) {
@@ -167,14 +140,17 @@ export function loadShellStateResult(
     const state = {
       ...candidate,
       encounter: {
-        ...(isCurrentEnvelope || isCanonicalEventsEnvelope ? { definitionId: definition.id, definitionVersion: definition.version, synthetic: true, ...(extension?.customData ? { customData: extension.customData } : {}) } : encounterWithoutLegacy),
+        definitionId: definition.id,
+        definitionVersion: definition.version,
+        synthetic: true,
+        ...(extension.customData ? { customData: extension.customData } : {}),
         document,
       },
       noteDraft: candidate.noteDraft ? { ...candidate.noteDraft, date: candidate.noteDraft.date ?? DEMO_FALLBACK_DATE } : null,
       procedureDraft: candidate.procedureDraft ? { ...candidate.procedureDraft, date: candidate.procedureDraft.date ?? DEMO_FALLBACK_DATE } : null,
       vitalDraft: candidate.vitalDraft ? { ...candidate.vitalDraft, date: candidate.vitalDraft.date ?? DEMO_FALLBACK_DATE, values: { ...candidate.vitalDraft.values, nullValues: candidate.vitalDraft.values.nullValues ?? {} } } : null,
       medicationDraft: candidate.medicationDraft ? { ...candidate.medicationDraft, date: candidate.medicationDraft.date ?? DEMO_FALLBACK_DATE } : null,
-      acknowledgedWarnings: Array.isArray(isCurrentEnvelope || isCanonicalEventsEnvelope ? extension?.acknowledgedWarnings : candidate.acknowledgedWarnings) ? (isCurrentEnvelope || isCanonicalEventsEnvelope ? extension!.acknowledgedWarnings : candidate.acknowledgedWarnings) : [],
+      acknowledgedWarnings: Array.isArray(extension.acknowledgedWarnings) ? extension.acknowledgedWarnings : [],
     } as unknown as ShellState;
     return { status: "restored", state, migrated };
   } catch (error) {

@@ -81,6 +81,8 @@ returns HTTP 409. Saves from a stale base revision reconcile per stable target:
 disjoint edits merge, collisions prefer the latest client time within the five-minute
 future-skew guard, and equal or untrustworthy times follow server receipt order. Losing
 values and both commands' lineage remain in append-only reconciliation audit data.
+The supported local persistence window and byte-preserving recovery behavior are
+documented in [`docs/browser-state-compatibility.md`](docs/browser-state-compatibility.md).
 
 ## Kubernetes demo
 

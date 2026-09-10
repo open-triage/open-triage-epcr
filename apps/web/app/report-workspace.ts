@@ -10,7 +10,6 @@ import {
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   draftMutationDelta,
-  draftCommandUsesLegacyDerivedIds,
   encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
@@ -30,7 +29,6 @@ import {
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
   removeSignedOfflineReport,
-  replaceQueuedDraftChanges,
   queueDraftChange,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
@@ -196,19 +194,11 @@ export function useReportWorkspace({
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
     cacheLocalReportDocument(window.localStorage, report.id, shell.encounter.document);
-    const queuedBeforeSave = nextDraftChange(window.localStorage, report.id);
     const projected = shellStateToDraftMutations(report.id, shell, persistedDraft.current);
     const mutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
       projected,
       persistedDraft.current,
     );
-    if (queuedBeforeSave && draftCommandUsesLegacyDerivedIds(report.id, shell, queuedBeforeSave.command)) {
-      replaceQueuedDraftChanges(window.localStorage, report.id, {
-        commandId: crypto.randomUUID(), expectedRevision: revision.current,
-        authorId: session.user.id, deviceId: `web:${presentationRef.current}:${report.id}`,
-        clientTime: new Date().toISOString(), ...mutations,
-      });
-    }
     if (skipReconciledQueue.current) {
       skipReconciledQueue.current = false;
       return;
