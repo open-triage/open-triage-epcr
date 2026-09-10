@@ -1617,8 +1617,15 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     body: JSON.stringify(amendmentCommand)
   });
   assert.equal(unauthenticatedAmendment.status, 404);
-  const authenticatedAmendment = await request(`/reports/${reportId}/amendments`, "POST", amendmentCommand);
-  assert.equal(authenticatedAmendment.response.status, 404);
+  const authenticatedAmendment = await fetch(`${baseUrl}/reports/${reportId}/amendments`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${integrationAccessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(amendmentCommand)
+  });
+  assert.equal(authenticatedAmendment.status, 404);
   assert.deepEqual((await client.query(`select
       (select count(*)::integer from clinical.amendment where report_id = $1) as amendments,
       (select count(*)::integer from clinical_audit.event where report_id = $1 and action = 'amend') as audits`,
