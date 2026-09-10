@@ -55,3 +55,15 @@ test("rejects a patient-specific editor section", () => {
   profile.sections.push({ id: "patient", visible: true, quickActionLabel: "Edit patient", elements: [] });
   assert.throws(() => compileEncounterFormProfile(profile), /unsupported section patient/);
 });
+
+test("rejects obsolete completed-summary event ordering while retaining vital summary order", () => {
+  const profile = structuredClone(standardEncounterFormProfile) as unknown as {
+    summary: { vitalOrder: string[]; sectionOrder?: string[] };
+  };
+  profile.summary.sectionOrder = ["vitals", "medication", "procedure", "note"];
+
+  assert.throws(() => compileEncounterFormProfile(profile),
+    /\$\.summary\.sectionOrder: unsupported completed-summary configuration/);
+  delete profile.summary.sectionOrder;
+  assert.doesNotThrow(() => compileEncounterFormProfile(profile));
+});
