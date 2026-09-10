@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
-import { parseInstallationSettings } from "@open-triage/contracts";
+import { parseInstallationSettings, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import schema from "@open-triage/contracts/installation-settings.schema-1.0.0.json";
 import production from "@open-triage/contracts/config/installation.production.json";
 import syntheticDemo from "@open-triage/contracts/config/installation.synthetic-demo.json";
 import { loadInstallationConfiguration, selectedInstallationSettings } from "../app/installation-settings";
+import { createClinicianSession } from "../app/clinician-session";
 
 test("production and synthetic demo baselines conform to the installation settings schema", () => {
   const validate = new Ajv2020({ strict: true }).compile(schema);
@@ -70,6 +71,29 @@ test("server-backed web clients load the API's authoritative installation profil
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
     if (originalApiUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
     else process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+  }
+});
+
+test("the static installation's provided demo credentials authenticate through the live session adapter", async () => {
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const originalBaseline = process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
+  try {
+    process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+    process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
+    const installation = await loadInstallationConfiguration();
+    assert.deepEqual(installation.demoLogin, {
+      username: SYNTHETIC_DEMO_FIXTURE.clinicianUsername,
+      password: SYNTHETIC_DEMO_FIXTURE.password,
+    });
+
+    const session = await createClinicianSession(installation.demoLogin!);
+    assert.equal(session.user.displayName, "Synthetic Clinician");
+    assert.equal(session.organization.name, "OpenTriage Synthetic EMS");
+  } finally {
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+    if (originalBaseline === undefined) delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
+    else process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = originalBaseline;
   }
 });
 
