@@ -124,6 +124,90 @@ jobs:
       - name: Test the root-hosted web artifact
         run: npm run test:deployment -w @open-triage/web
 
+  api-runtime-image-validation:
+    name: Validate / Pruned API runtime image
+    needs: validate-deployment-revision
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: open_triage_image_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d open_triage_image_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      API_RUNTIME_IMAGE: open-triage-api:runtime-validation
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_image_test
+      PATIENT_KEY_INSTALLATION_ID: 00000000-0000-4000-8000-000000000001
+      PATIENT_KEY_VERSION: "1"
+      PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - name: Build the API runtime image
+        run: docker build -f deploy/docker/api.Dockerfile -t "$API_RUNTIME_IMAGE" .
+      - name: Run migrations from the runtime image
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL
+          "$API_RUNTIME_IMAGE"
+          npm run migrate -w @open-triage/database
+      - name: Run the synthetic bootstrap from the runtime image
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL
+          -e PATIENT_KEY_INSTALLATION_ID
+          -e PATIENT_KEY_VERSION
+          -e PATIENT_KEY_SECRET_BASE64
+          "$API_RUNTIME_IMAGE"
+          npm run bootstrap:synthetic:runtime -w @open-triage/database
+      - name: Start the pruned API
+        run: >-
+          docker run --detach --name open-triage-api-runtime --network host
+          -e DATABASE_URL
+          -e PATIENT_KEY_INSTALLATION_ID
+          -e PATIENT_KEY_VERSION
+          -e PATIENT_KEY_SECRET_BASE64
+          -e OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE=synthetic-demo
+          -e WEB_ORIGIN=http://localhost:3000
+          "$API_RUNTIME_IMAGE"
+      - name: Require the pruned API health check
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3001/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs open-triage-api-runtime
+          exit 1
+      - name: Inspect dependencies and operational assets
+        run: |
+          docker run --rm "$API_RUNTIME_IMAGE" sh -ec '
+            for package in typescript @nestjs/cli next react concurrently tsx eslint; do
+              test ! -e "/workspace/node_modules/$package"
+            done
+            test ! -e /workspace/apps/api/src
+            for script in migrate bootstrap-synthetic-installation retention verify-recovery verify-reporting-replica; do
+              test -f "/workspace/packages/database/scripts/$script.mjs"
+              node --check "/workspace/packages/database/scripts/$script.mjs"
+            done
+            test -f /workspace/supabase/migrations/202608300001_initial.sql
+            test -f /workspace/apps/web/app/data/nemsis-data-model-3.5.1.json
+            test -f /workspace/packages/database/config/database-operations-policy.json
+          '
+      - name: Stop the runtime API
+        if: always()
+        run: docker rm --force open-triage-api-runtime 2>/dev/null || true
+
   helm-validation:
     name: Validate / Helm chart
     needs: validate-deployment-revision
@@ -158,6 +242,7 @@ jobs:
       - application-validation
       - database-validation
       - web-deployment-validation
+      - api-runtime-image-validation
       - helm-validation
     runs-on: ubuntu-latest
     steps:

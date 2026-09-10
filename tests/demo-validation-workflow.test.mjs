@@ -60,6 +60,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "application-validation",
     "database-validation",
     "web-deployment-validation",
+    "api-runtime-image-validation",
     "helm-validation",
   ]) {
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"));
@@ -75,6 +76,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "npm run test:integration -w @open-triage/api",
     "npm run scale:test:ci -w @open-triage/database",
     "npm run test:deployment -w @open-triage/web",
+    "docker build -f deploy/docker/api.Dockerfile",
     "helm lint",
     "helm template",
   ]) {
