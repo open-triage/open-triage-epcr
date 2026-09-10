@@ -22,6 +22,10 @@ const session: ClinicianSession = {
   capabilities: ["installation:administer", "clinical:document"]
 };
 const productionSettings = parseInstallationSettings(production);
+const unavailablePanels = [
+  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
+  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
+] as const;
 
 test("Admin panels use one persistent side-tab navigator", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
@@ -29,7 +33,8 @@ test("Admin panels use one persistent side-tab navigator", () => {
   assert.match(markup, /class="admin-tabs"/);
   assert.match(markup, />Element catalog<\/button>/);
   assert.match(markup, />Stationary form<\/button>/);
-  assert.match(markup, />Audit Log<\/button>/);
+  for (const panel of unavailablePanels) assert.match(markup, new RegExp(`>${panel}<\\/button>`));
+  assert.equal((markup.match(/<button type="button"/g) ?? []).length, 14);
   assert.doesNotMatch(markup, /admin-placeholder-grid/);
 });
 

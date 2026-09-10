@@ -9,6 +9,10 @@ const dashboard = {
   reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10_485_760,
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
+const unavailablePanels = [
+  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
+  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
+] as const;
 
 function assignedCalls(route: Route) {
   return route.fulfill({
@@ -65,10 +69,15 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByText("Used by new reports", { exact: true })).toHaveCount(0);
   await expect(page.locator(".session-identity")).toHaveText("Signed in as Installation Owner");
   await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
-  await page.getByRole("button", { name: "Users", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
-  await expect(page.locator(".admin-placeholder")).toHaveText(/Unavailable in this release/);
-  await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
+  for (const panel of unavailablePanels) {
+    const destination = page.getByRole("button", { name: panel, exact: true });
+    await destination.focus();
+    await destination.press("Enter");
+    await expect(destination).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: panel, exact: true })).toBeVisible();
+    await expect(page.locator(".admin-placeholder")).toContainText("Unavailable in this release");
+    await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
+  }
 });
 
 test("an open clinical report blocks entry into Admin until Save and close", async ({ page }) => {
