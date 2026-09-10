@@ -9,6 +9,10 @@ const dashboard = {
   reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10_485_760,
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
+const unavailablePanels = [
+  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
+  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
+] as const;
 
 function assignedCalls(route: Route) {
   return route.fulfill({
@@ -65,10 +69,15 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByText("Used by new reports", { exact: true })).toHaveCount(0);
   await expect(page.locator(".session-identity")).toHaveText("Signed in as Installation Owner");
   await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
-  await page.getByRole("button", { name: "Users", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Users", exact: true })).toBeVisible();
-  await expect(page.locator(".admin-placeholder")).toHaveText(/Unavailable in this release/);
-  await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
+  for (const panel of unavailablePanels) {
+    const destination = page.getByRole("button", { name: panel, exact: true });
+    await destination.focus();
+    await destination.press("Enter");
+    await expect(destination).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: panel, exact: true })).toBeVisible();
+    await expect(page.locator(".admin-placeholder")).toContainText("Unavailable in this release");
+    await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
+  }
 });
 
 test("an open clinical report blocks entry into Admin until Save and close", async ({ page }) => {
@@ -95,7 +104,7 @@ test("a forged browser capability cannot bypass direct Admin API authorization",
   await expect(page.getByRole("heading", { name: "Active configuration" })).toHaveCount(0);
 });
 
-test("owner previews the unsaved form through Stationary without creating a clinical record", async ({ page }) => {
+test("owner edits and previews the unsaved form through Stationary without creating a clinical record", async ({ page }) => {
   const definition = { schemaVersion: 1, sections: [
     { key: "patient", presentation: { title: "Patient preview" }, fields: [
       { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" }, required: true },
@@ -118,10 +127,29 @@ test("owner previews the unsaved form through Stationary without creating a clin
   }) }));
   await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ contentType: "application/json", body: "null" }));
   await page.route("**/api/admin/form-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(draft) }));
-  await page.route("**/api/admin/form-drafts/draft-id/catalog-elements**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], nextOffset: null }) }));
+  await page.route("**/api/admin/form-drafts/draft-id/catalog-elements**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    items: [{ elementId: "ePatient.01", name: "Patient Care Report Number", description: "The patient care report number.",
+      baseDatatype: "string", groupPath: ["ePatient"] }], nextOffset: null
+  }) }));
   await signInAsCombinedOwner(page);
   await page.getByRole("button", { name: "Admin" }).click();
   await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+
+  const editor = page.locator(".form-editor");
+  await editor.getByRole("button", { name: "Add ePatient.01" }).click();
+  await expect(editor.getByRole("button", { name: "ePatient.01 is already in the form" })).toBeDisabled();
+  await editor.getByRole("button", { name: "Move ePatient.01 up" }).click();
+  await expect(editor.getByText("Unsaved changes. Moved ePatient.01 up.", { exact: true })).toBeVisible();
+
+  await editor.getByRole("button", { name: "Move assessment up" }).click();
+  await expect(editor.getByText("Unsaved changes. Moved assessment up.", { exact: true })).toBeVisible();
+  await editor.getByRole("button", { name: "Remove assessment" }).click();
+  const removal = editor.getByRole("alertdialog", { name: "Remove assessment?" });
+  await expect(removal).toContainText("impression (eSituation.11)");
+  await removal.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(editor.getByRole("button", { name: "Remove assessment" })).toHaveCount(0);
+  await expect(editor.getByText("Unsaved changes. Removed assessment and 1 affected field.", { exact: true })).toBeVisible();
+
   const popupPromise = page.waitForEvent("popup");
   await page.getByRole("button", { name: "Preview Stationary form" }).click();
   const preview = await popupPromise;
@@ -129,7 +157,7 @@ test("owner previews the unsaved form through Stationary without creating a clin
   await expect(preview.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible();
   await expect(preview.getByRole("navigation", { name: "Stationary record sections" }).getByText("Patient preview", { exact: true })).toBeVisible();
   await expect(preview.locator('[data-element-id="ePatient.02"]').first()).toBeVisible();
-  await expect(preview.locator('[data-element-id="ePatient.01"]')).toHaveCount(0);
+  await expect(preview.locator('[data-element-id="ePatient.01"]').first()).toBeVisible();
   await preview.locator('[data-element-id="ePatient.02"] input').first().fill("Preview surname");
   await preview.getByRole("button", { name: "Return to form draft" }).click();
   await expect.poll(() => preview.isClosed()).toBe(true);

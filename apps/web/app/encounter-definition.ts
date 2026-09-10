@@ -133,7 +133,6 @@ export type EncounterDefinition = {
       readonly groups: ReadonlyArray<{ readonly severity: ReviewSeverity; readonly title: string; readonly empty: string }>;
       readonly eventTypeOrder: ReadonlyArray<ConfiguredEventType>;
     };
-    readonly summary: { readonly eventTypeOrder: ReadonlyArray<ConfiguredEventType> };
   };
   readonly events: { readonly note: NoteEventDefinition; readonly procedure: ProcedureEventDefinition; readonly medication: MedicationEventDefinition; readonly vitals: VitalGroupDefinition };
 };
@@ -183,7 +182,7 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   rejectUnsupportedKeys(root, "", ["schemaVersion", "id", "version", "synthetic", "labels", "composition", "events"]);
   requiredStrings(root.labels, "labels", ["incident"]);
   const composition = isRecord(root.composition) ? root.composition : {};
-  rejectUnsupportedKeys(composition, "composition", ["quickActionOrder", "review", "summary"]);
+  rejectUnsupportedKeys(composition, "composition", ["quickActionOrder", "review"]);
   const quickActionIds = ["vitals", "medication", "procedure", "note"] as const;
   if (!Array.isArray(composition.quickActionOrder)
     || composition.quickActionOrder.length !== quickActionIds.length
@@ -212,8 +211,6 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
     }
   };
   validateEventTypeOrder(review.eventTypeOrder, "composition.review.eventTypeOrder");
-  const summary = isRecord(composition.summary) ? composition.summary : {};
-  validateEventTypeOrder(summary.eventTypeOrder, "composition.summary.eventTypeOrder");
   const events = isRecord(root.events) ? root.events : {};
   rejectUnsupportedKeys(events, "events", ["note", "procedure", "medication", "vitals"]);
   const note = isRecord(events.note) ? events.note : {};

@@ -7,6 +7,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
+import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 import { selectedInstallationSettings } from "../config/installation-settings.js";
 
@@ -410,37 +411,35 @@ export class AssignedCallsService {
     documentingUserId: string,
     replacementAssignment: AssignedCall | null
   ): Promise<OpenAssignmentResponse> {
-    const reports = await this.dataSource.query<ReportRow[]>(`
-      select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
-             dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
-      from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
-    `, [reportId, assignment.organization_id, documentingUserId]);
-    const report = reports[0];
-    if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
-    if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
-    // These immutable/read-only projections are independent. Loading them after commit both
-    // shortens the assignment lock and lets the connection pool overlap their database waits.
-    const [document, conflicts, clinicalForm] = await Promise.all([
-      encounterDocument(this.dataSource, report.id),
-      dispatchConflicts(this.dataSource, report.id),
-      clinicalFormConfiguration(this.dataSource, report.form_version_id, report.catalog_release_id),
-    ]);
-    return {
-      assignmentId: assignment.id,
-      report: {
-        id: report.id,
-        documentingUserId: report.documenting_user_id,
-        formVersionId: report.form_version_id,
-        catalogReleaseId: report.catalog_release_id,
-        clinicalForm,
-        revision: Number(report.revision),
-        status: "draft",
-        document,
-        ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
-        dispatchConflicts: conflicts,
-        ...(cancellation(report) ? { dispatchCancellation: cancellation(report) } : {})
-      },
-      replacementAssignment
-    };
+    return withReportSnapshot(this.dataSource, async (manager) => {
+      const reports = await manager.query<ReportRow[]>(`
+        select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
+               dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
+        from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
+      `, [reportId, assignment.organization_id, documentingUserId]);
+      const report = reports[0];
+      if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
+      if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
+      const document = await encounterDocument(manager, report.id);
+      const conflicts = await dispatchConflicts(manager, report.id);
+      const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id);
+      return {
+        assignmentId: assignment.id,
+        report: {
+          id: report.id,
+          documentingUserId: report.documenting_user_id,
+          formVersionId: report.form_version_id,
+          catalogReleaseId: report.catalog_release_id,
+          clinicalForm,
+          revision: Number(report.revision),
+          status: "draft" as const,
+          document,
+          ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
+          dispatchConflicts: conflicts,
+          ...(cancellation(report) ? { dispatchCancellation: cancellation(report) } : {})
+        },
+        replacementAssignment
+      };
+    });
   }
 }

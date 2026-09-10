@@ -22,7 +22,7 @@ const analyticsMigrationSql = analyticsMigrations.join("\n");
 const currentAnalyticsViewMigration = analyticsMigrations.findLast((sql) =>
   sql.includes("-- BEGIN GENERATED PSEUDONYMOUS EPCR VIEW COLUMNS")
 );
-const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyingConfig,
+const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   retentionPolicy, retentionPolicyConfig, retentionRunbook, retentionScript,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
@@ -31,7 +31,6 @@ const [mapping, migration, catalog, scheduler, runbook, privacyPolicy, identifyi
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
-  readFile(path.join(repoRoot, "deploy/kubernetes/analytics-projector-cronjobs.yaml"), "utf8"),
   readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
   readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),
@@ -334,11 +333,9 @@ test("dispatch cancellation and post-signature proposals remain durable without 
   assert.match(migration, /post_signature_dispatch_delivery_append_only[\s\S]*prevent_update_or_delete/);
 });
 
-test("schedules bounded observable projection work inside the freshness target", () => {
-  assert.match(scheduler, /schedule: "\*\/2 \* \* \* \*"/);
-  assert.match(scheduler, /concurrencyPolicy: Forbid/);
-  assert.match(scheduler, /ANALYTICS_PROJECTOR_BATCH_SIZE[\s\S]*value: "500"/);
-  assert.match(scheduler, /ANALYTICS_PROJECTOR_FRESHNESS_TARGET_SECONDS[\s\S]*value: "300"/);
+test("documents bounded observable projection work inside the freshness target", () => {
+  assert.match(runbook, /analytics\.batchSize/);
+  assert.match(runbook, /--show-only templates\/analytics-cronjobs\.yaml/);
   assert.match(runbook, /five-minute\s+signed-to-analytical freshness target/);
   for (const operation of ["Replay", "reconciliation", "Backfill", "projection_health", "projection_failures"]) {
     assert.ok(runbook.includes(operation), `runbook is missing ${operation}`);

@@ -21,7 +21,6 @@ test("the active standard encounter has one neutral identity and fixed compositi
   assert.deepEqual(configuredQuickActions(standardEncounterDefinition).map(({ id }) => id), ["vitals", "medication", "procedure", "note"]);
   assert.ok(Object.values(standardEncounterDefinition.events).every((event) => event.quickAction.visible));
   assert.deepEqual(standardEncounterDefinition.composition.review.eventTypeOrder, ["vitals", "medication", "procedure", "note"]);
-  assert.deepEqual(standardEncounterDefinition.composition.summary.eventTypeOrder, ["vitals", "medication", "procedure", "note"]);
   assert.doesNotMatch(JSON.stringify(standardEncounterDefinition), /adult[-_ ]chest|chest[- ]pain|cardiac form/i);
 });
 

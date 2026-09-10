@@ -14,7 +14,7 @@ const [policy, harness, evidencePolicy, workflow] = await Promise.all([
 ]);
 
 test("records approved production scale capacity and measurable thresholds", () => {
-  assert.equal(policy.policyVersion, "production-scale-performance-1.0.0");
+  assert.equal(policy.policyVersion, "production-scale-performance-1.1.0");
   assert.equal(policy.policyStatus, "approved-under-requesting-owner-delegation");
   assert.deepEqual(policy.capacityModel, {
     onlineYears: 10,
@@ -32,16 +32,37 @@ test("records approved production scale capacity and measurable thresholds", () 
     "peakCpuPercentMax", "connectionUtilizationPercentMax", "storageHeadroomPercentMin",
     "commonQueryTempBytesMax"
   ]) assert.equal(typeof policy.thresholds[name], "number", `missing numerical threshold ${name}`);
+  assert.equal(policy.productionSchemaCalibration.minimumHeadroomPercent, 25);
+  assert.deepEqual(policy.productionSchemaCalibration.dataset, {
+    profile: "ci", analyticsReports: 10_000, repeatableElements: 40_000,
+    measuredClinicalReports: 500, measuredAmendments: 25, onlineYears: 10
+  });
+  assert.equal(policy.productionSchemaCalibration.productionSchema.wideColumnCount, 566);
+  assert.equal(policy.productionSchemaCalibration.productionSchema.repeatableColumnCount, 66);
+  for (const name of ["projectorReportsPerSecond", "projectorBatchMaxMs",
+    "reconciliationReportsPerSecond", "amendmentReplayReportsPerSecond"]) {
+    const basis = policy.productionSchemaCalibration.thresholdBasis[name];
+    assert.equal(basis.threshold, policy.thresholds[name]);
+    assert.ok(basis.marginPercent >= policy.productionSchemaCalibration.minimumHeadroomPercent);
+    assert.ok(basis.query.length > 0);
+  }
 });
 
 test("scale harness covers representative distributions and preserves executable plans", () => {
   for (const expected of [
-    "scale_validation.report_source", "scale_validation.analytics_wide",
-    "scale_validation.analytics_repeatable", "scale_validation.amendment",
+    "bootstrap:synthetic", "scripts/project-analytics.mjs",
+    "clinical.report", "integration.outbox_event", "analytics_private.epcr",
+    "analytics_private.epcr_repeatable_element", "supabase_migrations.schema_migrations",
     "explain (analyze, buffers, format json)", "for update skip locked",
     "commonWide", "commonRepeatable", "partitionPruning", "reconciliation", "amendmentReplay"
   ]) assert.ok(harness.includes(expected), `scale harness is missing ${expected}`);
-  assert.match(harness, /sparseNarrative/);
+  assert.doesNotMatch(harness, /scale_validation\.(report_source|analytics_wide|analytics_repeatable|amendment)/);
+  assert.match(harness, /productionSchemaEvidence/);
+  assert.match(harness, /wideColumnCount/);
+  assert.match(harness, /environment,/);
+  assert.match(harness, /dataset:/);
+  assert.match(harness, /productionSchema:/);
+  assert.match(harness, /query:/);
   assert.match(harness, /productionOnlyThresholds/);
   assert.match(harness, /pending-production-run/);
   assert.match(harness, /process\.exitCode = 1/);

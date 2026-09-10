@@ -4,6 +4,7 @@ dist/
 coverage/
 packages/database/artifacts/
 apps/web/out/
+/apps/web/public/sw.js
 playwright-report/
 test-results/
 .env

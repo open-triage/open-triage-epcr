@@ -47,8 +47,7 @@ function mergeInstance(
     const localElement = localElements.get(elementId);
     const serverElement = server.elements.find(({ id }) => id === elementId);
     const localChanged = localElement?.values.filter((value) => targets.occurrenceIds.has(targetId(reportId, "occurrence", value.occurrenceId))) ?? [];
-    const localChangedIds = new Set(localChanged.map((value) => targetId(reportId, "occurrence", value.occurrenceId)));
-    const serverValues = serverElement?.values.filter((value) => !localChangedIds.has(targetId(reportId, "occurrence", value.occurrenceId))) ?? [];
+    const serverValues = serverElement?.values.filter((value) => !targets.occurrenceIds.has(targetId(reportId, "occurrence", value.occurrenceId))) ?? [];
     const values = [...serverValues, ...localChanged];
     return values.length ? [{ ...(serverElement ?? localElement!), values }] : [];
   });

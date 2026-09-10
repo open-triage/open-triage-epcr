@@ -35,7 +35,6 @@
     "sectionOrder": ["vitals", "medication", "procedure", "note"]
   },
   "summary": {
-    "sectionOrder": ["vitals", "medication", "procedure", "note"],
     "vitalOrder": ["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14", "eVitals.23", "eVitals.27"]
   }
 }

@@ -74,16 +74,18 @@ test("rejects an unparseable connection string", () => {
 
 test("the harness guards before its first destructive statement runs", async () => {
   const harness = await readFile(path.join(packageRoot, "scripts/run-scale-tests.mjs"), "utf8");
-  const guardIndex = harness.indexOf("assertScratchDatabaseTarget(databaseUrl)");
-  const dropSchemaIndex = harness.indexOf("drop schema if exists scale_validation cascade");
+  const guardIndex = harness.indexOf("assertScratchDatabaseTarget(sourceDatabaseUrl)");
+  const createDatabaseIndex = harness.indexOf("create database ${quoteIdentifier(scratchDatabaseName)}");
   assert.ok(guardIndex >= 0, "run-scale-tests.mjs must call assertScratchDatabaseTarget");
-  assert.ok(dropSchemaIndex >= 0, "run-scale-tests.mjs must still contain the destructive drop schema statement");
-  assert.ok(guardIndex < dropSchemaIndex, "the scratch-database guard must run before the drop schema statement");
+  assert.ok(createDatabaseIndex >= 0, "run-scale-tests.mjs must create a dedicated scratch database");
+  assert.ok(guardIndex < createDatabaseIndex, "the scratch-database guard must run before database creation");
 });
 
-test("the harness documents the schema-fidelity gap as a known, out-of-scope limitation", async () => {
+test("the harness uses production migrations, bootstrap, schemas, and projector", async () => {
   const harness = await readFile(path.join(packageRoot, "scripts/run-scale-tests.mjs"), "utf8");
-  assert.match(harness, /KNOWN LIMITATION/);
-  assert.match(harness, /schema-fidelity gap/);
-  assert.match(harness, /~?700 columns/);
+  assert.match(harness, /bootstrap:synthetic/);
+  assert.match(harness, /scripts\/project-analytics\.mjs/);
+  assert.match(harness, /analytics_private\.epcr/);
+  assert.match(harness, /supabase_migrations\.schema_migrations/);
+  assert.doesNotMatch(harness, /scale_validation\.(report_source|analytics_wide|analytics_repeatable|amendment)/);
 });

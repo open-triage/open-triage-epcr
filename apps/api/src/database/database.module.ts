@@ -1,7 +1,5 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { FormDefinitionEntity } from "./entities/form-definition.entity.js";
-import { PatientCareReportEntity } from "./entities/patient-care-report.entity.js";
 
 @Module({
   imports: [
@@ -16,13 +14,11 @@ import { PatientCareReportEntity } from "./entities/patient-care-report.entity.j
         return {
           type: "postgres" as const,
           url,
-          entities: [FormDefinitionEntity, PatientCareReportEntity],
           synchronize: false,
           logging: process.env.DATABASE_LOGGING === "true"
         };
       }
-    }),
-    TypeOrmModule.forFeature([FormDefinitionEntity, PatientCareReportEntity])
+    })
   ],
   exports: [TypeOrmModule]
 })

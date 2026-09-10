@@ -56,9 +56,6 @@ const normalized = PROCEDURES.map((procedure, index) => ({
   haystack: `${procedure.label} ${procedure.sourceLabel} ${procedure.category} ${procedure.code}`.toLocaleLowerCase(),
 }));
 
-export const COMPLICATIONS = standardEncounterDefinition.events.procedure.complicationOptions;
-export const OUTCOMES = standardEncounterDefinition.events.procedure.outcomeOptions;
-
 export function searchProcedures(query: string, limit = 30, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): ReadonlyArray<ProcedureOption> {
   if (definition.terminology.catalog !== "eProcedures.03") throw new Error(`Unsupported procedure catalog: ${definition.terminology.catalog}`);
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);

@@ -1,9 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
-
-const assignmentId = demoAssignedCalls.assignedCalls[0]!.id;
 
 async function openStationaryRecord(page: import("@playwright/test").Page, assignment = demoOpenAssignment) {
   await page.emulateMedia({ reducedMotion: "reduce" });

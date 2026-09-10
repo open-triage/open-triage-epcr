@@ -1,3 +1,4 @@
+import { DataSource } from "typeorm";
 import { AccountService, type BuiltInAccountRole } from "./account.service.js";
 
 function options(argv: string[]): Map<string, string> {
@@ -52,13 +53,11 @@ async function readTemporaryPassword(): Promise<string> {
   });
 }
 
-type DatabaseClient = { query<T = unknown>(sql: string, parameters?: unknown[]): Promise<T> };
-
-export async function runIdentityAccountCli(client: DatabaseClient, argv: string[]): Promise<Record<string, string>> {
+export async function runIdentityAccountCli(dataSource: DataSource, argv: string[]): Promise<Record<string, string>> {
   const command = argv[0];
   const parsed = options(argv.slice(1));
   const temporaryPassword = await readTemporaryPassword();
-  const service = new AccountService(client);
+  const service = new AccountService(dataSource);
   if (command === "provision") {
     const organizationId = parsed.get("organization-id");
     const username = parsed.get("username");

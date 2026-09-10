@@ -329,15 +329,17 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 });
 
-test("the requested SYN-20260903-005 stale queue is cleared against its saved server revision", async ({ page }) => {
-  const reportId = "568e1a08-ed1e-4eb9-8dbf-3d5cbb56c386";
+test("opening the call list preserves queued edits when background recovery cannot send them", async ({ page }) => {
+  const reportId = openedAssignment.report.id;
+  const commandId = "52000000-0000-4000-8000-000000000013";
+  let syncAttempts = 0;
   const serverCall = {
     reportId,
-    callNumber: "SYN-20260903-005",
-    lastSavedAt: "2026-09-03T15:35:42.682Z",
+    callNumber: assignedCall.callNumber,
+    lastSavedAt: openCalls[0].lastSavedAt,
     syncStatus: "saved",
     validationErrorCount: 0,
-    revision: 43,
+    revision: openedAssignment.report.revision,
     formVersionId: openedAssignment.report.formVersionId,
     catalogReleaseId: openedAssignment.report.catalogReleaseId,
   } as const;
@@ -346,24 +348,32 @@ test("the requested SYN-20260903-005 stale queue is cleared against its saved se
     contentType: "application/json",
     body: JSON.stringify({ openCalls: [serverCall], completedReportIds: [], refreshedAt: new Date().toISOString() }),
   }));
+  await page.route(`**/api/reports/${reportId}/draft-changes`, (route) => {
+    syncAttempts += 1;
+    return route.abort("internetdisconnected");
+  });
   await signIn(page);
-  await page.evaluate(({ call, userId }) => {
+  await page.evaluate(({ call, report, userId, queuedCommandId }) => {
     localStorage.setItem("open-triage:offline-reports-v1", JSON.stringify([{
-      report: { id: call.reportId, revision: 43, formVersionId: call.formVersionId, catalogReleaseId: call.catalogReleaseId, documentingUserId: userId, status: "draft" },
+      report: { ...report, id: call.reportId, revision: call.revision, documentingUserId: userId },
       ownerUserId: userId,
       callNumber: call.callNumber,
       workflowState: "open",
       syncStatus: "pending",
       lastSavedAt: call.lastSavedAt,
       validationErrorCount: 0,
-      queuedChanges: [{ attempted: true, command: { commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 43, authorId: userId, deviceId: `web:${call.reportId}`, clientTime: new Date().toISOString(), groups: [], occurrences: [] } }],
+      queuedChanges: [{ attempted: false, command: { commandId: queuedCommandId, expectedRevision: call.revision, authorId: userId, deviceId: `web:${call.reportId}`, clientTime: new Date().toISOString(), groups: [], occurrences: [] } }],
     }]));
-  }, { call: serverCall, userId: openedAssignment.report.documentingUserId });
+  }, { call: serverCall, report: openedAssignment.report, userId: openedAssignment.report.documentingUserId, queuedCommandId: commandId });
   await page.reload();
 
   const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: serverCall.callNumber });
-  await expect(card).toContainText("Saved");
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toEqual([]);
+  await expect.poll(() => syncAttempts).toBeGreaterThan(0);
+  await expect(card).toContainText("Pending sync");
+  expect(await page.evaluate(() => {
+    const queued = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges;
+    return { length: queued.length, commandId: queued[0]?.command.commandId };
+  })).toEqual({ length: 1, commandId });
 });
 
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {

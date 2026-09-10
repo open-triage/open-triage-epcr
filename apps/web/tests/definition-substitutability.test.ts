@@ -6,7 +6,6 @@ import { encounterEvents } from "../app/canonical-events";
 import { loadShellState, loadShellStateResult, RECOVERY_STORAGE_KEY, saveShellState, type LocalStoragePort } from "../app/local-persistence";
 import {
   EMPTY_VITALS,
-  completedSummaryEvents,
   createInitialShellState,
   encounterDefinitionProvider,
   reviewEncounter,
@@ -22,11 +21,8 @@ function alternateDefinition(): EncounterDefinition {
     ...structuredClone(standardEncounterDefinition),
     id: "test-only-community-response",
     version: 7,
-    composition: {
-      ...structuredClone(standardEncounterDefinition.composition),
-      quickActionOrder: ["vitals", "medication", "procedure", "note"],
-      summary: { eventTypeOrder: ["vitals", "note", "medication", "procedure"] },
-    },
+    composition: { ...structuredClone(standardEncounterDefinition.composition),
+      quickActionOrder: ["vitals", "medication", "procedure", "note"] },
     events: {
       ...structuredClone(standardEncounterDefinition.events),
       note: {
@@ -64,7 +60,7 @@ function memoryStorage(): LocalStoragePort {
   };
 }
 
-test("a test-only definition changes capture, validation, review, and summary through configuration", () => {
+test("a test-only definition changes capture, validation, review, and vital summary through configuration", () => {
   const definition = alternateDefinition();
   assert.deepEqual(definition.events.vitals.fields.slice(0, 2).map(({ id, label }) => ({ id, label })), [
     { id: "pain", label: "Discomfort score" },
@@ -89,7 +85,6 @@ test("a test-only definition changes capture, validation, review, and summary th
   assert.equal(findings[0]?.category, "Field observations");
   assert.match(findings[0]?.message ?? "", /unusual discomfort score/);
   assert.equal(vitalSummary(captured.vitals!, definition), "Discomfort 9");
-  assert.equal(completedSummaryEvents([captured], definition)[0]?.id, captured.id);
 });
 
 test("saved state retains definition identity and restores only for an exact compatible version", () => {

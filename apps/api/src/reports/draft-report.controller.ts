@@ -5,8 +5,6 @@ import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
-import { AmendReportService } from "./amend-report.service.js";
-import type { AmendedReportResult } from "./amend-report.types.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -15,8 +13,7 @@ type ConditionalResponse = { setHeader(name: string, value: string): unknown; st
 export class DraftReportController {
   constructor(
     private readonly reports: DraftReportService,
-    private readonly signing: SignReportService,
-    private readonly amendments: AmendReportService
+    private readonly signing: SignReportService
   ) {}
 
   @Post()
@@ -94,11 +91,6 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string
   ): Promise<SignedReportResult> {
     return this.signing.sign(bearerToken(authorization, cookie), id, body);
-  }
-
-  @Post(":id/amendments")
-  amend(@Param("id", uuidV4) id: string, @Body() body: unknown): Promise<AmendedReportResult> {
-    return this.amendments.amend(id, body);
   }
 
   @Get(":id")

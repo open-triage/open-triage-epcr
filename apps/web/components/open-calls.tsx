@@ -13,28 +13,11 @@ import {
   cachedOpenCalls,
   cachedOpenReports,
   cachedReopenResponse,
-  discardQueuedDraftChanges,
   markDraftChangeAttempted,
   nextDraftChange,
   purgeCompletedOfflineReports,
   removeSignedOfflineReport,
 } from "../app/offline-reports";
-
-const CLEARED_PENDING_REPORT_ID = "568e1a08-ed1e-4eb9-8dbf-3d5cbb56c386";
-const CLEARED_PENDING_REPORT_REVISION = 43;
-const CLEARED_PENDING_REPORT_SAVED_AT = "2026-09-03T15:35:42.682Z";
-const PENDING_CLEARANCE_KEY = `open-triage:pending-sync-clear:${CLEARED_PENDING_REPORT_ID}:v2`;
-
-function clearRequestedPendingReport(storage: Storage): void {
-  if (storage.getItem(PENDING_CLEARANCE_KEY) || !nextDraftChange(storage, CLEARED_PENDING_REPORT_ID)) return;
-  discardQueuedDraftChanges(
-    storage,
-    CLEARED_PENDING_REPORT_ID,
-    CLEARED_PENDING_REPORT_REVISION,
-    CLEARED_PENDING_REPORT_SAVED_AT,
-  );
-  storage.setItem(PENDING_CLEARANCE_KEY, "cleared");
-}
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -169,7 +152,6 @@ export function OpenCalls({
       startOrPausePolling();
     };
     queueMicrotask(() => {
-      clearRequestedPendingReport(window.localStorage);
       const cached = cachedOpenCalls(window.localStorage, session.user.id);
       if (cached.length) {
         callsRef.current = cached;
