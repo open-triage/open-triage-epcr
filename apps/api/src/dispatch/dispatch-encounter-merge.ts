@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { EncounterValue } from "@open-triage/contracts";
 import type { DispatchReceiptWriter } from "./dispatch-receipt.persistence.js";
 import { dispatchEntityId } from "../reports/encounter-document.persistence.js";
+import { comparableScalar, scalarDatabaseMapping, scalarDatabaseValue } from "../reports/canonical-scalar.js";
 
 type JsonRecord = Record<string, unknown>;
 export type IncomingTarget = { occurrenceId: string; elementId: string; groupInstanceId: string; ordinal: number; value: JsonRecord };
@@ -24,9 +25,8 @@ function stable(value: unknown): unknown {
 
 function encounterValue(candidate: unknown): unknown {
   if (!record(candidate)) return candidate;
-  if (["text", "uri", "integer", "numeric", "boolean", "date", "datetime", "time", "duration", "binary"].includes(String(candidate.kind))) {
-    return { kind: "scalar", value: candidate.value };
-  }
+  const scalar = comparableScalar(candidate);
+  if (scalar) return scalar;
   if (candidate.kind === "coded") return {
     kind: "coded", code: candidate.code, system: candidate.system ?? candidate.codeSystem ?? null,
     ...(candidate.display ? { display: candidate.display } : {})
@@ -111,12 +111,9 @@ function columns(value: JsonRecord, base: string): Record<string, unknown> {
     Object.assign(result, { absence_code: nv.code ?? null, absence_display: nv.display ?? null });
   } else if (value.kind === "pertinent-negative") Object.assign(result, { absence_code: value.code, absence_display: value.display ?? null });
   else if (value.kind === "scalar") {
-    const key = base === "integer" ? "value_integer" : base === "decimal" ? "value_numeric"
-      : base === "boolean" ? "value_boolean" : base === "date" ? "value_date"
-        : base === "dateTime" ? "value_datetime" : base === "time" ? "value_time"
-          : base === "duration" ? "value_duration" : base === "binary" ? "value_binary" : "value_text";
-    result.value_kind = base === "dateTime" ? "datetime" : base === "anyURI" ? "uri" : base === "string" ? "text" : base;
-    result[key] = base === "binary" ? Buffer.from(String(value.value), "base64") : value.value;
+    const mapping = scalarDatabaseMapping(base);
+    result.value_kind = mapping.databaseKind;
+    result[mapping.databaseColumn] = scalarDatabaseValue(value.value, base);
     if (["integer", "decimal", "duration"].includes(base)) result.value_lexical = value.lexical ?? String(value.value);
     if (["date", "dateTime", "time"].includes(base)) result.value_precision = value.precision ?? null;
     if (["dateTime", "time"].includes(base)) result.value_utc_offset_minutes = value.utcOffsetMinutes ?? null;
