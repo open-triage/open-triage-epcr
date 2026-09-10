@@ -4,6 +4,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { assertScratchDatabaseTarget } from "./lib/scale-test-guard.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const policyPath = path.join(packageRoot, "config/production-scale-performance.json");
@@ -11,6 +12,10 @@ const policyText = await readFile(policyPath, "utf8");
 const policy = JSON.parse(policyText);
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required to run scale tests");
+// Safety check: this harness is destructive (see resetFixture below) and must never run against
+// a real installation's database. Fails fast, before any connection or statement, unless
+// DATABASE_URL is recognizable as scratch/local or the operator explicitly overrides.
+assertScratchDatabaseTarget(databaseUrl);
 
 function argumentsFrom(argv) {
   const options = { profile: "ci", output: null };
@@ -61,6 +66,14 @@ const explainRolledBack = async (sql, parameters = []) => {
   }
 };
 
+// KNOWN LIMITATION (out of scope for this slice, tracked as a schema-fidelity gap): the fixture
+// below models a small invented analytics schema (report_source/analytics_wide/
+// analytics_repeatable/amendment, roughly 17 columns total) rather than the real production
+// schema, which is generated from the full NEMSIS element catalog and has on the order of
+// ~700 columns. This harness therefore measures representative query, write, partitioning, and
+// projector shapes at the modeled scale — it does not validate against the actual production
+// table/column layout. Closing that gap would mean generating this fixture from the real schema
+// (see packages/database/scripts/generate-nemsis-analytics.mjs) instead of hand-authoring it here.
 async function resetFixture() {
   await client.query("drop schema if exists scale_validation cascade");
   await client.query("create schema scale_validation");
