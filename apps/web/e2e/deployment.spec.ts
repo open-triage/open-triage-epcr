@@ -5,6 +5,9 @@ import syntheticDemoSettings from "@open-triage/contracts/config/installation.sy
 test("the built static export starts and is served from the domain root", async ({ page, request }) => {
   const response = await request.get("/");
   expect(response.status()).toBe(200);
+  const serviceWorker = await request.get("/sw.js");
+  expect(serviceWorker.status()).toBe(200);
+  expect(await serviceWorker.text()).toContain("demo-assigned-calls.json");
 
   await page.route("**/api/installation", async (route) => route.fulfill({
     json: {
