@@ -1,10 +1,10 @@
 {
-  "policyVersion": "production-scale-performance-1.0.0",
+  "policyVersion": "production-scale-performance-1.1.0",
   "policyStatus": "approved-under-requesting-owner-delegation",
   "approval": {
-    "approvedOn": "2026-09-02",
+    "approvedOn": "2026-09-10",
     "approvedBy": "requesting-product-and-operations-owner",
-    "context": "ticket-045-complete-feature-without-further-input"
+    "context": "cleanup-028-production-schema-rebaseline"
   },
   "capacityModel": {
     "onlineYears": 10,
@@ -16,11 +16,11 @@
     "commonRepeatableQueryP95Ms": 500,
     "partitionPrunedQueryP95Ms": 250,
     "signingWritesPerSecond": 100,
-    "projectorReportsPerSecond": 100,
+    "projectorReportsPerSecond": 35,
     "projectorBatchSize": 500,
-    "projectorBatchMaxMs": 5000,
-    "reconciliationReportsPerSecond": 10000,
-    "amendmentReplayReportsPerSecond": 100,
+    "projectorBatchMaxMs": 13000,
+    "reconciliationReportsPerSecond": 50,
+    "amendmentReplayReportsPerSecond": 17,
     "recoveryRpoMinutes": 5,
     "recoveryRtoHours": 4,
     "steadyStateCpuPercentMax": 70,
@@ -28,6 +28,62 @@
     "connectionUtilizationPercentMax": 70,
     "storageHeadroomPercentMin": 30,
     "commonQueryTempBytesMax": 0
+  },
+  "productionSchemaCalibration": {
+    "recordedOn": "2026-09-10",
+    "minimumHeadroomPercent": 25,
+    "dataset": {
+      "profile": "ci",
+      "analyticsReports": 10000,
+      "repeatableElements": 40000,
+      "measuredClinicalReports": 500,
+      "measuredAmendments": 25,
+      "onlineYears": 10
+    },
+    "environment": {
+      "postgresVersion": "17.6",
+      "sharedBuffers": "128MB",
+      "workMem": "4MB",
+      "runner": "local Linux bounded development runner"
+    },
+    "productionSchema": {
+      "appliedMigrations": 11,
+      "wideTable": "analytics_private.epcr",
+      "wideColumnCount": 566,
+      "repeatableTable": "analytics_private.epcr_repeatable_element",
+      "repeatableColumnCount": 66,
+      "projector": "packages/database/scripts/project-analytics.mjs"
+    },
+    "thresholdBasis": {
+      "projectorReportsPerSecond": {
+        "observed": 48.617,
+        "observations": [55.975, 58.874, 48.617],
+        "threshold": 35,
+        "query": "production projector queue mode over 500 signed reports",
+        "marginPercent": 28.0
+      },
+      "projectorBatchMaxMs": {
+        "observed": 10284.526,
+        "observations": [8932.583, 8492.751, 10284.526],
+        "threshold": 13000,
+        "query": "production projector queue mode over 500 signed reports",
+        "marginPercent": 26.4
+      },
+      "reconciliationReportsPerSecond": {
+        "observed": 69.814,
+        "observations": [74.918, 69.814, 74.11],
+        "threshold": 50,
+        "query": "production projector reconcile mode over 500 current reports",
+        "marginPercent": 28.4
+      },
+      "amendmentReplayReportsPerSecond": {
+        "observed": 22.702,
+        "observations": [45.982, 27.955, 22.702],
+        "threshold": 17,
+        "query": "production projector queue mode over 25 amendment events",
+        "marginPercent": 25.1
+      }
+    }
   },
   "profiles": {
     "ci": {
