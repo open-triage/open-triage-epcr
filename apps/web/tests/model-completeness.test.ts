@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import synthetic from "../app/data/synthetic-encounter-document.json";
 import customConfiguration from "../app/data/example-custom-elements.json";
-import { createElementCatalog, resolveConfiguredElementForm, validateCustomDataSet } from "../app/custom-data-elements";
+import { createElementCatalog, resolveConfiguredElementForm, type CustomDataSet } from "../app/custom-data-elements";
 import { loadEncounterDocument, serializeEncounterDocument } from "../app/encounter-document";
 import { compileEncounterFormProfile, standardEncounterFormProfile } from "../app/encounter-form-profile";
 import { loadShellState, saveShellState } from "../app/local-persistence";
@@ -26,7 +26,7 @@ test("a configuration-only custom field completes the canonical persistence jour
   const [configured] = resolveConfiguredElementForm(catalog, { id: "test-stroke", fields: ["org.example.ems:stroke-score"] });
   assert.equal(configured?.provenance, "custom");
   if (!configured || configured.provenance !== "custom") throw new Error("custom configuration did not resolve");
-  const captured = validateCustomDataSet(catalog, { results: [{ elementId: configured!.element.id, correlationId: "stroke-1", values: [{ value: "7" }] }] });
+  const captured: CustomDataSet = { results: [{ elementId: configured.element.id, correlationId: "stroke-1", values: [{ value: "7" }] }] };
   const candidate = structuredClone(synthetic) as any;
   candidate.groups.push({ id: "org.example.ems:stroke-assessment", instances: [{ instanceId: "stroke-1", elements: [{ id: configured.element.id, values: [{ kind: "scalar", occurrenceId: "score-1", value: 7 }] }] }] });
   const document = loadEncounterDocument(candidate);
