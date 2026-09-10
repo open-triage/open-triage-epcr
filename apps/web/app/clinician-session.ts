@@ -1,6 +1,7 @@
 import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
+import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
 export const DEMO_ADMIN_USERNAME = SYNTHETIC_DEMO_FIXTURE.administratorUsername;
@@ -44,25 +45,20 @@ export function clearClinicianSession(storage: Pick<Storage, "removeItem">): voi
   storage.removeItem(CLINICIAN_SESSION_STORAGE_KEY);
 }
 
-function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
-  return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
-}
-
 /** Server-backed demos default to the administrator; static exports retain the clinician-only identity. */
 export function defaultDemoUsername(): string {
-  return apiBaseUrl() ? DEMO_ADMIN_USERNAME : DEMO_CLINICIAN_USERNAME;
+  return browserRequestConfiguration().mode === "server" ? DEMO_ADMIN_USERNAME : DEMO_CLINICIAN_USERNAME;
 }
 
 export async function createClinicianSession(command: CreateClinicianSessionCommand, now = new Date()): Promise<ClinicianSession> {
-  const baseUrl = apiBaseUrl();
-  if (baseUrl) {
-    const response = await fetch(`${baseUrl}/api/sessions`, {
+  const configuration = browserRequestConfiguration();
+  const url = apiRequestUrl("/api/sessions", configuration);
+  if (url) {
+    const response = await fetch(url, browserRequestInit({
       method: "POST",
-      credentials: "include",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(command)
-    });
+    }));
     if (!response.ok) throw new Error(response.status === 401 ? "The username or password is incorrect." : "Sign in is unavailable.");
     return response.json() as Promise<ClinicianSession>;
   }
@@ -84,24 +80,22 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
 }
 
 export async function endClinicianSession(csrfToken: string): Promise<void> {
-  const baseUrl = apiBaseUrl();
-  if (!baseUrl) return;
-  await fetch(`${baseUrl}/api/sessions/current`, {
+  const url = apiRequestUrl("/api/sessions/current");
+  if (!url) return;
+  await fetch(url, browserRequestInit({
     method: "DELETE",
-    credentials: "include",
     headers: { "x-csrf-token": csrfToken }
-  });
+  }));
 }
 
 export async function changeClinicianPassword(currentPassword: string, newPassword: string, csrfToken: string): Promise<ClinicianSession> {
-  const baseUrl = apiBaseUrl();
-  if (!baseUrl) throw new Error("Password replacement is unavailable in the static demonstration.");
-  const response = await fetch(`${baseUrl}/api/sessions/password`, {
+  const url = apiRequestUrl("/api/sessions/password");
+  if (!url) throw new Error("Password replacement is unavailable in the static demonstration.");
+  const response = await fetch(url, browserRequestInit({
     method: "POST",
-    credentials: "include",
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ currentPassword, newPassword, csrfToken })
-  });
+  }));
   if (!response.ok) throw new Error(response.status === 401 ? "The current password is incorrect." : "The password could not be changed.");
   return response.json() as Promise<ClinicianSession>;
 }

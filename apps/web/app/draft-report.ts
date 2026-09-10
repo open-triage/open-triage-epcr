@@ -2,6 +2,12 @@ import type { ActiveReportResource, ClinicalFormConfiguration, DeleteDraftReport
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
+import {
+  apiRequestUrl,
+  browserRequestConfiguration,
+  browserRequestInit,
+  browserRouteUrl,
+} from "./browser-api";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
@@ -232,35 +238,25 @@ export function applyDraftMutationDelta(
   return { groups: [...groups.values()], occurrences: [...occurrences.values()] };
 }
 
-function apiBaseUrl(): string | null {
-  if (process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION === "true") return null;
-  return process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001";
-}
-
 export function usesLocalDemoDrafts(): boolean {
-  return apiBaseUrl() === null;
-}
-
-function routesLocalDemoMutationsToApi(): boolean {
-  return process.env.NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API === "true";
+  return browserRequestConfiguration().mode === "static";
 }
 
 export function draftChangesUrl(reportId: string): string {
-  const base = apiBaseUrl();
-  const path = `/api/reports/${reportId}/draft-changes`;
-  return base ? `${base}${path}` : `${process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") ?? ""}${path}`;
+  return browserRouteUrl(`/api/reports/${reportId}/draft-changes`);
 }
 
 export async function saveDraftReport(csrfToken: string, reportId: string, command: SaveDraftReportCommand): Promise<SavedDraftReport | RetainedSignedDraftAttempt> {
   // The static prototype's durable browser cache is its only backing store. A
   // successful local write is therefore synchronized; no nonexistent HTTP API
   // should leave the browser-only workflow permanently pending.
-  if (apiBaseUrl() === null && !routesLocalDemoMutationsToApi()) {
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) {
     return { id: reportId, status: "draft", revision: command.expectedRevision + 1 };
   }
   let response: Response;
   try {
-    response = await fetch(draftChangesUrl(reportId), { method: "POST", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken, "content-type": "application/json" }, body: JSON.stringify(command) });
+    response = await fetch(draftChangesUrl(reportId), browserRequestInit({ method: "POST", headers: { "x-csrf-token": csrfToken, "content-type": "application/json" }, body: JSON.stringify(command) }));
   } catch {
     throw new Error("offline");
   }
@@ -271,11 +267,11 @@ export async function saveDraftReport(csrfToken: string, reportId: string, comma
 }
 
 export async function deleteDraftReport(csrfToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
-  const base = apiBaseUrl();
-  if (!base) throw new Error("Record deletion requires the database-backed prototype.");
-  const response = await fetch(`${base}/api/reports/${reportId}`, {
-    method: "DELETE", cache: "no-store", credentials: "include", headers: { "x-csrf-token": csrfToken },
-  });
+  const url = apiRequestUrl(`/api/reports/${reportId}`);
+  if (!url) throw new Error("Record deletion requires the database-backed prototype.");
+  const response = await fetch(url, browserRequestInit({
+    method: "DELETE", headers: { "x-csrf-token": csrfToken },
+  }));
   if (!response.ok) {
     if (response.status === 401) throw new Error("Your shift session has ended.");
     if (response.status === 409) throw new Error("Only an open synthetic draft can be deleted.");
@@ -285,19 +281,16 @@ export async function deleteDraftReport(csrfToken: string, reportId: string): Pr
 }
 
 export async function fetchActiveReport(
-  _csrfToken: string,
   reportId: string,
   etag?: string,
 ): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
-  const base = apiBaseUrl();
-  if (!base) return null;
+  const url = apiRequestUrl(`/api/reports/${reportId}/active`);
+  if (!url) return null;
   let response: Response;
   try {
-    response = await fetch(`${base}/api/reports/${reportId}/active`, {
-      cache: "no-store",
-      credentials: "include",
+    response = await fetch(url, browserRequestInit({
       headers: { ...(etag ? { "if-none-match": etag } : {}) },
-    });
+    }));
   } catch {
     throw new Error("offline");
   }
@@ -314,15 +307,13 @@ export async function signDraftReport(
   signerId: string,
   warningAcknowledgements: ReadonlyArray<string>,
 ): Promise<void> {
-  const base = apiBaseUrl();
-  if (!base && !routesLocalDemoMutationsToApi()) return;
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) return;
   const path = `/api/reports/${reportId}/sign`;
   let response: Response;
   try {
-    response = await fetch(base ? `${base}${path}` : path, {
+    response = await fetch(browserRouteUrl(path, configuration), browserRequestInit({
       method: "POST",
-      cache: "no-store",
-      credentials: "include",
       headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
@@ -333,7 +324,7 @@ export async function signDraftReport(
         deviceId: `web:${reportId}`,
         clientTime: new Date().toISOString(),
       }),
-    });
+    }));
   } catch {
     throw new Error("The record could not be signed. Check your connection and try again.");
   }

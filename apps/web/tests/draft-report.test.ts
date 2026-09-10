@@ -78,7 +78,7 @@ test("active report polling sends an ETag and accepts a bodyless unchanged respo
     return new Response(null, { status: 304, headers: { etag: '"report-4-dispatch-2"' } });
   }) as typeof fetch;
   try {
-    assert.equal(await fetchActiveReport("token", reportId, '"report-4-dispatch-2"'), null);
+    assert.equal(await fetchActiveReport(reportId, '"report-4-dispatch-2"'), null);
     assert.equal((headers as Record<string, string>)["if-none-match"], '"report-4-dispatch-2"');
   } finally {
     globalThis.fetch = originalFetch;
@@ -110,7 +110,7 @@ test("active polling and draft saves identify a report completed by another clie
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     globalThis.fetch = (async () => new Response(null, { status: 404 })) as typeof fetch;
-    await assert.rejects(fetchActiveReport("token", reportId), /completed/);
+    await assert.rejects(fetchActiveReport(reportId), /completed/);
 
     globalThis.fetch = (async () => new Response(JSON.stringify({ id: reportId, revision: 9, status: "signed" }), { status: 200 })) as typeof fetch;
     const result = await saveDraftReport("token", reportId, {

@@ -149,12 +149,12 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function logOut() {
-    const accessToken = session ? sessionRequestToken(session) : "";
+    const csrfToken = session ? sessionRequestToken(session) : "";
     clearClinicianSession(window.localStorage);
     setSession(null);
     setActiveReport(null);
     setMessage("You have logged out.");
-    if (accessToken) void endClinicianSession(accessToken).catch(() => undefined);
+    if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
   function selectPresentationMode(mode: PresentationMode) {
