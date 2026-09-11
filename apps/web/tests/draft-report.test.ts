@@ -96,6 +96,13 @@ test("prototype record deletion uses a confirmed server-side DELETE with CSRF pr
   assert.equal((request?.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 });
 
+test("record deletion reports offline state without implying success", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = (async () => { throw new TypeError("network unavailable"); }) as typeof fetch;
+  await assert.rejects(deleteDraftReport("csrf-proof", reportId), /offline/);
+});
+
 test("active polling and draft saves identify a report completed by another client", async () => {
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;

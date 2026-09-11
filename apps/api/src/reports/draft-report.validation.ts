@@ -175,6 +175,9 @@ export function validateSaveDraftReportCommand(value: unknown): SaveDraftReportC
   }
   optionalString(value.deviceId, "deviceId", findings);
   if (value.clientTime !== undefined && !validTimestamp(value.clientTime)) findings.push("clientTime must be an ISO date-time");
+  if (value.demoAction !== undefined && !["populate", "clear"].includes(String(value.demoAction))) {
+    findings.push("demoAction must be populate or clear");
+  }
   if (value.groups !== undefined && !Array.isArray(value.groups)) findings.push("groups must be an array");
   if (value.occurrences !== undefined && !Array.isArray(value.occurrences)) findings.push("occurrences must be an array");
   const groups = Array.isArray(value.groups) ? value.groups : [];

@@ -250,13 +250,18 @@ export function ClinicianSessionGate({ children }: {
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
-      {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,
+        {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,
         presentationMode, online, requestMode: browserRequestConfiguration().mode }) && <ClinicalDemoBanner
           session={session}
-          activeReport={activeReport !== null}
+          activeReport={activeReport}
           refreshRequest={refreshRequest}
           onGenerated={(assignmentId) => {
             setGeneratedAssignmentId(assignmentId);
+            setRefreshRequest((value) => value + 1);
+          }}
+          onDeleted={() => {
+            setActiveReport(null);
+            setOpenCallsRevision((value) => value + 1);
             setRefreshRequest((value) => value + 1);
           }}
         />}

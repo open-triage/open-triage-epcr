@@ -38,6 +38,7 @@ export interface ActiveDraftReport {
   readonly catalogReleaseId?: string;
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
+  readonly demoMutable?: boolean;
   readonly document?: EncounterDocument;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation?: DispatchCancellation | null;
@@ -87,6 +88,7 @@ export interface SaveDraftReportCommand {
   readonly authorId: string;
   readonly deviceId: string;
   readonly clientTime: string;
+  readonly demoAction?: "populate" | "clear";
   readonly groups: ReadonlyArray<DraftGroupMutation>;
   readonly occurrences: ReadonlyArray<DraftOccurrenceMutation>;
 }
@@ -249,12 +251,17 @@ export async function saveDraftReport(csrfToken: string, reportId: string, comma
 export async function deleteDraftReport(csrfToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
   const url = apiRequestUrl(`/api/reports/${reportId}`);
   if (!url) throw new Error("Record deletion requires the database-backed prototype.");
-  const response = await fetch(url, browserRequestInit({
-    method: "DELETE", headers: { "x-csrf-token": csrfToken },
-  }));
+  let response: Response;
+  try {
+    response = await fetch(url, browserRequestInit({
+      method: "DELETE", headers: { "x-csrf-token": csrfToken },
+    }));
+  } catch {
+    throw new Error("Record deletion is unavailable while offline.");
+  }
   if (!response.ok) {
     if (response.status === 401) throw new Error("Your shift session has ended.");
-    if (response.status === 409) throw new Error("Only an open synthetic draft can be deleted.");
+    if (response.status === 409) throw new Error("Only an open generated synthetic draft can be deleted.");
     throw new Error("The record could not be deleted.");
   }
   return response.json() as Promise<DeleteDraftReportResponse>;

@@ -35,6 +35,9 @@ import {
 import { pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
 import type { PresentationMode } from "./presentation-mode";
 import { bundledEncounterDefinition, type ShellAction, type ShellState } from "./standard-encounter";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { canUseClinicalDemoDraftActions } from "./clinical-demo";
+import { browserRequestConfiguration } from "./browser-api";
 
 export interface ReportWorkspace {
   readonly restored: boolean;
@@ -89,9 +92,23 @@ export function useReportWorkspace({
   const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
   const completed = useRef(false);
+  const pendingDemoAction = useRef<"populate" | "clear" | null>(null);
 
   useEffect(() => { shellRef.current = shell; }, [shell]);
   useEffect(() => { presentationRef.current = presentationMode; }, [presentationMode]);
+
+  useEffect(() => {
+    const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
+      browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
+    const populated = () => { if (authorized()) pendingDemoAction.current = "populate"; };
+    const cleared = () => { if (authorized()) pendingDemoAction.current = "clear"; };
+    window.addEventListener(DEMO_POPULATE_EVENT, populated);
+    window.addEventListener(DEMO_CLEAR_EVENT, cleared);
+    return () => {
+      window.removeEventListener(DEMO_POPULATE_EVENT, populated);
+      window.removeEventListener(DEMO_CLEAR_EVENT, cleared);
+    };
+  }, [report, session.capabilities]);
 
   const completeReport = useCallback(() => {
     if (!report) return;
@@ -214,14 +231,17 @@ export function useReportWorkspace({
     if (!mutations.groups.length && !mutations.occurrences.length) return;
     queueInitialSnapshot.current = false;
     const existing = nextDraftChange(window.localStorage, report.id);
+    const demoAction = pendingDemoAction.current ?? existing?.command.demoAction;
     queueDraftChange(window.localStorage, report.id, {
       commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
       expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
       authorId: session.user.id,
       deviceId: `web:${presentationRef.current}:${report.id}`,
       clientTime: existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString(),
+      ...(demoAction ? { demoAction } : {}),
       ...mutations,
     });
+    pendingDemoAction.current = null;
     queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);

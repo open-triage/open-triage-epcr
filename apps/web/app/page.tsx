@@ -41,6 +41,8 @@ import { stationarySectionForGroup } from "./stationary-record";
 import { stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
+import { canUseClinicalDemoDraftActions } from "./clinical-demo";
+import { browserRequestConfiguration } from "./browser-api";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 
@@ -142,15 +144,17 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, [presentationMode, shell.view]);
 
   useEffect(() => {
-    const populate = () => dispatch({ type: "demo-populated" });
-    const clear = () => dispatch({ type: "demo-cleared" });
+    const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
+      browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
+    const populate = () => { if (authorized()) dispatch({ type: "demo-populated" }); };
+    const clear = () => { if (authorized()) dispatch({ type: "demo-cleared" }); };
     window.addEventListener(DEMO_POPULATE_EVENT, populate);
     window.addEventListener(DEMO_CLEAR_EVENT, clear);
     return () => {
       window.removeEventListener(DEMO_POPULATE_EVENT, populate);
       window.removeEventListener(DEMO_CLEAR_EVENT, clear);
     };
-  }, []);
+  }, [report, session.capabilities]);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);

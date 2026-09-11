@@ -30,10 +30,11 @@ export class DraftReportController {
   save(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string
   ): Promise<SaveDraftReportResult> {
-    return this.reports.save(bearerToken(authorization, cookie), id, body);
+    return this.reports.save(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
   @Post(":id/reopen")
@@ -49,10 +50,11 @@ export class DraftReportController {
   @Delete(":id")
   deleteDraft(
     @Param("id", uuidV4) id: string,
+    @Headers("x-csrf-token") csrfToken?: string,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string,
   ): Promise<DeleteDraftReportResponse> {
-    return this.reports.deleteSyntheticDraft(bearerToken(authorization, cookie), id);
+    return this.reports.deleteSyntheticDraft(bearerToken(authorization, cookie), id, csrfToken);
   }
 
   @Get(":id/active")

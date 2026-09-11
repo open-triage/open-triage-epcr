@@ -35,6 +35,7 @@ type OpenableAssignmentRow = AssignedCallRow & {
   incident_id: string;
   report_id: string | null;
   synthetic: boolean;
+  synthetic_generated_by: string | null;
   dispatch_receipt_id: string | null;
 };
 
@@ -52,6 +53,7 @@ type ReportRow = {
   catalog_release_id: string;
   revision: string | number;
   status: "draft" | "signed";
+  synthetic: boolean;
   dispatch_canceled_at: Date | string | null;
   dispatch_cancellation_revision: string | number | null;
   dispatch_cancellation_receipt_id: string | null;
@@ -305,7 +307,7 @@ export class AssignedCallsService {
           select ca.id, ca.organization_id, ca.unit_id, ca.incident_id, ca.call_number,
                  organization.deployment_timezone as agency_time_zone,
                  ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint, ca.status,
-                 ca.report_id, ca.synthetic, ca.dispatch_receipt_id, ou.call_sign
+                 ca.report_id, ca.synthetic, ca.synthetic_generated_by, ca.dispatch_receipt_id, ou.call_sign
           from clinical.call_assignment ca
           join app_identity.operational_unit ou
             on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
@@ -475,7 +477,7 @@ export class AssignedCallsService {
   ): Promise<OpenAssignmentResponse> {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
-        select id, documenting_user_id, form_version_id, catalog_release_id, revision, status,
+        select id, documenting_user_id, form_version_id, catalog_release_id, revision, status, synthetic,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
       `, [reportId, assignment.organization_id, documentingUserId]);
@@ -495,6 +497,8 @@ export class AssignedCallsService {
           clinicalForm,
           revision: Number(report.revision),
           status: "draft" as const,
+          ...(report.synthetic && assignment.synthetic && assignment.synthetic_generated_by === documentingUserId
+            ? { demoMutable: true } : {}),
           document,
           ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
           dispatchConflicts: conflicts,

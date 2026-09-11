@@ -601,6 +601,8 @@ export interface OpenAssignmentResponse {
     clinicalForm?: ClinicalFormConfiguration;
     revision: number;
     status: "draft";
+    /** Server-qualified boundary for Clinical Demo mutations; never inferred by the browser. */
+    demoMutable?: boolean;
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
     /** IANA zone used for operational-time presentation. */
@@ -654,6 +656,7 @@ export interface OpenCall {
   revision: number;
   formVersionId: string;
   catalogReleaseId: string;
+  demoMutable?: boolean;
 }
 
 export interface OpenCallsResponse {

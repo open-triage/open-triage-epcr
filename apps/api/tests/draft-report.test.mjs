@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import {
   commandSha256,
@@ -82,6 +83,70 @@ test("draft changes accept each sparse typed value and explicit incomplete state
   assert.throws(() => validateSaveDraftReportCommand({ ...command, occurrences: [{
     id: randomUUID(), elementId: "test.bad", value: { kind: "numeric", value: "NaN" }
   }] }), (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /finite decimal/.test(finding)));
+  assert.equal(validateSaveDraftReportCommand({ ...command, demoAction: "populate" }).demoAction, "populate");
+  assert.throws(() => validateSaveDraftReportCommand({ ...command, demoAction: "erase" }),
+    (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /demoAction/.test(finding)));
+});
+
+test("demo mutation boundaries reject ordinary, signed, unprovenanced, and forged targets", async () => {
+  const service = new DraftReportService({}, {});
+  const report = {
+    id: randomUUID(), status: "draft", revision: 1, organization_id: randomUUID(),
+    incident_id: randomUUID(), patient_id: randomUUID(), agency_demographic_version_id: randomUUID(),
+    form_version_id: randomUUID(), catalog_release_id: randomUUID(), documenting_user_id: randomUUID(),
+    synthetic: true, demo_mutable: true,
+  };
+  const groupId = randomUUID();
+  const occurrenceId = randomUUID();
+  const populated = {
+    commandId: randomUUID(), expectedRevision: 1, authorId: report.documenting_user_id, demoAction: "populate",
+    groups: [{ id: groupId, groupId: "eVitals.VitalGroup", ordinal: 0,
+      correlationId: "demo:stationary-populate-v1:generated-group" }],
+    occurrences: [{ id: occurrenceId, elementId: "eVitals.14", groupInstanceId: groupId, ordinal: 0,
+      provenanceKind: "demo", provenanceDetail: { generator: "stationary-populate-v1" },
+      sourceAttributes: { "x-open-triage-demo": "stationary-populate-v1" },
+      value: { kind: "integer", value: 16 } }],
+  };
+  await service.assertDemoMutationBoundary({ query: async () => [] }, report, populated);
+  await assert.rejects(service.assertDemoMutationBoundary({ query: async () => [] },
+    { ...report, synthetic: false }, populated), ConflictException);
+  await assert.rejects(service.assertDemoMutationBoundary({ query: async () => [] },
+    { ...report, status: "signed" }, populated), ConflictException);
+  await assert.rejects(service.assertDemoMutationBoundary({ query: async () => [] },
+    { ...report, demo_mutable: false }, populated), ConflictException);
+  await assert.rejects(service.assertDemoMutationBoundary({ query: async () => [] }, report,
+    { ...populated, demoAction: undefined }), ConflictException);
+  await assert.rejects(service.assertDemoMutationBoundary({ query: async () => [] }, report,
+    { ...populated, occurrences: [{ ...populated.occurrences[0], provenanceKind: "clinician" }] }), ConflictException);
+
+  const cleared = {
+    ...populated, demoAction: "clear",
+    groups: populated.groups.map(({ id, groupId, ordinal }) => ({ id, groupId, ordinal, tombstone: true })),
+    occurrences: populated.occurrences.map(({ id, elementId, groupInstanceId, ordinal }) =>
+      ({ id, elementId, groupInstanceId, ordinal, tombstone: true })),
+  };
+  await service.assertDemoMutationBoundary({ query: async () => [{ group_count: 1, occurrence_count: 1 }] }, report, cleared);
+  await assert.rejects(service.assertDemoMutationBoundary(
+    { query: async () => [{ group_count: 1, occurrence_count: 0 }] }, report, cleared), ConflictException);
+});
+
+test("every demo save rechecks the live capability and CSRF proof before report access", async () => {
+  const session = { user: { id: randomUUID() }, organization: { id: randomUUID() } };
+  const command = { commandId: randomUUID(), expectedRevision: 0, authorId: session.user.id,
+    demoAction: "populate", groups: [{ id: randomUUID(), groupId: "eVitals.VitalGroup", ordinal: 0,
+      correlationId: "demo:stationary-populate-v1:test" }] };
+  const noDatabaseAccess = { transaction: async (_level, work) => work({ query: async () => { throw new Error("database touched"); } }) };
+  const removedRole = new DraftReportService(noDatabaseAccess, {
+    get: async () => session,
+    requireCapability: async () => { throw new UnauthorizedException("role removed"); },
+  });
+  await assert.rejects(removedRole.save("session", randomUUID(), command, "csrf-proof"), UnauthorizedException);
+  const badCsrf = new DraftReportService(noDatabaseAccess, {
+    get: async () => session,
+    requireCapability: async () => session,
+    assertCsrf: async () => { throw new UnauthorizedException("bad csrf"); },
+  });
+  await assert.rejects(badCsrf.save("session", randomUUID(), command, "forged"), UnauthorizedException);
 });
 
 test("command digests are stable across object key order", () => {
