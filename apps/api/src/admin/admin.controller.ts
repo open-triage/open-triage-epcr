@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -42,6 +42,12 @@ export class AdminController {
   @Get("catalog-draft")
   catalogDraft(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogDraft | null> {
     return this.catalogs.current(sessionToken(request, authorization));
+  }
+
+  @Get("catalog-definition")
+  catalogDefinition(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<CatalogDefinitionView | null> {
+    return this.catalogs.inspectActive(sessionToken(request, authorization));
   }
 
   @Post("catalog-drafts")

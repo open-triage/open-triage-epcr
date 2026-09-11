@@ -91,6 +91,7 @@ export class AdminService {
     return {
       owner: session.user,
       organization: session.organization,
+      capabilities: session.capabilities ?? [],
       panels,
       activeConfiguration: active ? {
         catalog: {

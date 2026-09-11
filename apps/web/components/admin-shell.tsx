@@ -115,7 +115,8 @@ export function AdminShell({ session, installationSettings }: {
 
     {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading">Element catalog</h2></div>
-      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} installationSettings={installationSettings} onPublished={setFormCatalogReleaseId} />
+      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
+        installationSettings={installationSettings} onPublished={setFormCatalogReleaseId} />
     </section>}
 
     {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">

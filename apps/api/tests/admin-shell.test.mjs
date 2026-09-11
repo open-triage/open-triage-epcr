@@ -36,6 +36,7 @@ test("admin context is resolved from the authorized session organization", async
   assert.deepEqual({ ...context, dashboard: { ...context.dashboard, generatedAt: "measured" } }, {
     owner: session.user,
     organization: session.organization,
+    capabilities: ["admin-dashboard:read"],
     panels: ["dashboard"],
     activeConfiguration: {
       catalog: { id: "catalog-id", name: "Agency Catalog", standard: "NEMSIS", version: "3.5.1" },

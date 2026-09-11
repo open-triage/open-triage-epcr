@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import type { AssignedCall } from "@open-triage/contracts";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
+import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
 const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
 const dashboard = {
@@ -16,7 +17,8 @@ function assignedCalls(route: Route) {
   });
 }
 
-async function signInAsCombinedOwner(page: Page, capabilities = ["clinical:document", "admin-dashboard:read"]) {
+async function signInAsCombinedOwner(page: Page,
+  capabilities: ReadonlyArray<string> = ["clinical:document", "admin-dashboard:read"]) {
   await page.goto("/");
   await page.evaluate((grantedCapabilities) => {
     window.localStorage.clear();
@@ -32,6 +34,72 @@ async function signInAsCombinedOwner(page: Page, capabilities = ["clinical:docum
   }, capabilities);
   await page.reload();
 }
+
+const catalogDraft = {
+  id: "catalog-draft-id", displayName: "Agency Catalog", sourceReleaseId: "catalog-id", revision: 4,
+  definitionSha256: "a".repeat(64), updatedAt: "2026-09-08T14:00:00.000Z",
+  definition: { schemaVersion: 1, sourceReleaseId: "catalog-id", elements: [{
+    elementId: "ePatient.01", label: "Patient Care Report Number", identityId: "element-identity-id",
+    baseDatatype: "string", storageSemantics: { sourceDatatype: "xs:string", groupPath: ["ePatient"],
+      analyticalLocation: "wide", sqlType: "text" }, requirednessSeverity: null,
+    constraints: { minOccurs: 0, maxOccurs: 1, nillable: true, supportsNotValues: true,
+      supportsPertinentNegatives: false }
+  }], codeLists: [] }
+};
+
+test("Catalog reader, writer, and publisher controls follow their independent authority", async ({ page }) => {
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ profile: "production", settings: productionSettings }) }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "catalog"], capabilities: ["admin-dashboard:read", "catalog:read"],
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard
+  }) }));
+  await page.route("**/api/admin/catalog-definition", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    id: "catalog-id", displayName: "NEMSIS 3.5.1", version: "3.5.1", status: "active", definition: catalogDraft.definition
+  }) }));
+  await page.route("**/api/admin/catalog-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(catalogDraft) }));
+
+  // Cached session claims deliberately retain stale publication authority; the
+  // freshly resolved Admin context is the source of truth for visible actions.
+  await signInAsCombinedOwner(page,
+    ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Element catalog", exact: true }).click();
+  await expect(page.getByLabel("Label for ePatient.01")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toHaveCount(0);
+
+  await page.unroute("**/api/admin/context");
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "catalog"], capabilities: ["admin-dashboard:read", "catalog:read", "catalog:write"],
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard
+  }) }));
+  await signInAsCombinedOwner(page, ["admin-dashboard:read", "catalog:read", "catalog:write"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Element catalog", exact: true }).click();
+  await expect(page.getByLabel("Label for ePatient.01")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toHaveCount(0);
+  await expect(page.getByText("permits draft authoring but not publication or activation")).toBeVisible();
+
+  await page.unroute("**/api/admin/context");
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "catalog"], capabilities: ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish"],
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard
+  }) }));
+  await signInAsCombinedOwner(page,
+    ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Element catalog", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toBeVisible();
+});
 
 test("combined owners start clinically and can enter only server-authorized Admin panels by keyboard", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
