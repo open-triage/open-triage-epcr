@@ -383,6 +383,72 @@ test("a role author creates an immediately active immutable version from the saf
   expect(submitted).not.toHaveProperty("expectedVersion");
 });
 
+test("a role author deactivates, inspects redacted history, and reactivates without assignments", async ({ page }) => {
+  const role = { id: "30000000-0000-4000-8000-000000000001", displayName: "Dispatch Lead",
+    description: "Coordinates dispatch", active: true, protected: false, version: 1, assigneeCount: 1,
+    capabilities: [{ key: "roles:read", description: "View roles", administrative: true, systemOnly: false }] };
+  let retired = false;
+  let deactivateBody: Record<string, unknown> | undefined;
+  let reactivateBody: Record<string, unknown> | undefined;
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["roles"],
+    capabilities: ["roles:read", "roles:write"], activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/role-capabilities", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: [{ key: "roles:read", description: "View roles", administrative: true,
+      systemOnly: false, prerequisites: [], mutable: true }] }) }));
+  await page.route("**/api/admin/roles**", async (route) => {
+    const url = route.request().url();
+    if (url.endsWith("/deactivate")) {
+      deactivateBody = route.request().postDataJSON() as Record<string, unknown>;
+      retired = true;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...role, active: false, assigneeCount: 0 }) });
+      return;
+    }
+    if (url.endsWith("/reactivate")) {
+      reactivateBody = route.request().postDataJSON() as Record<string, unknown>;
+      retired = false;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...role,
+        displayName: "Dispatch Legacy", active: true, version: 2, assigneeCount: 0 }) });
+      return;
+    }
+    if (url.endsWith("/history")) {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ roleId: role.id,
+        versions: [{ id: "version-1", version: 1, displayName: role.displayName, description: role.description,
+          createdAt: "2026-09-11T10:00:00.000Z", createdBy: "owner-id", note: null, capabilityKeys: ["roles:read"] }],
+        assignments: [{ id: "assignment-1", userId: "redacted-user-id", assignedAt: "2026-09-11T10:00:00.000Z",
+          assignedBy: "owner-id", endedAt: "2026-09-11T11:00:00.000Z", endedBy: "owner-id", note: null }],
+        events: [{ id: "event-1", action: "role.deactivate", occurredAt: "2026-09-11T11:00:00.000Z",
+          note: "Duty retired", details: { roleId: role.id, version: 1, endedAssignmentCount: 1 } }] }) });
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items:
+      retired || new URL(url).searchParams.get("state") !== "active" ? [{ ...role, active: false, assigneeCount: 0 }] : [role] }) });
+  });
+  await signInAsCombinedOwner(page, ["roles:read", "roles:write"]);
+  await page.getByRole("button", { name: "Deactivate custom role" }).click();
+  await expect(page.getByText("immediately ends 1 current assignment")).toBeVisible();
+  await page.getByLabel(/Retirement note/).fill("Duty retired");
+  await page.getByRole("button", { name: "Confirm deactivation" }).click();
+  expect(deactivateBody).toEqual({ expectedVersion: 1, note: "Duty retired" });
+
+  await page.getByLabel("Status").selectOption("disabled");
+  await page.getByRole("button", { name: "View history" }).click();
+  await expect(page.getByText(`Stable role ID: ${role.id}`)).toBeVisible();
+  await expect(page.getByText(/redacted-user-id/)).toBeVisible();
+  await expect(page.getByText(/Version 1: Dispatch Lead/)).toBeVisible();
+  await expect(page.getByText(/Note: Duty retired/)).toBeVisible();
+  await page.getByRole("button", { name: "Close history" }).click();
+
+  await page.getByRole("button", { name: "Reactivate custom role" }).click();
+  await expect(page.getByText("restores no former assignments")).toBeVisible();
+  await page.getByLabel("Role name").fill("Dispatch Legacy");
+  await page.getByRole("button", { name: "Create version and reactivate" }).click();
+  expect(reactivateBody).toMatchObject({ displayName: "Dispatch Legacy", capabilityKeys: ["roles:read"], expectedVersion: 1 });
+  await expect(page.getByRole("heading", { name: "Dispatch Legacy" })).toHaveCount(0);
+});
+
 test("an open clinical report disables Admin until Save and close", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({

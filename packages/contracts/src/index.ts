@@ -181,6 +181,47 @@ export interface SaveAdminRoleCommand {
   expectedVersion?: number;
 }
 
+export interface ChangeAdminRoleStateCommand {
+  expectedVersion: number;
+  note?: string | null;
+}
+
+export interface AdminRoleHistory {
+  roleId: string;
+  versions: Array<{
+    id: string;
+    version: number;
+    displayName: string;
+    description: string | null;
+    createdAt: string;
+    createdBy: string | null;
+    note: string | null;
+    capabilityKeys: string[];
+  }>;
+  assignments: Array<{
+    id: string;
+    userId: string;
+    assignedAt: string;
+    assignedBy: string | null;
+    endedAt: string | null;
+    endedBy: string | null;
+    note: string | null;
+  }>;
+  events: Array<{
+    id: string;
+    action: "role.version_activate" | "role.deactivate" | "role.reactivate";
+    occurredAt: string;
+    note: string | null;
+    details: {
+      roleId: string;
+      version?: number;
+      priorVersionId?: string | null;
+      endedAssignmentCount?: number;
+      endedAt?: string;
+    };
+  }>;
+}
+
 export interface AdminRoleSummaryList {
   items: AdminRoleSummary[];
 }

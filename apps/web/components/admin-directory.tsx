@@ -1,9 +1,10 @@
 "use client";
 
-import type { AdminCapabilityOption, AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
-import { createAdminRole, loadAdminRoleCapabilities, loadAdminRoles, loadAdminUserRoleOptions,
-  loadAdminUsers, provisionAdminUser, updateAdminRole, updateAdminUser, type AdminUserQuery } from "../app/admin-context";
+import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
+  loadAdminUserRoleOptions, loadAdminUsers, provisionAdminUser, reactivateAdminRole, updateAdminRole, updateAdminUser,
+  type AdminUserQuery } from "../app/admin-context";
 
 type StateFilter = "active" | "disabled" | "all";
 
@@ -252,6 +253,9 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   const [editorRole, setEditorRole] = useState<AdminRole | null | undefined>(undefined);
   const [draft, setDraft] = useState<RoleDraft>({ displayName: "", description: "", capabilityKeys: [], note: "" });
   const [saving, setSaving] = useState(false);
+  const [retiringRole, setRetiringRole] = useState<AdminRole | null>(null);
+  const [retirementNote, setRetirementNote] = useState("");
+  const [history, setHistory] = useState<AdminRoleHistory | null>(null);
   const canWrite = actorCapabilities.includes("roles:write");
 
   function load(state: StateFilter) {
@@ -295,16 +299,43 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       capabilityKeys: draft.capabilityKeys, note: draft.note || null,
       ...(editorRole ? { expectedVersion: editorRole.version } : {}) };
     try {
-      const saved = editorRole ? await updateAdminRole(csrfToken, editorRole.id, command)
+      const saved = editorRole ? (editorRole.active
+        ? await updateAdminRole(csrfToken, editorRole.id, command)
+        : await reactivateAdminRole(csrfToken, editorRole.id, command))
         : await createAdminRole(csrfToken, command);
-      setItems((current) => [...current.filter(({ id }) => id !== saved.id), saved]
-        .sort((left, right) => left.displayName.localeCompare(right.displayName)));
+      setItems((current) => editorRole && !editorRole.active && selectedState === "disabled"
+        ? current.filter(({ id }) => id !== saved.id)
+        : [...current.filter(({ id }) => id !== saved.id), saved]
+          .sort((left, right) => left.displayName.localeCompare(right.displayName)));
       setEditorRole(undefined);
     } catch (reason) {
       setError(`${reason instanceof Error ? reason.message : "The role could not be saved."} Reload the role list before retrying if another administrator changed it.`);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function deactivate() {
+    if (!retiringRole) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await deactivateAdminRole(csrfToken, retiringRole.id, retiringRole.version, retirementNote);
+      setItems((current) => selectedState === "active" ? current.filter(({ id }) => id !== saved.id)
+        : current.map((role) => role.id === saved.id ? saved : role));
+      setRetiringRole(null);
+      setRetirementNote("");
+    } catch (reason) {
+      setError(`${reason instanceof Error ? reason.message : "The role could not be deactivated."} Reload the role list before retrying if another administrator changed it.`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function showHistory(roleId: string) {
+    setError(null);
+    try { setHistory(await loadAdminRoleHistory(roleId)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Role history could not be loaded."); }
   }
 
   const findings = roleDraftFindings(draft, capabilityOptions);
@@ -322,8 +353,11 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     {loading && !items.length && <p role="status">Loading roles…</p>}
     {!loading && !error && !items.length && <p role="status">No roles match this filter.</p>}
     {editorRole !== undefined && <form className="admin-role-editor" onSubmit={(event) => void save(event)}>
-      <fieldset disabled={saving}><legend>{editorRole ? `Edit ${editorRole.displayName}` : "Create custom role"}</legend>
-        <p className="admin-muted">Saving activates a new immutable version immediately for every current assignee.</p>
+      <fieldset disabled={saving}><legend>{editorRole
+        ? `${editorRole.active ? "Edit" : "Reactivate"} ${editorRole.displayName}` : "Create custom role"}</legend>
+        <p className="admin-muted">{editorRole && !editorRole.active
+          ? "Reactivation creates a new immutable version and restores no former assignments."
+          : "Saving activates a new immutable version immediately for every current assignee."}</p>
         <label>Role name<input value={draft.displayName} maxLength={100} required onChange={(event) =>
           setDraft((current) => ({ ...current, displayName: event.target.value }))} /></label>
         <label>Description <small>(optional)</small><textarea value={draft.description} maxLength={500} onChange={(event) =>
@@ -341,10 +375,36 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} /></label>
         {findings.length > 0 && <div className="validation-box error-box" role="alert"><strong>Resolve before saving</strong>
           <ul>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul></div>}
-        <div className="admin-role-editor-actions"><button type="submit" disabled={saving || findings.length > 0}>{saving ? "Saving…" : "Save and activate"}</button>
+        <div className="admin-role-editor-actions"><button type="submit" disabled={saving || findings.length > 0}>{saving ? "Saving…"
+          : editorRole && !editorRole.active ? "Create version and reactivate" : "Save and activate"}</button>
           <button type="button" onClick={() => setEditorRole(undefined)}>Cancel</button></div>
       </fieldset>
     </form>}
+    {retiringRole && <form className="admin-role-editor" onSubmit={(event) => { event.preventDefault(); void deactivate(); }}>
+      <fieldset disabled={saving}><legend>Deactivate {retiringRole.displayName}</legend>
+        <p>This immediately ends {retiringRole.assigneeCount} current assignment{retiringRole.assigneeCount === 1 ? "" : "s"}.
+          Reactivation will not restore them.</p>
+        <label>Retirement note <small>(optional, recorded in history)</small><textarea maxLength={500}
+          value={retirementNote} onChange={(event) => setRetirementNote(event.target.value)} /></label>
+        <div className="admin-role-editor-actions"><button type="submit">{saving ? "Deactivating…" : "Confirm deactivation"}</button>
+          <button type="button" onClick={() => setRetiringRole(null)}>Cancel</button></div>
+      </fieldset>
+    </form>}
+    {history && <section className="admin-role-editor" aria-labelledby="role-history-heading">
+      <div className="section-heading"><h3 id="role-history-heading">Role history</h3>
+        <button type="button" onClick={() => setHistory(null)}>Close history</button></div>
+      <p className="admin-muted">Stable role ID: <code>{history.roleId}</code>. Personnel names and credentials are not included.</p>
+      <h4>Immutable versions</h4><ol>{history.versions.map((version) => <li key={version.id}>
+        <strong>Version {version.version}: {version.displayName}</strong> — {version.capabilityKeys.join(", ")}
+        {version.note && <small> Note: {version.note}</small>}
+      </li>)}</ol>
+      <h4>Assignment intervals</h4>{history.assignments.length ? <ul>{history.assignments.map((assignment) =>
+        <li key={assignment.id}><code>{assignment.userId}</code>: {assignment.assignedAt} – {assignment.endedAt ?? "current"}</li>)}</ul>
+        : <p className="admin-muted">No assignment history.</p>}
+      <h4>Lifecycle events</h4><ol>{history.events.map((event) => <li key={event.id}>
+        <code>{event.action}</code> at {event.occurredAt}{event.note && <small> Note: {event.note}</small>}
+      </li>)}</ol>
+    </section>}
     {items.length > 0 && <div className="admin-role-cards">{items.map((role) => <article key={role.id} className="admin-role-card">
       <header><h3>{role.displayName}</h3><span>{role.active ? "Active" : "Deactivated"}</span></header>
       {role.description && <p>{role.description}</p>}
@@ -354,7 +414,11 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       {role.capabilities.length ? <ul>{role.capabilities.map((capability) => <li key={capability.key}>
         <code>{capability.key}</code><span>{capability.description}</span>
       </li>)}</ul> : <p className="admin-muted">No capabilities</p>}
-      {canWrite && !role.protected && role.active && <button type="button" onClick={() => begin(role)}>Edit custom role</button>}
+      <div className="admin-role-editor-actions"><button type="button" onClick={() => void showHistory(role.id)}>View history</button>
+        {canWrite && !role.protected && role.active && <><button type="button" onClick={() => begin(role)}>Edit custom role</button>
+          <button type="button" onClick={() => { setRetiringRole(role); setRetirementNote(""); }}>Deactivate custom role</button></>}
+        {canWrite && !role.protected && !role.active && <button type="button" onClick={() => begin(role)}>Reactivate custom role</button>}
+      </div>
     </article>)}</div>}
   </section>;
 }

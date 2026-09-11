@@ -196,6 +196,110 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
+  await t.test("retires roles atomically and reconstructs reactivation without restoring assignments", async () => {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    const assigneeId = randomUUID();
+    const roleId = randomUUID();
+    const versionOneId = randomUUID();
+    const versionTwoId = randomUUID();
+    const replacementRoleId = randomUUID();
+    const replacementVersionId = randomUUID();
+    await client.query("begin");
+    try {
+      await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+        values ($1, 'Role lifecycle test', 'UTC')`, [organizationId]);
+      await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+        values ($1, $3, 'Role author'), ($2, $3, 'Role assignee')`, [actorId, assigneeId, organizationId]);
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, description, current_version_id, created_by, note)
+        values ($1, $2, 'Dispatch Lead', 'Original duty', $3, $4, 'Created')`,
+      [roleId, organizationId, versionOneId, actorId]);
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, description, created_by, note)
+        values ($1, $2, $3, 1, 'Dispatch Lead', 'Original duty', $4, 'Created')`,
+      [versionOneId, organizationId, roleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'roles:read')`,
+      [organizationId, versionOneId, roleId]);
+      const assignmentId = (await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note) values ($1, $2, $3, $4, 'Initial duty') returning id`,
+      [organizationId, assigneeId, roleId, actorId])).rows[0].id;
+      await client.query("set constraints all immediate");
+      await client.query("set constraints all deferred");
+
+      const closed = await client.query(`update app_identity.user_role_assignment
+        set ended_at = now(), ended_by = $3 where organization_id = $1 and role_id = $2 and ended_at is null
+        returning ended_at`, [organizationId, roleId, actorId]);
+      await client.query(`update app_identity.role set active = false, assignable = false, note = 'Retired'
+        where organization_id = $1 and id = $2`, [organizationId, roleId]);
+      await client.query(`insert into app_identity.authorization_event
+        (organization_id, actor_id, action, target_type, target_key, note, details)
+        values ($1, $2, 'role.deactivate', 'role', $3, 'Retired',
+          jsonb_build_object('roleId', $3::text, 'version', 1, 'endedAssignmentCount', 1))`,
+      [organizationId, actorId, roleId]);
+      await client.query("set constraints all immediate");
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'roles:read') allowed",
+        [assigneeId, organizationId])).rows[0].allowed, false);
+      await rejectsSql(client, `insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $4)`,
+      [organizationId, assigneeId, roleId, actorId], "P0001");
+
+      await client.query("set constraints all deferred");
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, current_version_id, created_by) values ($1, $2, 'Dispatch Lead', $3, $4)`,
+      [replacementRoleId, organizationId, replacementVersionId, actorId]);
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, created_by)
+        values ($1, $2, $3, 1, 'Dispatch Lead', $4)`, [replacementVersionId, organizationId, replacementRoleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'roles:read')`,
+      [organizationId, replacementVersionId, replacementRoleId]);
+
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, description, created_by, note)
+        values ($1, $2, $3, 2, 'Dispatch Legacy', 'Redefined duty', $4, 'Reactivated')`,
+      [versionTwoId, organizationId, roleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'users:read')`,
+      [organizationId, versionTwoId, roleId]);
+      await client.query(`update app_identity.role set display_name = 'Dispatch Legacy', description = 'Redefined duty',
+        current_version_id = $3, active = true, assignable = true, note = 'Reactivated'
+        where organization_id = $1 and id = $2`, [organizationId, roleId, versionTwoId]);
+      await client.query(`insert into app_identity.authorization_event
+        (organization_id, actor_id, action, target_type, target_key, note, details)
+        values ($1, $2, 'role.reactivate', 'role', $3, 'Reactivated',
+          jsonb_build_object('roleId', $3::text, 'priorVersionId', $4::text, 'version', 2))`,
+      [organizationId, actorId, roleId, versionOneId]);
+      await client.query("set constraints all immediate");
+
+      const history = await client.query(`select version, display_name, description, note
+        from app_identity.role_version where role_id = $1 order by version`, [roleId]);
+      assert.deepEqual(history.rows, [
+        { version: 1, display_name: "Dispatch Lead", description: "Original duty", note: "Created" },
+        { version: 2, display_name: "Dispatch Legacy", description: "Redefined duty", note: "Reactivated" }
+      ]);
+      const intervals = await client.query(`select id, assigned_at, ended_at, assigned_by, ended_by, note
+        from app_identity.user_role_assignment where role_id = $1`, [roleId]);
+      assert.equal(intervals.rows.length, 1);
+      assert.equal(intervals.rows[0].id, assignmentId);
+      assert.equal(intervals.rows[0].ended_at.getTime(), closed.rows[0].ended_at.getTime());
+      assert.equal(intervals.rows[0].ended_by, actorId);
+      assert.equal((await client.query(`select count(*)::integer count from app_identity.user_role_assignment
+        where role_id = $1 and ended_at is null`, [roleId])).rows[0].count, 0);
+      await rejectsSql(client, "update app_identity.user_role_assignment set note = 'rewritten' where id = $1",
+        [assignmentId], "P0001");
+      await rejectsSql(client, "delete from app_identity.user_role_assignment where id = $1", [assignmentId], "P0001");
+      const events = await client.query(`select action, note, details from app_identity.authorization_event
+        where organization_id = $1 and details ->> 'roleId' = $2 order by occurred_at, id`, [organizationId, roleId]);
+      assert.deepEqual(events.rows.map(({ action }) => action), ["role.version_activate", "role.deactivate",
+        "role.version_activate", "role.reactivate"]);
+      assert.equal(JSON.stringify(events.rows).includes("Role assignee"), false);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
