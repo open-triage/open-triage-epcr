@@ -1,6 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AdminContext } from "@open-triage/contracts";
+import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
@@ -28,6 +28,16 @@ type DashboardRow = {
   max_database_connections: string | number;
 };
 
+const panelCapabilities: ReadonlyArray<readonly [AdminPanelKey, string]> = [
+  ["dashboard", "admin-dashboard:read"], ["users", "users:read"], ["roles", "roles:read"],
+  ["catalog", "catalog:read"], ["forms", "forms:read"]
+];
+
+function authorizedPanels(session: ClinicianSession): AdminPanelKey[] {
+  const granted = new Set(session.capabilities ?? []);
+  return panelCapabilities.filter(([, capability]) => granted.has(capability)).map(([panel]) => panel);
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -36,8 +46,11 @@ export class AdminService {
   ) {}
 
   async context(sessionToken: string): Promise<AdminContext> {
-    const session = await this.sessions.requireCapability(sessionToken, "admin-dashboard:read");
-    const rows = await this.dataSource.query<ActiveConfigurationRow[]>(`
+    const session = await this.sessions.get(sessionToken);
+    const panels = authorizedPanels(session);
+    if (!panels.length) throw new UnauthorizedException("An administrative capability is required");
+    const configurationReadable = panels.some((panel) => panel === "dashboard" || panel === "catalog" || panel === "forms");
+    const rows = configurationReadable ? await this.dataSource.query<ActiveConfigurationRow[]>(`
       select fv.id as form_version_id, f.id as form_id, coalesce(fv.display_name, f.name) as form_name,
              fv.version as form_version, cr.id as catalog_release_id,
              coalesce(cr.display_name, cr.standard || ' ' || cr.version) as catalog_name,
@@ -49,9 +62,9 @@ export class AdminService {
       join catalog.release cr on cr.id = fv.catalog_release_id
       where f.organization_id = $1
       limit 1
-    `, [session.organization.id]);
+    `, [session.organization.id]) : [];
     const active = rows[0];
-    const dashboardRows = await this.dataSource.query<DashboardRow[]>(`
+    const dashboardRows = panels.includes("dashboard") ? await this.dataSource.query<DashboardRow[]>(`
       with report_stats as (
         select count(*) filter (where status = 'draft') as ongoing_reports,
                count(*) filter (where status = 'signed') as signed_reports,
@@ -73,11 +86,12 @@ export class AdminService {
              (select count(*) from pg_stat_activity where datname = current_database()) as database_connections,
              current_setting('max_connections')::integer as max_database_connections
       from report_stats cross join error_stats
-    `, [session.organization.id]);
-    const dashboard = dashboardRows[0]!;
+    `, [session.organization.id]) : [];
+    const dashboard = dashboardRows[0];
     return {
       owner: session.user,
       organization: session.organization,
+      panels,
       activeConfiguration: active ? {
         catalog: {
           id: active.catalog_release_id,
@@ -92,7 +106,7 @@ export class AdminService {
           version: active.form_version
         }
       } : null,
-      dashboard: {
+      dashboard: dashboard ? {
         availableCalls: Number(dashboard.available_calls),
         ongoingReports: Number(dashboard.ongoing_reports),
         signedReports: Number(dashboard.signed_reports),
@@ -104,7 +118,7 @@ export class AdminService {
         databaseConnections: Number(dashboard.database_connections),
         maxDatabaseConnections: Number(dashboard.max_database_connections),
         generatedAt: new Date().toISOString(),
-      },
+      } : null,
     };
   }
 }
