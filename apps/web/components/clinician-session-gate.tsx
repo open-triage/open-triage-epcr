@@ -184,22 +184,21 @@ export function ClinicianSessionGate({ children }: {
 
   if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
-  const installationSettings = installation.settings;
   if (!session) {
     return (
       <main className="login-shell">
         <form className="login-card" onSubmit={signIn}>
-          <p className="eyebrow">{installationSettings.syntheticFixtures.enabled ? "Demo unit" : "Clinical documentation"}</p>
+          <p className="eyebrow">Clinical documentation</p>
           <h1>Sign in for your shift</h1>
-          <p>{installationSettings.syntheticFixtures.enabled ? "Use the prefilled synthetic demo account to begin." : "Enter your organization credentials to begin."}</p>
+          <p>Enter your organization credentials to begin.</p>
           {message && <p className="login-message" role="status">{message}</p>}
           <label>
             Username
-            <input name="username" autoComplete="username" defaultValue={installation.demoLogin?.username ?? ""} required />
+            <input name="username" autoComplete="username" required />
           </label>
           <label>
             Password
-            <input name="password" type="password" autoComplete="current-password" defaultValue={installation.demoLogin?.password ?? ""} required />
+            <input name="password" type="password" autoComplete="current-password" required />
           </label>
           <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
         </form>
@@ -295,7 +294,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenCallsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} installationSettings={installationSettings} />}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} />}
     </div>
   );
 }

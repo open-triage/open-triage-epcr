@@ -43,6 +43,8 @@ async function signIn(page: Page) {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
@@ -321,6 +323,8 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   await expect(page.getByText("Your shift session ended. Sign in again to sync your saved work.")).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toHaveLength(1);
 
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
   await expect(pendingCard).toContainText("Saved", { timeout: 3_000 });

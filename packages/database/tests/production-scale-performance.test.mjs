@@ -50,7 +50,7 @@ test("records approved production scale capacity and measurable thresholds", () 
 
 test("scale harness covers representative distributions and preserves executable plans", () => {
   for (const expected of [
-    "bootstrap:synthetic", "scripts/project-analytics.mjs",
+    '"migrate"', '"load:catalog"', "scripts/project-analytics.mjs",
     "clinical.report", "integration.outbox_event", "analytics_private.epcr",
     "analytics_private.epcr_repeatable_element", "supabase_migrations.schema_migrations",
     "explain (analyze, buffers, format json)", "for update skip locked",

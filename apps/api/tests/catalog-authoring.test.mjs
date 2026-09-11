@@ -83,21 +83,6 @@ test("publication requires a human change note before database access", async ()
   }), UnprocessableEntityException);
 });
 
-test("synthetic demo catalog drafts remain editable but cannot be published", async () => {
-  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  let queried = false;
-  const manager = { query: async () => { queried = true; return []; } };
-  try {
-    await assert.rejects(serviceWith(manager).publish("session", "draft-1", {}),
-      (error) => error instanceof ForbiddenException && /Drafts can still be/.test(error.message));
-    assert.equal(queried, false);
-  } finally {
-    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
-  }
-});
-
 test("catalog publication carries forward one effective agency demographic version", async () => {
   const calls = [];
   const manager = { query: async (sql, parameters) => {

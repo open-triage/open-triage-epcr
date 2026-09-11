@@ -49,7 +49,7 @@ const catalogDraft = {
 
 test("Catalog reader, writer, and publisher controls follow their independent authority", async ({ page }) => {
   await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
-    body: JSON.stringify({ profile: "production", settings: productionSettings }) }));
+    body: JSON.stringify({ settings: productionSettings }) }));
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
@@ -109,7 +109,7 @@ test("Forms readers, authors, and publishers receive only their permitted contro
     clonedFromId: "version-id", revision: 4, definitionSha256: "a".repeat(64), definition, diagnostics: [],
     catalogFields: {}, updatedAt: new Date().toISOString() };
   await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
-    body: JSON.stringify({ profile: "production", settings: productionSettings }) }));
+    body: JSON.stringify({ settings: productionSettings }) }));
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   let resolvedCapabilities = ["admin-dashboard:read", "forms:read"];
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
@@ -493,6 +493,7 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
     panels: ["dashboard", "catalog", "forms"],
+    capabilities: ["catalog:read", "catalog:write", "catalog:publish", "forms:read", "forms:write", "forms:publish"],
     activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } },
     dashboard,

@@ -89,11 +89,9 @@ test("the static export opens the generated sample fixture with a cacheable GET"
   const originalFetch = globalThis.fetch;
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  const originalBaseline = process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
   let request: { url: string; method?: string } | undefined;
   process.env.NEXT_PUBLIC_BASE_PATH = "/demo";
   process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
-  process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
   globalThis.fetch = async (input, init) => {
     request = { url: String(input), method: init?.method };
     return new Response(JSON.stringify(demoOpenAssignment), { status: 200 });
@@ -108,8 +106,6 @@ test("the static export opens the generated sample fixture with a cacheable GET"
     else process.env.NEXT_PUBLIC_BASE_PATH = originalBasePath;
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
-    if (originalBaseline === undefined) delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = originalBaseline;
   }
 });
 

@@ -1195,15 +1195,16 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   });
 });
 
-integrationTest("the seeded clinician retrieves the server-authoritative demo unit assignment", async (t) => {
+integrationTest("fixture accounts authenticate with exact roles only after ordinary owner setup", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
+  await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+    values ($1, 'Demonstration EMS', 'UTC') on conflict (id) do nothing`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
-  await ensureSyntheticOwner(client);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   app.setGlobalPrefix("api");
@@ -1212,212 +1213,34 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   const address = app.getHttpServer().address();
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
 
-  const signIn = await fetch(`${baseUrl}/sessions`, {
+  const signIn = (username) => fetch(`${baseUrl}/sessions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+    body: JSON.stringify({ username, password: DEMO_CLINICIAN_PASSWORD })
   });
-  assert.equal(signIn.status, 201);
-  const session = await signIn.json();
-  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
-  assert.match(signIn.headers.get("set-cookie") ?? "", /HttpOnly.*Secure.*SameSite=Strict/i);
-  assert.equal(session.accessToken, undefined);
-  const response = await fetch(`${baseUrl}/calls/assigned`, {
-    headers: { cookie: sessionCookie }
-  });
-  assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.equal(payload.assignedCalls.length, 1);
-  assert.match(payload.assignedCalls[0].id, /^[0-9a-f-]{36}$/);
-  assert.deepEqual({ ...payload.assignedCalls[0], id: undefined }, {
-    id: undefined,
-    callNumber: "SYN-20260903-001",
-    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "SYNTHETIC-MEDIC-7" },
-    dispatchedAt: "2026-08-15T13:14:00.000Z",
-    dispatchReason: "Chest Pain (Non-Traumatic)",
-    dispatchPriority: { code: "2305003", display: "Emergent" },
-    chiefComplaint: null,
-    agencyTimeZone: "UTC",
-    status: "assigned"
-  });
-  assert.deepEqual(payload.canceledAssignmentIds, []);
+  const beforeOwner = await signIn(DEMO_CLINICIAN_USERNAME);
+  assert.equal(beforeOwner.status, 201);
+  assert.deepEqual((await beforeOwner.json()).capabilities, []);
 
-  try {
-    await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
-    const canceled = await fetch(`${baseUrl}/calls/assigned`, {
-      headers: { cookie: sessionCookie }
-    });
-    const canceledPayload = await canceled.json();
-    assert.deepEqual(canceledPayload.assignedCalls, []);
-    assert.deepEqual(canceledPayload.canceledAssignmentIds, [payload.assignedCalls[0].id]);
-  } finally {
-    await client.query("update clinical.call_assignment set status = 'assigned' where id = $1", [payload.assignedCalls[0].id]);
-  }
-});
-
-integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
-  const originalInstallationSettings = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  t.after(() => {
-    if (originalInstallationSettings === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = originalInstallationSettings;
-  });
-  const client = new pg.Client({ connectionString: databaseUrl });
-  await client.connect();
-  t.after(() => client.end());
-  await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
-    env: { ...process.env, DATABASE_URL: databaseUrl }
-  });
   await ensureSyntheticOwner(client);
+  const clinician = await signIn(DEMO_CLINICIAN_USERNAME);
+  const clinicianSession = await clinician.json();
+  assert.equal(clinician.status, 201);
+  assert.deepEqual(clinicianSession.capabilities, ["clinical:demo", "clinical:document"]);
+  assert.equal(clinicianSession.passwordChangeRequired, false);
 
-  const app = await NestFactory.create(AppModule, { logger: false });
-  app.setGlobalPrefix("api");
-  await app.listen(0, "127.0.0.1");
-  t.after(() => app.close());
-  const address = app.getHttpServer().address();
-  const baseUrl = `http://127.0.0.1:${address.port}/api`;
-  const signIn = await fetch(`${baseUrl}/sessions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
-  });
-  const session = await signIn.json();
-  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
-  const assignmentId = (await client.query(`
-    select id from clinical.call_assignment
-    where organization_id = '32000000-0000-4000-8000-000000000001'
-      and dispatch_source_id = 'synthetic-bootstrap'
-      and status = 'assigned'
-  `)).rows[0].id;
-  const latestBeforeOpen = (await client.query(`
-    select fv.id from forms.form_version fv
-    join app_identity.operational_unit ou on ou.default_form_id = fv.form_id
-    where ou.id = '32000000-0000-4000-8000-000000000010' and fv.status = 'published'
-    order by fv.version desc limit 1
-  `)).rows[0].id;
-  let opened;
-  try {
-    const requestOpen = async () => {
-      const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
-        method: "POST",
-        headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-      });
-      const payload = await response.json();
-      assert.equal(response.status, 200, JSON.stringify(payload));
-      return payload;
-    };
-    opened = await requestOpen();
-    const retry = await requestOpen();
-    assert.equal(retry.report.id, opened.report.id);
-    assert.deepEqual(retry.report.document, opened.report.document);
-    assert.equal(retry.replacementAssignment, null);
-    assert.equal(opened.report.documentingUserId, session.user.id);
-    assert.equal(opened.report.formVersionId, latestBeforeOpen);
-    assert.equal(opened.report.document.modelVersion, "1.1.0");
-    assert.equal(opened.report.document.encounter.id, opened.report.id);
-    assert.equal(opened.report.document.groups.find(({ id }) => id === "eRecordSection")
-      .instances[0].elements.find(({ id }) => id === "eRecord.01").values[0].value,
-      `PCR-${opened.report.id}`);
-    assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
-    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-08-15T13:29:00.000Z");
-    const generatedDispatch = (await client.query(`
-      select ca.response_number, ca.dispatch_source_record_id, dr.source_payload
-      from clinical.call_assignment ca
-      join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
-      where ca.id = $1
-    `, [opened.replacementAssignment.id])).rows[0];
-    const generatedElement = (id) => generatedDispatch.source_payload.groups.flatMap((group) => group.instances)
-      .flatMap((instance) => instance.elements).find((element) => element.id === id).values[0].value;
-    assert.equal(generatedDispatch.response_number, "SYN-20260903-002-1");
-    assert.equal(generatedDispatch.dispatch_source_record_id, "SYNTHETIC-SOURCE-RECORD-0002");
-    assert.equal(generatedElement("eResponse.03"), "SYN-20260903-002");
-    assert.equal(generatedElement("eResponse.04"), "SYN-20260903-002-1");
-    assert.equal(generatedElement("eTimes.02"), "2026-08-15T09:28:52-04:00");
-    assert.equal(generatedElement("eTimes.03"), "2026-08-15T09:29:00-04:00");
-
-    const state = (await client.query(`
-      select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
-        (select count(*)::integer from clinical.report where incident_id = ca.incident_id) as reports,
-        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients,
-        (select count(*)::integer from clinical.element_occurrence
-         where report_id = r.id and element_id = 'eRecord.01') as pcr_numbers
-      from clinical.call_assignment ca join clinical.report r on r.id = ca.report_id
-      where ca.id = $1
-    `, [assignmentId])).rows[0];
-    assert.deepEqual(state, {
-      status: "opened", report_id: opened.report.id, documenting_user_id: session.user.id,
-      form_version_id: latestBeforeOpen, reports: 1, patients: 1, pcr_numbers: 1
-    });
-
-    const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-    });
-    assert.equal(reopenedResponse.status, 200);
-    const reopened = await reopenedResponse.json();
-    assert.deepEqual(reopened.report.document, opened.report.document);
-    assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
-
-    const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
-      headers: { cookie: sessionCookie }
-    });
-    assert.equal(openCallsResponse.status, 200);
-    const openCalls = await openCallsResponse.json();
-    assert.deepEqual(openCalls.openCalls.find(({ reportId }) => reportId === opened.report.id)?.dispatchPriority,
-      { code: "2305003", display: "Emergent" });
-
-    const laterVersionId = randomUUID();
-    const laterDefinition = { schemaVersion: 1, sections: [{
-      key: "replacement", presentation: { title: "Replacement configuration" }, fields: []
-    }] };
-    await client.query(`
-      insert into forms.form_version
-        (id, form_id, catalog_release_id, version, status, canonical_definition,
-         definition_sha256, change_note, created_by, published_by, published_at,
-         publication_acknowledgements)
-      select $1, fv.form_id, fv.catalog_release_id,
-             (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
-             'published', $3::jsonb, repeat('f', 64),
-             'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
-      from forms.form_version fv where fv.id = $2
-    `, [laterVersionId, latestBeforeOpen, JSON.stringify(laterDefinition)]);
-    await client.query(`update forms.agency_stationary_default
-      set form_version_id = $2, activated_by = $3, activated_at = now()
-      where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
-
-    const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-    });
-    assert.equal(reopenedAfterActivationResponse.status, 200);
-    const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
-    assert.equal(reopenedAfterActivation.report.formVersionId, latestBeforeOpen);
-    assert.equal(reopenedAfterActivation.report.catalogReleaseId, opened.report.catalogReleaseId);
-    assert.deepEqual(reopenedAfterActivation.report.clinicalForm, opened.report.clinicalForm);
-    assert.deepEqual(reopenedAfterActivation.report.document, opened.report.document);
-    await assert.rejects(client.query("update clinical.report set form_version_id = $2 where id = $1",
-      [opened.report.id, laterVersionId]), /identity and pinned configuration are immutable/);
-  } finally {
-    await client.query(`update forms.agency_stationary_default
-      set form_version_id = $2, activated_by = $3, activated_at = now()
-      where organization_id = $1`, [session.organization.id, latestBeforeOpen, session.user.id]);
-    if (opened?.replacementAssignment) {
-      await client.query("begin");
-      try {
-        const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
-        await client.query("update clinical.call_assignment set status = 'assigned', report_id = null where id = $1", [assignmentId]);
-        await client.query("delete from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
-        const patient = await client.query("select patient_id from clinical.report where id = $1", [opened.report.id]);
-        await client.query("delete from clinical.report where id = $1", [opened.report.id]);
-        if (patient.rows[0]) await client.query("delete from clinical.patient where id = $1", [patient.rows[0].patient_id]);
-        if (replacement.rows[0]) await client.query("delete from clinical.incident where id = $1", [replacement.rows[0].incident_id]);
-        await client.query("commit");
-      } catch (error) {
-        await client.query("rollback");
-        throw error;
-      }
-    }
-  }
+  const administrator = await signIn(SYNTHETIC_DEMO_FIXTURE.administratorUsername);
+  const administratorSession = await administrator.json();
+  assert.equal(administrator.status, 201);
+  assert.deepEqual(administratorSession.capabilities, [
+    "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
+    "forms:read", "forms:write", "roles:read", "users:read",
+  ]);
+  assert.equal(administratorSession.capabilities.includes("catalog:publish"), false);
+  assert.equal(administratorSession.capabilities.includes("forms:publish"), false);
+  assert.equal(administratorSession.capabilities.includes("roles:assign"), false);
 });
+
 
 integrationTest("draft report commands save, replay, and reconcile concurrent target edits with audit lineage", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });

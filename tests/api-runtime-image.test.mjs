@@ -47,7 +47,7 @@ test("the pruned runtime explicitly retains approved database operations and the
   }
   assert.equal(
     databasePackage.scripts["bootstrap:synthetic:runtime"],
-    "node scripts/bootstrap-synthetic-installation.mjs --settings ../contracts/config/installation.synthetic-demo.json",
+    "node scripts/bootstrap-synthetic-installation.mjs",
   );
   for (const asset of [
     "supabase/migrations",
@@ -72,6 +72,7 @@ test("CI boots and inspects the pruned image before it can pass the deployment g
 
   assert.match(validation, /docker build -f deploy\/docker\/api\.Dockerfile/);
   assert.match(validation, /npm run migrate -w @open-triage\/database/);
+  assert.match(validation, /insert into app_identity\.organization/);
   assert.match(validation, /npm run bootstrap:synthetic:runtime -w @open-triage\/database/);
   assert.match(validation, /curl --fail --silent http:\/\/127\.0\.0\.1:3001\/api\/health/);
   assert.match(validation, /for package in typescript @nestjs\/cli next react concurrently tsx eslint/);

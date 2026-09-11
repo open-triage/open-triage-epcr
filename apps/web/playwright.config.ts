@@ -20,8 +20,7 @@ export default defineConfig({
     env: {
       TMPDIR: process.platform === "darwin" ? "/private/tmp" : "/tmp",
       NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "true",
-      NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: "true",
-      NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE: "synthetic-demo"
+      NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: "true"
     },
     url: "http://127.0.0.1:3108",
     reuseExistingServer: true,

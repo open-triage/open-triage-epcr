@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormCatalogElement, FormDraftDefinition, InstallationSettings, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
@@ -53,15 +53,14 @@ export function formStructuralSummary(definition: FormDraftDefinition): string {
   return `${definition.sections.length} ${definition.sections.length === 1 ? "section" : "sections"} and ${fields} ${fields === 1 ? "element" : "elements"}`;
 }
 
-export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, installationSettings, onActivated }: {
+export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated }: {
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly catalogReleaseId: string;
-  readonly installationSettings: InstallationSettings;
   readonly onActivated?: (activation: StationaryFormActivation, published: PublishedStationaryForm) => void;
 }) {
   const { canWrite, canPublish } = formAuthority(capabilities);
-  const publicationAllowed = canPublish && !installationSettings.administration.readOnly;
+  const publicationAllowed = canPublish;
   const [draft, setDraft] = useState<StationaryFormDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);

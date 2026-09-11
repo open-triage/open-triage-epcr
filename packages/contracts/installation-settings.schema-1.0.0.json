@@ -6,28 +6,12 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion",
-    "syntheticFixtures",
-    "sampleDispatchAssignment",
-    "syntheticDataBanner",
     "clinicalRetention",
     "authentication",
-    "administration",
     "exports"
   ],
   "properties": {
     "schemaVersion": { "const": "1.0.0" },
-    "syntheticFixtures": { "$ref": "#/$defs/toggle" },
-    "sampleDispatchAssignment": { "$ref": "#/$defs/toggle" },
-    "syntheticDataBanner": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["enabled", "heading", "message"],
-      "properties": {
-        "enabled": { "type": "boolean" },
-        "heading": { "type": "string", "minLength": 1, "maxLength": 80 },
-        "message": { "type": "string", "minLength": 1, "maxLength": 200 }
-      }
-    },
     "clinicalRetention": {
       "type": "object",
       "additionalProperties": false,
@@ -47,12 +31,6 @@
         "minimumPasswordLength": { "type": "integer", "minimum": 8 }
       }
     },
-    "administration": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["readOnly"],
-      "properties": { "readOnly": { "type": "boolean" } }
-    },
     "exports": {
       "type": "object",
       "additionalProperties": false,
@@ -62,14 +40,6 @@
         "auditExportsAllowed": { "type": "boolean" },
         "configurationExportsAllowed": { "type": "boolean" }
       }
-    }
-  },
-  "$defs": {
-    "toggle": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["enabled"],
-      "properties": { "enabled": { "type": "boolean" } }
     }
   }
 }

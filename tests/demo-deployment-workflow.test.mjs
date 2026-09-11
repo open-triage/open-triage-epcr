@@ -111,7 +111,8 @@ test("deployment fails unless the public HTTPS smoke verification passes", async
   assert.doesNotMatch(deploy, /continue-on-error/);
 });
 
-test("the demo web image is built with the synthetic installation profile", async () => {
+test("the demo web image is built with only its public API location", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  assert.match(workflow, /NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org[\s\S]*NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo/);
+  assert.match(workflow, /NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org/);
+  assert.doesNotMatch(workflow, /INSTALLATION_SETTINGS_BASELINE/);
 });

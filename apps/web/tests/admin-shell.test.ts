@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
-import production from "@open-triage/contracts/config/installation.production.json";
+import { type ClinicianSession } from "@open-triage/contracts";
 import { acceptOwnershipTransfer, activateStationaryForm, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
@@ -24,9 +23,8 @@ const session: ClinicianSession = {
   capabilities: ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish",
     "forms:read", "forms:write", "forms:publish", "clinical:document"]
 };
-const productionSettings = parseInstallationSettings(production);
 test("Admin navigation waits for server-authorized panels", () => {
-  const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
+  const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
   assert.match(markup, /Loading active configuration/);
@@ -323,7 +321,7 @@ test("section operations preserve canonical content while changing only section 
 
 test("live form section controls expose named keyboard-operable move and removal actions", () => {
   const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
-    csrfToken: "csrf", capabilities: session.capabilities ?? [], catalogReleaseId: "catalog-id", installationSettings: productionSettings,
+    csrfToken: "csrf", capabilities: session.capabilities ?? [], catalogReleaseId: "catalog-id",
   }));
   assert.match(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,

@@ -58,11 +58,8 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     return response.json() as Promise<ClinicianSession>;
   }
 
-  if (!selectedInstallationSettings().syntheticFixtures.enabled) {
-    throw new Error("Local sign-in is disabled unless synthetic fixtures are selected.");
-  }
-  // The explicitly selected static synthetic build has no server. It mirrors the seeded demo
-  // organization so the published, non-clinical artifact remains usable.
+  // The clinician-only static prototype has no database-backed accounts. Its local
+  // credential check is intentionally separate from installation configuration.
   if (command.username !== DEMO_CLINICIAN_USERNAME || command.password !== DEMO_CLINICIAN_PASSWORD) {
     throw new Error("The username or password is incorrect.");
   }
@@ -70,7 +67,9 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     accessToken: crypto.randomUUID(),
     ...localDemoIdentity,
     startedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + selectedInstallationSettings().authentication.sessionDurationMinutes * 60 * 1_000).toISOString()
+    expiresAt: new Date(now.getTime() + selectedInstallationSettings().authentication.sessionDurationMinutes * 60 * 1_000).toISOString(),
+    capabilities: ["clinical:demo", "clinical:document"],
+    workspaceAvailable: true,
   };
 }
 

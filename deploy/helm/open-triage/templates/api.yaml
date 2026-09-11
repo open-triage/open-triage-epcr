@@ -29,8 +29,6 @@ spec:
           env:
             - name: PORT
               value: "3001"
-            - name: OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE
-              value: {{ .Values.api.installationSettingsBaseline | quote }}
             - name: WEB_ORIGIN
               value: "https://{{ .Values.web.host }}"
           readinessProbe:
