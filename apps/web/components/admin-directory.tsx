@@ -1,10 +1,9 @@
 "use client";
 
-import type { AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityOption, AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  loadAdminRoles, loadAdminUserRoleOptions, loadAdminUsers, provisionAdminUser, type AdminUserQuery
-} from "../app/admin-context";
+import { createAdminRole, loadAdminRoleCapabilities, loadAdminRoles, loadAdminUserRoleOptions,
+  loadAdminUsers, provisionAdminUser, updateAdminRole, type AdminUserQuery } from "../app/admin-context";
 
 type StateFilter = "active" | "disabled" | "all";
 
@@ -144,11 +143,36 @@ export function UsersPanel({ canCreate = false, csrfToken = "" }: {
   </section>;
 }
 
-export function RolesPanel() {
+type RoleDraft = { displayName: string; description: string; capabilityKeys: string[]; note: string };
+
+export function roleDraftFindings(draft: RoleDraft, options: AdminCapabilityOption[]): string[] {
+  const findings: string[] = [];
+  const normalizedName = draft.displayName.normalize("NFC").trim().replace(/\s+/gu, " ");
+  if (!normalizedName) findings.push("Enter a role name.");
+  if (normalizedName.length > 100) findings.push("Role name must be 100 characters or fewer.");
+  if (draft.description.normalize("NFC").trim().length > 500) findings.push("Description must be 500 characters or fewer.");
+  if (draft.note.normalize("NFC").trim().length > 500) findings.push("Change note must be 500 characters or fewer.");
+  if (!draft.capabilityKeys.length) findings.push("Select at least one capability.");
+  const selected = new Set(draft.capabilityKeys);
+  const catalog = new Map(options.map((option) => [option.key, option]));
+  for (const key of draft.capabilityKeys) for (const prerequisite of catalog.get(key)?.prerequisites ?? []) {
+    if (!selected.has(prerequisite)) findings.push(`${key} requires ${prerequisite}.`);
+  }
+  return findings;
+}
+
+export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [] }: {
+  readonly csrfToken?: string; readonly capabilities?: string[];
+}) {
   const [items, setItems] = useState<AdminRole[]>([]);
+  const [capabilityOptions, setCapabilityOptions] = useState<AdminCapabilityOption[]>([]);
   const [selectedState, setSelectedState] = useState<StateFilter>("active");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editorRole, setEditorRole] = useState<AdminRole | null | undefined>(undefined);
+  const [draft, setDraft] = useState<RoleDraft>({ displayName: "", description: "", capabilityKeys: [], note: "" });
+  const [saving, setSaving] = useState(false);
+  const canWrite = actorCapabilities.includes("roles:write");
 
   function load(state: StateFilter) {
     setLoading(true);
@@ -162,10 +186,53 @@ export function RolesPanel() {
     loadAdminRoles("active").then((result) => setItems(result.items))
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Roles could not be loaded."))
       .finally(() => setLoading(false));
-  }, []);
+    if (canWrite) loadAdminRoleCapabilities().then((result) => setCapabilityOptions(result.items))
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Capabilities could not be loaded."));
+  }, [canWrite]);
+
+  function begin(role: AdminRole | null) {
+    setError(null);
+    setEditorRole(role);
+    setDraft(role ? { displayName: role.displayName, description: role.description ?? "",
+      capabilityKeys: role.capabilities.map(({ key }) => key), note: "" }
+      : { displayName: "", description: "", capabilityKeys: [], note: "" });
+  }
+
+  function toggle(option: AdminCapabilityOption, checked: boolean) {
+    if (!option.mutable) return;
+    setDraft((current) => ({ ...current, capabilityKeys: checked
+      ? [...new Set([...current.capabilityKeys, option.key, ...option.prerequisites])].sort()
+      : current.capabilityKeys.filter((key) => key !== option.key) }));
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const findings = roleDraftFindings(draft, capabilityOptions);
+    if (findings.length) return;
+    setSaving(true);
+    setError(null);
+    const command: SaveAdminRoleCommand = { displayName: draft.displayName, description: draft.description || null,
+      capabilityKeys: draft.capabilityKeys, note: draft.note || null,
+      ...(editorRole ? { expectedVersion: editorRole.version } : {}) };
+    try {
+      const saved = editorRole ? await updateAdminRole(csrfToken, editorRole.id, command)
+        : await createAdminRole(csrfToken, command);
+      setItems((current) => [...current.filter(({ id }) => id !== saved.id), saved]
+        .sort((left, right) => left.displayName.localeCompare(right.displayName)));
+      setEditorRole(undefined);
+    } catch (reason) {
+      setError(`${reason instanceof Error ? reason.message : "The role could not be saved."} Reload the role list before retrying if another administrator changed it.`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const findings = roleDraftFindings(draft, capabilityOptions);
 
   return <section className="admin-configuration admin-directory" aria-labelledby="roles-heading">
-    <div className="section-heading"><h2 id="roles-heading">Roles</h2></div>
+    <div className="section-heading"><h2 id="roles-heading">Roles</h2>
+      {canWrite && editorRole === undefined && <button type="button" onClick={() => begin(null)}>Create custom role</button>}
+    </div>
     <label className="admin-role-state">Status<select value={selectedState} onChange={(event) => {
       const next = event.target.value as StateFilter;
       setSelectedState(next);
@@ -174,6 +241,30 @@ export function RolesPanel() {
     {error && <p className="admin-error" role="alert">{error}</p>}
     {loading && !items.length && <p role="status">Loading roles…</p>}
     {!loading && !error && !items.length && <p role="status">No roles match this filter.</p>}
+    {editorRole !== undefined && <form className="admin-role-editor" onSubmit={(event) => void save(event)}>
+      <fieldset disabled={saving}><legend>{editorRole ? `Edit ${editorRole.displayName}` : "Create custom role"}</legend>
+        <p className="admin-muted">Saving activates a new immutable version immediately for every current assignee.</p>
+        <label>Role name<input value={draft.displayName} maxLength={100} required onChange={(event) =>
+          setDraft((current) => ({ ...current, displayName: event.target.value }))} /></label>
+        <label>Description <small>(optional)</small><textarea value={draft.description} maxLength={500} onChange={(event) =>
+          setDraft((current) => ({ ...current, description: event.target.value }))} /></label>
+        <fieldset className="admin-capability-options"><legend>Capabilities</legend>
+          {capabilityOptions.map((option) => <label key={option.key}>
+            <input type="checkbox" checked={draft.capabilityKeys.includes(option.key)} disabled={!option.mutable}
+              onChange={(event) => toggle(option, event.target.checked)} />
+            <span><code>{option.key}</code> — {option.description}
+              {option.prerequisites.length > 0 && <small>Requires {option.prerequisites.join(", ")}</small>}
+              {!option.mutable && <small>You cannot change this capability because it is not granted to you.</small>}</span>
+          </label>)}
+        </fieldset>
+        <label>Change note <small>(optional, recorded in the audit event)</small><textarea value={draft.note} maxLength={500}
+          onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} /></label>
+        {findings.length > 0 && <div className="validation-box error-box" role="alert"><strong>Resolve before saving</strong>
+          <ul>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul></div>}
+        <div className="admin-role-editor-actions"><button type="submit" disabled={saving || findings.length > 0}>{saving ? "Saving…" : "Save and activate"}</button>
+          <button type="button" onClick={() => setEditorRole(undefined)}>Cancel</button></div>
+      </fieldset>
+    </form>}
     {items.length > 0 && <div className="admin-role-cards">{items.map((role) => <article key={role.id} className="admin-role-card">
       <header><h3>{role.displayName}</h3><span>{role.active ? "Active" : "Deactivated"}</span></header>
       {role.description && <p>{role.description}</p>}
@@ -183,6 +274,7 @@ export function RolesPanel() {
       {role.capabilities.length ? <ul>{role.capabilities.map((capability) => <li key={capability.key}>
         <code>{capability.key}</code><span>{capability.description}</span>
       </li>)}</ul> : <p className="admin-muted">No capabilities</p>}
+      {canWrite && !role.protected && role.active && <button type="button" onClick={() => begin(role)}>Edit custom role</button>}
     </article>)}</div>}
   </section>;
 }

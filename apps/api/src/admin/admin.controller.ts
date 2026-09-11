@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
+import { RoleAuthoringService } from "./role-authoring.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
 import { UserProvisioningService } from "./user-provisioning.service.js";
 import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
@@ -14,7 +15,8 @@ type RequestLike = { headers: { cookie?: string } };
 export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
     private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
-    private readonly provisioning: UserProvisioningService) {}
+    private readonly provisioning: UserProvisioningService,
+    private readonly roleAuthoring: RoleAuthoringService) {}
 
   @Get("context")
   context(
@@ -46,6 +48,24 @@ export class AdminController {
   roles(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<AdminRoleList> {
     return this.directory.roles(sessionToken(request, authorization), query);
+  }
+
+  @Get("role-capabilities")
+  roleCapabilities(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminCapabilityCatalog> {
+    return this.roleAuthoring.capabilities(sessionToken(request, authorization));
+  }
+
+  @Post("roles")
+  createRole(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.create(sessionToken(request, authorization), body);
+  }
+
+  @Put("roles/:id")
+  updateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.update(sessionToken(request, authorization), id, body);
   }
 
   @Get("catalog-draft")

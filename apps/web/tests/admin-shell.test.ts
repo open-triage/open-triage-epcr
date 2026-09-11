@@ -4,9 +4,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, createAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
-import { RolesPanel, UsersPanel } from "../components/admin-directory";
+import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
@@ -84,6 +84,39 @@ test("directory requests encode server-side filters and pagination", async (t) =
   await loadAdminRoles("all");
   assert.match(requests[0]!, /users\?search=Alex\+Smith&state=disabled&roleId=role-id&cursor=opaque&limit=50$/);
   assert.match(requests[1]!, /roles\?state=all$/);
+});
+
+test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
+  const options = [
+    { key: "users:read", description: "View users", administrative: true, systemOnly: false,
+      prerequisites: [], mutable: false },
+    { key: "users:write", description: "Change users", administrative: true, systemOnly: false,
+      prerequisites: ["users:read"], mutable: true }
+  ];
+  assert.deepEqual(roleDraftFindings({ displayName: "Dispatch", description: "", note: "",
+    capabilityKeys: ["users:write"] }, options), ["users:write requires users:read."]);
+  const markup = renderToStaticMarkup(createElement(RolesPanel,
+    { csrfToken: "csrf", capabilities: ["roles:read", "roles:write"] }));
+  assert.match(markup, /Create custom role/);
+});
+
+test("role mutations send CSRF proof and optimistic version without mutable audit details", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return Response.json({ id: "role-id", displayName: "Dispatch", description: null, active: true,
+      protected: false, version: requests.length, assigneeCount: 0, capabilities: [] });
+  };
+  const definition = { displayName: "Dispatch", description: null, capabilityKeys: ["roles:read"], note: "Reviewed" };
+  await createAdminRole("csrf-proof", definition);
+  await updateAdminRole("csrf-proof", "role-id", { ...definition, expectedVersion: 1 });
+  assert.equal(requests[0]!.init?.method, "POST");
+  assert.equal((requests[0]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.equal(requests[1]!.init?.method, "PUT");
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { ...definition, expectedVersion: 1 });
+  assert.doesNotMatch(String(requests[1]!.init?.body), /password|token|secret/i);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {

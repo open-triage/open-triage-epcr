@@ -292,6 +292,48 @@ test("a temporary credential opens only mandatory password replacement", async (
   await expect(page.getByRole("button", { name: "Open call" })).toHaveCount(0);
 });
 
+test("a role author creates an immediately active immutable version from the safe capability registry", async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["roles"],
+    capabilities: ["roles:read", "roles:write", "users:read", "users:write"],
+    activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/role-capabilities", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [
+    { key: "users:read", description: "View users", administrative: true, systemOnly: false, prerequisites: [], mutable: true },
+    { key: "users:write", description: "Change users", administrative: true, systemOnly: false,
+      prerequisites: ["users:read"], mutable: true },
+    { key: "clinical:document", description: "Document care", administrative: false, systemOnly: false,
+      prerequisites: [], mutable: false }
+  ] }) }));
+  await page.route("**/api/admin/roles**", async (route) => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "custom-role-id",
+        displayName: "Dispatch Lead", description: "Coordinates dispatch", active: true, protected: false,
+        version: 1, assigneeCount: 0, capabilities: [
+          { key: "users:read", description: "View users", administrative: true, systemOnly: false },
+          { key: "users:write", description: "Change users", administrative: true, systemOnly: false }
+        ] }) });
+      return;
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [] }) });
+  });
+  await signInAsCombinedOwner(page, ["roles:read", "roles:write", "users:read", "users:write"]);
+  await page.getByRole("button", { name: "Create custom role" }).click();
+  await page.getByLabel("Role name").fill(" Dispatch   Lead ");
+  await page.getByLabel("Description (optional)").fill("Coordinates dispatch");
+  await page.getByRole("checkbox", { name: /^users:write/ }).check();
+  await expect(page.getByRole("checkbox", { name: /^users:read/ })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /^clinical:document/ })).toBeDisabled();
+  await page.getByLabel(/Change note/).fill("Approved operational access");
+  await page.getByRole("button", { name: "Save and activate" }).click();
+  await expect(page.getByRole("heading", { name: "Dispatch Lead" })).toBeVisible();
+  expect(submitted).toMatchObject({ capabilityKeys: ["users:read", "users:write"], note: "Approved operational access" });
+  expect(submitted).not.toHaveProperty("expectedVersion");
+});
+
 test("an open clinical report disables Admin until Save and close", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
