@@ -1,10 +1,14 @@
-import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
-import { apiRequestUrl, browserRequestInit } from "./browser-api";
+import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
   emptyResponse?: { value: T }): Promise<T> {
-  const url = apiRequestUrl(`/api/admin/${path}`);
-  if (!url) throw new Error("Administration is unavailable in the static demonstration.");
+  const requestPath = `/api/admin/${path}`;
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) {
+    throw new Error("Administration is unavailable in the static demonstration.");
+  }
+  const url = apiRequestUrl(requestPath, configuration) ?? browserRouteUrl(requestPath, configuration);
   const response = await fetch(url, browserRequestInit({
     ...init,
     headers: { ...(init?.body ? { "content-type": "application/json" } : {}),
@@ -56,8 +60,12 @@ export const searchFormCatalog = (id: string, query: string) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
 
 export async function loadAdminContext(): Promise<AdminContext> {
-  const url = apiRequestUrl("/api/admin/context");
-  if (!url) throw new Error("Administration is unavailable in the static demonstration.");
+  const requestPath = "/api/admin/context";
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) {
+    throw new Error("Administration is unavailable in the static demonstration.");
+  }
+  const url = apiRequestUrl(requestPath, configuration) ?? browserRouteUrl(requestPath, configuration);
   const response = await fetch(url, browserRequestInit());
   if (!response.ok) {
     throw new Error(response.status === 401 || response.status === 403
@@ -66,3 +74,26 @@ export async function loadAdminContext(): Promise<AdminContext> {
   }
   return response.json() as Promise<AdminContext>;
 }
+
+export type AdminUserQuery = {
+  search?: string;
+  state?: "active" | "disabled" | "all";
+  roleId?: string;
+  cursor?: string;
+  limit?: number;
+};
+
+function queryString(query: Record<string, string | number | undefined>): string {
+  const parameters = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") parameters.set(key, String(value));
+  const encoded = parameters.toString();
+  return encoded ? `?${encoded}` : "";
+}
+
+export const loadAdminUsers = (query: AdminUserQuery = {}) =>
+  catalogRequest<AdminUserPage>(`users${queryString(query)}`);
+
+export const loadAdminRoles = (state: "active" | "disabled" | "all" = "active") =>
+  catalogRequest<AdminRoleList>(`roles${queryString({ state })}`);
+
+export const loadAdminUserRoleOptions = () => catalogRequest<AdminRoleSummaryList>("user-role-options");

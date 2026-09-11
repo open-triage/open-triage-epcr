@@ -4,8 +4,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, loadAdminContext, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
+import { RolesPanel, UsersPanel } from "../components/admin-directory";
 import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
@@ -22,20 +23,39 @@ const session: ClinicianSession = {
   capabilities: ["admin-dashboard:read", "clinical:document"]
 };
 const productionSettings = parseInstallationSettings(production);
-const unavailablePanels = [
-  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
-  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
-] as const;
-
-test("Admin panels use one persistent side-tab navigator", () => {
+test("Admin navigation waits for server-authorized panels", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
-  assert.match(markup, />Element catalog<\/button>/);
-  assert.match(markup, />Stationary form<\/button>/);
-  for (const panel of unavailablePanels) assert.match(markup, new RegExp(`>${panel}<\\/button>`));
-  assert.equal((markup.match(/<button type="button"/g) ?? []).length, 14);
-  assert.doesNotMatch(markup, /admin-placeholder-grid/);
+  assert.match(markup, /Loading active configuration/);
+  assert.doesNotMatch(markup, />Users<\/button>|>Roles<\/button>|>Element catalog<\/button>/);
+});
+
+test("read-only directory panels expose accessible discovery controls without mutation actions", () => {
+  const users = renderToStaticMarkup(createElement(UsersPanel));
+  assert.match(users, /role="search"/);
+  assert.match(users, /type="search"/);
+  assert.match(users, />Status<select/);
+  assert.match(users, />Role<select/);
+  assert.doesNotMatch(users, /<button[^>]*>(Create|Edit|Disable|Assign)/);
+  const roles = renderToStaticMarkup(createElement(RolesPanel));
+  assert.match(roles, /id="roles-heading"/);
+  assert.match(roles, />Deactivated<\/option>/);
+  assert.doesNotMatch(roles, /<button[^>]*>(Create|Edit|Delete)/);
+});
+
+test("directory requests encode server-side filters and pagination", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    return Response.json(requests.length === 1 ? { items: [], nextCursor: null, pageSize: 50 } : { items: [] });
+  };
+  await loadAdminUsers({ search: "Alex Smith", state: "disabled", roleId: "role-id", cursor: "opaque", limit: 50 });
+  await loadAdminRoles("all");
+  assert.match(requests[0]!, /users\?search=Alex\+Smith&state=disabled&roleId=role-id&cursor=opaque&limit=50$/);
+  assert.match(requests[1]!, /roles\?state=all$/);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {

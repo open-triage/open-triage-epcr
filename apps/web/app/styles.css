@@ -88,6 +88,29 @@ input, select, textarea { touch-action: manipulation; }
 .admin-placeholder { padding: 6px 2px; color: #454944; }
 .admin-placeholder h2 { margin: 0 0 10px; font-size: var(--text-heading); }
 .admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
+.admin-directory { padding-bottom: 18px; }
+.admin-directory-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; padding: 18px; }
+.admin-directory-filters label, .admin-role-state { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
+.admin-directory-filters input, .admin-directory-filters select, .admin-role-state select { min-height: 42px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
+.admin-directory > button, .admin-directory-filters button { min-height: 42px; padding: 8px 14px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-directory > button { margin: 14px 18px 0; }
+.admin-table-scroll { overflow-x: auto; padding: 0 18px; }
+.admin-directory table { width: 100%; border-collapse: collapse; background: #fff; }
+.admin-directory th, .admin-directory td { padding: 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.admin-directory thead th { background: #edf3ee; }
+.admin-role-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.admin-role-badges li { padding: 3px 7px; border-radius: 999px; background: #e8f3ee; font-size: var(--text-caption); }
+.admin-muted { color: var(--muted); }
+.admin-role-state { max-width: 220px; margin: 18px; }
+.admin-role-cards { display: grid; gap: 14px; padding: 0 18px; }
+.admin-role-card { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.admin-role-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.admin-role-card h3, .admin-role-card h4 { margin: 0; }
+.admin-role-card > p { color: var(--muted); }
+.admin-role-card dl { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px 0; }
+.admin-role-card > ul { display: grid; gap: 7px; margin-bottom: 0; padding-left: 20px; }
+.admin-role-card > ul li span { display: block; color: var(--muted); font-size: var(--text-caption); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .catalog-empty, .catalog-editor { display: grid; gap: 12px; padding: 18px; }
 .form-empty, .form-editor { display: grid; gap: 12px; padding: 18px; }
 .form-sections { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
@@ -161,6 +184,7 @@ input, select, textarea { touch-action: manipulation; }
   .admin-tabs { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-tabs button { border-right: 1px solid var(--line); }
   .admin-configuration dl { grid-template-columns: 1fr; }
+  .admin-directory-filters { grid-template-columns: 1fr; }
 }
 .admin-preview-window { min-height: 100vh; padding: 18px; background: var(--paper); }
 .admin-preview-error { max-width: 720px; margin: 48px auto; padding: 20px; }

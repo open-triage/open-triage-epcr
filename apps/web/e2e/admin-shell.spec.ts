@@ -9,11 +9,6 @@ const dashboard = {
   reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10_485_760,
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
-const unavailablePanels = [
-  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
-  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
-] as const;
-
 function assignedCalls(route: Route) {
   return route.fulfill({
     contentType: "application/json",
@@ -21,9 +16,9 @@ function assignedCalls(route: Route) {
   });
 }
 
-async function signInAsCombinedOwner(page: Page) {
+async function signInAsCombinedOwner(page: Page, capabilities = ["clinical:document", "admin-dashboard:read"]) {
   await page.goto("/");
-  await page.evaluate(() => {
+  await page.evaluate((grantedCapabilities) => {
     window.localStorage.clear();
     window.localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify({
       accessToken: "synthetic-browser-session",
@@ -31,20 +26,21 @@ async function signInAsCombinedOwner(page: Page) {
       organization: { id: "organization-id", name: "Example EMS" },
       startedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
-      capabilities: ["clinical:document", "admin-dashboard:read"]
+      capabilities: grantedCapabilities
     }));
     window.localStorage.removeItem("open-triage.presentation-mode.v1");
-  });
+  }, capabilities);
   await page.reload();
 }
 
-test("combined owners start clinically and can enter the authorized Admin shell by keyboard", async ({ page }) => {
+test("combined owners start clinically and can enter only server-authorized Admin panels by keyboard", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route("**/api/admin/context", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       owner: { id: "owner-id", displayName: "Installation Owner" },
       organization: { id: "organization-id", name: "Example EMS" },
+      panels: ["dashboard"],
       activeConfiguration: {
         catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
         stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 }
@@ -69,15 +65,51 @@ test("combined owners start clinically and can enter the authorized Admin shell 
   await expect(page.getByText("Used by new reports", { exact: true })).toHaveCount(0);
   await expect(page.locator(".session-identity")).toHaveText("Signed in as Installation Owner");
   await expect(page.getByRole("navigation", { name: "Administration panels" })).toBeVisible();
-  for (const panel of unavailablePanels) {
-    const destination = page.getByRole("button", { name: panel, exact: true });
-    await destination.focus();
-    await destination.press("Enter");
-    await expect(destination).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("heading", { name: panel, exact: true })).toBeVisible();
-    await expect(page.locator(".admin-placeholder")).toContainText("Unavailable in this release");
-    await expect(page.locator(".admin-placeholder").locator("button, input, select, textarea, a")).toHaveCount(0);
-  }
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Roles", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Element catalog", exact: true })).toHaveCount(0);
+});
+
+test("Users and Roles preserve asymmetric visibility and read-only accessible navigation", async ({ page }) => {
+  const requested: string[] = [];
+  page.on("request", (request) => { if (request.url().includes("/api/admin/")) requested.push(request.url()); });
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"], activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/user-role-options", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [
+    { id: "role-id", displayName: "Clinician", active: true, protected: true }
+  ] }) }));
+  await page.route("**/api/admin/users**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    items: [{ id: "user-id", displayName: "Alex Medic", username: "alex.medic", active: true,
+      roles: [{ id: "role-id", displayName: "Clinician", active: true, protected: true }] }], nextCursor: null, pageSize: 50
+  }) }));
+  await signInAsCombinedOwner(page, ["users:read"]);
+  await expect(page.getByRole("button", { name: "Admin" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "alex.medic" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Assigned roles" }).getByText("Clinician", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Roles", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Create|Edit|Disable|Assign/ })).toHaveCount(0);
+  expect(requested.some((url) => /\/api\/admin\/roles(?:\?|$)/.test(url))).toBe(false);
+
+  requested.length = 0;
+  await page.unrouteAll({ behavior: "wait" });
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["roles"], activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/roles**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{
+    id: "role-id", displayName: "Administrator", description: "Administrative access", active: true, protected: true,
+    version: 2, assigneeCount: 4, capabilities: [{ key: "users:read", description: "View users", administrative: true, systemOnly: false }]
+  }] }) }));
+  await signInAsCombinedOwner(page, ["roles:read"]);
+  await expect(page.getByRole("button", { name: "Roles", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("4", { exact: true })).toBeVisible();
+  await expect(page.getByText("users:read", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
+  expect(requested.some((url) => /\/api\/admin\/users(?:\?|$)/.test(url))).toBe(false);
 });
 
 test("an open clinical report disables Admin until Save and close", async ({ page }) => {
@@ -123,6 +155,7 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "catalog", "forms"],
     activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } },
     dashboard,

@@ -67,6 +67,7 @@ export interface AdminContext {
       version: number;
     };
   } | null;
+  panels: AdminPanelKey[];
   dashboard: {
     availableCalls: number;
     ongoingReports: number;
@@ -79,7 +80,52 @@ export interface AdminContext {
     databaseConnections: number;
     maxDatabaseConnections: number;
     generatedAt: string;
-  };
+  } | null;
+}
+
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms";
+
+export interface AdminRoleSummary {
+  id: string;
+  displayName: string;
+  active: boolean;
+  protected: boolean;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  displayName: string;
+  username: string;
+  active: boolean;
+  roles: AdminRoleSummary[];
+}
+
+export interface AdminUserPage {
+  items: AdminUserSummary[];
+  nextCursor: string | null;
+  pageSize: number;
+}
+
+export interface AdminCapabilityDefinition {
+  key: string;
+  description: string;
+  administrative: boolean;
+  systemOnly: boolean;
+}
+
+export interface AdminRole extends AdminRoleSummary {
+  description: string | null;
+  version: number;
+  assigneeCount: number;
+  capabilities: AdminCapabilityDefinition[];
+}
+
+export interface AdminRoleList {
+  items: AdminRole[];
+}
+
+export interface AdminRoleSummaryList {
+  items: AdminRoleSummary[];
 }
 
 export interface CatalogDraftElement {

@@ -1,16 +1,17 @@
 import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
+import { UserRoleReadService } from "./user-role-read.service.js";
 
 type RequestLike = { headers: { cookie?: string } };
 
 @Controller("admin")
 export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
-    private readonly forms: FormAuthoringService) {}
+    private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService) {}
 
   @Get("context")
   context(
@@ -18,6 +19,24 @@ export class AdminController {
     @Headers("authorization") authorization?: string
   ): Promise<AdminContext> {
     return this.admin.context(sessionToken(request, authorization));
+  }
+
+  @Get("users")
+  users(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminUserPage> {
+    return this.directory.users(sessionToken(request, authorization), query);
+  }
+
+  @Get("user-role-options")
+  userRoleOptions(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleSummaryList> {
+    return this.directory.userRoleOptions(sessionToken(request, authorization));
+  }
+
+  @Get("roles")
+  roles(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleList> {
+    return this.directory.roles(sessionToken(request, authorization), query);
   }
 
   @Get("catalog-draft")
