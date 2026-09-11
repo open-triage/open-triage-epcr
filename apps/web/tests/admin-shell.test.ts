@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
@@ -179,6 +179,37 @@ test("role replacement and protected-action reauthentication use separate revisi
   assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)),
     { expectedRevision: 8, roleIds: [], note: "Prepare" });
   assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+});
+
+test("session and reset requests preserve CSRF, owner confirmation, revision, and secret-free responses", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    if (requests.length === 1) return Response.json({ userId: "user-id", items: [{ id: "session-id",
+      startedAt: "2026-09-11T08:00:00.000Z", lastActivityAt: "2026-09-11T09:00:00.000Z",
+      expiresAt: "2026-09-11T20:00:00.000Z", deviceLabel: "Firefox on Linux", current: true, owner: true }] });
+    if (requests.length === 2) return Response.json({ sessionId: "session-id", revoked: true,
+      alreadyRevoked: false, currentSessionRevoked: true });
+    return Response.json({ userId: "user-id", revision: 8, active: false,
+      temporaryPasswordExpiresAt: "2026-09-12T12:00:00.000Z", sessionsRevoked: 2 });
+  };
+  const viewed = await loadAdminUserSessions("user-id");
+  assert.deepEqual(viewed.items[0], { id: "session-id", startedAt: "2026-09-11T08:00:00.000Z",
+    lastActivityAt: "2026-09-11T09:00:00.000Z", expiresAt: "2026-09-11T20:00:00.000Z",
+    deviceLabel: "Firefox on Linux", current: true, owner: true });
+  assert.doesNotMatch(JSON.stringify(viewed), /source.?ip|geolocation/i);
+  await revokeAdminUserSession("csrf-proof", "user-id", "session-id", true);
+  const reset = await resetAdminUserCredential("csrf-proof", "user-id", { expectedRevision: 7,
+    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 24, note: "Lost device" });
+  assert.equal(requests[1]!.init?.method, "DELETE");
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { confirmOwner: true });
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.deepEqual(JSON.parse(String(requests[2]!.init?.body)), { expectedRevision: 7,
+    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 24, note: "Lost device" });
+  assert.equal(reset.active, false, "credential reset remains separate from account reactivation");
+  assert.equal("temporaryPassword" in reset, false);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {

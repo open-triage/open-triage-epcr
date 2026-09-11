@@ -114,6 +114,10 @@ export function AdminShell({ session, installationSettings }: {
       canCreate={context.capabilities?.includes("users:write") ?? false}
       canManage={context.capabilities?.includes("users:write") ?? false}
       canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
+      canViewSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read")) ?? false}
+      canRevokeSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read") &&
+        context.capabilities.includes("sessions:revoke")) ?? false}
+      canResetCredentials={(context.capabilities?.includes("users:read") && context.capabilities.includes("credentials:reset")) ?? false}
       currentUserId={session.user.id}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""} />}
     {context && activePanel === "Roles" && <RolesPanel csrfToken={session.csrfToken ?? session.accessToken ?? ""}

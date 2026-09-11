@@ -101,6 +101,19 @@ input, select, textarea { touch-action: manipulation; }
 .admin-user-note { grid-column: 1 / -1; }
 .admin-user-note textarea { min-height: 72px; resize: vertical; }
 .admin-user-create button { justify-self: start; }
+.admin-user-security { margin: 0 18px 18px; border: 1px solid #b7c6b9; border-radius: 8px; background: #f7faf7; }
+.admin-user-security h4 { margin: 16px 16px 6px; }
+.admin-user-security .admin-muted { margin: 0 16px 12px; }
+.admin-session-list { display: grid; gap: 10px; margin: 0; padding: 0 16px 16px; list-style: none; }
+.admin-session-list > li { padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.admin-session-list > li > div { display: flex; justify-content: space-between; gap: 12px; }
+.admin-session-list > li > div span { color: var(--green); font-weight: 800; }
+.admin-session-list dl { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px 0; }
+.admin-session-list button, .admin-credential-reset button { min-height: 40px; padding: 7px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-credential-reset { padding: 0 16px 16px; }
+.admin-credential-reset fieldset { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); }
+.admin-credential-reset label { display: grid; gap: 6px; font-weight: 750; }
+.admin-credential-reset input, .admin-credential-reset textarea { min-height: 42px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; font: inherit; }
 .admin-directory-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; padding: 18px; }
 .admin-directory-filters label, .admin-role-state { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
 .admin-directory-filters input, .admin-directory-filters select, .admin-role-state select { min-height: 42px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }

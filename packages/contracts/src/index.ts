@@ -149,6 +149,48 @@ export interface UpdatedAdminUser extends AdminUserSummary {
   freshLoginRequired: boolean;
 }
 
+export interface AdminSessionSummary {
+  id: string;
+  startedAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+  deviceLabel: string;
+  current: boolean;
+  owner: boolean;
+}
+
+export interface AdminSessionList {
+  userId: string;
+  items: AdminSessionSummary[];
+}
+
+export interface RevokeAdminSessionCommand {
+  /** Required only when the selected session belongs to the installation owner. */
+  confirmOwner?: boolean;
+}
+
+export interface RevokedAdminSession {
+  sessionId: string;
+  revoked: true;
+  alreadyRevoked: boolean;
+  currentSessionRevoked: boolean;
+}
+
+export interface ResetAdminCredentialCommand {
+  expectedRevision: number;
+  temporaryPassword: string;
+  temporaryPasswordHours: number;
+  note?: string;
+}
+
+export interface ResetAdminCredentialResult {
+  userId: string;
+  revision: number;
+  active: boolean;
+  temporaryPasswordExpiresAt: string;
+  sessionsRevoked: number;
+}
+
 export interface AdminCapabilityDefinition {
   key: string;
   description: string;

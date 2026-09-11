@@ -24,11 +24,21 @@ const digest = (value: string) => createHash("sha256").update(value).digest("hex
 const timestamp = (value: Date | string) => value instanceof Date ? value.getTime() : Date.parse(value);
 const REAUTHENTICATION_MILLISECONDS = 5 * 60 * 1_000;
 
+export function coarseDeviceLabel(userAgent: string | undefined): string {
+  const source = userAgent ?? "";
+  const browser = /Edg\//.test(source) ? "Edge" : /Firefox\//.test(source) ? "Firefox"
+    : /(?:Chrome|CriOS)\//.test(source) ? "Chrome" : /Safari\//.test(source) ? "Safari" : "Other browser";
+  const os = /Windows NT/.test(source) ? "Windows" : /(?:iPhone|iPad|iPod)/.test(source) ? "iOS"
+    : /Android/.test(source) ? "Android" : /Mac OS X/.test(source) ? "macOS"
+      : /Linux/.test(source) ? "Linux" : "Other OS";
+  return `${browser} on ${os}`;
+}
+
 @Injectable()
 export class ClinicianSessionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async create(command: CreateClinicianSessionCommand, now = new Date()): Promise<CreatedSession> {
+  async create(command: CreateClinicianSessionCommand, now = new Date(), userAgent?: string): Promise<CreatedSession> {
     const username = command.username.trim().toLowerCase();
     const rows = await this.dataSource.query<CredentialRow[]>(`
       select u.id as user_id, u.display_name, u.active, o.id as organization_id,
@@ -55,9 +65,10 @@ export class ClinicianSessionService {
       : normalExpiry;
     const inserted = await this.dataSource.query<Array<{ id: string }>>(`
       insert into app_identity.app_session
-        (user_id, token_sha256, csrf_sha256, credential_version, created_at, expires_at)
-      values ($1, $2, $3, $4, $5, $6) returning id
-    `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt]);
+        (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label)
+      values ($1, $2, $3, $4, $5, $5, $6, $7) returning id
+    `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt,
+      coarseDeviceLabel(userAgent)]);
     await this.audit(this.dataSource.manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
     return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken) };
   }
@@ -87,6 +98,8 @@ export class ClinicianSessionService {
     if (!session.workspaceAvailable && !allowPasswordChange) {
       throw new UnauthorizedException("No workspace role is assigned to this account");
     }
+    await manager.query(`update app_identity.app_session set last_activity_at = $2
+      where id = $1 and last_activity_at < $2::timestamptz - interval '1 minute'`, [row.session_id, now]);
     return session;
   }
 
@@ -98,7 +111,7 @@ export class ClinicianSessionService {
     if (!rows[0] || rows[0].csrf_sha256 !== digest(csrfToken)) throw new UnauthorizedException("A valid CSRF token is required");
   }
 
-  async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date()): Promise<CreatedSession> {
+  async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date(), userAgent?: string): Promise<CreatedSession> {
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
     const result = await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, command.csrfToken, manager);
@@ -131,9 +144,10 @@ export class ClinicianSessionService {
       const expiresAt = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
       const inserted = await manager.query<Array<{ id: string }>>(`
         insert into app_identity.app_session
-          (user_id, token_sha256, csrf_sha256, credential_version, created_at, expires_at)
-        values ($1, $2, $3, $4, $5, $6) returning id
-      `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0]!.credential_version, now, expiresAt]);
+          (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label)
+        values ($1, $2, $3, $4, $5, $5, $6, $7) returning id
+      `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0]!.credential_version,
+        now, expiresAt, coarseDeviceLabel(userAgent)]);
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
       return {
         sessionToken: replacementSessionToken,

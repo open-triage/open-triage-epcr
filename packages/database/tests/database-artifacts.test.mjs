@@ -30,7 +30,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
-  roleRetirementMigration] = await Promise.all([
+  roleRetirementMigration, sessionAdministrationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -62,7 +62,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -158,6 +159,14 @@ test("user lifecycle revisions reserve historical usernames and extend append-on
   assert.match(userLifecycleMigration, /username_reservation_append_only/);
   assert.match(userLifecycleMigration, /'account\.disable', 'account\.reactivate', 'account\.roles_change'/);
   assert.match(userLifecycleMigration, /revoke all on app_identity\.username_reservation from public/);
+});
+
+test("session administration stores only bounded activity and coarse-device metadata", () => {
+  assert.match(sessionAdministrationMigration, /last_activity_at timestamptz/);
+  assert.match(sessionAdministrationMigration, /device_label text not null/);
+  assert.match(sessionAdministrationMigration, /app_session_active_user_activity_idx/);
+  assert.match(sessionAdministrationMigration, /authentication\.session_revoke/);
+  assert.doesNotMatch(sessionAdministrationMigration, /add column (source_ip|geolocation|user_agent)/i);
 });
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {

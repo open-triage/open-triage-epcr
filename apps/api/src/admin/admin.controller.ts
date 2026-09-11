@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
-import { sessionToken } from "../sessions/clinician-session.controller.js";
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
+import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
@@ -12,8 +12,11 @@ import { UserLifecycleService } from "./user-lifecycle.service.js";
 import { validateUpdateAdminUser } from "./user-lifecycle.validation.js";
 import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
 import { validateReplaceAdminUserRoles } from "./user-role-assignment.validation.js";
+import { SessionAdministrationService } from "./session-administration.service.js";
+import { validateResetAdminCredential, validateRevokeAdminSession } from "./session-administration.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
+type ResponseLike = { clearCookie(name: string, options: Record<string, unknown>): void };
 
 @Controller("admin")
 export class AdminController {
@@ -21,7 +24,8 @@ export class AdminController {
     private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
     private readonly provisioning: UserProvisioningService,
     private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService,
-    private readonly roleAssignments: UserRoleAssignmentService) {}
+    private readonly roleAssignments: UserRoleAssignmentService,
+    private readonly sessionAdministration: SessionAdministrationService) {}
 
   @Get("context")
   context(
@@ -53,6 +57,30 @@ export class AdminController {
   replaceUserRoles(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<UpdatedAdminUserRoles> {
     return this.roleAssignments.replace(sessionToken(request, authorization), id, validateReplaceAdminUserRoles(body));
+  }
+
+  @Get("users/:id/sessions")
+  userSessions(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminSessionList> {
+    return this.sessionAdministration.list(sessionToken(request, authorization), id);
+  }
+
+  @Delete("users/:userId/sessions/:sessionId")
+  async revokeUserSession(@Param("userId", new ParseUUIDPipe()) userId: string,
+    @Param("sessionId", new ParseUUIDPipe()) sessionId: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Res({ passthrough: true }) response: ResponseLike,
+    @Headers("authorization") authorization?: string): Promise<RevokedAdminSession> {
+    const revoked = await this.sessionAdministration.revoke(sessionToken(request, authorization), userId, sessionId,
+      validateRevokeAdminSession(body));
+    if (revoked.currentSessionRevoked) clearSessionCookie(response);
+    return revoked;
+  }
+
+  @Post("users/:id/credentials/reset")
+  resetUserCredential(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<ResetAdminCredentialResult> {
+    return this.sessionAdministration.resetCredential(sessionToken(request, authorization), id,
+      validateResetAdminCredential(body));
   }
 
   @Get("user-role-options")
