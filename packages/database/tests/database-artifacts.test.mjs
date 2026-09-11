@@ -29,7 +29,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
-  temporaryCredentialMigration] = await Promise.all([
+  temporaryCredentialMigration, customRoleAuthoringMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -58,7 +58,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -98,6 +99,17 @@ test("role constraints cover organizations, prerequisites, audit redaction, and 
   assert.match(roleAuthorizationMigration, /authorization_event_append_only/);
   assert.match(roleAuthorizationMigration, /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
   assert.match(roleAuthorizationMigration, /role\.version_activate/);
+});
+
+test("custom role authoring normalizes identities and audits the first immutable activation", () => {
+  assert.match(customRoleAuthoringMigration, /role_display_name_normalized/);
+  assert.match(customRoleAuthoringMigration, /normalize\(btrim\(display_name\), NFC\)/);
+  assert.match(customRoleAuthoringMigration, /protected_role_identity_not_shadowed/);
+  assert.match(customRoleAuthoringMigration,
+    /role_initial_version_activation_audit[\s\S]*deferrable initially deferred/);
+  assert.match(customRoleAuthoringMigration,
+    /jsonb_build_object\('roleId', new\.id, 'priorVersionId', null,[\s\S]*'version', selected_version\.version\)/);
+  assert.doesNotMatch(customRoleAuthoringMigration, /jsonb_build_object\([^)]*(display_name|description)/);
 });
 
 test("installation ownership is singular, durable, least-privilege, and gates role authority", () => {

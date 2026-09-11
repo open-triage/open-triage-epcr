@@ -154,6 +154,30 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'forms:read') allowed",
         [userId, organizationId])).rows[0].allowed, true);
 
+      // Force the deferred creation audit after the first immutable version and
+      // its capabilities exist, then return subsequent checks to deferred mode.
+      await client.query("set constraints all immediate");
+      const initialActivation = await client.query(`
+        select note, details from app_identity.authorization_event
+        where organization_id = $1 and action = 'role.version_activate'
+          and target_key = $2
+      `, [organizationId, versionOneId]);
+      assert.equal(initialActivation.rows.length, 1);
+      assert.deepEqual(initialActivation.rows[0].details, {
+        roleId, priorVersionId: null, version: 1
+      });
+      assert.equal(JSON.stringify(initialActivation.rows[0].details).includes("Immediate role"), false);
+      await rejectsSql(client, "update app_identity.authorization_event set note = 'rewritten' where target_key = $1",
+        [versionOneId], "P0001");
+      await client.query("set constraints all deferred");
+
+      await rejectsSql(client, `insert into app_identity.role
+        (id, organization_id, display_name, current_version_id)
+        values ($1, $2, ' Bad  role ', $3)`, [randomUUID(), organizationId, randomUUID()], "23514");
+      await rejectsSql(client, `insert into app_identity.role
+        (id, organization_id, display_name, current_version_id)
+        values ($1, $2, 'Administrator', $3)`, [randomUUID(), organizationId, randomUUID()], "P0001");
+
       await client.query("savepoint invalid_prerequisite");
       const invalidRoleId = randomUUID();
       const invalidVersionId = randomUUID();

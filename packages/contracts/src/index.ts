@@ -144,6 +144,25 @@ export interface AdminRoleList {
   items: AdminRole[];
 }
 
+export interface AdminCapabilityOption extends AdminCapabilityDefinition {
+  prerequisites: string[];
+  /** Whether the current actor may add or remove this capability. */
+  mutable: boolean;
+}
+
+export interface AdminCapabilityCatalog {
+  items: AdminCapabilityOption[];
+}
+
+export interface SaveAdminRoleCommand {
+  displayName: string;
+  description: string | null;
+  capabilityKeys: string[];
+  note?: string | null;
+  /** Required when replacing an existing role's active immutable version. */
+  expectedVersion?: number;
+}
+
 export interface AdminRoleSummaryList {
   items: AdminRoleSummary[];
 }
