@@ -17,6 +17,11 @@ function sessions() {
   return { get(token) {
     if (token !== ownerSession.accessToken) throw new UnauthorizedException();
     return ownerSession;
+  }, assertCsrf(token, csrf) {
+    if (token !== ownerSession.accessToken || csrf !== "csrf-proof") throw new UnauthorizedException();
+  }, requireCapability(token, capability) {
+    if (token !== ownerSession.accessToken || capability !== "clinical:demo") throw new UnauthorizedException();
+    return ownerSession;
   } };
 }
 
@@ -33,28 +38,42 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
   const calls = [];
   const manager = { query: async (sql, parameters) => {
     calls.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
-    if (sql.includes("select patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
+    if (sql.includes("select r.patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
     if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
     return [];
   } };
   const service = new DraftReportService(transactional(manager), sessions());
 
-  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId), { deleted: true, reportId });
-  assert.match(calls[0].sql, /status = 'draft' and synthetic/);
+  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId, "csrf-proof"), { deleted: true, reportId });
+  assert.match(calls[0].sql, /r\.status = 'draft' and r\.synthetic and ca\.synthetic/);
   assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
   assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.call_assignment where report_id/.test(sql)));
   assert.ok(!calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.patient/.test(sql)));
+  const audit = calls.find(({ sql }) => /insert into clinical_audit\.synthetic_draft_mutation_event/.test(sql));
+  assert.deepEqual(audit.parameters, [ownerSession.organization.id, ownerSession.user.id, reportId,
+    null, "synthetic_draft.delete", 0, null]);
+  assert.doesNotMatch(JSON.stringify(audit), /patient-1|CALL|clinicalValue/i);
 });
 
 test("prototype deletion refuses reports outside the owned synthetic-draft boundary", async () => {
   const manager = { query: async () => [] };
   const service = new DraftReportService(transactional(manager), sessions());
   await assert.rejects(
-    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"),
+    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010", "csrf-proof"),
     ConflictException,
   );
+});
+
+test("demo deletion independently rejects missing CSRF proof or current Clinical Demo authority", async () => {
+  const service = new DraftReportService(transactional({ query: async () => [] }), {
+    get: () => ownerSession,
+    assertCsrf: (_token, csrf) => { if (csrf !== "csrf-proof") throw new UnauthorizedException(); },
+    requireCapability: () => { throw new UnauthorizedException("role removed"); },
+  });
+  await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"), UnauthorizedException);
+  await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010", "csrf-proof"), UnauthorizedException);
 });
 
 test("open calls list only creator-owned drafts in newest-activity order with workflow details", async () => {

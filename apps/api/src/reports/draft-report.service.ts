@@ -48,6 +48,8 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   documenting_user_id: string;
+  synthetic?: boolean;
+  demo_mutable?: boolean;
   server_received_time?: Date | string;
 };
 
@@ -77,6 +79,7 @@ type OpenCallRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_error_count: string | number;
+  demo_mutable: boolean;
 };
 
 type DraftTargetType = "group" | "occurrence";
@@ -117,6 +120,8 @@ type ReconciliationAudit = {
 
 const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEMO_GENERATOR = "stationary-populate-v1";
+const DEMO_GROUP_PREFIX = `demo:${DEMO_GENERATOR}:`;
 
 function affectedRowCount(result: unknown): number {
   if (!Array.isArray(result)) return 0;
@@ -244,8 +249,8 @@ export class DraftReportService {
     }
   }
 
-  async save(accessToken: string, reportId: string, input: unknown): Promise<SaveDraftReportResult> {
-    const session = await this.sessions.get(accessToken);
+  async save(accessToken: string, reportId: string, input: unknown, csrfToken?: string): Promise<SaveDraftReportResult> {
+    const initialSession = await this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -257,9 +262,20 @@ export class DraftReportService {
       // The report row lock provides the serialization point while READ COMMITTED lets a
       // waiter observe the winner that committed before it acquired that lock.
       return await this.dataSource.transaction("READ COMMITTED", async (manager) => {
+        const session = command.demoAction
+          ? await this.sessions.requireCapability(accessToken, "clinical:demo", manager)
+          : initialSession;
+        if (command.demoAction) await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         await this.lockCommand(manager, command.commandId);
         const rows = await manager.query<ReportRow[]>(`
-          select clinical.report.*, clock_timestamp() as server_received_time from clinical.report
+          select clinical.report.*, clock_timestamp() as server_received_time,
+                 exists (
+                   select 1 from clinical.call_assignment ca
+                   where ca.report_id = clinical.report.id
+                     and ca.organization_id = clinical.report.organization_id
+                     and ca.synthetic and ca.synthetic_generated_by = $3
+                 ) as demo_mutable
+          from clinical.report
           where id = $1 and organization_id = $2 and documenting_user_id = $3
           for update
         `, [reportId, session.organization.id, session.user.id]);
@@ -270,6 +286,7 @@ export class DraftReportService {
         }
         const replay = await this.replay<SaveDraftReportResult>(manager, command.commandId, "save-draft", digest, reportId);
         if (replay) return replay;
+        await this.assertDemoMutationBoundary(manager, report, command);
         const authors = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.app_user where id = $1 and organization_id = $2 and active
         `, [command.authorId, report.organization_id]);
@@ -357,6 +374,10 @@ export class DraftReportService {
           })]);
         await this.storeTargetStates(manager, report.id, winningTargets);
         await this.storeReconciliationAudits(manager, report.id, audits);
+        if (command.demoAction) {
+          await this.auditDemoMutation(manager, report, command.demoAction, command.commandId,
+            command.authorId, winningGroups.length + winningOccurrences.length, nextRevision);
+        }
         const result = this.draftResult(report, nextRevision);
         await this.storeReceipt(manager, command.commandId, reportId, "save-draft", digest, result);
         return result;
@@ -613,6 +634,7 @@ export class DraftReportService {
              organization.deployment_timezone as agency_time_zone,
              r.updated_at as last_saved_at,
              r.revision, r.form_version_id, r.catalog_release_id,
+             (r.synthetic and ca.synthetic and ca.synthetic_generated_by = $2) as demo_mutable,
              count(vf.id) filter (where vf.severity = 'error' and vf.revision = r.revision)::integer
                as validation_error_count
       from clinical.report r
@@ -644,7 +666,8 @@ export class DraftReportService {
         validationErrorCount: Number(row.validation_error_count),
         revision: Number(row.revision),
         formVersionId: row.form_version_id,
-        catalogReleaseId: row.catalog_release_id
+        catalogReleaseId: row.catalog_release_id,
+        ...(row.demo_mutable ? { demoMutable: true } : {})
       })),
       completedReportIds: rows.filter((row) => row.status === "signed").map((row) => row.report_id),
       refreshedAt: now.toISOString()
@@ -672,6 +695,7 @@ export class DraftReportService {
         dispatch_canceled_at: Date | string | null;
         dispatch_cancellation_revision: string | number | null;
         dispatch_cancellation_receipt_id: string | null;
+        demo_mutable: boolean;
       }>>(`
         select ca.call_number, ca.dispatched_at, ca.dispatch_reason, ca.chief_complaint,
                jsonb_path_query_first(dr.source_payload,
@@ -682,7 +706,8 @@ export class DraftReportService {
                  as dispatch_priority_display,
                ou.call_sign as unit_call_sign, organization.deployment_timezone as agency_time_zone,
                r.dispatch_canceled_at,
-               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
+               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
+               (r.synthetic and ca.synthetic and ca.synthetic_generated_by = $3) as demo_mutable
         from clinical.call_assignment ca
         join clinical.report r on r.id = ca.report_id and r.organization_id = ca.organization_id
         join app_identity.operational_unit ou on ou.id = ca.unit_id
@@ -710,6 +735,7 @@ export class DraftReportService {
           clinicalForm,
           revision: Number(details.revision),
           status: "draft" as const,
+          ...(calls[0].demo_mutable ? { demoMutable: true } : {}),
           document,
           ...(calls[0].agency_time_zone ? { agencyTimeZone: calls[0].agency_time_zone } : {}),
           dispatchConflicts: conflicts,
@@ -725,14 +751,18 @@ export class DraftReportService {
     });
   }
 
-  /** Prototype-only physical deletion for a clinician-owned synthetic draft. */
-  async deleteSyntheticDraft(accessToken: string, reportId: string): Promise<DeleteDraftReportResponse> {
-    const session = await this.sessions.get(accessToken);
+  /** Physical deletion limited to a currently authorized, generator-provenanced demo draft. */
+  async deleteSyntheticDraft(accessToken: string, reportId: string, csrfToken?: string): Promise<DeleteDraftReportResponse> {
     return this.dataSource.transaction(async (manager) => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager);
       const reports = await manager.query<Array<{ patient_id: string }>>(`
-        select patient_id from clinical.report
-        where id = $1 and organization_id = $2 and documenting_user_id = $3
-          and status = 'draft' and synthetic
+        select r.patient_id from clinical.report r
+        join clinical.call_assignment ca
+          on ca.report_id = r.id and ca.organization_id = r.organization_id
+        where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
+          and r.status = 'draft' and r.synthetic and ca.synthetic
+          and ca.synthetic_generated_by = $3
         for update
       `, [reportId, session.organization.id, session.user.id]);
       const report = reports[0];
@@ -762,8 +792,71 @@ export class DraftReportService {
         delete from clinical.patient where id = $1
           and not exists (select 1 from clinical.report where patient_id = $1)
       `, [report.patient_id]);
+      await this.auditDemoMutation(manager, { id: reportId, organization_id: session.organization.id },
+        "delete", null, session.user.id, 0, null);
       return { deleted: true, reportId };
     });
+  }
+
+  private async assertDemoMutationBoundary(
+    manager: EntityManager,
+    report: ReportRow,
+    command: SaveDraftReportCommand,
+  ): Promise<void> {
+    const groups = command.groups ?? [];
+    const occurrences = command.occurrences ?? [];
+    const claimsDemoProvenance = groups.some(({ correlationId }) => correlationId?.startsWith(DEMO_GROUP_PREFIX)) ||
+      occurrences.some((occurrence) => occurrence.provenanceKind === "demo" ||
+        occurrence.provenanceDetail?.generator === DEMO_GENERATOR ||
+        occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_GENERATOR);
+    if (!command.demoAction) {
+      if (claimsDemoProvenance) throw new ConflictException("Demo provenance requires an authorized demo action");
+      return;
+    }
+    if (report.status !== "draft" || report.synthetic !== true || report.demo_mutable !== true) {
+      throw new ConflictException("Demo actions require an open generated synthetic draft");
+    }
+    if (command.demoAction === "populate") {
+      const validGroups = groups.every((group) => !group.tombstone && group.correlationId?.startsWith(DEMO_GROUP_PREFIX));
+      const validOccurrences = occurrences.every((occurrence) => !occurrence.tombstone && occurrence.provenanceKind === "demo" &&
+        occurrence.provenanceDetail?.generator === DEMO_GENERATOR &&
+        occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_GENERATOR);
+      if (!validGroups || !validOccurrences) {
+        throw new ConflictException("Populate accepts only immutable demo-owned values");
+      }
+      return;
+    }
+    if (!groups.every(({ tombstone }) => tombstone) || !occurrences.every(({ tombstone }) => tombstone)) {
+      throw new ConflictException("Clear accepts only demo-owned removals");
+    }
+    const rows = await manager.query<Array<{ group_count: string | number; occurrence_count: string | number }>>(`
+      select
+        (select count(*) from clinical.group_instance gi
+          where gi.report_id = $1 and gi.id = any($2::uuid[]) and gi.tombstoned_at is null
+            and gi.correlation_id like $4) as group_count,
+        (select count(*) from clinical.element_occurrence eo
+          where eo.report_id = $1 and eo.id = any($3::uuid[]) and eo.tombstoned_at is null
+            and eo.provenance_detail->>'generator' = $5) as occurrence_count
+    `, [report.id, groups.map(({ id }) => id), occurrences.map(({ id }) => id), `${DEMO_GROUP_PREFIX}%`, DEMO_GENERATOR]);
+    if (Number(rows[0]?.group_count ?? 0) !== groups.length ||
+        Number(rows[0]?.occurrence_count ?? 0) !== occurrences.length) {
+      throw new ConflictException("Clear accepts only demo-owned removals");
+    }
+  }
+
+  private async auditDemoMutation(
+    manager: EntityManager,
+    report: Pick<ReportRow, "id" | "organization_id">,
+    action: "populate" | "clear" | "delete",
+    commandId: string | null,
+    actorId: string,
+    targetCount: number,
+    revision: number | null,
+  ): Promise<void> {
+    await manager.query(`insert into clinical_audit.synthetic_draft_mutation_event
+      (organization_id, actor_id, report_id, command_id, action, target_count, report_revision)
+      values ($1, $2, $3, $4, $5, $6, $7)`,
+    [report.organization_id, actorId, report.id, commandId, `synthetic_draft.${action}`, targetCount, revision]);
   }
 
   async active(accessToken: string, reportId: string, ifNoneMatch?: string): Promise<{

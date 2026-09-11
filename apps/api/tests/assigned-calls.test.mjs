@@ -186,6 +186,7 @@ test("opening and retrying one assignment creates one draft without an automatic
     status: "assigned",
     report_id: null,
     synthetic: true,
+    synthetic_generated_by: session.user.id,
     dispatch_receipt_id: null,
     default_form_id: "32000000-0000-4000-8000-000000000007"
   };
@@ -208,7 +209,7 @@ test("opening and retrying one assignment creates one draft without an automatic
       writes.push("report");
       reports.set(parameters[0], {
         id: parameters[0], documenting_user_id: parameters[7], form_version_id: parameters[5],
-        catalog_release_id: parameters[6], revision: "0", status: "draft"
+        catalog_release_id: parameters[6], revision: "0", status: "draft", synthetic: true
       });
       return [];
     }
@@ -265,6 +266,7 @@ test("opening and retrying one assignment creates one draft without an automatic
   ]);
   assert.equal(opened.report.document.encounter.id, opened.report.id);
   assert.equal(opened.report.agencyTimeZone, "America/New_York");
+  assert.equal(opened.report.demoMutable, true);
   assert.deepEqual(opened.report.dispatchConflicts, []);
   assert.equal(opened.replacementAssignment, null);
   assert.equal(retried.replacementAssignment, null);

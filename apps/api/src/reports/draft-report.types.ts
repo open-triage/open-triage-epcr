@@ -58,6 +58,7 @@ export interface SaveDraftReportCommand {
   authorId: string;
   deviceId?: string;
   clientTime?: string;
+  demoAction?: "populate" | "clear";
   groups?: DraftGroupMutation[];
   occurrences?: DraftOccurrenceMutation[];
 }

@@ -1,6 +1,7 @@
 import type { ClinicalDemoUnit, SyntheticCallGenerationContext } from "@open-triage/contracts";
 import type { BrowserRequestConfiguration } from "./browser-api";
 import type { PresentationMode } from "./presentation-mode";
+import type { ActiveDraftReport } from "./draft-report";
 
 export function shouldShowClinicalDemoBanner(input: {
   authenticated: boolean;
@@ -26,4 +27,11 @@ export function canGenerateSyntheticCall(
   context: Pick<SyntheticCallGenerationContext, "hasOpenReport">,
 ): boolean {
   return !activeReport && !context.hasOpenReport;
+}
+
+/** Uses only the server-qualified record boundary; no document content can opt in. */
+export function canUseClinicalDemoDraftActions(
+  report: ActiveDraftReport | null,
+): report is ActiveDraftReport & { readonly status: "draft"; readonly demoMutable: true } {
+  return report?.status === "draft" && report.demoMutable === true;
 }

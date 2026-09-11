@@ -31,7 +31,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
   roleRetirementMigration, sessionAdministrationMigration,
-  portableRolePackageMigration, syntheticGenerationMigration] = await Promise.all([
+  portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -66,7 +66,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8")
 ]);
 
 test("synthetic generation has a per-user/unit unopened invariant and append-only safe audit facts", () => {
@@ -79,6 +80,15 @@ test("synthetic generation has a per-user/unit unopened invariant and append-onl
   assert.match(syntheticGenerationMigration, /synthetic_generation_event_append_only/);
   assert.doesNotMatch(syntheticGenerationMigration, /patient|source_payload|password|token|csrf/i);
   assert.match(syntheticGenerationMigration, /revoke all on clinical_audit\.synthetic_generation_event from public/);
+});
+
+test("synthetic draft actions retain append-only redacted audit after report deletion", () => {
+  assert.match(syntheticDraftMutationMigration, /create table clinical_audit\.synthetic_draft_mutation_event/);
+  assert.match(syntheticDraftMutationMigration, /report_id uuid not null/);
+  assert.doesNotMatch(syntheticDraftMutationMigration, /report_id uuid[^;]*references clinical\.report/);
+  assert.match(syntheticDraftMutationMigration, /synthetic_draft_mutation_event_append_only/);
+  assert.match(syntheticDraftMutationMigration, /revoke all on clinical_audit\.synthetic_draft_mutation_event from public/);
+  assert.doesNotMatch(syntheticDraftMutationMigration, /patient_id|source_payload|clinical_value|details jsonb/i);
 });
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
