@@ -5,11 +5,16 @@ alter table app_identity.role_version
   add column display_name text,
   add column description text;
 
+-- The immutable-history trigger intentionally rejects ordinary updates. This
+-- narrowly bounded migration backfill is the sole exception and is restored
+-- before any later statement can expose the table to application writers.
+alter table app_identity.role_version disable trigger role_version_immutable;
 update app_identity.role_version version
 set display_name = role.display_name,
     description = role.description
 from app_identity.role role
 where role.id = version.role_id and role.organization_id = version.organization_id;
+alter table app_identity.role_version enable trigger role_version_immutable;
 
 create function app_identity.snapshot_role_version_presentation()
 returns trigger language plpgsql as $$

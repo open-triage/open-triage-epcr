@@ -30,7 +30,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
-  roleRetirementMigration, sessionAdministrationMigration] = await Promise.all([
+  roleRetirementMigration, sessionAdministrationMigration,
+  portableRolePackageMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -63,7 +64,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -125,6 +127,15 @@ test("role retirement retains immutable definitions and assignment intervals wit
   assert.doesNotMatch(roleRetirementMigration, /password|password_verifier|token|csrf|secret|recovery_value/i);
 });
 
+test("portable role-package operations have redacted authorization audit actions", () => {
+  assert.match(portableRolePackageMigration, /role\.package_export/);
+  assert.match(portableRolePackageMigration, /role\.package_preview/);
+  assert.match(portableRolePackageMigration, /role\.package_import/);
+  assert.match(portableRolePackageMigration, /target_type in \([^)]*'role_package'/s);
+  assert.doesNotMatch(portableRolePackageMigration,
+    /display_name|description|capability_key|user_id|assignment_id|password|credential|session|token|secret/i);
+});
+
 test("installation ownership is singular, durable, least-privilege, and gates role authority", () => {
   assert.match(installationOwnerMigration,
     /create table app_identity\.installation_owner[\s\S]*organization_id uuid primary key/);
@@ -166,6 +177,7 @@ test("session administration stores only bounded activity and coarse-device meta
   assert.match(sessionAdministrationMigration, /device_label text not null/);
   assert.match(sessionAdministrationMigration, /app_session_active_user_activity_idx/);
   assert.match(sessionAdministrationMigration, /authentication\.session_revoke/);
+  assert.match(sessionAdministrationMigration, /authentication\.reauthenticate/);
   assert.doesNotMatch(sessionAdministrationMigration, /add column (source_ip|geolocation|user_agent)/i);
 });
 

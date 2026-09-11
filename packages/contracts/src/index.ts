@@ -269,6 +269,44 @@ export interface AdminRoleHistory {
   }>;
 }
 
+/** A credential- and personnel-free package of immutable custom-role definitions. */
+export interface PortableCustomRolePackage {
+  schema: "open-triage.custom-roles";
+  schemaVersion: "1.0.0";
+  roles: Array<{
+    /** Stable role identity, preserved between installations. */
+    id: string;
+    currentVersionId: string;
+    versions: Array<{
+      /** Stable immutable-version identity, preserved between installations. */
+      id: string;
+      version: number;
+      displayName: string;
+      description: string | null;
+      capabilityKeys: string[];
+    }>;
+  }>;
+}
+
+export interface PortableRoleImportPreview {
+  schemaVersion: PortableCustomRolePackage["schemaVersion"];
+  roleCount: number;
+  createdRoleCount: number;
+  updatedRoleCount: number;
+  unchangedRoleCount: number;
+  affectedAssigneeCount: number;
+  capabilityChanges: Array<{
+    roleId: string;
+    added: string[];
+    removed: string[];
+    affectedAssigneeCount: number;
+  }>;
+}
+
+export interface PortableRoleImportResult extends PortableRoleImportPreview {
+  importedAt: string;
+}
+
 export interface AdminRoleSummaryList {
   items: AdminAssignableRoleSummary[];
 }

@@ -24,6 +24,6 @@ alter table app_identity.authentication_event
   add constraint authentication_event_action_check check (action in (
     'account.provision', 'account.reset_password', 'account.identity_change',
     'account.disable', 'account.reactivate', 'account.roles_change',
-    'authentication.sign_in', 'authentication.password_change',
+    'authentication.sign_in', 'authentication.password_change', 'authentication.reauthenticate',
     'authentication.sign_out', 'authentication.session_revoke'
   ));

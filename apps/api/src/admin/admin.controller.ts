@@ -1,10 +1,11 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
 import { RoleAuthoringService } from "./role-authoring.service.js";
+import { RolePackageService } from "./role-package.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
 import { UserProvisioningService } from "./user-provisioning.service.js";
 import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
@@ -25,7 +26,8 @@ export class AdminController {
     private readonly provisioning: UserProvisioningService,
     private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService,
     private readonly roleAssignments: UserRoleAssignmentService,
-    private readonly sessionAdministration: SessionAdministrationService) {}
+    private readonly sessionAdministration: SessionAdministrationService,
+    private readonly rolePackages: RolePackageService) {}
 
   @Get("context")
   context(
@@ -129,6 +131,24 @@ export class AdminController {
   roleHistory(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<AdminRoleHistory> {
     return this.roleAuthoring.history(sessionToken(request, authorization), id);
+  }
+
+  @Get("role-packages/export")
+  exportRolePackage(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableCustomRolePackage> {
+    return this.rolePackages.export(sessionToken(request, authorization));
+  }
+
+  @Post("role-packages/preview")
+  previewRolePackage(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableRoleImportPreview> {
+    return this.rolePackages.preview(sessionToken(request, authorization), body);
+  }
+
+  @Post("role-packages/import")
+  importRolePackage(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableRoleImportResult> {
+    return this.rolePackages.import(sessionToken(request, authorization), body);
   }
 
   @Get("catalog-draft")
