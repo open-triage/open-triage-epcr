@@ -7,7 +7,7 @@ const organizationId = "10000000-0000-4000-8000-000000000001";
 const roleId = "20000000-0000-4000-8000-000000000001";
 const user = (number, name = `User ${number}`) => ({
   id: `30000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
-  display_name: name, username: `user.${number}`, active: true,
+  display_name: name, username: `user.${number}`, active: true, revision: "3",
   roles: [{ id: roleId, displayName: "Clinician", active: true, protected: true }]
 });
 const sessions = (capability) => ({ requireCapability: async (token, requested) => {
@@ -33,6 +33,7 @@ test("users default active, remain bounded, and return an opaque stable cursor",
   assert.match(calls[0].sql, /order by not u\.active, lower\(u\.display_name\), u\.id/);
   assert.match(calls[0].sql, /role_filter\.ended_at is null/);
   assert.equal("capabilities" in page.items[0].roles[0], false);
+  assert.equal(page.items[0].revision, 3);
 
   await service.users("opaque-session", { cursor: page.nextCursor });
   assert.equal(calls[1].parameters[5], true);

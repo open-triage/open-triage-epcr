@@ -1,9 +1,9 @@
 "use client";
 
-import type { AdminCapabilityOption, AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand } from "@open-triage/contracts";
+import type { AdminCapabilityOption, AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
 import { createAdminRole, loadAdminRoleCapabilities, loadAdminRoles, loadAdminUserRoleOptions,
-  loadAdminUsers, provisionAdminUser, updateAdminRole, type AdminUserQuery } from "../app/admin-context";
+  loadAdminUsers, provisionAdminUser, updateAdminRole, updateAdminUser, type AdminUserQuery } from "../app/admin-context";
 
 type StateFilter = "active" | "disabled" | "all";
 
@@ -14,8 +14,12 @@ function RoleBadges({ roles }: { readonly roles: AdminRoleSummary[] }) {
   </ul>;
 }
 
-export function UsersPanel({ canCreate = false, csrfToken = "" }: {
+export function UsersPanel({ canCreate = false, canManage = false, canAssignRoles = false,
+  currentUserId = "", csrfToken = "" }: {
   readonly canCreate?: boolean;
+  readonly canManage?: boolean;
+  readonly canAssignRoles?: boolean;
+  readonly currentUserId?: string;
   readonly csrfToken?: string;
 }) {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
@@ -27,6 +31,10 @@ export function UsersPanel({ canCreate = false, csrfToken = "" }: {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AdminUserSummary | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [desiredActive, setDesiredActive] = useState(false);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
 
   async function load(selected: AdminUserQuery, append = false) {
     setLoading(true);
@@ -91,6 +99,47 @@ export function UsersPanel({ canCreate = false, csrfToken = "" }: {
     }
   }
 
+  function beginEdit(user: AdminUserSummary) {
+    setEditing(user);
+    setDesiredActive(user.active);
+    setSelectedRoleIds(user.roles.map((role) => role.id));
+    setError(null);
+    setNotice(null);
+  }
+
+  async function saveUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const active = data.get("active") === "true";
+    const command: UpdateAdminUserCommand = {
+      expectedRevision: editing.revision,
+      username: String(data.get("username") ?? ""),
+      displayName: String(data.get("displayName") ?? ""),
+      roleIds: canAssignRoles ? data.getAll("roleIds").map(String) : editing.roles.map((role) => role.id),
+      active,
+      note: String(data.get("note") ?? "") || undefined
+    };
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const updated = await updateAdminUser(csrfToken, editing.id, command);
+      setEditing(null);
+      setNotice(updated.restoredRoles.length
+        ? `${updated.displayName} was reactivated. Roles restored: ${updated.restoredRoles.map((role) => role.displayName).join(", ") || "none"}. A fresh login is required; the credential was not reset.`
+        : !updated.active
+          ? `${updated.displayName} was disabled and ${updated.sessionsRevoked} active session${updated.sessionsRevoked === 1 ? " was" : "s were"} revoked. Roles are retained but ineffective.`
+          : `${updated.displayName} was updated.`);
+      await load(query);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The user could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
     <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
@@ -115,6 +164,34 @@ export function UsersPanel({ canCreate = false, csrfToken = "" }: {
       </fieldset>
     </form>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
+    {editing && <form className="admin-user-create" onSubmit={saveUser}>
+      <fieldset disabled={saving}><legend>Manage {editing.displayName}</legend>
+        <label>Display name<input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
+        <label>Username<input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
+          pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
+        <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend>Retained roles</legend>
+          {roleOptions.map((role) => <label key={role.id}>
+            <input name="roleIds" type="checkbox" value={role.id} disabled={!role.active && !selectedRoleIds.includes(role.id)}
+              checked={selectedRoleIds.includes(role.id)} onChange={(event) => setSelectedRoleIds((current) =>
+                event.target.checked ? [...current, role.id] : current.filter((id) => id !== role.id))} />
+            {role.displayName}{!role.active ? " (deactivated)" : ""}
+          </label>)}
+        </fieldset>
+        <label>Status<select name="active" value={desiredActive ? "true" : "false"}
+          onChange={(event) => setDesiredActive(event.target.value === "true")}>
+          <option value="true">Active</option><option value="false">Disabled</option>
+        </select></label>
+        {editing.active && !desiredActive && <p>Disabling immediately revokes every active session. Retained roles become ineffective.</p>}
+        {!editing.active && desiredActive && <div className="admin-reactivation-review" role="status">
+          <strong>Roles restored on reactivation</strong>
+          <RoleBadges roles={roleOptions.filter((role) => selectedRoleIds.includes(role.id))} />
+          <p>A fresh login will be required. The existing credential will not be reset.</p>
+        </div>}
+        <label className="admin-user-note">Note (optional)<textarea name="note" maxLength={1000} /></label>
+        <div><button type="submit">{saving ? "Saving…" : !editing.active && desiredActive ? "Reactivate user" : "Save user"}</button>{" "}
+          <button type="button" onClick={() => setEditing(null)}>Cancel</button></div>
+      </fieldset>
+    </form>}
     <form className="admin-directory-filters" role="search" aria-label="Find users" onSubmit={submit}>
       <label>Search<input type="search" name="search" maxLength={100} placeholder="Display name or username" /></label>
       <label>Status<select name="state" defaultValue="active">
@@ -131,10 +208,13 @@ export function UsersPanel({ canCreate = false, csrfToken = "" }: {
     {!loading && !error && !items.length && <p role="status">No users match these filters.</p>}
     {items.length > 0 && <div className="admin-table-scroll"><table>
       <caption className="sr-only">Users matching the selected filters</caption>
-      <thead><tr><th scope="col">Display name</th><th scope="col">Username</th><th scope="col">Status</th><th scope="col">Roles</th></tr></thead>
+      <thead><tr><th scope="col">Display name</th><th scope="col">Username</th><th scope="col">Status</th><th scope="col">Roles</th>
+        {canManage && <th scope="col">Actions</th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
         <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} /></td>
+        {canManage && <td>{user.id === currentUserId ? "Current account"
+          : <button type="button" onClick={() => beginEdit(user)}>Manage</button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     {nextCursor && <button type="button" disabled={loading} onClick={() => void load({ ...query, cursor: nextCursor }, true)}>

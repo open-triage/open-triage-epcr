@@ -278,6 +278,55 @@ test("an authorized administrator provisions a user with initial roles and bound
   await expect(page.getByText("Temporary password 42!", { exact: true })).toHaveCount(0);
 });
 
+test("an administrator reviews retained roles while disabling and reactivating a durable identity", async ({ page }) => {
+  const role = { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true };
+  let user = { id: "20000000-0000-4000-8000-000000000001", displayName: "Alex Medic",
+    username: "alex.medic", active: true, revision: 4, roles: [role] };
+  const commands: Array<Record<string, unknown>> = [];
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"], capabilities: ["users:read", "users:write", "roles:read", "roles:assign"],
+    activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/user-role-options", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: [role] }) }));
+  await page.route("**/api/admin/users**", async (route) => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      commands.push(body);
+      const wasActive = user.active;
+      user = { ...user, username: String(body.username), displayName: String(body.displayName),
+        active: Boolean(body.active), revision: user.revision + 1 };
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...user,
+        restoredRoles: !wasActive && user.active ? [role] : [], sessionsRevoked: wasActive && !user.active ? 2 : 0,
+        freshLoginRequired: wasActive !== user.active }) });
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [user], nextCursor: null, pageSize: 50 }) });
+  });
+  await signInAsCombinedOwner(page, ["users:read", "users:write", "roles:read", "roles:assign"]);
+
+  await page.getByRole("button", { name: "Manage" }).click();
+  const manage = page.getByRole("group", { name: "Manage Alex Medic" });
+  await manage.getByLabel("Display name").fill("Alex Renamed");
+  await manage.getByLabel("Username").fill("alex.renamed");
+  await manage.getByLabel("Status").selectOption("false");
+  await expect(manage.getByText(/immediately revokes every active session/i)).toBeVisible();
+  await manage.getByRole("button", { name: "Save user" }).click();
+  await expect(page.getByRole("status")).toContainText("2 active sessions were revoked");
+  expect(commands[0]).toMatchObject({ expectedRevision: 4, username: "alex.renamed", displayName: "Alex Renamed",
+    roleIds: [role.id], active: false });
+
+  await page.getByRole("button", { name: "Manage" }).click();
+  const reactivate = page.getByRole("group", { name: "Manage Alex Renamed" });
+  await reactivate.getByLabel("Status").selectOption("true");
+  await expect(reactivate.getByText("Roles restored on reactivation")).toBeVisible();
+  await expect(reactivate.getByRole("list", { name: "Assigned roles" })).toContainText("Clinician");
+  await expect(reactivate.getByText(/credential will not be reset/i)).toBeVisible();
+  await reactivate.getByRole("button", { name: "Reactivate user" }).click();
+  await expect(page.getByRole("status")).toContainText("A fresh login is required; the credential was not reset");
+  expect(commands[1]).toMatchObject({ expectedRevision: 5, roleIds: [role.id], active: true });
+});
+
 test("a temporary credential opens only mandatory password replacement", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify({
