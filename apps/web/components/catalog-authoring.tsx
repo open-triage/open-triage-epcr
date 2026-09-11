@@ -1,16 +1,26 @@
 "use client";
 
-import type { CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, InstallationSettings } from "@open-triage/contracts";
+import type { CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, InstallationSettings } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
-import { cloneCatalogDraft, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
+import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 
-export function CatalogAuthoring({ csrfToken, installationSettings, onPublished }: {
+export function catalogAuthority(capabilities: ReadonlyArray<string>): {
+  readonly canRead: boolean; readonly canWrite: boolean; readonly canPublish: boolean;
+} {
+  const canRead = capabilities.includes("catalog:read");
+  const canWrite = canRead && capabilities.includes("catalog:write");
+  return { canRead, canWrite, canPublish: canWrite && capabilities.includes("catalog:publish") };
+}
+
+export function CatalogAuthoring({ csrfToken, capabilities, installationSettings, onPublished }: {
   readonly csrfToken: string;
+  readonly capabilities: ReadonlyArray<string>;
   readonly installationSettings: InstallationSettings;
   readonly onPublished?: (catalogReleaseId: string) => void;
 }) {
-  const publicationAllowed = !installationSettings.administration.readOnly;
-  const [draft, setDraft] = useState<CatalogDraft | null>(null);
+  const { canWrite, canPublish } = catalogAuthority(capabilities);
+  const publicationAllowed = canPublish && !installationSettings.administration.readOnly;
+  const [draft, setDraft] = useState<CatalogDraft | CatalogDefinitionView | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -20,7 +30,12 @@ export function CatalogAuthoring({ csrfToken, installationSettings, onPublished 
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
-  useEffect(() => { loadCatalogDraft().then(setDraft).catch(showError).finally(() => setLoaded(true)); }, []);
+  useEffect(() => {
+    const load = async () => canWrite
+      ? await loadCatalogDraft() ?? await loadActiveCatalogDefinition()
+      : loadActiveCatalogDefinition();
+    load().then(setDraft).catch(showError).finally(() => setLoaded(true));
+  }, [canWrite]);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     `${element.elementId} ${element.label}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query]);
   const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
@@ -50,22 +65,28 @@ export function CatalogAuthoring({ csrfToken, installationSettings, onPublished 
 
   if (!loaded) return <p role="status">Loading catalog draft…</p>;
   if (!draft) return <div className="catalog-empty">
-    <p>Clone the active catalog to adjust agency validation without changing clinical work.</p>
-    <label htmlFor="new-catalog-display-name">New catalog version display name</label>
-    <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
-      onChange={(event) => setNewDisplayName(event.target.value)} />
-    <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
-      const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
-    })}>Clone active catalog</button>
+    {canWrite ? <>
+      <p>Clone the active catalog to adjust agency validation without changing clinical work.</p>
+      <label htmlFor="new-catalog-display-name">New catalog version display name</label>
+      <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
+        onChange={(event) => setNewDisplayName(event.target.value)} />
+      <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
+        const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
+      })}>Clone active catalog</button>
+    </> : <p role="note">There is no Catalog draft available to inspect.</p>}
   </div>;
 
+  const authoringDraft = "revision" in draft ? draft : null;
+  const canEdit = canWrite && authoringDraft !== null;
+
   return <div className="catalog-editor">
-    <p>Draft revision {draft.revision}. Stable identity, datatype, and storage semantics are read-only.</p>
+    <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
+      : `Active Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
     <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
     <h3 id="element-catalog-heading">Element catalog</h3>
     <label htmlFor="catalog-search">Find by identifier or label</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
-    <div className="catalog-elements" aria-label="Editable catalog elements">
+    <div className="catalog-elements" aria-label={canEdit ? "Editable catalog elements" : "Catalog elements"}>
       <p className="catalog-table-warning" role="note"><strong>Occurrence limit:</strong> a blank maximum means unbounded only when the source catalog supports it.</p>
       <table>
         <colgroup><col className="catalog-element-column" /><col className="catalog-label-column" />
@@ -74,18 +95,18 @@ export function CatalogAuthoring({ csrfToken, installationSettings, onPublished 
         <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
         <tbody>{visible.map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
-        <td><label><span className="visually-hidden">Label for {element.elementId}</span><input value={element.label}
+        <td><label><span className="visually-hidden">Label for {element.elementId}</span><input disabled={!canEdit} value={element.label}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, label: event.target.value }))} /></label></td>
         <td>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</td>
-        <td><label><span className="visually-hidden">Requiredness for {element.elementId}</span><select
+        <td><label><span className="visually-hidden">Requiredness for {element.elementId}</span><select disabled={!canEdit}
           value={element.requirednessSeverity ?? "optional"} onChange={(event) => edit(element.elementId,
             (value) => ({ ...value, requirednessSeverity: event.target.value === "optional" ? null : event.target.value as "warning" | "error" }))}>
           <option value="optional">Optional</option><option value="warning">Warning</option><option value="error">Error</option>
         </select></label></td>
-        <td><label><span className="visually-hidden">Minimum occurrences for {element.elementId}</span><input type="number" min={0} value={element.constraints.minOccurs}
+        <td><label><span className="visually-hidden">Minimum occurrences for {element.elementId}</span><input disabled={!canEdit} type="number" min={0} value={element.constraints.minOccurs}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
             minOccurs: Number(event.target.value) } }))} /></label></td>
-        <td><label><span className="visually-hidden">Maximum occurrences for {element.elementId}</span><input type="number" min={1} value={element.constraints.maxOccurs ?? ""}
+        <td><label><span className="visually-hidden">Maximum occurrences for {element.elementId}</span><input disabled={!canEdit} type="number" min={1} value={element.constraints.maxOccurs ?? ""}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
             maxOccurs: event.target.value === "" ? null : Number(event.target.value) } }))} /></label></td>
       </tr>)}</tbody></table>
@@ -99,29 +120,40 @@ export function CatalogAuthoring({ csrfToken, installationSettings, onPublished 
         onChange={(event) => setSelectedListKey(event.target.value)}>
         {listOptions.map(({ key, elementId, list }) => <option key={key} value={key}>{elementId} — {list.name}</option>)}
       </select>
-      {selectedList && <CatalogCodeListEditor list={selectedList} onChange={editCodeList} />}
+      {selectedList && <CatalogCodeListEditor list={selectedList} readOnly={!canEdit} onChange={editCodeList} />}
     </section>}
     <div className="catalog-actions">
-      <button type="button" disabled={busy} onClick={() => action(async () => {
-        const saved = await saveCatalogDraft(csrfToken, draft); setDraft(saved); setDirty(false); setStatus(`Saved revision ${saved.revision}.`);
-      })}>Save draft</button>
-      <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
-        const result = await validateCatalogDraft(csrfToken, draft.id);
+      {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => action(async () => {
+        const saved = await saveCatalogDraft(csrfToken, authoringDraft); setDraft(saved); setDirty(false); setStatus(`Saved revision ${saved.revision}.`);
+      })}>Save draft</button>}
+      {authoringDraft && <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
+        const result = await validateCatalogDraft(csrfToken, authoringDraft.id);
         setStatus(result.valid && result.projectionsVerified ? "Catalog is valid and projections are verified." : result.findings.join("; "));
-      })}>Validate</button>
+      })}>Validate</button>}
       <label htmlFor="catalog-display-name">Catalog version display name</label>
-      <input id="catalog-display-name" maxLength={120} required value={draft.displayName ?? ""}
+      <input id="catalog-display-name" disabled={!canEdit} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
-      {publicationAllowed ? <>
+      {publicationAllowed && authoringDraft ? <>
         <label htmlFor="catalog-change-note">Publication change note</label>
         <textarea id="catalog-change-note" value={note} onChange={(event) => setNote(event.target.value)} />
         <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || !note.trim() || status !== "Catalog is valid and projections are verified."}
           onClick={() => action(async () => {
-            const published = await publishCatalogDraft(csrfToken, draft, draft.displayName!, note);
+            const published = await publishCatalogDraft(csrfToken, authoringDraft, authoringDraft.displayName!, note);
             onPublished?.(published.id);
             setDraft(null); setDirty(false); setNote(""); setStatus(`Published ${published.displayName}.`);
           })}>Publish immutable catalog</button>
-      </> : <p role="note">Publishing is disabled in this demo. Catalog drafts can still be created, edited, validated, and saved.</p>}
+      </> : canEdit && <p role="note">{canPublish
+        ? "Publishing is disabled for this installation. Catalog drafts can still be created, edited, validated, and saved."
+        : "Your Catalog access permits draft authoring but not publication or activation."}</p>}
+      {!authoringDraft && canWrite && <div className="catalog-clone-active">
+        <label htmlFor="new-catalog-display-name">New catalog version display name</label>
+        <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
+          onChange={(event) => setNewDisplayName(event.target.value)} />
+        <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
+          const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName("");
+          setDirty(false); setStatus("Catalog draft created.");
+        })}>Clone active catalog</button>
+      </div>}
     </div>
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
@@ -136,8 +168,9 @@ export function moveCodeValue(list: CatalogDraftCodeList, from: number, to: numb
   return { ...list, values };
 }
 
-export function CatalogCodeListEditor({ list, onChange }: {
+export function CatalogCodeListEditor({ list, readOnly = false, onChange }: {
   readonly list: CatalogDraftCodeList;
+  readonly readOnly?: boolean;
   readonly onChange: (next: CatalogDraftCodeList, announcement: string) => void;
 }) {
   const [code, setCode] = useState("");
@@ -166,10 +199,10 @@ export function CatalogCodeListEditor({ list, onChange }: {
   return <div className="code-list-values">
     <fieldset className="code-list-add">
       <legend>Add value</legend>
-      <label>Code <input value={code} onChange={(event) => setCode(event.target.value)} /></label>
-      <label>Code system <input value={codeSystem} onChange={(event) => setCodeSystem(event.target.value)} /></label>
-      <label>Label <input value={label} onChange={(event) => setLabel(event.target.value)} /></label>
-      <button type="button" onClick={addValue}>Add value</button>
+      <label>Code <input disabled={readOnly} value={code} onChange={(event) => setCode(event.target.value)} /></label>
+      <label>Code system <input disabled={readOnly} value={codeSystem} onChange={(event) => setCodeSystem(event.target.value)} /></label>
+      <label>Label <input disabled={readOnly} value={label} onChange={(event) => setLabel(event.target.value)} /></label>
+      <button type="button" disabled={readOnly} onClick={addValue}>Add value</button>
     </fieldset>
     <ol aria-label={`${list.name} values`}>
       {list.values.map((value, index) => {
@@ -177,24 +210,24 @@ export function CatalogCodeListEditor({ list, onChange }: {
         const isDefault = list.defaultValue ? valueKey(list.defaultValue) === key : false;
         return <li key={key}>
           <div><strong>{value.code}</strong>{value.codeSystem && <small>{value.codeSystem}</small>}</div>
-          <label>Label <input aria-label={`Label for ${value.code}`} value={value.label} onChange={(event) => updateValue(index,
+          <label>Label <input disabled={readOnly} aria-label={`Label for ${value.code}`} value={value.label} onChange={(event) => updateValue(index,
             (current) => ({ ...current, label: event.target.value }), `Changed the label for ${value.code}.`)} /></label>
-          <label><input type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
+          <label><input disabled={readOnly} type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
             (current) => ({ ...current, enabled: event.target.checked }), `${event.target.checked ? "Enabled" : "Disabled"} ${value.label}.`)} /> Enabled</label>
-          <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={!value.enabled}
+          <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={readOnly || !value.enabled}
             onChange={() => {
               onChange({ ...list, defaultValue: { code: value.code, codeSystem: value.codeSystem } },
                 `Set ${value.label} as the default.`);
             }} /> Default</label>
           <div className="code-list-order" aria-label={`Reorder ${value.label}`}>
-            <button type="button" disabled={index === 0} aria-label={`Move ${value.label} up`} onClick={() => onChange(
+            <button type="button" disabled={readOnly || index === 0} aria-label={`Move ${value.label} up`} onClick={() => onChange(
               moveCodeValue(list, index, index - 1), `Moved ${value.label} up.`)}>Move up</button>
-            <button type="button" disabled={index === list.values.length - 1} aria-label={`Move ${value.label} down`} onClick={() => onChange(
+            <button type="button" disabled={readOnly || index === list.values.length - 1} aria-label={`Move ${value.label} down`} onClick={() => onChange(
               moveCodeValue(list, index, index + 1), `Moved ${value.label} down.`)}>Move down</button>
           </div>
         </li>;
       })}
     </ol>
-    <button type="button" disabled={list.defaultValue === null} onClick={() => onChange({ ...list, defaultValue: null }, "Cleared the code-list default.")}>Clear default</button>
+    <button type="button" disabled={readOnly || list.defaultValue === null} onClick={() => onChange({ ...list, defaultValue: null }, "Cleared the code-list default.")}>Clear default</button>
   </div>;
 }

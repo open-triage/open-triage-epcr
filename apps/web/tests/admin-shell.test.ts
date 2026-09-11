@@ -4,10 +4,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { RolesPanel, UsersPanel } from "../components/admin-directory";
-import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
+import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
@@ -20,7 +20,8 @@ const session: ClinicianSession = {
   organization: { id: "organization-id", name: "Example EMS" },
   startedAt: "2026-09-06T12:00:00.000Z",
   expiresAt: "2026-09-06T20:00:00.000Z",
-  capabilities: ["admin-dashboard:read", "clinical:document"]
+  capabilities: ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish",
+    "forms:read", "forms:write", "forms:publish", "clinical:document"]
 };
 const productionSettings = parseInstallationSettings(production);
 test("Admin navigation waits for server-authorized panels", () => {
@@ -70,6 +71,7 @@ test("nullable admin draft endpoints accept an empty successful response", async
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response(null, { status: 200 });
   assert.equal(await loadCatalogDraft(), null);
+  assert.equal(await loadActiveCatalogDefinition(), null);
   assert.equal(await loadStationaryFormDraft(), null);
 });
 
@@ -107,6 +109,23 @@ test("accessible move controls reorder values without changing code identity", (
   const moved = moveCodeValue(codeList, 1, 0);
   assert.deepEqual(moved.values.map(({ code }) => code), ["TWO", "ONE"]);
   assert.equal(moveCodeValue(codeList, 0, -1), codeList);
+});
+
+test("Catalog authority requires the complete read-write-publish prerequisite chain", () => {
+  assert.deepEqual(catalogAuthority(["catalog:read"]), { canRead: true, canWrite: false, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:read", "catalog:write"]),
+    { canRead: true, canWrite: true, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:read", "catalog:write", "catalog:publish"]),
+    { canRead: true, canWrite: true, canPublish: true });
+  assert.deepEqual(catalogAuthority(["catalog:write"]), { canRead: false, canWrite: false, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:publish"]), { canRead: false, canWrite: false, canPublish: false });
+});
+
+test("read-only code-list inspection exposes definitions without mutable controls", () => {
+  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
+    { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 9);
+  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
 });
 
 const formDefinition = { schemaVersion: 1 as const, sections: [

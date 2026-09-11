@@ -1,4 +1,4 @@
-import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -29,6 +29,7 @@ async function catalogRequest<T>(path: string, csrfToken?: string, init?: Reques
 }
 
 export const loadCatalogDraft = () => catalogRequest<CatalogDraft | null>("catalog-draft", undefined, undefined, { value: null });
+export const loadActiveCatalogDefinition = () => catalogRequest<CatalogDefinitionView | null>("catalog-definition", undefined, undefined, { value: null });
 export const cloneCatalogDraft = (csrfToken: string, displayName: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
   method: "POST", body: JSON.stringify({ displayName })
 });

@@ -53,6 +53,8 @@ export interface DeleteDraftReportResponse {
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
+  /** Server-resolved current authority; Admin controls must not trust cached session claims. */
+  capabilities: string[];
   activeConfiguration: {
     catalog: {
       id: string;
@@ -184,6 +186,14 @@ export interface CatalogDraft {
   definitionSha256: string;
   definition: CatalogDraftDefinition;
   updatedAt: string;
+}
+
+export interface CatalogDefinitionView {
+  id: string;
+  displayName: string;
+  version: string;
+  status: "active";
+  definition: CatalogDraftDefinition;
 }
 
 export interface CatalogValidationResult {
