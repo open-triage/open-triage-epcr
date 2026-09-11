@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { AssignedCall, AssignedCallsResponse, InstallationSettings, OpenAssignmentResponse } from "@open-triage/contracts";
+import type {
+  AssignedCall,
+  AssignedCallsResponse,
+  GenerateSyntheticCallResponse,
+  OpenAssignmentResponse,
+  SyntheticCallGenerationContext,
+} from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -9,7 +15,6 @@ import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
-import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 type AssignedCallRow = {
   id: string;
@@ -33,9 +38,11 @@ type OpenableAssignmentRow = AssignedCallRow & {
   dispatch_receipt_id: string | null;
 };
 
-type SyntheticReceiptRow = {
-  source_id: string;
-  source_payload: Record<string, unknown>;
+type EligibleUnitRow = {
+  id: string;
+  call_sign: string;
+  name: string;
+  agency_time_zone: string;
 };
 
 type ReportRow = {
@@ -61,13 +68,6 @@ function nextCallNumber(callNumber: string): string {
   const match = /^(.*?)(\d+)$/.exec(callNumber);
   if (!match) return `${callNumber}-002`;
   return `${match[1]!}${String(Number(match[2]!) + 1).padStart(match[2]!.length, "0")}`;
-}
-
-function syntheticSourceRecordId(callNumber: string): string {
-  const sequence = /(\d+)$/.exec(callNumber)?.[1];
-  return sequence
-    ? `SYNTHETIC-SOURCE-RECORD-${sequence.padStart(4, "0")}`
-    : `SYNTHETIC-SOURCE-RECORD-${randomUUID()}`;
 }
 
 function records(value: unknown): Array<Record<string, unknown>> {
@@ -171,13 +171,6 @@ function assignedCall(row: AssignedCallRow): AssignedCall {
   };
 }
 
-export function shouldCreateSampleReplacement(
-  syntheticAssignment: boolean,
-  settings: InstallationSettings = selectedInstallationSettings(),
-): boolean {
-  return syntheticAssignment && settings.sampleDispatchAssignment.enabled;
-}
-
 @Injectable()
 export class AssignedCallsService {
   constructor(
@@ -214,6 +207,94 @@ export class AssignedCallsService {
       canceledAssignmentIds: rows.filter((row) => row.status === "canceled").map((row) => row.id),
       refreshedAt: now.toISOString()
     };
+  }
+
+  async syntheticGenerationContext(accessToken: string): Promise<SyntheticCallGenerationContext> {
+    const session = await this.sessions.requireCapability(accessToken, "clinical:demo");
+    const [units, openReports] = await Promise.all([
+      this.dataSource.query<EligibleUnitRow[]>(`
+        select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
+        from app_identity.unit_clinician uc
+        join app_identity.operational_unit ou
+          on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
+        join app_identity.organization organization on organization.id = ou.organization_id
+        where uc.user_id = $1 and uc.organization_id = $2 and ou.active
+        order by ou.call_sign, ou.id
+      `, [session.user.id, session.organization.id]),
+      this.dataSource.query<Array<{ exists: boolean }>>(`select exists (
+        select 1 from clinical.report
+        where organization_id = $1 and documenting_user_id = $2 and status = 'draft'
+      )`, [session.organization.id, session.user.id]),
+    ]);
+    return {
+      eligibleUnits: units.map((unit) => ({ id: unit.id, callSign: unit.call_sign, name: unit.name })),
+      hasOpenReport: openReports[0]?.exists ?? false,
+    };
+  }
+
+  async generateSynthetic(accessToken: string, csrfToken: string | undefined, unitId: string,
+    now = new Date()): Promise<GenerateSyntheticCallResponse> {
+    try {
+      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+        await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+        const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager, now);
+        await manager.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          `synthetic-call:${session.organization.id}:${session.user.id}:${unitId}`,
+        ]);
+        const units = await manager.query<EligibleUnitRow[]>(`
+          select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
+          from app_identity.unit_clinician uc
+          join app_identity.operational_unit ou
+            on ou.organization_id = uc.organization_id and ou.id = uc.unit_id
+          join app_identity.organization organization on organization.id = ou.organization_id
+          where uc.user_id = $1 and uc.organization_id = $2 and ou.id = $3 and ou.active
+        `, [session.user.id, session.organization.id, unitId]);
+        const unit = units[0];
+        if (!unit) throw new NotFoundException("The selected unit is not eligible for synthetic calls");
+        const openReports = await manager.query<Array<{ exists: boolean }>>(`select exists (
+          select 1 from clinical.report
+          where organization_id = $1 and documenting_user_id = $2 and status = 'draft'
+        )`, [session.organization.id, session.user.id]);
+        if (openReports[0]?.exists) throw new ConflictException("Close the open report before generating a call");
+
+        const existing = await manager.query<AssignedCallRow[]>(`
+          select ca.id, ca.call_number, ca.unit_id, ou.call_sign, ca.dispatched_at,
+                 ca.dispatch_reason, ca.chief_complaint, ca.status,
+                 organization.deployment_timezone as agency_time_zone,
+                 jsonb_path_query_first(dr.source_payload,
+                   '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'code'
+                   as dispatch_priority_code,
+                 jsonb_path_query_first(dr.source_payload,
+                   '$.groups[*].instances[*].elements[*] ? (@.id == "eDispatch.05").values[0]')->>'display'
+                   as dispatch_priority_display
+          from clinical.call_assignment ca
+          join app_identity.operational_unit ou
+            on ou.organization_id = ca.organization_id and ou.id = ca.unit_id
+          join app_identity.organization organization on organization.id = ca.organization_id
+          left join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
+          where ca.organization_id = $1 and ca.synthetic_generated_by = $2
+            and ca.unit_id = $3 and ca.synthetic and ca.status = 'assigned'
+          limit 1
+        `, [session.organization.id, session.user.id, unit.id]);
+        if (existing[0]) {
+          await this.auditSyntheticGeneration(manager, session.organization.id, session.user.id,
+            unit.id, existing[0].id, "synthetic_call.reuse", now);
+          return { assignment: assignedCall(existing[0]), reused: true };
+        }
+
+        const assignment = await this.createSyntheticAssignment(manager, {
+          organizationId: session.organization.id,
+          userId: session.user.id,
+          unit,
+          now,
+        });
+        await this.auditSyntheticGeneration(manager, session.organization.id, session.user.id,
+          unit.id, assignment.id, "synthetic_call.generate", now);
+        return { assignment, reused: false };
+      });
+    } catch (error) {
+      this.rethrowDatabaseConflict(error);
+    }
   }
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
@@ -295,10 +376,7 @@ export class AssignedCallsService {
           where id = $1
         `, [assignment.id, reportId]);
 
-        const replacement = shouldCreateSampleReplacement(assignment.synthetic)
-          ? await this.createReplacement(manager, assignment)
-          : null;
-        return { assignment, reportId, replacement };
+        return { assignment, reportId, replacement: null };
       });
       return await this.openResult(opened.assignment, opened.reportId, session.user.id, opened.replacement);
     } catch (error) {
@@ -315,57 +393,31 @@ export class AssignedCallsService {
     throw error;
   }
 
-  private async createReplacement(manager: EntityManager, source: OpenableAssignmentRow): Promise<AssignedCall> {
-    let callNumber = nextCallNumber(source.call_number);
+  private async createSyntheticAssignment(manager: EntityManager, input: {
+    organizationId: string;
+    userId: string;
+    unit: EligibleUnitRow;
+    now: Date;
+  }): Promise<AssignedCall> {
+    const callNumber = `DEMO-${input.now.toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`;
     const incidentId = randomUUID();
     const assignmentId = randomUUID();
-    let dispatchedAt = new Date(new Date(source.dispatched_at).getTime() + 15 * 60 * 1_000);
-    const sourceReceipts = source.dispatch_receipt_id
-      ? await manager.query<SyntheticReceiptRow[]>(`
-          select source_id, source_payload from clinical.dispatch_receipt
-          where id = $1 and organization_id = $2
-        `, [source.dispatch_receipt_id, source.organization_id])
-      : [];
-    const sourceReceipt = sourceReceipts[0];
-    let sourceRecordId = sourceReceipt
-      ? nextCallNumber(String(sourceReceipt.source_payload.sourceRecordId))
-      : syntheticSourceRecordId(callNumber);
-    const priorReceipts = await manager.query<Array<{ source_record_id: string }>>(`
-      select source_record_id from clinical.dispatch_receipt
-      where organization_id = $1 and source_id = $2
-    `, [source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator"]);
-    const occupiedSourceRecords = new Set(priorReceipts.map(({ source_record_id }) => source_record_id));
-    while (occupiedSourceRecords.has(sourceRecordId)) {
-      callNumber = nextCallNumber(callNumber);
-      sourceRecordId = nextCallNumber(sourceRecordId);
-      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
-    }
-
-    let receiptId: string;
-    let payload: Record<string, unknown>;
-    while (true) {
-      receiptId = randomUUID();
-      payload = syntheticReplacementPayload(
-        randomSyntheticDispatchPayload(), callNumber, dispatchedAt, randomUUID(), sourceRecordId,
-      );
-      const insertedReceipts = await manager.query<Array<{ id: string }>>(`
-        insert into clinical.dispatch_receipt
-          (id, organization_id, source_id, message_id, source_record_id, source_revision,
-           source_bytes, source_payload, status, result)
-        values ($1, $2, $3, $4, $5, 1, $6, $7::jsonb, 'applied', $8::jsonb)
-        on conflict (organization_id, source_id, source_record_id, source_revision) do nothing
-        returning id
-      `, [receiptId, source.organization_id, sourceReceipt?.source_id ?? "synthetic-generator", payload.messageId,
-        payload.sourceRecordId, Buffer.from(JSON.stringify(payload), "utf8"), JSON.stringify(payload), JSON.stringify({
-          synthetic: true, generatedFromAssignmentId: source.id
-        })]);
-      if (insertedReceipts.length > 0) break;
-      callNumber = nextCallNumber(callNumber);
-      sourceRecordId = nextCallNumber(sourceRecordId);
-      dispatchedAt = new Date(dispatchedAt.getTime() + 15 * 60 * 1_000);
-    }
+    const receiptId = randomUUID();
+    const sourceRecordId = `SYNTHETIC-GENERATED-${randomUUID()}`;
+    const payload = syntheticReplacementPayload(
+      randomSyntheticDispatchPayload(), callNumber, input.now, randomUUID(), sourceRecordId,
+    );
+    await manager.query(`
+      insert into clinical.dispatch_receipt
+        (id, organization_id, source_id, message_id, source_record_id, source_revision,
+         source_bytes, source_payload, status, result)
+      values ($1, $2, 'clinical-demo-generator', $3, $4, 1, $5, $6::jsonb, 'applied', $7::jsonb)
+    `, [receiptId, input.organizationId, payload.messageId, payload.sourceRecordId,
+      Buffer.from(JSON.stringify(payload), "utf8"), JSON.stringify(payload), JSON.stringify({
+        synthetic: true, generator: "clinical-demo",
+      })]);
     const dispatchReason = records(payloadElement(payload, "eDispatch.01")?.values)[0]?.display;
-    const generatedDispatchReason = typeof dispatchReason === "string" ? dispatchReason : source.dispatch_reason;
+    const generatedDispatchReason = typeof dispatchReason === "string" ? dispatchReason : null;
     const priority = records(payloadElement(payload, "eDispatch.05")?.values)[0];
     const priorityCode = typeof priority?.code === "string" ? priority.code : null;
     const priorityDisplay = typeof priority?.display === "string" ? priority.display : priorityCode;
@@ -373,36 +425,46 @@ export class AssignedCallsService {
       insert into clinical.incident
         (id, organization_id, operational_state, dispatch_provenance, synthetic)
       values ($1, $2, 'assigned', $3::jsonb, true)
-    `, [incidentId, source.organization_id, JSON.stringify({
+    `, [incidentId, input.organizationId, JSON.stringify({
       fixture: "open-triage-synthetic-assignment-v1",
       synthetic: true,
       callNumber,
-      dispatchedAt: dispatchedAt.toISOString()
+      dispatchedAt: input.now.toISOString()
     })]);
     await manager.query(`
       insert into clinical.call_assignment
         (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
          dispatch_reason, chief_complaint, dispatch_source_id, dispatch_source_record_id,
-         dispatch_revision, response_number, vehicle_number, dispatch_receipt_id, status, synthetic)
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'assigned', true)
-    `, [assignmentId, source.organization_id, source.unit_id, incidentId, callNumber,
-      dispatchedAt.toISOString(), generatedDispatchReason, source.chief_complaint,
-      sourceReceipt?.source_id ?? "synthetic-generator", payload.sourceRecordId, 1,
+         dispatch_revision, response_number, vehicle_number, dispatch_receipt_id, status, synthetic,
+         synthetic_generated_by)
+      values ($1, $2, $3, $4, $5, $6, $7, null, 'clinical-demo-generator', $8, 1, $9, $10, $11,
+              'assigned', true, $12)
+    `, [assignmentId, input.organizationId, input.unit.id, incidentId, callNumber,
+      input.now.toISOString(), generatedDispatchReason, payload.sourceRecordId,
       scalarPayloadValue(payload, "eResponse.04"),
-      scalarPayloadValue(payload, "eResponse.13"), receiptId]);
+      scalarPayloadValue(payload, "eResponse.13"), receiptId, input.userId]);
     return assignedCall({
       id: assignmentId,
       call_number: callNumber,
-      unit_id: source.unit_id,
-      call_sign: source.call_sign,
-      dispatched_at: dispatchedAt,
+      unit_id: input.unit.id,
+      call_sign: input.unit.call_sign,
+      dispatched_at: input.now,
       dispatch_reason: generatedDispatchReason,
       dispatch_priority_code: priorityCode,
       dispatch_priority_display: priorityDisplay,
-      chief_complaint: source.chief_complaint,
-      agency_time_zone: source.agency_time_zone,
+      chief_complaint: null,
+      agency_time_zone: input.unit.agency_time_zone,
       status: "assigned"
     });
+  }
+
+  private async auditSyntheticGeneration(manager: EntityManager, organizationId: string, actorId: string,
+    unitId: string, assignmentId: string, action: "synthetic_call.generate" | "synthetic_call.reuse",
+    occurredAt: Date): Promise<void> {
+    await manager.query(`insert into clinical_audit.synthetic_generation_event
+      (organization_id, actor_id, unit_id, assignment_id, action, occurred_at)
+      values ($1, $2, $3, $4, $5, $6)`,
+    [organizationId, actorId, unitId, assignmentId, action, occurredAt]);
   }
 
   private async openResult(

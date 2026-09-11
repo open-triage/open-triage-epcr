@@ -31,7 +31,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
   roleRetirementMigration, sessionAdministrationMigration,
-  portableRolePackageMigration] = await Promise.all([
+  portableRolePackageMigration, syntheticGenerationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -65,8 +65,21 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8")
 ]);
+
+test("synthetic generation has a per-user/unit unopened invariant and append-only safe audit facts", () => {
+  assert.match(syntheticGenerationMigration, /synthetic_generated_by uuid/);
+  assert.match(syntheticGenerationMigration,
+    /unique index call_assignment_one_generated_unopened_per_user_unit_idx[\s\S]*status = 'assigned'/);
+  assert.match(syntheticGenerationMigration, /synthetic_generated_by is null or synthetic/);
+  assert.match(syntheticGenerationMigration, /call_assignment_synthetic_generator_immutable/);
+  assert.match(syntheticGenerationMigration, /create table clinical_audit\.synthetic_generation_event/);
+  assert.match(syntheticGenerationMigration, /synthetic_generation_event_append_only/);
+  assert.doesNotMatch(syntheticGenerationMigration, /patient|source_payload|password|token|csrf/i);
+  assert.match(syntheticGenerationMigration, /revoke all on clinical_audit\.synthetic_generation_event from public/);
+});
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
   for (const capability of [

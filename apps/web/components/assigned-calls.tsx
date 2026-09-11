@@ -24,11 +24,13 @@ export function AssignedCalls({
   onOpened,
   refreshRequest = 0,
   suppressedCallNumbers = [],
+  focusAssignmentId = null,
 }: {
   readonly session: ClinicianSession;
   readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void;
   readonly refreshRequest?: number;
   readonly suppressedCallNumbers?: ReadonlyArray<string>;
+  readonly focusAssignmentId?: string | null;
 }) {
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -99,6 +101,13 @@ export function AssignedCalls({
     void refresh();
   }, [refresh, refreshRequest]);
 
+  useEffect(() => {
+    if (!focusAssignmentId || !calls.some(({ id }) => id === focusAssignmentId)) return;
+    const card = document.querySelector<HTMLElement>(`[data-assignment-id="${CSS.escape(focusAssignmentId)}"]`);
+    card?.scrollIntoView({ behavior: "smooth", block: "center" });
+    card?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [calls, focusAssignmentId]);
+
   return (
     <section className="assigned-calls" aria-labelledby="assigned-calls-title">
       <div className="assigned-calls-heading">
@@ -113,7 +122,7 @@ export function AssignedCalls({
       {calls.length > 0 && (
         <ul className="assigned-call-list">
           {calls.map((call) => (
-            <li key={call.id} className="assigned-call-card">
+            <li key={call.id} className="assigned-call-card" data-assignment-id={call.id}>
               <div className="assigned-call-title">
                 <strong>{call.callNumber}</strong>
                 <span>{call.status}</span>

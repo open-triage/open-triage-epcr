@@ -21,7 +21,8 @@ const session = {
   user: { id: "32000000-0000-4000-8000-000000000003", displayName: "Synthetic Clinician" },
   organization: { id: "32000000-0000-4000-8000-000000000001", name: "OpenTriage Synthetic EMS" },
   startedAt: "2026-09-03T08:00:00.000Z",
-  expiresAt: "2026-09-03T22:00:00.000Z"
+  expiresAt: "2026-09-03T22:00:00.000Z",
+  capabilities: ["clinical:document", "clinical:demo"]
 };
 
 function transactional(manager, isolations = []) {
@@ -140,7 +141,37 @@ test("the assigned-call endpoint requires a current clinician session", async ()
   assert.throws(() => controller.list(), (error) => error instanceof UnauthorizedException);
 });
 
-test("opening and retrying one assignment creates one draft and skips stale replacement receipt identities", async () => {
+test("generation context returns every eligible active assigned unit and the open-report state", async () => {
+  const queries = [];
+  const service = new AssignedCallsService({ query: async (sql, parameters) => {
+    queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
+    if (sql.includes("from app_identity.unit_clinician")) return [
+      { id: "unit-1", call_sign: "Medic 1", name: "First", agency_time_zone: "America/New_York" },
+      { id: "unit-2", call_sign: "Medic 2", name: "Second", agency_time_zone: "America/New_York" }
+    ];
+    return [{ exists: true }];
+  } }, {
+    requireCapability: async (token, capability) => {
+      assert.equal(token, session.accessToken);
+      assert.equal(capability, "clinical:demo");
+      return session;
+    }
+  });
+
+  const context = await service.syntheticGenerationContext(session.accessToken);
+
+  assert.deepEqual(context, {
+    eligibleUnits: [
+      { id: "unit-1", callSign: "Medic 1", name: "First" },
+      { id: "unit-2", callSign: "Medic 2", name: "Second" }
+    ],
+    hasOpenReport: true
+  });
+  assert.match(queries[0].sql, /uc\.user_id = \$1.*ou\.active/);
+  assert.deepEqual(queries[0].parameters, [session.user.id, session.organization.id]);
+});
+
+test("opening and retrying one assignment creates one draft without an automatic replacement", async () => {
   const assignment = {
     id: "32000000-0000-4000-8000-000000000011",
     organization_id: session.organization.id,
@@ -204,17 +235,6 @@ test("opening and retrying one assignment creates one draft and skips stale repl
       assignment.report_id = parameters[1];
       return [];
     }
-    if (normalized.includes("select source_record_id from clinical.dispatch_receipt")) return [
-      { source_record_id: "SYNTHETIC-SOURCE-RECORD-0002" },
-      { source_record_id: "SYNTHETIC-SOURCE-RECORD-0003" }
-    ];
-    if (normalized.includes("insert into clinical.dispatch_receipt")) {
-      writes.push("replacement-receipt");
-      assert.match(normalized, /on conflict .* do nothing returning id/);
-      return [{ id: parameters[0] }];
-    }
-    if (normalized.includes("insert into clinical.incident")) { writes.push("replacement-incident"); return []; }
-    if (normalized.includes("insert into clinical.call_assignment")) { writes.push("replacement-assignment"); return []; }
     if (normalized.includes("from clinical.report where")) return [reports.get(parameters[0])];
     if (normalized.includes("join forms.form_version")) return [{
       id: parameters[0], created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:00:00.000Z",
@@ -246,11 +266,9 @@ test("opening and retrying one assignment creates one draft and skips stale repl
   assert.equal(opened.report.document.encounter.id, opened.report.id);
   assert.equal(opened.report.agencyTimeZone, "America/New_York");
   assert.deepEqual(opened.report.dispatchConflicts, []);
-  assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-004");
-  assert.equal(opened.replacementAssignment.dispatchedAt, "2026-09-03T12:45:00.000Z");
-  assert.equal(opened.replacementAssignment.agencyTimeZone, "America/New_York");
+  assert.equal(opened.replacementAssignment, null);
   assert.equal(retried.replacementAssignment, null);
-  assert.deepEqual(writes, ["patient", "report", "replacement-receipt", "replacement-incident", "replacement-assignment"]);
+  assert.deepEqual(writes, ["patient", "report"]);
 
   const [patientId, organizationId, pseudonymousKey, pseudonymousKeyVersion] = patientInsertParameters;
   const patientKeyConfig = patientKeyConfigFromEnvironment(process.env);
@@ -260,6 +278,107 @@ test("opening and retrying one assignment creates one draft and skips stale repl
   assert.match(pseudonymousKey, /^[a-f0-9]{64}$/);
   assert.notEqual(pseudonymousKey, createHash("sha256").update(`synthetic-assignment:${assignment.id}`).digest("hex"));
   assert.deepEqual(isolations, ["REPEATABLE READ", "REPEATABLE READ"]);
+});
+
+test("Clinical Demo generation ignores ordinary calls, creates once, reuses per user and unit, and audits safe facts", async () => {
+  const unitId = "32000000-0000-4000-8000-000000000010";
+  let generated;
+  const audits = [];
+  const writes = [];
+  const manager = { query: async (sql, parameters) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
+      id: unitId, call_sign: "Medic 32", name: "Medic 32", agency_time_zone: "America/New_York"
+    }];
+    if (normalized.includes("select exists") && normalized.includes("from clinical.report")) return [{ exists: false }];
+    if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) {
+      assert.match(normalized, /ca\.synthetic and ca\.status = 'assigned'/);
+      return generated ? [generated] : [];
+    }
+    if (normalized.includes("insert into clinical.dispatch_receipt")) { writes.push("receipt"); return []; }
+    if (normalized.includes("insert into clinical.incident")) { writes.push("incident"); return []; }
+    if (normalized.includes("insert into clinical.call_assignment")) {
+      writes.push("assignment");
+      assert.match(normalized, /synthetic_generated_by/);
+      generated = {
+        id: parameters[0], call_number: parameters[4], unit_id: parameters[2], call_sign: "Medic 32",
+        dispatched_at: parameters[5], dispatch_reason: parameters[6], dispatch_priority_code: "2305003",
+        dispatch_priority_display: "Emergent", chief_complaint: null, agency_time_zone: "America/New_York",
+        status: "assigned"
+      };
+      return [];
+    }
+    if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) {
+      audits.push(parameters);
+      return [];
+    }
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const sessions = {
+    assertCsrf: async (token, csrf) => {
+      assert.equal(token, session.accessToken);
+      assert.equal(csrf, "csrf-token");
+    },
+    requireCapability: async (token, capability) => {
+      assert.equal(token, session.accessToken);
+      assert.equal(capability, "clinical:demo");
+      return session;
+    }
+  };
+  const service = new AssignedCallsService(transactional(manager), sessions);
+  const now = new Date("2026-09-03T12:00:00.000Z");
+
+  const created = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
+  const reused = await service.generateSynthetic(session.accessToken, "csrf-token", unitId, now);
+
+  assert.equal(created.reused, false);
+  assert.equal(reused.reused, true);
+  assert.equal(reused.assignment.id, created.assignment.id);
+  assert.match(created.assignment.callNumber, /^DEMO-20260903-[0-9A-F]{8}$/);
+  assert.deepEqual(writes, ["receipt", "incident", "assignment"]);
+  assert.deepEqual(audits.map((parameters) => parameters.slice(0, 5)), [
+    [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.generate"],
+    [session.organization.id, session.user.id, unitId, created.assignment.id, "synthetic_call.reuse"]
+  ]);
+  assert.equal(JSON.stringify(audits).includes("patient"), false);
+});
+
+test("generation rejects missing current Clinical Demo authority before any database mutation", async () => {
+  let queried = false;
+  const manager = { query: async () => { queried = true; return []; } };
+  const service = new AssignedCallsService(transactional(manager), {
+    assertCsrf: async () => undefined,
+    requireCapability: async () => { throw new UnauthorizedException("The requested capability is required"); }
+  });
+
+  await assert.rejects(
+    service.generateSynthetic(session.accessToken, "csrf-token", "32000000-0000-4000-8000-000000000010"),
+    (error) => error instanceof UnauthorizedException
+  );
+  assert.equal(queried, false);
+});
+
+test("generation refuses while the clinician has an open report", async () => {
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from app_identity.unit_clinician")) return [{
+      id: "32000000-0000-4000-8000-000000000010", call_sign: "Medic 32", name: "Medic 32",
+      agency_time_zone: "America/New_York"
+    }];
+    if (normalized.includes("from clinical.report")) return [{ exists: true }];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new AssignedCallsService(transactional(manager), {
+    assertCsrf: async () => undefined,
+    requireCapability: async () => session
+  });
+
+  await assert.rejects(
+    service.generateSynthetic(session.accessToken, "csrf-token", "32000000-0000-4000-8000-000000000010"),
+    (error) => error instanceof ConflictException
+  );
 });
 
 test("a serialization failure while opening an assignment surfaces as a retriable conflict, not a raw 500", async () => {

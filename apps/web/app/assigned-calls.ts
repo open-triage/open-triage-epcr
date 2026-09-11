@@ -3,9 +3,11 @@ import type {
   AssignedCallsResponse,
   DispatchConflict,
   DispatchConflictDisposition,
+  GenerateSyntheticCallResponse,
   OpenAssignmentResponse,
   OpenCallsResponse,
-  ReopenOpenCallResponse
+  ReopenOpenCallResponse,
+  SyntheticCallGenerationContext,
 } from "@open-triage/contracts";
 import { selectedInstallationSettings } from "./installation-settings";
 import {
@@ -16,6 +18,38 @@ import {
 } from "./browser-api";
 
 export const ASSIGNED_CALL_POLL_INTERVAL_MS = 10_000;
+
+export async function fetchSyntheticCallGenerationContext(): Promise<SyntheticCallGenerationContext> {
+  const url = apiRequestUrl("/api/calls/synthetic-generation");
+  if (!url) throw new Error("Synthetic call generation requires a live connection.");
+  const response = await fetch(url, browserRequestInit());
+  if (!response.ok) throw new Error(response.status === 401
+    ? "Clinical Demo authorization is no longer available."
+    : "Synthetic call generation is unavailable.");
+  return response.json() as Promise<SyntheticCallGenerationContext>;
+}
+
+export async function generateSyntheticCall(csrfToken: string, unitId: string): Promise<GenerateSyntheticCallResponse> {
+  const url = apiRequestUrl("/api/calls/synthetic-generation");
+  if (!url) throw new Error("Synthetic call generation requires a live connection.");
+  let response: Response;
+  try {
+    response = await fetch(url, browserRequestInit({
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ unitId }),
+    }));
+  } catch {
+    throw new Error("Synthetic call generation requires a live connection.");
+  }
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Clinical Demo authorization is no longer available.");
+    if (response.status === 404) throw new Error("The selected unit is no longer eligible.");
+    if (response.status === 409) throw new Error("Close the open report before generating a call.");
+    throw new Error("The synthetic call could not be generated.");
+  }
+  return response.json() as Promise<GenerateSyntheticCallResponse>;
+}
 
 export async function resolveDispatchConflict(
   csrfToken: string,
