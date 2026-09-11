@@ -178,6 +178,10 @@ export class ClinicianSessionService {
         and rvc.role_version_id = version.id
       where assignment.user_id = $1 and assignment.organization_id = $2
         and assignment.ended_at is null and role.active and role.assignable
+        and exists (
+          select 1 from app_identity.installation_owner owner_record
+          where owner_record.organization_id = assignment.organization_id
+        )
       order by rvc.capability_key
     `, [account.user_id, account.organization_id])).map(({ capability_key }) => capability_key);
     return {
