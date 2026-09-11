@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -80,6 +80,9 @@ export class FormAuthoringService {
         select $1,$2,coalesce(max(version),0)+1,$3::jsonb,$4,$5,$6,$7
         from forms.form_version where form_id=$1 returning *
       `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id, displayName]);
+      await this.auditDraftMutation(manager, session, "form.draft_create", inserted[0]!, {
+        clonedFromId: source[0].id, diagnostics: cloned.diagnostics
+      });
       return this.result(manager, inserted[0]!, cloned.diagnostics);
     });
   }
@@ -133,7 +136,30 @@ export class FormAuthoringService {
         select * from updated
       `, [id, body.expectedRevision, JSON.stringify(body.definition), digest, body.displayName]);
       if (!updated[0]) throw new ConflictException("Form draft revision is stale or the form was published");
+      await this.auditDraftMutation(manager, session, "form.draft_save", updated[0]!);
       return this.result(manager, updated[0]);
+    });
+  }
+
+  async delete(token: string, id: string, input: unknown): Promise<void> {
+    const session = await this.authorize(token, "forms:write");
+    const expectedRevision = this.expectedRevision(input);
+    await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      const rows = await manager.query<VersionRow[]>(`
+        select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
+        where fv.id=$1 and f.organization_id=$2 and fv.status='draft' for update
+      `, [id, session.organization.id]);
+      const draft = rows[0];
+      if (!draft) throw new NotFoundException(`Form draft ${id} was not found`);
+      if (draft.revision !== expectedRevision) throw new ConflictException({
+        message: "Form draft revision is stale", expectedRevision, actualRevision: draft.revision
+      });
+      await this.auditDraftMutation(manager, session, "form.draft_delete", draft, { deletedFormVersionId: draft.id });
+      const deleted = await manager.query<Array<{ id: string }>>(
+        "delete from forms.form_version where id=$1 and revision=$2 and status='draft' returning id",
+        [id, expectedRevision]
+      );
+      if (!deleted[0]) throw new ConflictException("Form draft revision is stale or the form was published");
     });
   }
 
@@ -250,10 +276,8 @@ export class FormAuthoringService {
   }
 
   private saveBody(input: unknown): { expectedRevision: number; displayName: string | null; definition: FormDraftDefinition } {
-    if (!input || typeof input !== "object" || !Number.isInteger((input as Record<string, unknown>).expectedRevision) ||
-        Number((input as Record<string, unknown>).expectedRevision) < 1)
-      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
-    return { expectedRevision: (input as { expectedRevision: number }).expectedRevision,
+    const expectedRevision = this.expectedRevision(input);
+    return { expectedRevision,
       displayName: (input as Record<string, unknown>).displayName === undefined ? null : this.displayName(input),
       definition: this.definition((input as Record<string, unknown>).definition) };
   }
@@ -284,6 +308,26 @@ export class FormAuthoringService {
     return note.trim().slice(0, 2_000);
   }
 
+  private expectedRevision(input: unknown): number {
+    const revision = input && typeof input === "object" ? (input as Record<string, unknown>).expectedRevision : undefined;
+    if (!Number.isInteger(revision) || Number(revision) < 1)
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    return Number(revision);
+  }
+
+  private async auditDraftMutation(manager: Pick<EntityManager, "query">, session: ClinicianSession,
+    action: "form.draft_create" | "form.draft_save" | "form.draft_delete", row: VersionRow,
+    details: Record<string, unknown> = {}): Promise<void> {
+    await manager.query(`insert into app_identity.configuration_event
+      (organization_id,actor_id,action,result,form_version_id,catalog_release_id,
+       change_note,content_sha256,details)
+      values ($1,$2,$3,'succeeded',null,$4,$5,$6,$7::jsonb)`,
+    [session.organization.id, session.user.id, action, row.catalog_release_id,
+      action === "form.draft_create" ? "Form draft created" : action === "form.draft_save"
+        ? `Form draft revision ${row.revision} saved` : "Form draft deleted",
+      row.definition_sha256, JSON.stringify({ formVersionId: row.id, formId: row.form_id, revision: row.revision, ...details })]);
+  }
+
   private async result(manager: Pick<EntityManager, "query">, row: VersionRow,
     diagnostics?: FormCloneDiagnostic[]): Promise<StationaryFormDraft> {
     let findings = diagnostics;
@@ -304,7 +348,13 @@ export class FormAuthoringService {
   }
 
   private authorize(token: string, capability: string): Promise<ClinicianSession> {
-    return this.sessions.requireCapability(token, capability);
+    return this.sessions.requireCapability(token, capability).then((session) => {
+      const prerequisites = capability === "forms:publish" ? ["forms:read", "forms:write"]
+        : capability === "forms:write" ? ["forms:read"] : [];
+      if (prerequisites.some((required) => !session.capabilities?.includes(required)))
+        throw new UnauthorizedException("The requested capability prerequisites are required");
+      return session;
+    });
   }
 
   private displayName(input: unknown): string {

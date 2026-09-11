@@ -28,7 +28,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
-  roleAuthorizationMigration, installationOwnerMigration] = await Promise.all([
+  roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -55,7 +55,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260908141346_prototype_synthetic_draft_deletion.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -146,6 +147,12 @@ test("form publication and agency activation are separate, pinned, and append-on
   assert.match(formActivationMigration, /'form\.publish', 'form\.activate'/);
   assert.match(formActivationMigration, /previous_form_version_id/);
   assert.match(formActivationMigration, /configuration_event_append_only/);
+});
+
+test("form draft mutations remain audited after the draft is deleted", () => {
+  assert.match(formDraftAuditMigration, /'form\.draft_create', 'form\.draft_save', 'form\.draft_delete'/);
+  assert.match(formDraftAuditMigration, /alter column form_version_id drop not null/);
+  assert.doesNotMatch(formDraftAuditMigration, /on delete set null/);
 });
 
 test("reports retain immutable, tenant-matched published configuration pins", () => {

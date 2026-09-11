@@ -4,12 +4,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
-import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
+import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
@@ -150,7 +150,7 @@ test("section operations preserve canonical content while changing only section 
 
 test("live form section controls expose named keyboard-operable move and removal actions", () => {
   const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
-    csrfToken: "csrf", catalogReleaseId: "catalog-id", installationSettings: productionSettings,
+    csrfToken: "csrf", capabilities: session.capabilities ?? [], catalogReleaseId: "catalog-id", installationSettings: productionSettings,
   }));
   assert.match(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,
@@ -159,6 +159,16 @@ test("live form section controls expose named keyboard-operable move and removal
   assert.match(controls, /aria-label="Move assessment up"/);
   assert.match(controls, /aria-label="Remove patient"/);
   assert.match(controls, /aria-label="Remove assessment"/);
+});
+
+test("Forms authority requires the complete read-write-publish prerequisite chain", () => {
+  assert.deepEqual(formAuthority(["forms:read"]), { canRead: true, canWrite: false, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:read", "forms:write"]),
+    { canRead: true, canWrite: true, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:read", "forms:write", "forms:publish"]),
+    { canRead: true, canWrite: true, canPublish: true });
+  assert.deepEqual(formAuthority(["forms:write"]), { canRead: false, canWrite: false, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:publish"]), { canRead: false, canWrite: false, canPublish: false });
 });
 
 test("draft preview projects only configured sections and fields through Stationary groups", () => {
@@ -222,6 +232,21 @@ test("form saves send section order with the current revision and CSRF proof", a
   assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
 });
 
+test("form deletion sends the current revision and CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    updatedAt: "2026-09-07T01:00:00.000Z" };
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "DELETE");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4 });
+    return new Response(null, { status: 200 });
+  };
+  await deleteStationaryFormDraft("csrf-proof", draft);
+});
+
 test("form review summarizes structure and publication stays separate from activation", async (t) => {
   assert.equal(formStructuralSummary(formDefinition), "2 sections and 3 elements");
   const originalFetch = globalThis.fetch;
@@ -276,6 +301,14 @@ test("form element rows provide keyboard-operable move and confirmed remove cont
   assert.match(markup, /aria-label="Remove ePatient.02"/);
   assert.match(markup, /aria-expanded="true"/);
   assert.match(markup, /<small>Last Name<\/small>/);
+});
+
+test("read-only form inspection exposes the definition without mutation controls", () => {
+  const markup = renderToStaticMarkup(createElement(FormSectionElements,
+    { definition: formDefinition, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
+  assert.match(markup, /ePatient\.02/);
+  assert.doesNotMatch(markup, /Actions for ePatient\.02/);
+  assert.doesNotMatch(markup, /Remove ePatient\.02/);
 });
 
 test("form search sends the searchable query without pagination", async (t) => {

@@ -122,6 +122,7 @@ export function AdminShell({ session, installationSettings }: {
     {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
       <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        capabilities={context.capabilities}
         installationSettings={installationSettings}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>

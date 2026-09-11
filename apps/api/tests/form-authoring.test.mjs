@@ -12,7 +12,8 @@ const draftId = "50000000-0000-4000-8000-000000000001";
 
 const session = {
   user: { id: "60000000-0000-4000-8000-000000000001", displayName: "Owner" },
-  organization: { id: organizationId, name: "Example EMS" }
+  organization: { id: organizationId, name: "Example EMS" },
+  capabilities: ["forms:read", "forms:write", "forms:publish"]
 };
 
 const definition = {
@@ -57,6 +58,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
         revision: 1, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3],
         updated_at: "2026-09-07T01:00:00.000Z"
       }];
+      if (sql.includes("insert into app_identity.configuration_event")) return [];
       if (sql.includes("from catalog.value_set_element")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
@@ -82,6 +84,25 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
   assert.match(targetAuthorization, /or exists[\s\S]*agency_stationary_default/);
 });
 
+test("Forms API authority enforces every read-write-publish prerequisite combination", async () => {
+  const tried = [];
+  const serviceFor = (capabilities) => new FormAuthoringService({
+    query: async () => { tried.push("query"); return []; },
+    transaction: async () => { tried.push("transaction"); }
+  }, { requireCapability: async (_token, capability) => {
+    if (!capabilities.includes(capability)) throw new UnauthorizedException("The requested capability is required");
+    return { ...session, capabilities };
+  } }, {});
+
+  assert.equal(await serviceFor(["forms:read"]).current("reader"), null);
+  tried.length = 0;
+  await assert.rejects(serviceFor(["forms:read"]).clone("reader", {}), UnauthorizedException);
+  await assert.rejects(serviceFor(["forms:write"]).clone("write-only", {}), /prerequisites/);
+  await assert.rejects(serviceFor(["forms:publish"]).activate("publish-only", draftId, { changeNote: "Deploy" }), /prerequisites/);
+  await assert.rejects(serviceFor(["forms:read", "forms:write"]).publish("author", draftId, {}), UnauthorizedException);
+  assert.deepEqual(tried, [], "denied write and publish combinations did not reach persistence");
+});
+
 test("a stale form save fails before any content is overwritten", async () => {
   let updated = false;
   const manager = { query: async (sql) => {
@@ -97,6 +118,46 @@ test("a stale form save fails before any content is overwritten", async () => {
   await assert.rejects(service.save("owner-session", draftId, { expectedRevision: 1, definition }),
     (error) => error instanceof ConflictException && error.getResponse().actualRevision === 2);
   assert.equal(updated, false);
+});
+
+test("form writers delete only the expected draft revision and retain audit evidence", async () => {
+  const queries = [];
+  const manager = { query: async (sql, parameters) => {
+    queries.push({ sql, parameters });
+    if (sql.includes("for update")) return [{ id: draftId, form_id: formId, catalog_release_id: catalogId,
+      cloned_from_id: sourceFormId, revision: 4, canonical_definition: definition,
+      definition_sha256: "a".repeat(64), updated_at: new Date() }];
+    if (sql.includes("insert into app_identity.configuration_event")) return [];
+    if (sql.startsWith("delete from forms.form_version")) return [{ id: draftId }];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const writer = { ...session, capabilities: ["forms:read", "forms:write"] };
+  const service = new FormAuthoringService({ transaction: async (_level, work) => work(manager) }, {
+    requireCapability: async () => writer
+  }, {});
+  await service.delete("writer-session", draftId, { expectedRevision: 4 });
+  const audit = queries.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
+  assert.equal(audit.parameters[2], "form.draft_delete");
+  assert.deepEqual(JSON.parse(audit.parameters[6]), {
+    formVersionId: draftId, formId, revision: 4, deletedFormVersionId: draftId
+  });
+  assert.deepEqual(queries.at(-1).parameters, [draftId, 4]);
+});
+
+test("stale form deletion fails before audit or deletion", async () => {
+  const mutations = [];
+  const manager = { query: async (sql) => {
+    if (sql.includes("for update")) return [{ id: draftId, form_id: formId, catalog_release_id: catalogId,
+      cloned_from_id: sourceFormId, revision: 5, canonical_definition: definition,
+      definition_sha256: "a".repeat(64), updated_at: new Date() }];
+    mutations.push(sql); return [];
+  } };
+  const service = new FormAuthoringService({ transaction: async (_level, work) => work(manager) }, {
+    requireCapability: async () => session
+  }, {});
+  await assert.rejects(service.delete("owner-session", draftId, { expectedRevision: 4 }),
+    (error) => error instanceof ConflictException && error.getResponse().actualRevision === 5);
+  assert.deepEqual(mutations, []);
 });
 
 test("form authoring rejects callers without Admin capability before querying", async () => {
