@@ -8,11 +8,12 @@ import { FormAuthoringService } from "./form-authoring.service.js";
 import { RoleAuthoringService } from "./role-authoring.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
 import { UserProvisioningService } from "./user-provisioning.service.js";
+import { UserLifecycleService } from "./user-lifecycle.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
   controllers: [AdminController],
   providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
-    UserRoleReadService, UserProvisioningService]
+    UserRoleReadService, UserProvisioningService, UserLifecycleService]
 })
 export class AdminModule {}

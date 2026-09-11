@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, createAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole } from "../app/admin-context";
+import { activateStationaryForm, createAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
@@ -117,6 +117,23 @@ test("role mutations send CSRF proof and optimistic version without mutable audi
   assert.equal(requests[1]!.init?.method, "PUT");
   assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { ...definition, expectedVersion: 1 });
   assert.doesNotMatch(String(requests[1]!.init?.body), /password|token|secret/i);
+});
+
+test("user lifecycle updates send the expected revision and complete retained access set", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input, init) => {
+    assert.match(String(input), /\/api\/admin\/users\/user-id$/);
+    assert.equal(init?.method, "PUT");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, username: "renamed.user",
+      displayName: "Renamed User", roleIds: ["role-id"], active: false, note: "Leave" });
+    return Response.json({ id: "user-id", username: "renamed.user", displayName: "Renamed User", active: false,
+      revision: 8, roles: [], restoredRoles: [], sessionsRevoked: 3, freshLoginRequired: true });
+  };
+  const updated = await updateAdminUser("csrf-proof", "user-id", { expectedRevision: 7,
+    username: "renamed.user", displayName: "Renamed User", roleIds: ["role-id"], active: false, note: "Leave" });
+  assert.equal(updated.sessionsRevoked, 3);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {

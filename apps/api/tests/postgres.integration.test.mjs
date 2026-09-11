@@ -21,6 +21,7 @@ import {
 import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
 import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
+import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -116,6 +117,14 @@ async function ensureFoundation(client) {
   if (!temporaryCredentialExpiry.rows[0]) {
     const migration = await readFile(
       path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const userLifecycleRevision = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_user' and column_name='revision'`);
+  if (!userLifecycleRevision.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"
     );
     await client.query(migration);
   }
@@ -259,6 +268,96 @@ integrationTest("provisioned local accounts require password replacement and use
     && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
   assert.doesNotMatch(JSON.stringify(operatorAudit.rows), /Reset!|password_verifier|token|csrf|secret/i);
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("user lifecycle is atomic, permanently reserves names, revokes sessions, preserves credentials, and rejects stale concurrent writes", async (t) => {
+  const firstClient = new pg.Client({ connectionString: databaseUrl });
+  const secondClient = new pg.Client({ connectionString: databaseUrl });
+  await Promise.all([firstClient.connect(), secondClient.connect()]);
+  t.after(() => Promise.all([firstClient.end(), secondClient.end()]));
+  await ensureFoundation(firstClient);
+  const firstDatabase = singleClientDataSource(firstClient);
+  const secondDatabase = singleClientDataSource(secondClient);
+  const accounts = new AccountService(firstDatabase);
+  const ownerSessions = new ClinicianSessionService(firstDatabase);
+  const organizationId = randomUUID();
+  await firstClient.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Lifecycle', 'UTC')", [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `lifecycle.owner.${randomUUID()}`,
+    displayName: "Lifecycle Owner", clinician: false, temporaryPassword: "Temporary!Owner-Lifecycle-253",
+    operator: { operatorId: "integration-lifecycle-owner", osAccount: "test", host: "localhost" } });
+  const ownerTemporary = await ownerSessions.create({ username: owner.username, password: "Temporary!Owner-Lifecycle-253" });
+  const ownerSession = await ownerSessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Lifecycle-253", newPassword: "Permanent!Owner-Lifecycle-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  });
+  const clinicianRole = (await firstClient.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
+  )).rows[0].id;
+  const originalUsername = `lifecycle.user.${randomUUID()}`;
+  const renamedUsername = `lifecycle.renamed.${randomUUID()}`;
+  const target = await new UserProvisioningService(firstDatabase, ownerSessions).provision(ownerSession.sessionToken, {
+    username: originalUsername, displayName: "Lifecycle User", roleIds: [clinicianRole],
+    temporaryPassword: "Temporary!Lifecycle-User-253", temporaryPasswordHours: 2, note: "Lifecycle integration"
+  });
+  const targetSessions = new ClinicianSessionService(firstDatabase);
+  const targetTemporary = await targetSessions.create({ username: originalUsername, password: "Temporary!Lifecycle-User-253" });
+  const targetActive = await targetSessions.changePassword(targetTemporary.sessionToken, {
+    currentPassword: "Temporary!Lifecycle-User-253", newPassword: "Permanent!Lifecycle-User-253",
+    csrfToken: targetTemporary.session.csrfToken
+  });
+  const verifierBefore = (await firstClient.query(
+    "select password_verifier, credential_version from app_identity.local_credential where user_id = $1", [target.userId]
+  )).rows[0];
+
+  const lifecycle = new UserLifecycleService(firstDatabase, ownerSessions);
+  const disabled = await lifecycle.update(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 1, username: renamedUsername, displayName: "Lifecycle Renamed", roleIds: [clinicianRole],
+    active: false, note: "Planned leave"
+  });
+  assert.equal(disabled.sessionsRevoked, 1);
+  assert.equal(disabled.revision, 2);
+  await assert.rejects(targetSessions.get(targetActive.sessionToken), UnauthorizedException);
+  await assert.rejects(targetSessions.create({ username: originalUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  await assert.rejects(targetSessions.create({ username: renamedUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  const retained = await firstClient.query(`select role_id from app_identity.user_role_assignment
+    where user_id = $1 and ended_at is null`, [target.userId]);
+  assert.deepEqual(retained.rows.map(({ role_id }) => role_id), [clinicianRole]);
+
+  const reactivated = await lifecycle.update(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 2, username: renamedUsername, displayName: "Lifecycle Renamed", roleIds: [clinicianRole],
+    active: true, note: "Return to duty"
+  });
+  assert.deepEqual(reactivated.restoredRoles.map(({ id }) => id), [clinicianRole]);
+  assert.equal(reactivated.freshLoginRequired, true);
+  const verifierAfter = (await firstClient.query(
+    "select password_verifier, credential_version from app_identity.local_credential where user_id = $1", [target.userId]
+  )).rows[0];
+  assert.deepEqual(verifierAfter, verifierBefore);
+  assert.equal((await targetSessions.create({ username: renamedUsername, password: "Permanent!Lifecycle-User-253" })).session.user.id,
+    target.userId);
+  await assert.rejects(targetSessions.create({ username: originalUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  await assert.rejects(new UserProvisioningService(firstDatabase, ownerSessions).provision(ownerSession.sessionToken, {
+    username: originalUsername, displayName: "Username Reuse", roleIds: [],
+    temporaryPassword: "Temporary!Username-Reuse-253", temporaryPasswordHours: 1
+  }), /reserved/i);
+
+  const update = (database, displayName) => new UserLifecycleService(database,
+    new ClinicianSessionService(database)).update(ownerSession.sessionToken, target.userId, {
+      expectedRevision: 3, username: renamedUsername, displayName, roleIds: [clinicianRole], active: true,
+      note: "Concurrent edit"
+    });
+  const concurrent = await Promise.allSettled([
+    update(firstDatabase, "Concurrent One"), update(secondDatabase, "Concurrent Two")
+  ]);
+  assert.equal(concurrent.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(concurrent.filter(({ status }) => status === "rejected").length, 1);
+  assert.match(String(concurrent.find(({ status }) => status === "rejected").reason), /changed after it was loaded/);
+  assert.equal((await firstClient.query("select revision from app_identity.app_user where id = $1", [target.userId])).rows[0].revision, "4");
+  const audit = await firstClient.query(`select action, note, details from app_identity.authentication_event
+    where target_user_id = $1 and action in ('account.disable', 'account.reactivate', 'account.identity_change') order by id`,
+  [target.userId]);
+  assert.deepEqual(audit.rows.map(({ action }) => action), ["account.disable", "account.reactivate", "account.identity_change"]);
+  assert.doesNotMatch(JSON.stringify(audit.rows), /password|verifier|token|csrf|secret/i);
 });
 
 integrationTest("concurrent owner bootstrap leaves exactly one protected admin-only owner", async (t) => {

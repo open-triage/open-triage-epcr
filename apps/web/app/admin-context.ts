@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -112,3 +112,6 @@ export const loadAdminUserRoleOptions = () => catalogRequest<AdminRoleSummaryLis
 
 export const provisionAdminUser = (csrfToken: string, command: ProvisionAdminUserCommand) =>
   catalogRequest<ProvisionedAdminUser>("users", csrfToken, { method: "POST", body: JSON.stringify(command) });
+
+export const updateAdminUser = (csrfToken: string, userId: string, command: UpdateAdminUserCommand) =>
+  catalogRequest<UpdatedAdminUser>(`users/${userId}`, csrfToken, { method: "PUT", body: JSON.stringify(command) });

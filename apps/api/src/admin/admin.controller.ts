@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -8,6 +8,8 @@ import { RoleAuthoringService } from "./role-authoring.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
 import { UserProvisioningService } from "./user-provisioning.service.js";
 import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
+import { UserLifecycleService } from "./user-lifecycle.service.js";
+import { validateUpdateAdminUser } from "./user-lifecycle.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
 
@@ -16,7 +18,7 @@ export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
     private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
     private readonly provisioning: UserProvisioningService,
-    private readonly roleAuthoring: RoleAuthoringService) {}
+    private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService) {}
 
   @Get("context")
   context(
@@ -36,6 +38,12 @@ export class AdminController {
   provisionUser(@Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<ProvisionedAdminUser> {
     return this.provisioning.provision(sessionToken(request, authorization), validateProvisionAdminUser(body));
+  }
+
+  @Put("users/:id")
+  updateUser(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<UpdatedAdminUser> {
+    return this.lifecycle.update(sessionToken(request, authorization), id, validateUpdateAdminUser(body));
   }
 
   @Get("user-role-options")

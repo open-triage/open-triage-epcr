@@ -111,7 +111,10 @@ export function AdminShell({ session, installationSettings }: {
     </section>}
 
     {context && activePanel === "Users" && <UsersPanel
-      canCreate={session.capabilities?.includes("users:write") ?? false}
+      canCreate={context.capabilities?.includes("users:write") ?? false}
+      canManage={context.capabilities?.includes("users:write") ?? false}
+      canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
+      currentUserId={session.user.id}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""} />}
     {context && activePanel === "Roles" && <RolesPanel csrfToken={session.csrfToken ?? session.accessToken ?? ""}
       capabilities={context.capabilities} />}

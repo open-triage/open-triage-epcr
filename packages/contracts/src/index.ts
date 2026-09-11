@@ -99,6 +99,7 @@ export interface AdminUserSummary {
   displayName: string;
   username: string;
   active: boolean;
+  revision: number;
   roles: AdminRoleSummary[];
 }
 
@@ -124,6 +125,23 @@ export interface ProvisionedAdminUser {
   displayName: string;
   roleIds: string[];
   temporaryPasswordExpiresAt: string;
+}
+
+export interface UpdateAdminUserCommand {
+  expectedRevision: number;
+  username: string;
+  displayName: string;
+  /** The complete retained role set. Roles remain assigned while disabled. */
+  roleIds: string[];
+  active: boolean;
+  note?: string;
+}
+
+export interface UpdatedAdminUser extends AdminUserSummary {
+  /** Populated on reactivation so the caller can explicitly confirm restored access. */
+  restoredRoles: AdminRoleSummary[];
+  sessionsRevoked: number;
+  freshLoginRequired: boolean;
 }
 
 export interface AdminCapabilityDefinition {
