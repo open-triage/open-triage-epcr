@@ -26,7 +26,7 @@ export class FormAuthoringService {
     private readonly publication: FormPublicationService) {}
 
   async current(token: string): Promise<StationaryFormDraft | null> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:read");
     const rows = await this.dataSource.query<VersionRow[]>(`
       select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
       where f.organization_id=$1 and fv.status='draft' order by fv.created_at desc limit 1
@@ -36,7 +36,7 @@ export class FormAuthoringService {
   }
 
   async clone(token: string, input: unknown): Promise<StationaryFormDraft> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:write");
     const { catalogReleaseId, displayName } = this.cloneBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-draft:${session.organization.id}`]);
@@ -85,7 +85,7 @@ export class FormAuthoringService {
   }
 
   async searchCatalog(token: string, id: string, input: Record<string, unknown>): Promise<FormCatalogElementPage> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:read");
     const query = typeof input.query === "string" ? input.query.trim().slice(0, 100).toLowerCase() : "";
     const drafts = await this.dataSource.query<Array<{ catalog_release_id: string }>>(`
       select fv.catalog_release_id from forms.form_version fv join forms.form f on f.id=fv.form_id
@@ -107,7 +107,7 @@ export class FormAuthoringService {
   }
 
   async save(token: string, id: string, input: unknown): Promise<StationaryFormDraft> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:write");
     const body = this.saveBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<VersionRow[]>(`
@@ -138,7 +138,7 @@ export class FormAuthoringService {
   }
 
   async publish(token: string, id: string, input: unknown): Promise<PublishedStationaryForm> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:publish");
     const body = this.publicationBody(input);
     const rows = await this.dataSource.query<Array<VersionRow & { version: number }>>(`
       select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
@@ -159,7 +159,7 @@ export class FormAuthoringService {
   }
 
   async activate(token: string, id: string, input: unknown): Promise<StationaryFormActivation> {
-    const session = await this.admin(token);
+    const session = await this.authorize(token, "forms:publish");
     if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     const changeNote = this.changeNote(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
@@ -303,8 +303,8 @@ export class FormAuthoringService {
       definition: row.canonical_definition, catalogFields, diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
-  private admin(token: string): Promise<ClinicianSession> {
-    return this.sessions.requireCapability(token, "installation:administer");
+  private authorize(token: string, capability: string): Promise<ClinicianSession> {
+    return this.sessions.requireCapability(token, capability);
   }
 
   private displayName(input: unknown): string {

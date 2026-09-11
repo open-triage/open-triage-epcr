@@ -206,25 +206,18 @@ try {
       SYNTHETIC_DEMO_FIXTURE.administratorUsername, SYNTHETIC_DEMO_FIXTURE.clinicianUsername]);
 
     await client.query(`
-      insert into app_identity.capability (key, description)
-      values
-        ('forms:publish', 'Publish form versions'),
-        ('clinical:document', 'Create and document patient care reports'),
-        ('reports:document', 'Create and document patient care reports'),
-        ('installation:administer', 'Administer the installation')
-      on conflict do nothing
-    `);
-    await client.query(`
-      insert into app_identity.user_capability (user_id, capability_key, granted_by)
-      values
-        ($1, 'forms:publish', $1),
-        ($1, 'installation:administer', $1),
-        ($1, 'clinical:document', $1),
-        ($1, 'reports:document', $1),
-        ($2, 'clinical:document', $1),
-        ($2, 'reports:document', $1)
-      on conflict do nothing
-    `, [ids.administrator, ids.clinician]);
+      insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note)
+      select $3, assignment.user_id, role.id, $1, 'Synthetic fixture bootstrap'
+      from (values
+        ($1::uuid, 'administrator'),
+        ($1::uuid, 'clinician'),
+        ($2::uuid, 'clinical-demo')
+      ) assignment(user_id, system_key)
+      join app_identity.role role
+        on role.organization_id = $3 and role.system_key = assignment.system_key
+      on conflict (user_id, role_id) where ended_at is null do nothing
+    `, [ids.administrator, ids.clinician, ids.organization]);
 
     await client.query(`
       insert into app_identity.agency_demographic_version

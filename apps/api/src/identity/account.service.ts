@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "./password.js";
 
-export const BUILT_IN_CAPABILITIES = {
-  clinician: ["clinical:document"],
-  owner: ["installation:administer", "clinical:document"]
+export const BUILT_IN_ROLES = {
+  clinician: ["clinician"],
+  owner: ["administrator", "clinician"]
 } as const;
 
-export type BuiltInAccountRole = keyof typeof BUILT_IN_CAPABILITIES;
+export type BuiltInAccountRole = keyof typeof BUILT_IN_ROLES;
 
 export class AccountService {
   constructor(private readonly dataSource: DataSource) {}
@@ -33,15 +33,14 @@ export class AccountService {
          values ($1, $2, $3, true)`,
         [userId, username, verifier]
       );
-      for (const capability of BUILT_IN_CAPABILITIES[input.role]) {
+      for (const systemKey of BUILT_IN_ROLES[input.role]) {
         await manager.query(
-          `insert into app_identity.capability (key, description) values ($1, $2)
-           on conflict (key) do nothing`,
-          [capability, capability === "installation:administer" ? "Administer installation configuration" : "Document clinical care"]
-        );
-        await manager.query(
-          "insert into app_identity.user_capability (user_id, capability_key, granted_by) values ($1, $2, $1)",
-          [userId, capability]
+          `insert into app_identity.user_role_assignment
+            (organization_id, user_id, role_id, assigned_by, note)
+           select $1, $2, id, $2, 'Initial account provisioning'
+           from app_identity.role
+           where organization_id = $1 and system_key = $3 and protected and active and assignable`,
+          [input.organizationId, userId, systemKey]
         );
       }
       await manager.query(

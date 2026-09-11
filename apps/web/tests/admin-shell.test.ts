@@ -19,7 +19,7 @@ const session: ClinicianSession = {
   organization: { id: "organization-id", name: "Example EMS" },
   startedAt: "2026-09-06T12:00:00.000Z",
   expiresAt: "2026-09-06T20:00:00.000Z",
-  capabilities: ["installation:administer", "clinical:document"]
+  capabilities: ["admin-dashboard:read", "clinical:document"]
 };
 const productionSettings = parseInstallationSettings(production);
 const unavailablePanels = [

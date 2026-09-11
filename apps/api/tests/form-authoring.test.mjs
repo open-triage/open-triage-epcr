@@ -64,7 +64,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
   const service = new FormAuthoringService({ manager, transaction: async (_level, work) => work(manager) }, {
     requireCapability: async (token, capability) => {
       assert.equal(token, "owner-session");
-      assert.equal(capability, "installation:administer");
+      assert.equal(capability, "forms:write");
       return session;
     }
   });

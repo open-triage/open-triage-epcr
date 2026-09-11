@@ -6,11 +6,11 @@ type ReadableStorage = Pick<Storage, "getItem">;
 type WritableStorage = Pick<Storage, "setItem">;
 
 export function hasClinicalMode(capabilities?: ReadonlyArray<string>): boolean {
-  return capabilities === undefined || capabilities.includes("clinical:document") || capabilities.includes("reports:document");
+  return capabilities === undefined || capabilities.includes("clinical:document");
 }
 
 export function hasAdminMode(capabilities?: ReadonlyArray<string>): boolean {
-  return capabilities?.includes("installation:administer") ?? false;
+  return capabilities?.some((capability) => capability !== "clinical:document" && capability !== "clinical:demo") ?? false;
 }
 
 export function defaultPresentationMode(capabilities?: ReadonlyArray<string>): PresentationMode {

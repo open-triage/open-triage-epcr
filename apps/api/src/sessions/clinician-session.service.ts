@@ -15,7 +15,7 @@ type CredentialRow = {
 };
 type SessionRow = Omit<CredentialRow, "password_verifier"> & {
   session_id: string; created_at: Date | string; expires_at: Date | string; csrf_sha256: string;
-  session_credential_version: string; revoked_at: Date | string | null; capabilities: string[] | null;
+  session_credential_version: string; revoked_at: Date | string | null;
 };
 export type CreatedSession = { session: ClinicianSession; sessionToken: string };
 const dummyVerifier = createPasswordVerifier("invalid-password-only");
@@ -60,22 +60,23 @@ export class ClinicianSessionService {
              s.credential_version as session_credential_version, s.revoked_at,
              u.id as user_id, u.display_name, u.active, o.id as organization_id,
              o.name as organization_name, o.shift_session_duration_hours,
-             c.must_change_password, c.credential_version,
-             coalesce(array_agg(uc.capability_key) filter (where uc.capability_key is not null), '{}') as capabilities
+             c.must_change_password, c.credential_version
       from app_identity.app_session s
       join app_identity.app_user u on u.id = s.user_id
       join app_identity.organization o on o.id = u.organization_id
       join app_identity.local_credential c on c.user_id = u.id
-      left join app_identity.user_capability uc on uc.user_id = u.id
       where s.token_sha256 = $1
-      group by s.id, u.id, o.id, c.user_id
     `, [digest(sessionToken)]);
     const row = rows[0];
     if (!row || row.revoked_at || !row.active || Date.parse(String(row.expires_at)) <= now.getTime() ||
         row.session_credential_version !== row.credential_version || (row.must_change_password && !allowPasswordChange)) {
       throw new UnauthorizedException(row?.must_change_password ? "A password change is required" : "The clinician session has ended");
     }
-    return this.publicSession(row, new Date(row.created_at), new Date(row.expires_at), undefined, row.capabilities ?? []);
+    const session = await this.publicSession(row, new Date(row.created_at), new Date(row.expires_at), undefined, manager);
+    if (!session.workspaceAvailable && !allowPasswordChange) {
+      throw new UnauthorizedException("No workspace role is assigned to this account");
+    }
+    return session;
   }
 
   async assertCsrf(sessionToken: string, csrfToken: string | undefined, manager = this.dataSource.manager): Promise<void> {
@@ -123,7 +124,7 @@ export class ClinicianSessionService {
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
       return {
         sessionToken: replacementSessionToken,
-        session: await this.publicSession({ ...account, must_change_password: false }, now, expiresAt, csrfToken, undefined, manager)
+        session: await this.publicSession({ ...account, must_change_password: false }, now, expiresAt, csrfToken, manager)
       };
     });
     if (!result) throw new UnauthorizedException("The current password is incorrect");
@@ -162,17 +163,30 @@ export class ClinicianSessionService {
 
   private async publicSession(
     account: Pick<CredentialRow, "user_id" | "display_name" | "organization_id" | "organization_name" | "must_change_password">,
-    startedAt: Date, expiresAt: Date, csrfToken?: string, capabilities?: string[], manager = this.dataSource.manager
+    startedAt: Date, expiresAt: Date, csrfToken?: string, manager = this.dataSource.manager
   ): Promise<ClinicianSession> {
-    const resolvedCapabilities = capabilities ?? (await manager.query<Array<{ capability_key: string }>>(
-      "select capability_key from app_identity.user_capability where user_id = $1 order by capability_key", [account.user_id]
-    )).map(({ capability_key }) => capability_key);
+    const resolvedCapabilities = (await manager.query<Array<{ capability_key: string }>>(`
+      select distinct rvc.capability_key
+      from app_identity.user_role_assignment assignment
+      join app_identity.role role
+        on role.organization_id = assignment.organization_id and role.id = assignment.role_id
+      join app_identity.role_version version
+        on version.organization_id = role.organization_id and version.role_id = role.id
+        and version.id = role.current_version_id
+      join app_identity.role_version_capability rvc
+        on rvc.organization_id = version.organization_id and rvc.role_id = version.role_id
+        and rvc.role_version_id = version.id
+      where assignment.user_id = $1 and assignment.organization_id = $2
+        and assignment.ended_at is null and role.active and role.assignable
+      order by rvc.capability_key
+    `, [account.user_id, account.organization_id])).map(({ capability_key }) => capability_key);
     return {
       ...(csrfToken ? { csrfToken } : {}),
       user: { id: account.user_id, displayName: account.display_name },
       organization: { id: account.organization_id, name: account.organization_name },
       startedAt: startedAt.toISOString(), expiresAt: expiresAt.toISOString(),
-      passwordChangeRequired: account.must_change_password, capabilities: resolvedCapabilities
+      passwordChangeRequired: account.must_change_password, capabilities: resolvedCapabilities,
+      workspaceAvailable: resolvedCapabilities.length > 0
     };
   }
 }

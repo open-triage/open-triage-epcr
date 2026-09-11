@@ -27,7 +27,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   qualityPolicy, qualityPolicyConfig, qualityEvaluator, operationsPolicy,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
-  reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration] = await Promise.all([
+  reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
+  roleAuthorizationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -52,8 +53,48 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260907020000_form_activation_default.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908141346_prototype_synthetic_draft_deletion.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8")
 ]);
+
+test("authorization uses a fixed capability registry and current immutable role versions", () => {
+  for (const capability of [
+    "clinical:document", "clinical:demo", "admin-dashboard:read", "users:read", "users:write",
+    "credentials:reset", "sessions:read", "sessions:revoke", "roles:read", "roles:write",
+    "roles:assign", "catalog:read", "catalog:write", "catalog:publish", "forms:read",
+    "forms:write", "forms:publish"
+  ]) assert.ok(roleAuthorizationMigration.includes(`'${capability}'`), `missing ${capability}`);
+  assert.match(roleAuthorizationMigration, /create table app_identity\.role_version[\s\S]*role_version_immutable/);
+  assert.match(roleAuthorizationMigration, /r\.current_version_id/);
+  assert.match(roleAuthorizationMigration, /ura\.ended_at is null/);
+  assert.match(roleAuthorizationMigration, /r\.active and r\.assignable/);
+  assert.match(roleAuthorizationMigration, /drop table app_identity\.user_capability/);
+  assert.match(roleAuthorizationMigration, /capability_fixed_registry/);
+});
+
+test("protected roles are explicit, immutable, and keep Reviewer hidden and unassignable", () => {
+  for (const role of ["clinician", "administrator", "configuration-author", "clinical-demo", "reviewer"]) {
+    assert.ok(roleAuthorizationMigration.includes(`'${role}'`), `missing protected role ${role}`);
+  }
+  assert.match(roleAuthorizationMigration, /'reviewer', 'Reviewer', true, false, array\[\]::text\[\]/);
+  assert.match(roleAuthorizationMigration, /protected_role_immutable/);
+  assert.match(roleAuthorizationMigration, /user_role_assignment_valid/);
+  assert.match(roleAuthorizationMigration, /protected role % requires its exact capability set/);
+  assert.doesNotMatch(roleAuthorizationMigration,
+    /'administrator'[\s\S]{0,500}'clinical:document'/,
+    "Administrator must not silently inherit clinical access");
+});
+
+test("role constraints cover organizations, prerequisites, audit redaction, and append-only history", () => {
+  assert.match(roleAuthorizationMigration,
+    /foreign key \(organization_id, user_id\)[\s\S]*references app_identity\.app_user\(organization_id, id\)/);
+  assert.match(roleAuthorizationMigration,
+    /foreign key \(organization_id, role_id\)[\s\S]*references app_identity\.role\(organization_id, id\)/);
+  assert.match(roleAuthorizationMigration, /role_version_capabilities_valid[\s\S]*deferrable initially deferred/);
+  assert.match(roleAuthorizationMigration, /authorization_event_append_only/);
+  assert.match(roleAuthorizationMigration, /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
+  assert.match(roleAuthorizationMigration, /role\.version_activate/);
+});
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
   assert.match(catalogAuthoringMigration, /create table catalog\.authoring_draft/);
