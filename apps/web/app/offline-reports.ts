@@ -120,6 +120,7 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
       catalogReleaseId: call.catalogReleaseId,
       status: "draft",
       demoMutable: call.demoMutable,
+      ...(call.expiresAt ? { expiresAt: call.expiresAt } : {}),
       ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),
       ...(call.dispatchReason !== undefined ? { dispatchReason: call.dispatchReason } : {}),
       ...(call.dispatchPriority !== undefined ? { dispatchPriority: call.dispatchPriority } : {}),
@@ -159,6 +160,19 @@ export function cachedOpenReports(storage: StoragePort, ownerUserId: string): Ca
     .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt));
 }
 
+/** Removes generated synthetic reports, including queued work, at the published server deadline. */
+export function purgeExpiredOfflineReports(storage: StoragePort, now = new Date()): string[] {
+  const deadline = now.getTime();
+  const reports = read(storage);
+  const expired = reports.filter(({ report }) => report.expiresAt !== undefined
+    && Date.parse(report.expiresAt) <= deadline).map(({ report }) => report.id);
+  if (expired.length) {
+    const ids = new Set(expired);
+    write(storage, reports.filter(({ report }) => !ids.has(report.id)));
+  }
+  return expired;
+}
+
 /** Removes completed report metadata only after every local command was accepted. */
 export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: ReadonlyArray<string>): void {
   if (!reportIds.length) return;
@@ -184,6 +198,7 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     formVersionId: cached.report.formVersionId,
     catalogReleaseId: cached.report.catalogReleaseId,
     demoMutable: cached.report.demoMutable === true,
+    ...(cached.report.expiresAt ? { expiresAt: cached.report.expiresAt } : {}),
     ...(cached.report.dispatchedAt ? { dispatchedAt: cached.report.dispatchedAt } : {}),
     ...(cached.report.dispatchReason !== undefined ? { dispatchReason: cached.report.dispatchReason } : {}),
     ...(cached.report.dispatchPriority !== undefined ? { dispatchPriority: cached.report.dispatchPriority } : {}),

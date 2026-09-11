@@ -45,6 +45,13 @@ analytics:
     requests: { cpu: 25m, memory: 64Mi }
     limits: { cpu: 100m, memory: 128Mi }
 
+syntheticExpiry:
+  enabled: true
+  schedule: "* * * * *"
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+
 imagePullSecrets: []
 ingress:
   className: nginx

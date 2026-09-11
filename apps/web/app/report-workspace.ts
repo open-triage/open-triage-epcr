@@ -191,6 +191,10 @@ export function useReportWorkspace({
             completeReport();
             return;
           }
+          if (reason === "purged") {
+            completeReport();
+            return;
+          }
           if ((reason === "conflict" || reason === "invalid") && !conflictRecoveryUsed.current) {
             recoverConflictingQueue.current = true;
             conflictRecoveryUsed.current = true;
@@ -205,6 +209,17 @@ export function useReportWorkspace({
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
   }, [completeReport, csrfToken, onSessionEnded, report]);
+
+  useEffect(() => {
+    if (!report?.expiresAt) return;
+    const remaining = Date.parse(report.expiresAt) - Date.now();
+    if (remaining <= 0) {
+      queueMicrotask(completeReport);
+      return;
+    }
+    const timer = window.setTimeout(completeReport, Math.min(remaining, 2_147_483_647));
+    return () => window.clearTimeout(timer);
+  }, [completeReport, report?.expiresAt]);
 
   useEffect(() => {
     if (!restored || completed.current) return;

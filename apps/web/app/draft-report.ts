@@ -39,6 +39,7 @@ export interface ActiveDraftReport {
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
   readonly demoMutable?: boolean;
+  readonly expiresAt?: string;
   readonly document?: EncounterDocument;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation?: DispatchCancellation | null;
@@ -244,6 +245,7 @@ export async function saveDraftReport(csrfToken: string, reportId: string, comma
   }
   if (response.status === 409) throw new Error("conflict");
   if (response.status === 422) throw new Error("invalid");
+  if (response.status === 410) throw new Error("purged");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
 }

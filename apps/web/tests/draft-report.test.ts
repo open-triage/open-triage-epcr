@@ -146,6 +146,23 @@ test("an invalid saved browser command is distinguished from a temporary outage"
   }), /invalid/);
 });
 
+test("a delayed synchronization receives a terminal purged result instead of retrying offline", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  });
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  globalThis.fetch = (async () => Response.json({ message: "permanently purged" }, { status: 410 })) as typeof fetch;
+  await assert.rejects(saveDraftReport("token", reportId, {
+    commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+    authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:offline:test",
+    clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+  }), /purged/);
+});
+
 test("browser-only static builds at a root or subpath consider their durable local write synchronized", async () => {
   const originalBasePath = process.env.NEXT_PUBLIC_BASE_PATH;
   const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;

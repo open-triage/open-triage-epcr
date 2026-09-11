@@ -43,6 +43,7 @@ COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/dat
 COPY packages/database/scripts/load-nemsis-catalog.mjs packages/database/scripts/
 COPY packages/database/scripts/migrate.mjs packages/database/scripts/
 COPY packages/database/scripts/project-analytics.mjs packages/database/scripts/
+COPY packages/database/scripts/purge-synthetic-records.mjs packages/database/scripts/
 COPY packages/database/scripts/projection-health.mjs packages/database/scripts/
 COPY packages/database/scripts/retention.mjs packages/database/scripts/
 COPY packages/database/scripts/rotate-patient-keys.mjs packages/database/scripts/

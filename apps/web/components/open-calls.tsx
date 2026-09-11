@@ -16,6 +16,7 @@ import {
   markDraftChangeAttempted,
   nextDraftChange,
   purgeCompletedOfflineReports,
+  purgeExpiredOfflineReports,
   removeSignedOfflineReport,
 } from "../app/offline-reports";
 
@@ -57,6 +58,7 @@ export function OpenCalls({
     if (activeReportId || syncingCachedReports.current) return;
     syncingCachedReports.current = true;
     try {
+      purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       for (const cached of cachedOpenReports(window.localStorage, session.user.id)) {
         while (true) {
           const queued = nextDraftChange(window.localStorage, cached.report.id);
@@ -74,6 +76,10 @@ export function OpenCalls({
             acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
           } catch (syncError) {
             if (syncError instanceof Error && syncError.message === "session") onSessionEnded?.();
+            if (syncError instanceof Error && syncError.message === "purged") {
+              clearShellState(window.localStorage, cached.report.id);
+              removeSignedOfflineReport(window.localStorage, cached.report.id);
+            }
             break;
           }
         }
@@ -85,6 +91,7 @@ export function OpenCalls({
 
   const refresh = useCallback(async () => {
     try {
+      purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       const response = await fetchOpenCalls();
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
