@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -74,6 +74,24 @@ export class AdminController {
   updateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
     return this.roleAuthoring.update(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("roles/:id/deactivate")
+  deactivateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.deactivate(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("roles/:id/reactivate")
+  reactivateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.reactivate(sessionToken(request, authorization), id, body);
+  }
+
+  @Get("roles/:id/history")
+  roleHistory(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleHistory> {
+    return this.roleAuthoring.history(sessionToken(request, authorization), id);
   }
 
   @Get("catalog-draft")

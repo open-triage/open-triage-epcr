@@ -29,7 +29,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
-  temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration] = await Promise.all([
+  temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
+  roleRetirementMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -60,7 +61,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -111,6 +113,15 @@ test("custom role authoring normalizes identities and audits the first immutable
   assert.match(customRoleAuthoringMigration,
     /jsonb_build_object\('roleId', new\.id, 'priorVersionId', null,[\s\S]*'version', selected_version\.version\)/);
   assert.doesNotMatch(customRoleAuthoringMigration, /jsonb_build_object\([^)]*(display_name|description)/);
+});
+
+test("role retirement retains immutable definitions and assignment intervals with redacted lifecycle audit", () => {
+  assert.match(roleRetirementMigration, /add column display_name text[\s\S]*role_version_display_name_normalized/);
+  assert.match(roleRetirementMigration, /role_assignment_interval_immutable/);
+  assert.match(roleRetirementMigration, /role_retirement_closes_assignments[\s\S]*deferrable initially deferred/);
+  assert.match(roleRetirementMigration, /custom_role_active_assignable/);
+  assert.match(roleRetirementMigration, /'role\.deactivate', 'role\.reactivate'/);
+  assert.doesNotMatch(roleRetirementMigration, /password|password_verifier|token|csrf|secret|recovery_value/i);
 });
 
 test("installation ownership is singular, durable, least-privilege, and gates role authority", () => {

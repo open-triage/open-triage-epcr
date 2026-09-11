@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -107,6 +107,16 @@ export const createAdminRole = (csrfToken: string, command: SaveAdminRoleCommand
 
 export const updateAdminRole = (csrfToken: string, roleId: string, command: SaveAdminRoleCommand) =>
   catalogRequest<AdminRole>(`roles/${roleId}`, csrfToken, { method: "PUT", body: JSON.stringify(command) });
+
+export const deactivateAdminRole = (csrfToken: string, roleId: string, expectedVersion: number, note?: string | null) =>
+  catalogRequest<AdminRole>(`roles/${roleId}/deactivate`, csrfToken, {
+    method: "POST", body: JSON.stringify({ expectedVersion, note: note || null })
+  });
+
+export const reactivateAdminRole = (csrfToken: string, roleId: string, command: SaveAdminRoleCommand) =>
+  catalogRequest<AdminRole>(`roles/${roleId}/reactivate`, csrfToken, { method: "POST", body: JSON.stringify(command) });
+
+export const loadAdminRoleHistory = (roleId: string) => catalogRequest<AdminRoleHistory>(`roles/${roleId}/history`);
 
 export const loadAdminUserRoleOptions = () => catalogRequest<AdminRoleSummaryList>("user-role-options");
 

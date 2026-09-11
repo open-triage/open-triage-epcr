@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, createAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
@@ -134,6 +134,28 @@ test("user lifecycle updates send the expected revision and complete retained ac
   const updated = await updateAdminUser("csrf-proof", "user-id", { expectedRevision: 7,
     username: "renamed.user", displayName: "Renamed User", roleIds: ["role-id"], active: false, note: "Leave" });
   assert.equal(updated.sessionsRevoked, 3);
+});
+
+test("role lifecycle requests carry version preconditions and read redacted history separately", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    if (String(input).endsWith("/history")) return Response.json({ roleId: "role-id", versions: [], assignments: [], events: [] });
+    return Response.json({ id: "role-id", displayName: "Dispatch", description: null,
+      active: requests.length > 1, protected: false, version: requests.length > 1 ? 4 : 3,
+      assigneeCount: 0, capabilities: [] });
+  };
+  await deactivateAdminRole("csrf-proof", "role-id", 3, "Duty retired");
+  await reactivateAdminRole("csrf-proof", "role-id", { displayName: "Dispatch", description: null,
+    capabilityKeys: ["roles:read"], expectedVersion: 3, note: null });
+  await loadAdminRoleHistory("role-id");
+  assert.match(requests[0]!.input, /roles\/role-id\/deactivate$/);
+  assert.deepEqual(JSON.parse(String(requests[0]!.init?.body)), { expectedVersion: 3, note: "Duty retired" });
+  assert.match(requests[1]!.input, /roles\/role-id\/reactivate$/);
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.equal(requests[2]!.init?.method, undefined);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {
