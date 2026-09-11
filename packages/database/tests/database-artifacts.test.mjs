@@ -28,7 +28,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
-  roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration] = await Promise.all([
+  roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
+  temporaryCredentialMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -56,7 +57,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -112,6 +114,15 @@ test("installation ownership is singular, durable, least-privilege, and gates ro
   assert.match(installationOwnerMigration, /operator_identity_event_append_only/);
   assert.match(installationOwnerMigration,
     /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
+});
+
+test("temporary credentials have a bounded expiry and credential-free audit storage", () => {
+  assert.match(temporaryCredentialMigration, /temporary_password_expires_at timestamptz/);
+  assert.match(temporaryCredentialMigration, /local_credential_temporary_expiry_check/);
+  assert.match(temporaryCredentialMigration, /must_change_password and temporary_password_expires_at is not null/);
+  assert.match(temporaryCredentialMigration, /add column note text/);
+  assert.doesNotMatch(temporaryCredentialMigration, /password_verifier[),]/,
+    "the provisioning migration must not copy password verifiers into audit storage");
 });
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {

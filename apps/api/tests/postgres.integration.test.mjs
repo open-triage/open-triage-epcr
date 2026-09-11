@@ -20,6 +20,7 @@ import {
 } from "../dist/sessions/clinician-session.service.js";
 import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
+import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -109,6 +110,15 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const temporaryCredentialExpiry = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='local_credential'
+      and column_name='temporary_password_expires_at'`);
+  if (!temporaryCredentialExpiry.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -169,16 +179,34 @@ integrationTest("provisioned local accounts require password replacement and use
     clinician: false, temporaryPassword: "Temporary!Password-253",
     operator: { operatorId: "integration-owner-bootstrap", osAccount: "test", host: "localhost" }
   });
-  const provisioned = await accounts.provision({
-    organizationId, username: `admin.${randomUUID()}`, displayName: "Recoverable Administrator",
-    role: "administrator", temporaryPassword: "Temporary!Password-253"
+  const ownerTemporary = await sessions.create({ username: installationOwner.username, password: "Temporary!Password-253" });
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Password-253", newPassword: "Permanent!Owner-Password-253",
+    csrfToken: ownerTemporary.session.csrfToken
   });
+  const administratorRole = await client.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'administrator'", [organizationId]
+  );
+  const provisioningNow = new Date();
+  const provisioned = await new UserProvisioningService(database, sessions).provision(ownerSession.sessionToken, {
+    username: `admin.${randomUUID()}`, displayName: "Recoverable Administrator",
+    roleIds: [administratorRole.rows[0].id], temporaryPassword: "Temporary!Password-253",
+    temporaryPasswordHours: 1, note: "Integration provisioning"
+  }, provisioningNow);
   const credential = await client.query(
-    "select username, password_verifier, must_change_password from app_identity.local_credential where user_id = $1",
+    "select username, password_verifier, must_change_password, temporary_password_expires_at from app_identity.local_credential where user_id = $1",
     [provisioned.userId]
   );
   assert.equal(credential.rows[0].must_change_password, true);
   assert.doesNotMatch(credential.rows[0].password_verifier, /Temporary!Password-253/);
+  assert.equal(new Date(credential.rows[0].temporary_password_expires_at).toISOString(),
+    new Date(provisioningNow.getTime() + 60 * 60 * 1_000).toISOString());
+
+  const beforeExpiry = new Date(credential.rows[0].temporary_password_expires_at.getTime() - 1);
+  const boundarySession = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" }, beforeExpiry);
+  assert.equal(boundarySession.session.expiresAt, credential.rows[0].temporary_password_expires_at.toISOString());
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "Temporary!Password-253" },
+    credential.rows[0].temporary_password_expires_at), UnauthorizedException);
 
   const limited = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" });
   assert.equal(limited.session.passwordChangeRequired, true);

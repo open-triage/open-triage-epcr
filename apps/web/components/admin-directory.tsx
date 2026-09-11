@@ -1,9 +1,9 @@
 "use client";
 
-import type { AdminRole, AdminRoleSummary, AdminUserSummary } from "@open-triage/contracts";
+import type { AdminRole, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  loadAdminRoles, loadAdminUserRoleOptions, loadAdminUsers, type AdminUserQuery
+  loadAdminRoles, loadAdminUserRoleOptions, loadAdminUsers, provisionAdminUser, type AdminUserQuery
 } from "../app/admin-context";
 
 type StateFilter = "active" | "disabled" | "all";
@@ -15,13 +15,19 @@ function RoleBadges({ roles }: { readonly roles: AdminRoleSummary[] }) {
   </ul>;
 }
 
-export function UsersPanel() {
+export function UsersPanel({ canCreate = false, csrfToken = "" }: {
+  readonly canCreate?: boolean;
+  readonly csrfToken?: string;
+}) {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
   const [roleOptions, setRoleOptions] = useState<AdminRoleSummary[]>([]);
   const [query, setQuery] = useState<AdminUserQuery>({ state: "active" });
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function load(selected: AdminUserQuery, append = false) {
     setLoading(true);
@@ -58,8 +64,58 @@ export function UsersPanel() {
     void load(selected);
   }
 
+  async function createUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const command: ProvisionAdminUserCommand = {
+      username: String(data.get("username") ?? ""),
+      displayName: String(data.get("displayName") ?? ""),
+      temporaryPassword: String(data.get("temporaryPassword") ?? ""),
+      temporaryPasswordHours: Number(data.get("temporaryPasswordHours")),
+      roleIds: data.getAll("roleIds").map(String),
+      note: String(data.get("note") ?? "") || undefined
+    };
+    setCreating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const created = await provisionAdminUser(csrfToken, command);
+      form.reset();
+      setCreateOpen(false);
+      setNotice(`${created.displayName} was created. Their temporary password expires ${new Date(created.temporaryPasswordExpiresAt).toLocaleString()}.`);
+      await load(query);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The user could not be created.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
-    <div className="section-heading"><h2 id="users-heading">Users</h2></div>
+    <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
+      aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
+      {createOpen ? "Cancel creation" : "Create user"}</button>}</div>
+    {canCreate && createOpen && <form id="create-user-form" className="admin-user-create" onSubmit={createUser}>
+      <fieldset disabled={creating}><legend>New local user</legend>
+        <label>Display name<input name="displayName" maxLength={200} required autoComplete="off" /></label>
+        <label>Username<input name="username" minLength={3} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}"
+          required autoComplete="off" /></label>
+        <label>Temporary password<input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
+          required autoComplete="new-password" /></label>
+        <label>Expires after (hours)<input name="temporaryPasswordHours" type="number" min={1} max={168} step={1}
+          defaultValue={72} required /></label>
+        <fieldset className="admin-role-selection"><legend>Initial roles</legend>
+          {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
+            <input name="roleIds" type="checkbox" value={role.id} />{role.displayName}
+          </label>)}
+          {!roleOptions.some((role) => role.active) && <p>No assignable roles are available.</p>}
+        </fieldset>
+        <label className="admin-user-note">Note (optional)<textarea name="note" maxLength={1000} /></label>
+        <button type="submit">{creating ? "Creating…" : "Create user"}</button>
+      </fieldset>
+    </form>}
+    {notice && <p className="admin-notice" role="status">{notice}</p>}
     <form className="admin-directory-filters" role="search" aria-label="Find users" onSubmit={submit}>
       <label>Search<input type="search" name="search" maxLength={100} placeholder="Display name or username" /></label>
       <label>Status<select name="state" defaultValue="active">

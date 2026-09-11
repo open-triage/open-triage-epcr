@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AdminShell } from "../components/admin-shell";
 import { RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
@@ -43,6 +43,33 @@ test("read-only directory panels expose accessible discovery controls without mu
   assert.match(roles, /id="roles-heading"/);
   assert.match(roles, />Deactivated<\/option>/);
   assert.doesNotMatch(roles, /<button[^>]*>(Create|Edit|Delete)/);
+});
+
+test("user writers receive an accessible provisioning form with bounded temporary expiry and complete roles", () => {
+  const users = renderToStaticMarkup(createElement(UsersPanel, { canCreate: true, csrfToken: "csrf" }));
+  assert.match(users, />Create user<\/button>/);
+  assert.match(users, /aria-controls="create-user-form"/);
+  assert.doesNotMatch(users, /name="temporaryPassword"/, "closed form does not expose or retain a password input");
+});
+
+test("provisioning sends the complete credential command with CSRF and consumes a secret-free result", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "POST");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      username: "medic.one", displayName: "Medic One", temporaryPassword: "Temporary password 42!",
+      temporaryPasswordHours: 72, roleIds: ["role-id"], note: "New starter"
+    });
+    return Response.json({ userId: "user-id", username: "medic.one", displayName: "Medic One",
+      roleIds: ["role-id"], temporaryPasswordExpiresAt: "2026-09-14T10:00:00.000Z" });
+  };
+  const created = await provisionAdminUser("csrf-proof", { username: "medic.one", displayName: "Medic One",
+    temporaryPassword: "Temporary password 42!", temporaryPasswordHours: 72,
+    roleIds: ["role-id"], note: "New starter" });
+  assert.equal(created.userId, "user-id");
+  assert.equal("temporaryPassword" in created, false);
 });
 
 test("directory requests encode server-side filters and pagination", async (t) => {

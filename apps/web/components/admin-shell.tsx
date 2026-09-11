@@ -110,7 +110,9 @@ export function AdminShell({ session, installationSettings }: {
       </dl>
     </section>}
 
-    {context && activePanel === "Users" && <UsersPanel />}
+    {context && activePanel === "Users" && <UsersPanel
+      canCreate={session.capabilities?.includes("users:write") ?? false}
+      csrfToken={session.csrfToken ?? session.accessToken ?? ""} />}
     {context && activePanel === "Roles" && <RolesPanel />}
 
     {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">

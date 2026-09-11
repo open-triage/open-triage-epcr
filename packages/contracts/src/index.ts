@@ -108,6 +108,24 @@ export interface AdminUserPage {
   pageSize: number;
 }
 
+export interface ProvisionAdminUserCommand {
+  username: string;
+  displayName: string;
+  temporaryPassword: string;
+  temporaryPasswordHours: number;
+  /** The complete initial role set; an empty set intentionally creates a no-workspace user. */
+  roleIds: string[];
+  note?: string;
+}
+
+export interface ProvisionedAdminUser {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleIds: string[];
+  temporaryPasswordExpiresAt: string;
+}
+
 export interface AdminCapabilityDefinition {
   key: string;
   description: string;

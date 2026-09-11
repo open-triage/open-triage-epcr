@@ -237,6 +237,61 @@ test("Users and Roles preserve asymmetric visibility and read-only accessible na
   expect(requested.some((url) => /\/api\/admin\/users(?:\?|$)/.test(url))).toBe(false);
 });
 
+test("an authorized administrator provisions a user with initial roles and bounded temporary expiry", async ({ page }) => {
+  let submitted: Record<string, unknown> | undefined;
+  const users: Array<{ id: string; displayName: string; username: string; active: boolean;
+    roles: Array<{ id: string; displayName: string; active: boolean; protected: boolean }> }> = [
+    { id: "owner-id", displayName: "Installation Owner", username: "owner", active: true, roles: [] }
+  ];
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"], activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/user-role-options", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [
+    { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true }
+  ] }) }));
+  await page.route("**/api/admin/users**", async (route) => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON() as Record<string, unknown>;
+      users.push({ id: "new-user", displayName: "Åke Medic", username: "ake.medic", active: true,
+        roles: [{ id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true }] });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ userId: "new-user",
+        username: "ake.medic", displayName: "Åke Medic", roleIds: ["10000000-0000-4000-8000-000000000001"],
+        temporaryPasswordExpiresAt: "2026-09-14T10:00:00.000Z" }) });
+    }
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: users, nextCursor: null, pageSize: 50 }) });
+  });
+  await signInAsCombinedOwner(page, ["users:read", "users:write", "roles:read", "roles:assign"]);
+  await page.getByRole("button", { name: "Create user", exact: true }).click();
+  const form = page.getByRole("group", { name: "New local user" });
+  await form.getByLabel("Display name").fill("Åke Medic");
+  await form.getByLabel("Username").fill("ake.medic");
+  await form.getByLabel("Temporary password").fill("Temporary password 42!");
+  await form.getByLabel("Clinician").check();
+  await form.getByLabel("Note (optional)").fill("New starter");
+  await form.getByRole("button", { name: "Create user", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Åke Medic was created");
+  await expect(page.getByRole("cell", { name: "ake.medic" })).toBeVisible();
+  expect(submitted).toEqual({ username: "ake.medic", displayName: "Åke Medic",
+    temporaryPassword: "Temporary password 42!", temporaryPasswordHours: 72,
+    roleIds: ["10000000-0000-4000-8000-000000000001"], note: "New starter" });
+  await expect(page.getByText("Temporary password 42!", { exact: true })).toHaveCount(0);
+});
+
+test("a temporary credential opens only mandatory password replacement", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify({
+    accessToken: "temporary-session", user: { id: "new-user", displayName: "New User" },
+    organization: { id: "organization-id", name: "Example EMS" }, startedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(), passwordChangeRequired: true,
+    capabilities: ["clinical:document"], workspaceAvailable: true
+  })));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Replace temporary password" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open call" })).toHaveCount(0);
+});
+
 test("an open clinical report disables Admin until Save and close", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
