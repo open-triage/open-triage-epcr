@@ -1,4 +1,5 @@
-import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand,
+  type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
@@ -92,4 +93,18 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
   }));
   if (!response.ok) throw new Error(response.status === 401 ? "The current password is incorrect." : "The password could not be changed.");
   return response.json() as Promise<ClinicianSession>;
+}
+
+export async function reauthenticateClinicianSession(currentPassword: string,
+  csrfToken: string): Promise<ReauthenticationResult> {
+  const url = apiRequestUrl("/api/sessions/reauthenticate");
+  if (!url) throw new Error("Reauthentication is unavailable in the static demonstration.");
+  const response = await fetch(url, browserRequestInit({
+    method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+    body: JSON.stringify({ currentPassword })
+  }));
+  if (!response.ok) throw new Error(response.status === 401
+    ? "The current password is incorrect." : "Reauthentication failed.");
+  return response.json() as Promise<ReauthenticationResult>;
 }

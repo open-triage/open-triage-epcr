@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
-import type { ClinicianSession, EndClinicianSessionResponse } from "@open-triage/contracts";
+import type { ClinicianSession, EndClinicianSessionResponse, ReauthenticationResult } from "@open-triage/contracts";
 import { ClinicianSessionService } from "./clinician-session.service.js";
-import { validateChangePassword, validateCreateClinicianSession } from "./clinician-session.validation.js";
+import { validateChangePassword, validateCreateClinicianSession, validateReauthenticate } from "./clinician-session.validation.js";
 
 export const SESSION_COOKIE = "open_triage_session";
 type RequestLike = { headers: { cookie?: string } };
@@ -49,6 +49,17 @@ export class ClinicianSessionController {
     const created = await this.sessions.changePassword(sessionToken(request, authorization), validateChangePassword(body));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
+  }
+
+  @Post("reauthenticate")
+  @HttpCode(200)
+  reauthenticate(
+    @Req() request: RequestLike, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken: string | undefined,
+    @Headers("authorization") authorization?: string
+  ): Promise<ReauthenticationResult> {
+    const command = validateReauthenticate(body);
+    return this.sessions.reauthenticate(sessionToken(request, authorization), csrfToken, command.currentPassword);
   }
 
   @Delete("current")

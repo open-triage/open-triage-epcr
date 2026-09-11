@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage
+  AdminAssignableRoleSummary, AdminCapabilityDefinition, AdminRole, AdminRoleList, AdminRoleSummary, AdminRoleSummaryList, AdminUserPage
 } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -135,11 +135,24 @@ export class UserRoleReadService {
     const session = await this.sessions.requireCapability(token, "users:read");
     const rows = await this.dataSource.query<Array<{
       id: string; display_name: string; active: boolean; protected: boolean;
-    }>>(`select id, display_name, active, protected from app_identity.role
-      where organization_id = $1 and not hidden
-      order by not active, lower(display_name), id`, [session.organization.id]);
-    return { items: rows.map((row) => ({ id: row.id, displayName: row.display_name,
-      active: row.active, protected: row.protected })) };
+      assignment_restricted: boolean; assignment_mutable: boolean;
+    }>>(`select role.id, role.display_name, role.active, role.protected,
+        role.system_key in ('administrator', 'clinical-demo') assignment_restricted,
+        exists (select 1 from app_identity.installation_owner
+          where organization_id = $1 and user_id = $2)
+        or ((role.system_key is null or role.system_key not in ('administrator', 'clinical-demo'))
+          and not exists (
+            select 1 from app_identity.role_version_capability definition
+            where definition.role_version_id = role.current_version_id
+              and not (definition.capability_key = any($3::text[]))
+          )) assignment_mutable
+      from app_identity.role role
+      where role.organization_id = $1 and not role.hidden
+      order by not role.active, lower(role.display_name), role.id`,
+    [session.organization.id, session.user.id, session.capabilities ?? []]);
+    return { items: rows.map((row): AdminAssignableRoleSummary => ({ id: row.id, displayName: row.display_name,
+      active: row.active, protected: row.protected, assignmentRestricted: row.assignment_restricted,
+      assignmentMutable: row.assignment_mutable })) };
   }
 
   async roles(token: string, input: Record<string, unknown>): Promise<AdminRoleList> {

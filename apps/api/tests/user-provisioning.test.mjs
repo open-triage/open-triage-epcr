@@ -17,7 +17,10 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities } 
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
-    if (event.sql.startsWith("select id from app_identity.role")) return availableRoles.map((id) => ({ id }));
+    if (event.sql.startsWith("select role.id, role.system_key")) {
+      return availableRoles.map((id) => ({ id, system_key: null, capability_key: null }));
+    }
+    if (event.sql.startsWith("select exists") && event.sql.includes("installation_owner")) return [{ owner: false }];
     return [];
   } };
   const dataSource = { transaction: async (work) => {
@@ -34,7 +37,7 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities } 
   const sessions = { requireCapability: async (token, capability, selectedManager, now) => {
     events.push({ sql: "authorize", parameters: [token, capability, selectedManager, now] });
     return { ...actor, capabilities };
-  } };
+  }, requireRecentReauthentication: async () => undefined };
   return { events, service: new UserProvisioningService(dataSource, sessions), manager };
 }
 

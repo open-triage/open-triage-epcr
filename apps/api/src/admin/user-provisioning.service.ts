@@ -6,7 +6,7 @@ import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "../identity/password.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
-type RoleRow = { id: string };
+type RoleRow = { id: string; system_key: string | null; capability_key: string | null };
 
 @Injectable()
 export class UserProvisioningService {
@@ -25,14 +25,37 @@ export class UserProvisioningService {
         if (command.roleIds.length && !actor.capabilities?.includes("roles:assign")) {
           throw new ForbiddenException("roles:assign is required to provision initial roles");
         }
-        const roles = command.roleIds.length ? await manager.query<RoleRow[]>(`
-          select id from app_identity.role
-          where organization_id = $1 and id = any($2::uuid[])
-            and active and assignable and not hidden
-          for share
+        const roleRows = command.roleIds.length ? await manager.query<RoleRow[]>(`
+          select role.id, role.system_key, definition.capability_key from app_identity.role role
+          left join app_identity.role_version_capability definition
+            on definition.organization_id = role.organization_id and definition.role_id = role.id
+            and definition.role_version_id = role.current_version_id
+          where role.organization_id = $1 and role.id = any($2::uuid[])
+            and role.active and role.assignable and not role.hidden
+          for share of role
         `, [actor.organization.id, command.roleIds]) : [];
-        if (roles.length !== command.roleIds.length) {
+        const roles = new Map<string, { systemKey: string | null; capabilities: string[] }>();
+        for (const row of roleRows) {
+          const role = roles.get(row.id) ?? { systemKey: row.system_key, capabilities: [] };
+          if (row.capability_key) role.capabilities.push(row.capability_key);
+          roles.set(row.id, role);
+        }
+        if (roles.size !== command.roleIds.length) {
           throw new UnprocessableEntityException("Every initial role must be active, assignable, and in this organization");
+        }
+        const ownerRows = await manager.query<Array<{ owner: boolean }>>(`select exists (
+          select 1 from app_identity.installation_owner where organization_id = $1 and user_id = $2
+        ) owner`, [actor.organization.id, actor.user.id]);
+        const actorIsOwner = Boolean(ownerRows[0]?.owner);
+        const actorCapabilities = new Set(actor.capabilities ?? []);
+        if (!actorIsOwner && [...roles.values()].some((role) =>
+          role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
+          throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
+        }
+        if ([...roles.values()].some((role) =>
+          role.systemKey === "administrator" || role.systemKey === "clinical-demo")) {
+          if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Clinical Demo");
+          await this.sessions.requireRecentReauthentication(token, manager, now);
         }
         await manager.query(
           "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",

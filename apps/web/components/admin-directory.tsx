@@ -1,17 +1,19 @@
 "use client";
 
-import type { AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { useEffect, useState, type FormEvent } from "react";
 import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
-  loadAdminUserRoleOptions, loadAdminUsers, provisionAdminUser, reactivateAdminRole, updateAdminRole, updateAdminUser,
-  type AdminUserQuery } from "../app/admin-context";
+  loadAdminUserRoleOptions, loadAdminUsers, provisionAdminUser, reactivateAdminRole, replaceAdminUserRoles,
+  updateAdminRole, updateAdminUser, type AdminUserQuery } from "../app/admin-context";
+import { reauthenticateClinicianSession } from "../app/clinician-session";
 
 type StateFilter = "active" | "disabled" | "all";
 
-function RoleBadges({ roles }: { readonly roles: AdminRoleSummary[] }) {
+function RoleBadges({ roles, effective = true }: { readonly roles: AdminRoleSummary[]; readonly effective?: boolean }) {
   if (!roles.length) return <span className="admin-muted">No roles</span>;
   return <ul className="admin-role-badges" aria-label="Assigned roles">
-    {roles.map((role) => <li key={role.id}>{role.displayName}{!role.active && " (deactivated)"}</li>)}
+    {roles.map((role) => <li key={role.id}>{role.displayName}{!role.active
+      ? " (deactivated)" : !effective ? " (retained, ineffective while disabled)" : ""}</li>)}
   </ul>;
 }
 
@@ -24,7 +26,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   readonly csrfToken?: string;
 }) {
   const [items, setItems] = useState<AdminUserSummary[]>([]);
-  const [roleOptions, setRoleOptions] = useState<AdminRoleSummary[]>([]);
+  const [roleOptions, setRoleOptions] = useState<AdminAssignableRoleSummary[]>([]);
   const [query, setQuery] = useState<AdminUserQuery>({ state: "active" });
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   const [saving, setSaving] = useState(false);
   const [desiredActive, setDesiredActive] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [roleNote, setRoleNote] = useState("");
+  const [reauthenticationPassword, setReauthenticationPassword] = useState("");
 
   async function load(selected: AdminUserQuery, append = false) {
     setLoading(true);
@@ -104,6 +108,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     setEditing(user);
     setDesiredActive(user.active);
     setSelectedRoleIds(user.roles.map((role) => role.id));
+    setRoleNote("");
+    setReauthenticationPassword("");
     setError(null);
     setNotice(null);
   }
@@ -118,7 +124,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       expectedRevision: editing.revision,
       username: String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
-      roleIds: canAssignRoles ? data.getAll("roleIds").map(String) : editing.roles.map((role) => role.id),
       active,
       note: String(data.get("note") ?? "") || undefined
     };
@@ -141,6 +146,34 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     }
   }
 
+  const protectedRoleSetChanged = Boolean(editing && roleOptions.some((role) => role.assignmentRestricted &&
+    (selectedRoleIds.includes(role.id) !== editing.roles.some((assigned) => assigned.id === role.id))));
+
+  async function saveRoles() {
+    if (!editing || !canAssignRoles) return;
+    const command: ReplaceAdminUserRolesCommand = { expectedRevision: editing.revision,
+      roleIds: selectedRoleIds, note: roleNote || undefined };
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      if (protectedRoleSetChanged) {
+        await reauthenticateClinicianSession(reauthenticationPassword, csrfToken);
+      }
+      const updated = await replaceAdminUserRoles(csrfToken, editing.id, command);
+      setEditing(updated);
+      setSelectedRoleIds(updated.roles.map((role) => role.id));
+      setRoleNote("");
+      setReauthenticationPassword("");
+      setNotice(`Roles updated for ${updated.displayName}. Added: ${updated.addedRoles.map((role) => role.displayName).join(", ") || "none"}; removed: ${updated.removedRoles.map((role) => role.displayName).join(", ") || "none"}.${updated.active ? "" : " Roles remain ineffective until reactivation."}`);
+      await load(query);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The role set could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
     <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
@@ -156,7 +189,9 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           defaultValue={72} required /></label>
         <fieldset className="admin-role-selection"><legend>Initial roles</legend>
           {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
-            <input name="roleIds" type="checkbox" value={role.id} />{role.displayName}
+            <input name="roleIds" type="checkbox" value={role.id}
+              disabled={!role.assignmentMutable || role.assignmentRestricted} />{role.displayName}
+            {role.assignmentRestricted ? " (assign after creation with reauthentication)" : ""}
           </label>)}
           {!roleOptions.some((role) => role.active) && <p>No assignable roles are available.</p>}
         </fieldset>
@@ -170,13 +205,23 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         <label>Display name<input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
         <label>Username<input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
           pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
-        <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend>Retained roles</legend>
+        <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend>Complete retained role set</legend>
           {roleOptions.map((role) => <label key={role.id}>
-            <input name="roleIds" type="checkbox" value={role.id} disabled={!role.active && !selectedRoleIds.includes(role.id)}
+            <input type="checkbox" value={role.id}
+              disabled={!role.assignmentMutable || (!role.active && !selectedRoleIds.includes(role.id))}
               checked={selectedRoleIds.includes(role.id)} onChange={(event) => setSelectedRoleIds((current) =>
                 event.target.checked ? [...current, role.id] : current.filter((id) => id !== role.id))} />
-            {role.displayName}{!role.active ? " (deactivated)" : ""}
+            {role.displayName}{!role.active ? " (deactivated)" : role.assignmentRestricted ? " (owner only)" : ""}
           </label>)}
+          {!editing.active && <p>These roles are retained but ineffective while the user is disabled.</p>}
+          <label>Role change note (optional)<textarea value={roleNote} maxLength={1000}
+            onChange={(event) => setRoleNote(event.target.value)} /></label>
+          {protectedRoleSetChanged && <label>Current password for protected role change
+            <input type="password" value={reauthenticationPassword} maxLength={1024}
+              autoComplete="current-password" onChange={(event) => setReauthenticationPassword(event.target.value)} />
+          </label>}
+          <button type="button" onClick={() => void saveRoles()}
+            disabled={protectedRoleSetChanged && !reauthenticationPassword}>{saving ? "Saving…" : "Replace role set"}</button>
         </fieldset>
         <label>Status<select name="active" value={desiredActive ? "true" : "false"}
           onChange={(event) => setDesiredActive(event.target.value === "true")}>
@@ -213,7 +258,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         {canManage && <th scope="col">Actions</th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
-        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} /></td>
+        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active} /></td>
         {canManage && <td>{user.id === currentUserId ? "Current account"
           : <button type="button" onClick={() => beginEdit(user)}>Manage</button>}</td>}
       </tr>)}</tbody>
