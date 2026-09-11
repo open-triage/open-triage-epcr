@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
 import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
@@ -95,6 +95,12 @@ export class AdminController {
   saveForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormDraft> {
     return this.forms.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Delete("form-drafts/:id")
+  deleteForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<void> {
+    return this.forms.delete(sessionToken(request, authorization), id, body);
   }
 
   @Post("form-drafts/:id/publish")

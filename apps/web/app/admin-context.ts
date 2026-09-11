@@ -47,6 +47,9 @@ export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: st
 export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
 });
+export const deleteStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<void>(`form-drafts/${draft.id}`, csrfToken, {
+  method: "DELETE", body: JSON.stringify({ expectedRevision: draft.revision })
+}, { value: undefined });
 export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft, displayName: string, changeNote: string) =>
   catalogRequest<PublishedStationaryForm>(`form-drafts/${draft.id}/publish`, csrfToken, {
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision,

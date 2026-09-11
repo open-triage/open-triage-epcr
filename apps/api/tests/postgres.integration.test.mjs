@@ -368,6 +368,27 @@ integrationTest("authorized Admin context resolves only the session organization
     content_sha256: activeFormDigest });
   await assert.rejects(client.query("update app_identity.configuration_event set change_note='changed' where organization_id=$1",
     [organizationId]));
+  const auditedFormDraft = await activationForms.clone(active.sessionToken, {
+    catalogReleaseId: release.rows[0].id, displayName: "Integration form draft"
+  });
+  const savedAuditedFormDraft = await activationForms.save(active.sessionToken, auditedFormDraft.id, {
+    expectedRevision: auditedFormDraft.revision, displayName: "Integration form draft", definition: auditedFormDraft.definition
+  });
+  await assert.rejects(activationForms.delete(active.sessionToken, auditedFormDraft.id, {
+    expectedRevision: auditedFormDraft.revision
+  }), /revision is stale/i);
+  await activationForms.delete(active.sessionToken, auditedFormDraft.id, { expectedRevision: savedAuditedFormDraft.revision });
+  const formDraftAudit = await client.query(`select action,form_version_id,details
+    from app_identity.configuration_event
+    where organization_id=$1 and action like 'form.draft_%' order by id`, [organizationId]);
+  assert.deepEqual(formDraftAudit.rows.map(({ action, form_version_id, details }) => ({
+    action, form_version_id, revision: details.revision,
+    deletedFormVersionId: details.deletedFormVersionId ?? null
+  })), [
+    { action: "form.draft_create", form_version_id: null, revision: 1, deletedFormVersionId: null },
+    { action: "form.draft_save", form_version_id: null, revision: 2, deletedFormVersionId: null },
+    { action: "form.draft_delete", form_version_id: null, revision: 2, deletedFormVersionId: auditedFormDraft.id }
+  ]);
   const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
   const draft = await authoring.cloneActive(active.sessionToken, { displayName: "Integration catalog" });
   assert.equal(draft.revision, 1);

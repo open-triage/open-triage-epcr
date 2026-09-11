@@ -20,7 +20,7 @@ function assignedCalls(route: Route) {
 async function signInAsCombinedOwner(page: Page,
   capabilities: ReadonlyArray<string> = ["clinical:document", "admin-dashboard:read"]) {
   await page.goto("/");
-  await page.evaluate((grantedCapabilities) => {
+  await page.evaluate((authorizedCapabilities) => {
     window.localStorage.clear();
     window.localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify({
       accessToken: "synthetic-browser-session",
@@ -28,7 +28,7 @@ async function signInAsCombinedOwner(page: Page,
       organization: { id: "organization-id", name: "Example EMS" },
       startedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
-      capabilities: grantedCapabilities
+      capabilities: authorizedCapabilities
     }));
     window.localStorage.removeItem("open-triage.presentation-mode.v1");
   }, capabilities);
@@ -99,6 +99,63 @@ test("Catalog reader, writer, and publisher controls follow their independent au
   await page.getByRole("button", { name: "Admin" }).click();
   await page.getByRole("button", { name: "Element catalog", exact: true }).click();
   await expect(page.getByRole("button", { name: "Publish immutable catalog" })).toBeVisible();
+});
+
+test("Forms readers, authors, and publishers receive only their permitted controls", async ({ page }) => {
+  const definition = { schemaVersion: 1, sections: [{ key: "patient", fields: [
+    { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" } }
+  ] }] };
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id",
+    clonedFromId: "version-id", revision: 4, definitionSha256: "a".repeat(64), definition, diagnostics: [],
+    catalogFields: {}, updatedAt: new Date().toISOString() };
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ profile: "production", settings: productionSettings }) }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  let resolvedCapabilities = ["admin-dashboard:read", "forms:read"];
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "forms"], capabilities: resolvedCapabilities,
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard
+  }) }));
+  await page.route("**/api/admin/form-draft", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(draft) }));
+  await page.route("**/api/admin/form-drafts/draft-id/catalog-elements**", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: [], nextOffset: null }) }));
+
+  // Cached session claims deliberately retain stale publication authority; the
+  // freshly resolved Admin context must suppress mutation controls immediately.
+  await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await expect(page.getByText("read-only access to this form definition")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save form draft" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete form draft" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publish immutable form" })).toHaveCount(0);
+  const previewPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: "Preview Stationary form" }).click();
+  const preview = await previewPromise;
+  await expect(preview.getByRole("heading", { name: "Draft Stationary form" })).toBeVisible({ timeout: 15_000 });
+  await preview.close();
+
+  await page.route("**/api/admin/form-drafts/draft-id", (route) => route.fulfill({ status: 409,
+    contentType: "application/json", body: JSON.stringify({ message: "Form draft revision is stale", actualRevision: 5 }) }));
+  resolvedCapabilities = ["admin-dashboard:read", "forms:read", "forms:write"];
+  await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save form draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete form draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish immutable form" })).toHaveCount(0);
+  await expect(page.getByText("permits draft authoring but not publication or activation")).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete form draft" }).click();
+  await expect(page.getByText("Form draft revision is stale", { exact: true })).toBeVisible();
+
+  resolvedCapabilities = ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"];
+  await signInAsCombinedOwner(page, ["admin-dashboard:read", "forms:read", "forms:write", "forms:publish"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish immutable form" })).toBeVisible();
 });
 
 test("combined owners start clinically and can enter only server-authorized Admin panels by keyboard", async ({ page }) => {
