@@ -23,6 +23,7 @@ import { AdminService } from "../dist/admin/admin.service.js";
 import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
 import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
 import { SessionAdministrationService } from "../dist/admin/session-administration.service.js";
+import { RolePackageService } from "../dist/admin/role-package.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -129,11 +130,45 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const customRoleAuthoring = await client.query(
+    "select to_regprocedure('app_identity.prevent_protected_role_shadow()') as validator"
+  );
+  if (!customRoleAuthoring.rows[0].validator) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const roleVersionPresentation = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='role_version' and column_name='display_name'`);
+  if (!roleVersionPresentation.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const recentReauthentication = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_session' and column_name='reauthenticated_at'`);
+  if (!recentReauthentication.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911231000_role_assignment_reauthentication.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
   const sessionActivity = await client.query(`select 1 from information_schema.columns
     where table_schema='app_identity' and table_name='app_session' and column_name='last_activity_at'`);
   if (!sessionActivity.rows[0]) {
     const migration = await readFile(
       path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const portableRoleActions = await client.query(`select pg_get_constraintdef(oid) definition
+    from pg_constraint where conname = 'authorization_event_action_check'
+      and conrelid = 'app_identity.authorization_event'::regclass`);
+  if (!portableRoleActions.rows[0]?.definition.includes("role.package_import")) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"
     );
     await client.query(migration);
   }
@@ -150,7 +185,8 @@ function singleClientDataSource(client) {
   return {
     manager,
     query: manager.query,
-    transaction: async (work) => {
+    transaction: async (isolationOrWork, optionalWork) => {
+      const work = optionalWork ?? isolationOrWork;
       await client.query("begin");
       try {
         const result = await work(manager);
@@ -180,6 +216,62 @@ async function ensureSyntheticOwner(client) {
   });
   return owner.userId;
 }
+
+integrationTest("portable role packages round-trip atomically with immediate authority and preserved assignments", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Portable roles', 'UTC')",
+    [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `portable.owner.${randomUUID()}`,
+    displayName: "Portable Owner", clinician: false, temporaryPassword: "Temporary!Portable-Owner-253",
+    operator: { operatorId: "integration-portable-owner", osAccount: "test", host: "localhost" } });
+  const temporary = await sessions.create({ username: owner.username, password: "Temporary!Portable-Owner-253" });
+  const active = await sessions.changePassword(temporary.sessionToken, {
+    currentPassword: "Temporary!Portable-Owner-253", newPassword: "Permanent!Portable-Owner-253",
+    csrfToken: temporary.session.csrfToken
+  });
+  await sessions.reauthenticate(active.sessionToken, active.session.csrfToken, "Permanent!Portable-Owner-253");
+  const packages = new RolePackageService(database, sessions);
+  const roleId = randomUUID();
+  const firstVersionId = randomUUID();
+  const secondVersionId = randomUUID();
+  const firstPackage = { schema: "open-triage.custom-roles", schemaVersion: "1.0.0", roles: [{
+    id: roleId, currentVersionId: firstVersionId, versions: [{ id: firstVersionId, version: 1,
+      displayName: "Portable Dispatch", description: null, capabilityKeys: ["users:read"] }] }] };
+  assert.equal((await packages.import(active.sessionToken, firstPackage)).createdRoleCount, 1);
+  const assigneeId = randomUUID();
+  await client.query(`insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Portable assignee')`,
+    [assigneeId, organizationId]);
+  await client.query(`insert into app_identity.user_role_assignment
+    (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $4)`,
+  [organizationId, assigneeId, roleId, owner.userId]);
+  const secondPackage = { ...firstPackage, roles: [{ ...firstPackage.roles[0], currentVersionId: secondVersionId,
+    versions: [...firstPackage.roles[0].versions, { id: secondVersionId, version: 2,
+      displayName: "Portable Dispatch", description: "Portable update",
+      capabilityKeys: ["users:read", "users:write"] }] }] };
+  const preview = await packages.preview(active.sessionToken, secondPackage);
+  assert.deepEqual(preview.capabilityChanges, [{ roleId, added: ["users:write"], removed: [], affectedAssigneeCount: 1 }]);
+  await packages.import(active.sessionToken, secondPackage);
+  assert.equal((await client.query(`select count(*)::integer count from app_identity.user_role_assignment
+    where organization_id = $1 and user_id = $2 and role_id = $3 and ended_at is null`,
+  [organizationId, assigneeId, roleId])).rows[0].count, 1);
+  assert.equal((await client.query(
+    "select app_identity.user_has_capability($1, $2, 'users:write') allowed", [assigneeId, organizationId]
+  )).rows[0].allowed, true);
+  const exported = await packages.export(active.sessionToken);
+  assert.deepEqual(exported.roles.find(({ id }) => id === roleId), secondPackage.roles[0]);
+  assert.equal((await packages.preview(active.sessionToken, exported)).unchangedRoleCount, exported.roles.length);
+  const audits = await client.query(`select action, details from app_identity.authorization_event
+    where organization_id = $1 and action like 'role.package_%' order by id`, [organizationId]);
+  assert.ok(audits.rows.some(({ action }) => action === "role.package_import"));
+  assert.doesNotMatch(JSON.stringify(audits.rows), /Portable Dispatch|Portable update|users:write|assigneeId/i);
+});
 
 integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });

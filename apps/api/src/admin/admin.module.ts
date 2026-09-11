@@ -6,6 +6,7 @@ import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
 import { RoleAuthoringService } from "./role-authoring.service.js";
+import { RolePackageService } from "./role-package.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
 import { UserProvisioningService } from "./user-provisioning.service.js";
 import { UserLifecycleService } from "./user-lifecycle.service.js";
@@ -17,6 +18,6 @@ import { SessionAdministrationService } from "./session-administration.service.j
   controllers: [AdminController],
   providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
-    SessionAdministrationService]
+    SessionAdministrationService, RolePackageService]
 })
 export class AdminModule {}
