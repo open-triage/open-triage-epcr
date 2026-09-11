@@ -7,6 +7,7 @@ import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAd
   replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, updateAdminRole, updateAdminUser,
   type AdminUserQuery } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
+import { OwnershipTransferPanel } from "./ownership-transfer";
 
 type StateFilter = "active" | "disabled" | "all";
 
@@ -251,6 +252,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
       {createOpen ? "Cancel creation" : "Create user"}</button>}</div>
+    <OwnershipTransferPanel csrfToken={csrfToken} />
     {canCreate && createOpen && <form id="create-user-form" className="admin-user-create" onSubmit={createUser}>
       <fieldset disabled={creating}><legend>New local user</legend>
         <label>Display name<input name="displayName" maxLength={200} required autoComplete="off" /></label>

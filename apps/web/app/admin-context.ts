@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -140,3 +140,13 @@ export const revokeAdminUserSession = (csrfToken: string, userId: string, sessio
 export const resetAdminUserCredential = (csrfToken: string, userId: string, command: ResetAdminCredentialCommand) =>
   catalogRequest<ResetAdminCredentialResult>(`users/${userId}/credentials/reset`, csrfToken,
     { method: "POST", body: JSON.stringify(command) });
+
+export const loadOwnershipTransfer = () => catalogRequest<OwnershipTransferState>("ownership-transfer");
+export const initiateOwnershipTransfer = (csrfToken: string, command: InitiateOwnershipTransferCommand) =>
+  catalogRequest<OwnershipTransferState>("ownership-transfer", csrfToken,
+    { method: "POST", body: JSON.stringify(command) });
+export const acceptOwnershipTransfer = (csrfToken: string) =>
+  catalogRequest<OwnershipTransferState>("ownership-transfer/accept", csrfToken, { method: "POST" });
+export const cancelOwnershipTransfer = (csrfToken: string, command: CancelOwnershipTransferCommand = {}) =>
+  catalogRequest<OwnershipTransferState>("ownership-transfer", csrfToken,
+    { method: "DELETE", body: JSON.stringify(command) });

@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { acceptOwnershipTransfer, activateStationaryForm, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
@@ -179,6 +179,26 @@ test("role replacement and protected-action reauthentication use separate revisi
   assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)),
     { expectedRevision: 8, roleIds: [], note: "Prepare" });
   assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+});
+
+test("ownership transfer requests expose pending state and preserve CSRF on every command", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  const state = { owner: { id: "owner-id", displayName: "Owner" }, currentUserIsOwner: true,
+    currentUserIsNominee: false, transfer: null, eligibleNominees: [{ id: "nominee-id", displayName: "Nominee" }] };
+  globalThis.fetch = async (input, init) => { requests.push({ input: String(input), init }); return Response.json(state); };
+  await loadOwnershipTransfer();
+  await initiateOwnershipTransfer("csrf-proof", { nomineeUserId: "nominee-id", note: "Succession" });
+  await acceptOwnershipTransfer("csrf-proof");
+  await cancelOwnershipTransfer("csrf-proof", { note: "Changed plan" });
+  assert.match(requests[0]!.input, /ownership-transfer$/);
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { nomineeUserId: "nominee-id", note: "Succession" });
+  assert.match(requests[2]!.input, /ownership-transfer\/accept$/);
+  assert.equal(requests[3]!.init?.method, "DELETE");
+  for (const request of requests.slice(1)) {
+    assert.equal((request.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  }
 });
 
 test("session and reset requests preserve CSRF, owner confirmation, revision, and secret-free responses", async (t) => {

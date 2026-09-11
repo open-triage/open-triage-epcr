@@ -28,6 +28,9 @@ export class UserRoleAssignmentService {
     now = new Date()): Promise<UpdatedAdminUserRoles> {
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "roles:assign", manager, now);
+      // Serialize Administrator eligibility changes with ownership acceptance.
+      await manager.query(`select organization_id from app_identity.installation_owner
+        where organization_id = $1 for update`, [actor.organization.id]);
       const targets = await manager.query<TargetRow[]>(`
         select u.id, u.display_name, credential.username, u.active, u.revision,
           exists (select 1 from app_identity.installation_owner owner_record

@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -15,6 +15,8 @@ import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
 import { validateReplaceAdminUserRoles } from "./user-role-assignment.validation.js";
 import { SessionAdministrationService } from "./session-administration.service.js";
 import { validateResetAdminCredential, validateRevokeAdminSession } from "./session-administration.validation.js";
+import { OwnershipTransferService } from "./ownership-transfer.service.js";
+import { validateCancelOwnershipTransfer, validateInitiateOwnershipTransfer } from "./ownership-transfer.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
 type ResponseLike = { clearCookie(name: string, options: Record<string, unknown>): void };
@@ -27,7 +29,8 @@ export class AdminController {
     private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService,
     private readonly roleAssignments: UserRoleAssignmentService,
     private readonly sessionAdministration: SessionAdministrationService,
-    private readonly rolePackages: RolePackageService) {}
+    private readonly rolePackages: RolePackageService,
+    private readonly ownershipTransfer: OwnershipTransferService) {}
 
   @Get("context")
   context(
@@ -41,6 +44,30 @@ export class AdminController {
   users(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<AdminUserPage> {
     return this.directory.users(sessionToken(request, authorization), query);
+  }
+
+  @Get("ownership-transfer")
+  ownershipTransferState(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.state(sessionToken(request, authorization));
+  }
+
+  @Post("ownership-transfer")
+  initiateOwnershipTransfer(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.initiate(sessionToken(request, authorization), validateInitiateOwnershipTransfer(body));
+  }
+
+  @Post("ownership-transfer/accept")
+  acceptOwnershipTransfer(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.accept(sessionToken(request, authorization));
+  }
+
+  @Delete("ownership-transfer")
+  cancelOwnershipTransfer(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.cancel(sessionToken(request, authorization), validateCancelOwnershipTransfer(body));
   }
 
   @Post("users")
