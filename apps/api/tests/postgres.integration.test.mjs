@@ -7,7 +7,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
-import { UnauthorizedException } from "@nestjs/common";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
@@ -22,6 +22,7 @@ import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
 import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
 import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
+import { SessionAdministrationService } from "../dist/admin/session-administration.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -125,6 +126,14 @@ async function ensureFoundation(client) {
   if (!userLifecycleRevision.rows[0]) {
     const migration = await readFile(
       path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const sessionActivity = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_session' and column_name='last_activity_at'`);
+  if (!sessionActivity.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"
     );
     await client.query(migration);
   }
@@ -268,6 +277,76 @@ integrationTest("provisioned local accounts require password replacement and use
     && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
   assert.doesNotMatch(JSON.stringify(operatorAudit.rows), /Reset!|password_verifier|token|csrf|secret/i);
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("session administration identifies current devices, contains individual sessions, and resets stale access", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const administration = new SessionAdministrationService(database, sessions);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Session administration', 'UTC')", [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
+    displayName: "Session Owner", clinician: false, temporaryPassword: "Temporary!Owner-Password-253",
+    operator: { operatorId: "session-integration", osAccount: "test", host: "localhost" } });
+  const ownerTemporary = await sessions.create({ username: owner.username, password: "Temporary!Owner-Password-253" },
+    new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Password-253", newPassword: "Permanent!Owner-Password-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  }, new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
+  const ownerView = await administration.list(ownerSession.sessionToken, owner.userId);
+  assert.equal(ownerView.items.length, 1);
+  assert.equal(ownerView.items[0].current, true);
+  assert.equal(ownerView.items[0].deviceLabel, "Chrome on Windows");
+  assert.equal("sourceIp" in ownerView.items[0] || "geolocation" in ownerView.items[0], false);
+  await assert.rejects(administration.revoke(ownerSession.sessionToken, owner.userId, ownerView.items[0].id, {}),
+    ConflictException);
+
+  const clinicianRole = await client.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
+  );
+  const target = await new UserProvisioningService(database, sessions).provision(ownerSession.sessionToken, {
+    username: `medic.${randomUUID()}`, displayName: "Session Medic", roleIds: [clinicianRole.rows[0].id],
+    temporaryPassword: "Temporary!Medic-Password-253", temporaryPasswordHours: 72
+  });
+  const targetTemporary = await sessions.create({ username: target.username, password: "Temporary!Medic-Password-253" },
+    new Date(), "Mozilla/5.0 (X11; Linux x86_64) Firefox/145.0");
+  const firstTargetSession = await sessions.changePassword(targetTemporary.sessionToken, {
+    currentPassword: "Temporary!Medic-Password-253", newPassword: "Permanent!Medic-Password-253",
+    csrfToken: targetTemporary.session.csrfToken
+  }, new Date(), "Mozilla/5.0 (X11; Linux x86_64) Firefox/145.0");
+  const secondTargetSession = await sessions.create({ username: target.username, password: "Permanent!Medic-Password-253" },
+    new Date(), "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1) AppleWebKit Safari/604.1");
+  const targetView = await administration.list(ownerSession.sessionToken, target.userId);
+  assert.equal(targetView.items.length, 2);
+  assert.ok(targetView.items.every(({ current }) => !current));
+  assert.deepEqual(new Set(targetView.items.map(({ deviceLabel }) => deviceLabel)),
+    new Set(["Firefox on Linux", "Safari on iOS"]));
+
+  const contained = await administration.revoke(ownerSession.sessionToken, target.userId, targetView.items[0].id, {});
+  assert.equal(contained.alreadyRevoked, false);
+  assert.equal((await administration.revoke(ownerSession.sessionToken, target.userId, targetView.items[0].id, {})).alreadyRevoked, true);
+  const reset = await administration.resetCredential(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 1, temporaryPassword: "Reset!Medic-Password-253", temporaryPasswordHours: 24
+  });
+  assert.equal(reset.revision, 2);
+  assert.equal(reset.active, true);
+  assert.equal(reset.sessionsRevoked, 1);
+  await assert.rejects(sessions.get(firstTargetSession.sessionToken), UnauthorizedException);
+  await assert.rejects(sessions.get(secondTargetSession.sessionToken), UnauthorizedException);
+  assert.equal((await sessions.create({ username: target.username,
+    password: "Reset!Medic-Password-253" })).session.passwordChangeRequired, true);
+
+  const audits = await client.query(`select action, details::text from app_identity.authentication_event
+    where target_user_id = $1 and action in ('authentication.session_revoke', 'account.reset_password') order by id`,
+  [target.userId]);
+  assert.deepEqual(audits.rows.map(({ action }) => action), ["authentication.session_revoke", "account.reset_password"]);
+  assert.doesNotMatch(JSON.stringify(audits.rows), /password_verifier|token_sha256|csrf_sha256|source.?ip|geolocation|patient|Reset!Medic/i);
 });
 
 integrationTest("user lifecycle is atomic, permanently reserves names, revokes sessions, preserves credentials, and rejects stale concurrent writes", async (t) => {

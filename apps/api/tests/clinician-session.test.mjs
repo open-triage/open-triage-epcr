@@ -4,7 +4,7 @@ import test from "node:test";
 import { UnauthorizedException } from "@nestjs/common";
 import { createPasswordVerifier, verifyPassword } from "../dist/identity/password.js";
 import { bearerToken, SESSION_COOKIE } from "../dist/sessions/clinician-session.controller.js";
-import { ClinicianSessionService } from "../dist/sessions/clinician-session.service.js";
+import { ClinicianSessionService, coarseDeviceLabel } from "../dist/sessions/clinician-session.service.js";
 import { validateChangePassword, validateReauthenticate } from "../dist/sessions/clinician-session.validation.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
@@ -52,6 +52,12 @@ test("cookie credentials take precedence and malformed authorization is rejected
   assert.throws(() => bearerToken(undefined), UnauthorizedException);
 });
 
+test("session device labels deliberately collapse identifying user-agent detail", () => {
+  assert.equal(coarseDeviceLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/142.0.1.9"), "Chrome on Windows");
+  assert.equal(coarseDeviceLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1) AppleWebKit Safari/604.1"), "Safari on iOS");
+  assert.equal(coarseDeviceLabel("private-client-build/8877"), "Other browser on Other OS");
+});
+
 test("password replacement validates a strong new secret and a CSRF proof", () => {
   assert.deepEqual(validateChangePassword({
     currentPassword: "temporary password", newPassword: "replacement password!", csrfToken: "csrf-proof"
@@ -91,10 +97,15 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
     return { events, sessions: new ClinicianSessionService({ query, manager: { query } }) };
   }
   const before = serviceAtBoundary();
-  const limited = await before.sessions.create({ username: "new.user", password }, new Date("2026-09-10T10:59:59.999Z"));
+  const rawUserAgent = "Mozilla/5.0 (Windows NT 10.0; identifying-build/8877) Chrome/142.0.1.9";
+  const limited = await before.sessions.create({ username: "new.user", password },
+    new Date("2026-09-10T10:59:59.999Z"), rawUserAgent);
   assert.equal(limited.session.passwordChangeRequired, true);
   assert.equal(limited.session.expiresAt, expiresAt.toISOString());
   assert.equal("password_verifier" in limited.session, false);
+  const insertion = before.events.find(({ sql }) => sql.startsWith("insert into app_identity.app_session"));
+  assert.equal(insertion.parameters.at(-1), "Chrome on Windows");
+  assert.equal(insertion.parameters.includes(rawUserAgent), false);
 
   const boundary = serviceAtBoundary();
   await assert.rejects(boundary.sessions.create({ username: "new.user", password }, expiresAt), UnauthorizedException);

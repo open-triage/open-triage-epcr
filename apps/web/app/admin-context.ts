@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ReplaceAdminUserRolesCommand, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -129,3 +129,14 @@ export const updateAdminUser = (csrfToken: string, userId: string, command: Upda
 export const replaceAdminUserRoles = (csrfToken: string, userId: string, command: ReplaceAdminUserRolesCommand) =>
   catalogRequest<UpdatedAdminUserRoles>(`users/${userId}/roles`, csrfToken,
     { method: "PUT", body: JSON.stringify(command) });
+
+export const loadAdminUserSessions = (userId: string) =>
+  catalogRequest<AdminSessionList>(`users/${userId}/sessions`);
+
+export const revokeAdminUserSession = (csrfToken: string, userId: string, sessionId: string,
+  confirmOwner = false) => catalogRequest<RevokedAdminSession>(`users/${userId}/sessions/${sessionId}`, csrfToken,
+  { method: "DELETE", body: JSON.stringify(confirmOwner ? { confirmOwner: true } : {}) });
+
+export const resetAdminUserCredential = (csrfToken: string, userId: string, command: ResetAdminCredentialCommand) =>
+  catalogRequest<ResetAdminCredentialResult>(`users/${userId}/credentials/reset`, csrfToken,
+    { method: "POST", body: JSON.stringify(command) });
