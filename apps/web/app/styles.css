@@ -89,6 +89,18 @@ input, select, textarea { touch-action: manipulation; }
 .admin-placeholder h2 { margin: 0 0 10px; font-size: var(--text-heading); }
 .admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
 .admin-directory { padding-bottom: 18px; }
+.admin-directory .section-heading > button, .admin-user-create button { min-height: 40px; padding: 7px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-user-create { padding: 18px; border-bottom: 1px solid var(--line); background: #f7faf7; }
+.admin-user-create > fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 16px; border: 1px solid #b7c6b9; border-radius: 8px; }
+.admin-user-create > fieldset > legend, .admin-role-selection > legend { font-weight: 800; }
+.admin-user-create label { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
+.admin-user-create input, .admin-user-create textarea { min-height: 42px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
+.admin-role-selection { display: flex; flex-wrap: wrap; gap: 10px 16px; grid-column: 1 / -1; padding: 12px; border: 1px solid var(--line); }
+.admin-role-selection label { display: flex; align-items: center; gap: 7px; }
+.admin-role-selection input { min-height: 0; }
+.admin-user-note { grid-column: 1 / -1; }
+.admin-user-note textarea { min-height: 72px; resize: vertical; }
+.admin-user-create button { justify-self: start; }
 .admin-directory-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; padding: 18px; }
 .admin-directory-filters label, .admin-role-state { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
 .admin-directory-filters input, .admin-directory-filters select, .admin-role-state select { min-height: 42px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
@@ -185,6 +197,7 @@ input, select, textarea { touch-action: manipulation; }
   .admin-tabs button { border-right: 1px solid var(--line); }
   .admin-configuration dl { grid-template-columns: 1fr; }
   .admin-directory-filters { grid-template-columns: 1fr; }
+  .admin-user-create > fieldset { grid-template-columns: 1fr; }
 }
 .admin-preview-window { min-height: 100vh; padding: 18px; background: var(--paper); }
 .admin-preview-error { max-width: 720px; margin: 48px auto; padding: 20px; }

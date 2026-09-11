@@ -29,8 +29,8 @@ export class AccountService {
       );
       await manager.query(
         `insert into app_identity.local_credential
-          (user_id, username, password_verifier, must_change_password)
-         values ($1, $2, $3, true)`, [userId, username, verifier]
+          (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
+         values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
       );
       await this.assignProtectedRoles(manager, input.organizationId, userId, BUILT_IN_ROLES[input.role],
         "Initial account provisioning");
@@ -67,8 +67,8 @@ export class AccountService {
         );
         await manager.query(
           `insert into app_identity.local_credential
-            (user_id, username, password_verifier, must_change_password)
-           values ($1, $2, $3, true)`, [userId, username, verifier]
+            (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
+           values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
         );
         const roleKeys = input.clinician ? ["administrator", "clinician"] : ["administrator"];
         await this.assignProtectedRoles(manager, input.organizationId, userId, roleKeys, "Owner bootstrap");
@@ -134,6 +134,7 @@ export class AccountService {
     await manager.query(
       `update app_identity.local_credential
        set password_verifier = $2, must_change_password = true,
+           temporary_password_expires_at = now() + interval '72 hours',
            credential_version = credential_version + 1, password_changed_at = null, updated_at = now()
        where user_id = $1`, [userId, verifier]
     );

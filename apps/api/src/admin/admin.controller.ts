@@ -1,17 +1,20 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AdminContext, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
 import { UserRoleReadService } from "./user-role-read.service.js";
+import { UserProvisioningService } from "./user-provisioning.service.js";
+import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
 
 @Controller("admin")
 export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
-    private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService) {}
+    private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
+    private readonly provisioning: UserProvisioningService) {}
 
   @Get("context")
   context(
@@ -25,6 +28,12 @@ export class AdminController {
   users(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<AdminUserPage> {
     return this.directory.users(sessionToken(request, authorization), query);
+  }
+
+  @Post("users")
+  provisionUser(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ProvisionedAdminUser> {
+    return this.provisioning.provision(sessionToken(request, authorization), validateProvisionAdminUser(body));
   }
 
   @Get("user-role-options")

@@ -60,6 +60,39 @@ test("password replacement validates a strong new secret and a CSRF proof", () =
   assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "long enough password" }), /CSRF/);
 });
 
+test("temporary credentials sign in only before expiry and cannot outlive their replacement window", async () => {
+  const password = "Temporary password 42!";
+  const verifier = await createPasswordVerifier(password);
+  const expiresAt = new Date("2026-09-10T11:00:00.000Z");
+  const account = {
+    user_id: "user-id", display_name: "New User", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    password_verifier: verifier, must_change_password: true,
+    temporary_password_expires_at: expiresAt, credential_version: "1"
+  };
+  function serviceAtBoundary() {
+    const events = [];
+    const query = async (sql, parameters = []) => {
+      const normalized = sql.replace(/\s+/g, " ").trim();
+      events.push({ sql: normalized, parameters });
+      if (normalized.startsWith("select u.id as user_id")) return [account];
+      if (normalized.startsWith("insert into app_identity.app_session")) return [{ id: "session-id" }];
+      if (normalized.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "clinical:document" }];
+      return [];
+    };
+    return { events, sessions: new ClinicianSessionService({ query, manager: { query } }) };
+  }
+  const before = serviceAtBoundary();
+  const limited = await before.sessions.create({ username: "new.user", password }, new Date("2026-09-10T10:59:59.999Z"));
+  assert.equal(limited.session.passwordChangeRequired, true);
+  assert.equal(limited.session.expiresAt, expiresAt.toISOString());
+  assert.equal("password_verifier" in limited.session, false);
+
+  const boundary = serviceAtBoundary();
+  await assert.rejects(boundary.sessions.create({ username: "new.user", password }, expiresAt), UnauthorizedException);
+  assert.equal(boundary.events.some(({ sql }) => sql.startsWith("insert into app_identity.app_session")), false);
+});
+
 test("password replacement commits credential, revocation, audits, and its replacement session on one connection", async () => {
   const currentPassword = "Temporary password 42!";
   const csrfToken = "csrf-proof";
@@ -70,7 +103,8 @@ test("password replacement commits credential, revocation, audits, and its repla
     csrf_sha256: digest(csrfToken), session_credential_version: "1", revoked_at: null,
     user_id: "user-id", display_name: "Clinician", active: true,
     organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
-    must_change_password: true, credential_version: "1", capabilities: ["clinical:document"]
+    must_change_password: true, temporary_password_expires_at: new Date("2026-09-10T12:00:00.000Z"),
+    credential_version: "1", capabilities: ["clinical:document"]
   };
   const credentialRow = { ...sessionRow, password_verifier: verifier };
   const { dataSource, events } = instrumentedDataSource(({ sql }) => {
@@ -157,7 +191,8 @@ test("a late password replacement audit failure rolls back credentials, revocati
     csrf_sha256: digest(csrfToken), session_credential_version: "1", revoked_at: null,
     user_id: "user-id", display_name: "Clinician", active: true,
     organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
-    must_change_password: true, credential_version: "1", capabilities: ["clinical:document"]
+    must_change_password: true, temporary_password_expires_at: new Date("2026-09-10T12:00:00.000Z"),
+    credential_version: "1", capabilities: ["clinical:document"]
   };
   const failure = new Error("sign-in audit failed");
   const { dataSource, events } = instrumentedDataSource(({ sql, parameters }) => {
