@@ -24,6 +24,7 @@ import { UserProvisioningService } from "../dist/admin/user-provisioning.service
 import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
 import { SessionAdministrationService } from "../dist/admin/session-administration.service.js";
 import { RolePackageService } from "../dist/admin/role-package.service.js";
+import { OwnershipTransferService } from "../dist/admin/ownership-transfer.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -172,6 +173,20 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const ownershipTransfer = await client.query("select to_regclass('app_identity.ownership_transfer') as transfer");
+  if (!ownershipTransfer.rows[0].transfer) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911260000_ownership_transfer_nominations.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  await client.query(`alter table app_identity.authentication_event drop constraint authentication_event_action_check,
+    add constraint authentication_event_action_check check (action in (
+      'account.provision', 'account.reset_password', 'account.identity_change', 'account.disable',
+      'account.reactivate', 'account.roles_change', 'authentication.sign_in',
+      'authentication.password_change', 'authentication.reauthenticate', 'authentication.sign_out',
+      'authentication.session_revoke'
+    ))`);
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -585,6 +600,51 @@ integrationTest("concurrent owner bootstrap leaves exactly one protected admin-o
     where user_id = $1 and ended_at is null and role_id = (
       select id from app_identity.role where organization_id = $2 and system_key = 'administrator'
     )`, [owner.user_id, organizationId]), /Administrator assignment cannot be removed/);
+});
+
+integrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const transfers = new OwnershipTransferService(database, sessions);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Transfer test', 'UTC')",
+    [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
+    displayName: "Transfer Owner", temporaryPassword: "Temporary!Owner-Transfer-253", clinician: false,
+    operator: { operatorId: "integration-owner-transfer", osAccount: "test", host: "localhost" } });
+  const nominee = await accounts.provision({ organizationId, username: `nominee.${randomUUID()}`,
+    displayName: "Transfer Nominee", role: "administrator", temporaryPassword: "Temporary!Nominee-Transfer-253" });
+  const ownerTemporary = await sessions.create({ username: owner.username, password: "Temporary!Owner-Transfer-253" });
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Transfer-253", newPassword: "Permanent!Owner-Transfer-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  });
+  const nomineeTemporary = await sessions.create({ username: nominee.username, password: "Temporary!Nominee-Transfer-253" });
+  const nomineeSession = await sessions.changePassword(nomineeTemporary.sessionToken, {
+    currentPassword: "Temporary!Nominee-Transfer-253", newPassword: "Permanent!Nominee-Transfer-253",
+    csrfToken: nomineeTemporary.session.csrfToken
+  });
+  await sessions.reauthenticate(ownerSession.sessionToken, ownerSession.session.csrfToken,
+    "Permanent!Owner-Transfer-253");
+  const pending = await transfers.initiate(ownerSession.sessionToken, { nomineeUserId: nominee.userId });
+  assert.equal(pending.transfer.status, "pending");
+  assert.equal((await client.query("select user_id from app_identity.installation_owner where organization_id = $1",
+    [organizationId])).rows[0].user_id, owner.userId);
+  await sessions.reauthenticate(nomineeSession.sessionToken, nomineeSession.session.csrfToken,
+    "Permanent!Nominee-Transfer-253");
+  const accepted = await transfers.accept(nomineeSession.sessionToken);
+  assert.equal(accepted.owner.id, nominee.userId);
+  assert.equal((await client.query("select count(*)::integer count from app_identity.installation_owner where organization_id = $1",
+    [organizationId])).rows[0].count, 1);
+  const administratorAssignments = await client.query(`select user_id from app_identity.user_role_assignment assignment
+    join app_identity.role role on role.organization_id = assignment.organization_id and role.id = assignment.role_id
+    where assignment.organization_id = $1 and assignment.ended_at is null and role.system_key = 'administrator'`, [organizationId]);
+  assert.deepEqual(new Set(administratorAssignments.rows.map(({ user_id }) => user_id)), new Set([owner.userId, nominee.userId]));
 });
 
 integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {

@@ -21,6 +21,9 @@ export class UserLifecycleService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+        // Serialize eligibility changes with ownership acceptance, which locks this row first.
+        await manager.query(`select organization_id from app_identity.installation_owner
+          where organization_id = $1 for update`, [actor.organization.id]);
         const targets = await manager.query<TargetRow[]>(`
           select u.id, u.display_name, credential.username, u.active, u.revision,
             exists (select 1 from app_identity.installation_owner owner_record

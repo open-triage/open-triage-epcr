@@ -85,6 +85,36 @@ export interface AdminContext {
   } | null;
 }
 
+export type OwnershipTransferStatus = "pending" | "accepted" | "cancelled" | "expired" | "ineligible";
+
+export interface OwnershipTransferSummary {
+  id: string;
+  status: OwnershipTransferStatus;
+  initiatedAt: string;
+  expiresAt: string;
+  resolvedAt: string | null;
+  resolutionReason: string | null;
+  nominatedBy: ClinicianSession["user"];
+  nominee: ClinicianSession["user"];
+}
+
+export interface OwnershipTransferState {
+  owner: ClinicianSession["user"];
+  currentUserIsOwner: boolean;
+  currentUserIsNominee: boolean;
+  transfer: OwnershipTransferSummary | null;
+  eligibleNominees: ClinicianSession["user"][];
+}
+
+export interface InitiateOwnershipTransferCommand {
+  nomineeUserId: string;
+  note?: string;
+}
+
+export interface CancelOwnershipTransferCommand {
+  note?: string;
+}
+
 export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms";
 
 export interface AdminRoleSummary {

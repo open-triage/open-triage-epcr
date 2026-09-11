@@ -120,6 +120,19 @@ test("role constraints cover organizations, prerequisites, audit redaction, and 
   assert.match(roleAuthorizationMigration, /role\.version_activate/);
 });
 
+test("ownership transfers are unique, expiring, eligibility-bound, and append-only", async () => {
+  const migration = await readFile(path.join(repoRoot,
+    "supabase/migrations/20260911260000_ownership_transfer_nominations.sql"), "utf8");
+  assert.match(migration, /ownership_transfer_one_pending_idx[\s\S]*where status = 'pending'/);
+  assert.match(migration, /expires_at = initiated_at \+ interval '72 hours'/);
+  assert.match(migration, /ownership_transfer_user_eligibility/);
+  assert.match(migration, /ownership_transfer_administrator_eligibility/);
+  assert.match(migration, /ownership_transfer_event_append_only/);
+  for (const action of ["initiate", "accept", "cancel", "expire", "ineligible", "stale_assurance", "conflict"]) {
+    assert.match(migration, new RegExp(`owner\\.transfer\\.${action}`));
+  }
+});
+
 test("custom role authoring normalizes identities and audits the first immutable activation", () => {
   assert.match(customRoleAuthoringMigration, /role_display_name_normalized/);
   assert.match(customRoleAuthoringMigration, /normalize\(btrim\(display_name\), NFC\)/);
