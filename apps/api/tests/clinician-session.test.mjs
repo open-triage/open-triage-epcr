@@ -5,7 +5,7 @@ import { UnauthorizedException } from "@nestjs/common";
 import { createPasswordVerifier, verifyPassword } from "../dist/identity/password.js";
 import { bearerToken, SESSION_COOKIE } from "../dist/sessions/clinician-session.controller.js";
 import { ClinicianSessionService } from "../dist/sessions/clinician-session.service.js";
-import { validateChangePassword } from "../dist/sessions/clinician-session.validation.js";
+import { validateChangePassword, validateReauthenticate } from "../dist/sessions/clinician-session.validation.js";
 
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 
@@ -58,6 +58,14 @@ test("password replacement validates a strong new secret and a CSRF proof", () =
   }), { currentPassword: "temporary password", newPassword: "replacement password!", csrfToken: "csrf-proof" });
   assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "short", csrfToken: "csrf" }), /12/);
   assert.throws(() => validateChangePassword({ currentPassword: "old", newPassword: "long enough password" }), /CSRF/);
+});
+
+test("reauthentication validation accepts only a current password", () => {
+  assert.deepEqual(validateReauthenticate({ currentPassword: "current password" }),
+    { currentPassword: "current password" });
+  assert.throws(() => validateReauthenticate({}), /current password/);
+  assert.throws(() => validateReauthenticate({ currentPassword: "password", elevationToken: "forged" }),
+    /current password/);
 });
 
 test("temporary credentials sign in only before expiry and cannot outlive their replacement window", async () => {
@@ -131,6 +139,36 @@ test("password replacement commits credential, revocation, audits, and its repla
   assert.ok(events.some(({ sql }) => sql.includes("revocation_reason = 'password_change'")));
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"))
     .map(({ parameters }) => parameters[2]), ["authentication.password_change", "authentication.sign_in"]);
+});
+
+test("successful reauthentication records five-minute server-side assurance without issuing a token", async () => {
+  const currentPassword = "Current password 42!";
+  const csrfToken = "csrf-proof";
+  const verifier = await createPasswordVerifier(currentPassword);
+  const now = new Date("2026-09-10T10:00:00.000Z");
+  const sessionRow = {
+    session_id: "session", created_at: new Date("2026-09-10T09:00:00.000Z"),
+    expires_at: new Date("2026-09-10T22:00:00.000Z"), csrf_sha256: digest(csrfToken),
+    session_credential_version: "1", revoked_at: null, user_id: "user-id", display_name: "Owner", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    must_change_password: false, temporary_password_expires_at: null, credential_version: "1"
+  };
+  const { dataSource, events } = instrumentedDataSource(({ sql }) => {
+    if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
+    if (sql.startsWith("select s.id as session_id")) return [sessionRow];
+    if (sql.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "roles:assign" }];
+    if (sql.startsWith("select c.password_verifier")) return [{ ...sessionRow, password_verifier: verifier }];
+    return [];
+  });
+  const result = await new ClinicianSessionService(dataSource)
+    .reauthenticate("session-token", csrfToken, currentPassword, now);
+  assert.deepEqual(result, { reauthenticatedUntil: "2026-09-10T10:05:00.000Z" });
+  assert.equal(Object.keys(result).some((key) => /token/i.test(key)), false);
+  const assurance = events.find(({ sql }) => sql.startsWith("update app_identity.app_session set reauthenticated_at"));
+  assert.deepEqual(assurance.parameters.slice(1), [now]);
+  assert.equal(events.find(({ sql }) => sql.startsWith("insert into app_identity.authentication_event")).parameters[2],
+    "authentication.reauthenticate");
+  assert.equal(events.at(-1).sql, "commit");
 });
 
 test("active zero-role users receive a clear session result but cannot enter a workspace", async () => {

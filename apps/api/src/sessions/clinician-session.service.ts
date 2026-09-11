@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSession, type CreateClinicianSessionCommand,
+  type ReauthenticationResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
 
@@ -21,6 +22,7 @@ export type CreatedSession = { session: ClinicianSession; sessionToken: string }
 const dummyVerifier = createPasswordVerifier("invalid-password-only");
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const timestamp = (value: Date | string) => value instanceof Date ? value.getTime() : Date.parse(value);
+const REAUTHENTICATION_MILLISECONDS = 5 * 60 * 1_000;
 
 @Injectable()
 export class ClinicianSessionService {
@@ -164,6 +166,47 @@ export class ClinicianSessionService {
     const session = await this.get(sessionToken, now, false, manager);
     if (!session.capabilities?.includes(capability)) throw new UnauthorizedException("The requested capability is required");
     return session;
+  }
+
+  async reauthenticate(sessionToken: string, csrfToken: string | undefined, currentPassword: string,
+    now = new Date()): Promise<ReauthenticationResult> {
+    const verified = await this.dataSource.transaction(async (manager) => {
+      await this.assertCsrf(sessionToken, csrfToken, manager);
+      const session = await this.get(sessionToken, now, false, manager);
+      const rows = await manager.query<CredentialRow[]>(`
+        select c.password_verifier, c.credential_version, c.must_change_password,
+          c.temporary_password_expires_at, u.id as user_id, u.display_name, u.active,
+          u.organization_id, o.name as organization_name, o.shift_session_duration_hours
+        from app_identity.local_credential c
+        join app_identity.app_user u on u.id = c.user_id
+        join app_identity.organization o on o.id = u.organization_id
+        where u.id = $1 for update of c
+      `, [session.user.id]);
+      const account = rows[0];
+      if (!account || !await verifyPassword(currentPassword, account.password_verifier)) {
+        await this.audit(manager, account, "authentication.reauthenticate", "failed");
+        return false;
+      }
+      await manager.query(`update app_identity.app_session set reauthenticated_at = $2
+        where token_sha256 = $1 and revoked_at is null`, [digest(sessionToken), now]);
+      await this.audit(manager, account, "authentication.reauthenticate", "succeeded");
+      return true;
+    });
+    if (!verified) throw new UnauthorizedException("The current password is incorrect");
+    return { reauthenticatedUntil: new Date(now.getTime() + REAUTHENTICATION_MILLISECONDS).toISOString() };
+  }
+
+  async requireRecentReauthentication(sessionToken: string, manager: EntityManager = this.dataSource.manager,
+    now = new Date()): Promise<void> {
+    const earliest = new Date(now.getTime() - REAUTHENTICATION_MILLISECONDS);
+    const rows = await manager.query<Array<{ recent: boolean }>>(`select exists (
+      select 1 from app_identity.app_session
+      where token_sha256 = $1 and revoked_at is null
+        and reauthenticated_at between $2 and $3
+    ) recent`, [digest(sessionToken), earliest, now]);
+    if (!rows[0]?.recent) {
+      throw new ForbiddenException("Recent password reauthentication is required for this protected role change");
+    }
   }
 
   private async audit(manager: EntityManager, account: Partial<CredentialRow> | undefined, action: string, result: string, sessionId?: string): Promise<void> {

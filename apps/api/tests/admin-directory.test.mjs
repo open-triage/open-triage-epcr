@@ -74,6 +74,20 @@ test("role readers receive definitions and aggregate counts but no personnel ide
   assert.equal(JSON.stringify(result).includes("username"), false);
 });
 
+test("role options identify owner-only assignments and actor-safe mutable roles", async () => {
+  const service = new UserRoleReadService({ query: async (sql, parameters) => {
+    assert.match(sql, /administrator.*clinical-demo/);
+    assert.match(sql, /role_version_capability/);
+    assert.deepEqual(parameters, [organizationId, "actor-id", ["roles:assign", "users:read"]]);
+    return [{ id: roleId, display_name: "Administrator", active: true, protected: true,
+      assignment_restricted: true, assignment_mutable: false }];
+  } }, { requireCapability: async () => ({ organization: { id: organizationId }, user: { id: "actor-id" },
+    capabilities: ["roles:assign", "users:read"] }) });
+  assert.deepEqual(await service.userRoleOptions("opaque-session"), { items: [{ id: roleId,
+    displayName: "Administrator", active: true, protected: true,
+    assignmentRestricted: true, assignmentMutable: false }] });
+});
+
 test("authorization failure prevents all directory queries", async () => {
   let queried = false;
   const service = new UserRoleReadService({ query: async () => { queried = true; return []; } }, {

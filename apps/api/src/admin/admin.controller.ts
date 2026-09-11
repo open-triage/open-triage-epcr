@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
 import { sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -10,6 +10,8 @@ import { UserProvisioningService } from "./user-provisioning.service.js";
 import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
 import { UserLifecycleService } from "./user-lifecycle.service.js";
 import { validateUpdateAdminUser } from "./user-lifecycle.validation.js";
+import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
+import { validateReplaceAdminUserRoles } from "./user-role-assignment.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
 
@@ -18,7 +20,8 @@ export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
     private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
     private readonly provisioning: UserProvisioningService,
-    private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService) {}
+    private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService,
+    private readonly roleAssignments: UserRoleAssignmentService) {}
 
   @Get("context")
   context(
@@ -44,6 +47,12 @@ export class AdminController {
   updateUser(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<UpdatedAdminUser> {
     return this.lifecycle.update(sessionToken(request, authorization), id, validateUpdateAdminUser(body));
+  }
+
+  @Put("users/:id/roles")
+  replaceUserRoles(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<UpdatedAdminUserRoles> {
+    return this.roleAssignments.replace(sessionToken(request, authorization), id, validateReplaceAdminUserRoles(body));
   }
 
   @Get("user-role-options")

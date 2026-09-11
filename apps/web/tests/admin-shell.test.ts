@@ -4,7 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { activateStationaryForm, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadCatalogDraft, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
@@ -119,7 +120,7 @@ test("role mutations send CSRF proof and optimistic version without mutable audi
   assert.doesNotMatch(String(requests[1]!.init?.body), /password|token|secret/i);
 });
 
-test("user lifecycle updates send the expected revision and complete retained access set", async (t) => {
+test("user lifecycle updates send the expected revision without accepting a partial role update", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async (input, init) => {
@@ -127,12 +128,12 @@ test("user lifecycle updates send the expected revision and complete retained ac
     assert.equal(init?.method, "PUT");
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
     assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, username: "renamed.user",
-      displayName: "Renamed User", roleIds: ["role-id"], active: false, note: "Leave" });
+      displayName: "Renamed User", active: false, note: "Leave" });
     return Response.json({ id: "user-id", username: "renamed.user", displayName: "Renamed User", active: false,
       revision: 8, roles: [], restoredRoles: [], sessionsRevoked: 3, freshLoginRequired: true });
   };
   const updated = await updateAdminUser("csrf-proof", "user-id", { expectedRevision: 7,
-    username: "renamed.user", displayName: "Renamed User", roleIds: ["role-id"], active: false, note: "Leave" });
+    username: "renamed.user", displayName: "Renamed User", active: false, note: "Leave" });
   assert.equal(updated.sessionsRevoked, 3);
 });
 
@@ -156,6 +157,28 @@ test("role lifecycle requests carry version preconditions and read redacted hist
   assert.match(requests[1]!.input, /roles\/role-id\/reactivate$/);
   assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
   assert.equal(requests[2]!.init?.method, undefined);
+});
+
+test("role replacement and protected-action reauthentication use separate revisioned requests", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return requests.length === 1
+      ? Response.json({ reauthenticatedUntil: "2026-09-11T12:05:00.000Z" })
+      : Response.json({ id: "user-id", username: "user", displayName: "User", active: false,
+        revision: 9, roles: [], addedRoles: [], removedRoles: [] });
+  };
+  const assurance = await reauthenticateClinicianSession("current password", "csrf-proof");
+  await replaceAdminUserRoles("csrf-proof", "user-id", { expectedRevision: 8, roleIds: [], note: "Prepare" });
+  assert.equal(assurance.reauthenticatedUntil, "2026-09-11T12:05:00.000Z");
+  assert.match(requests[0]!.input, /\/api\/sessions\/reauthenticate$/);
+  assert.deepEqual(JSON.parse(String(requests[0]!.init?.body)), { currentPassword: "current password" });
+  assert.match(requests[1]!.input, /\/api\/admin\/users\/user-id\/roles$/);
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)),
+    { expectedRevision: 8, roleIds: [], note: "Prepare" });
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {

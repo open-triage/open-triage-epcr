@@ -94,6 +94,13 @@ export interface AdminRoleSummary {
   protected: boolean;
 }
 
+export interface AdminAssignableRoleSummary extends AdminRoleSummary {
+  /** Administrator and Clinical Demo assignments are reserved to the installation owner. */
+  assignmentRestricted: boolean;
+  /** Whether the current actor may add or remove this role. */
+  assignmentMutable: boolean;
+}
+
 export interface AdminUserSummary {
   id: string;
   displayName: string;
@@ -131,8 +138,6 @@ export interface UpdateAdminUserCommand {
   expectedRevision: number;
   username: string;
   displayName: string;
-  /** The complete retained role set. Roles remain assigned while disabled. */
-  roleIds: string[];
   active: boolean;
   note?: string;
 }
@@ -223,7 +228,27 @@ export interface AdminRoleHistory {
 }
 
 export interface AdminRoleSummaryList {
-  items: AdminRoleSummary[];
+  items: AdminAssignableRoleSummary[];
+}
+
+export interface ReplaceAdminUserRolesCommand {
+  expectedRevision: number;
+  /** The complete desired role set. An empty set removes every retained role. */
+  roleIds: string[];
+  note?: string;
+}
+
+export interface UpdatedAdminUserRoles extends AdminUserSummary {
+  addedRoles: AdminRoleSummary[];
+  removedRoles: AdminRoleSummary[];
+}
+
+export interface ReauthenticateCommand {
+  currentPassword: string;
+}
+
+export interface ReauthenticationResult {
+  reauthenticatedUntil: string;
 }
 
 export interface CatalogDraftElement {

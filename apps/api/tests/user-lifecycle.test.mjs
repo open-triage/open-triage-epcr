@@ -9,7 +9,7 @@ const targetId = "20000000-0000-4000-8000-000000000001";
 const actorId = "30000000-0000-4000-8000-000000000001";
 const organizationId = "40000000-0000-4000-8000-000000000001";
 const command = (overrides = {}) => ({ expectedRevision: 4, username: "renamed.user", displayName: "Renamed User",
-  roleIds: [roleId], active: false, note: "Planned leave", ...overrides });
+  active: false, note: "Planned leave", ...overrides });
 
 function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [roleId], sessionsRevoked = 2,
   failCredential } = {}) {
@@ -23,8 +23,8 @@ function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [rol
     events.push({ sql: normalized, parameters });
     if (normalized.startsWith("select u.id, u.display_name")) return [selectedTarget];
     if (normalized.startsWith("select distinct capability.capability_key")) return targetOnly;
-    if (normalized.startsWith("select assignment.role_id from app_identity.user_role_assignment")) {
-      return currentRoleIds.map((role_id) => ({ role_id }));
+    if (normalized.startsWith("select role.id, role.display_name")) {
+      return currentRoleIds.map((id) => ({ id, display_name: "Clinician", active: true, protected: true }));
     }
     if (normalized.startsWith("select id, display_name")) return [{ id: roleId, display_name: "Clinician",
       active: true, protected: true, assignable: true }];
@@ -52,14 +52,14 @@ function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [rol
   return { events, service: new UserLifecycleService(dataSource, sessions) };
 }
 
-test("lifecycle validation normalizes a complete revisioned command and rejects forged or ambiguous input", () => {
+test("lifecycle validation normalizes a revisioned identity-state command and rejects role changes on the partial endpoint", () => {
   assert.deepEqual(validateUpdateAdminUser({ expectedRevision: 4, username: " RENAMED.User ",
-    displayName: " A\u030Ake Medic ", roleIds: [roleId], active: false, note: " Planned leave " }),
-  { expectedRevision: 4, username: "renamed.user", displayName: "Åke Medic", roleIds: [roleId],
+    displayName: " A\u030Ake Medic ", active: false, note: " Planned leave " }),
+  { expectedRevision: 4, username: "renamed.user", displayName: "Åke Medic",
     active: false, note: "Planned leave" });
   for (const invalid of [
     {}, command({ expectedRevision: 0 }), command({ username: "bad user" }), command({ displayName: "" }),
-    command({ roleIds: [roleId, roleId] }), command({ active: "false" }), command({ organizationId }),
+    command({ roleIds: [roleId] }), command({ active: "false" }), command({ organizationId }),
     command({ note: "line\nbreak" })
   ]) assert.throws(() => validateUpdateAdminUser(invalid), BadRequestException);
 });
@@ -85,12 +85,12 @@ test("disablement atomically renames durable identity, retains roles, revokes se
 });
 
 test("reactivation reports effective retained roles, requires fresh login, and never changes credentials", async () => {
-  const { service, events } = setup({ target: { active: false }, currentRoleIds: [] });
+  const { service, events } = setup({ target: { active: false } });
   const result = await service.update("opaque-session", targetId, command({ active: true, note: "Return to duty" }));
   assert.deepEqual(result.restoredRoles, [{ id: roleId, displayName: "Clinician", active: true, protected: true }]);
   assert.equal(result.sessionsRevoked, 0);
   assert.equal(result.freshLoginRequired, true);
-  assert.equal(events.some(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment")), true);
+  assert.equal(events.some(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment")), false);
   assert.equal(events.some(({ sql }) => /password_verifier|credential_version/.test(sql)), false);
 });
 
