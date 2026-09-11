@@ -86,6 +86,7 @@ test("the authenticated call-list integration returns only the clinician's assig
   const dataSource = {
     query: async (sql, parameters) => {
       queries.push({ sql, parameters });
+      if (sql.includes("purge_expired_synthetic_records")) return [];
       return [{
         id: "32000000-0000-4000-8000-000000000011",
         call_number: "SYN-20260903-001",
@@ -131,9 +132,9 @@ test("the authenticated call-list integration returns only the clinician's assig
     status: "assigned"
   }]);
   assert.deepEqual(result.canceledAssignmentIds, ["32000000-0000-4000-8000-000000000012"]);
-  assert.deepEqual(queries[0].parameters, [session.user.id, session.organization.id]);
-  assert.match(queries[0].sql, /ca\.status in \('assigned', 'canceled'\)/);
-  assert.match(queries[0].sql, /uc\.user_id = \$1/);
+  assert.deepEqual(queries[1].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
+  assert.match(queries[1].sql, /ca\.status in \('assigned', 'canceled'\)/);
+  assert.match(queries[1].sql, /uc\.user_id = \$1/);
 });
 
 test("the assigned-call endpoint requires a current clinician session", async () => {
@@ -303,13 +304,14 @@ test("Clinical Demo generation ignores ordinary calls, creates once, reuses per 
     if (normalized.includes("insert into clinical.call_assignment")) {
       writes.push("assignment");
       assert.match(normalized, /synthetic_generated_by/);
+      const expiresAt = new Date(Date.parse(parameters[5]) + 24 * 60 * 60 * 1_000).toISOString();
       generated = {
         id: parameters[0], call_number: parameters[4], unit_id: parameters[2], call_sign: "Medic 32",
         dispatched_at: parameters[5], dispatch_reason: parameters[6], dispatch_priority_code: "2305003",
         dispatch_priority_display: "Emergent", chief_complaint: null, agency_time_zone: "America/New_York",
-        status: "assigned"
+        expires_at: expiresAt, status: "assigned"
       };
-      return [];
+      return [{ created_at: parameters[5], expires_at: expiresAt }];
     }
     if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) {
       audits.push(parameters);

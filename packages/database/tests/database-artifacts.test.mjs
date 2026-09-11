@@ -31,7 +31,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
   roleRetirementMigration, sessionAdministrationMigration,
-  portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration] = await Promise.all([
+  portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration,
+  syntheticExpiryMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -67,8 +68,22 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911270000_expire_synthetic_records.sql"), "utf8")
 ]);
+
+test("synthetic expiry is immutable, indexed, concurrency-safe, and retains only anti-replay facts", () => {
+  assert.match(syntheticExpiryMigration, /expires_at = created_at \+ interval '24 hours'/);
+  assert.match(syntheticExpiryMigration, /synthetic assignment provenance and expiry are immutable/);
+  assert.match(syntheticExpiryMigration, /synthetic report provenance and expiry are immutable/);
+  assert.match(syntheticExpiryMigration, /report_synthetic_expiry_idx/);
+  assert.match(syntheticExpiryMigration, /call_assignment_synthetic_expiry_idx/);
+  assert.match(syntheticExpiryMigration, /for update skip locked/);
+  assert.match(syntheticExpiryMigration, /purged report % can never be recreated/);
+  assert.match(syntheticExpiryMigration, /clinical_audit\.synthetic_purge_tombstone/);
+  const tombstone = syntheticExpiryMigration.match(/create table clinical_audit\.synthetic_purge_tombstone \(([\s\S]*?)\n\);/)?.[1] ?? "";
+  assert.doesNotMatch(tombstone, /patient|payload|value|document|name|address|actor/i);
+});
 
 test("synthetic generation has a per-user/unit unopened invariant and append-only safe audit facts", () => {
   assert.match(syntheticGenerationMigration, /synthetic_generated_by uuid/);

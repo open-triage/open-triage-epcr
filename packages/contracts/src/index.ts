@@ -561,6 +561,8 @@ export interface AssignedCall {
   chiefComplaint: string | null;
   /** IANA zone used for operational-time presentation. */
   agencyTimeZone?: string;
+  /** Immutable server deadline for generated synthetic calls. */
+  expiresAt?: string;
   status: AssignmentStatus;
 }
 
@@ -603,6 +605,8 @@ export interface OpenAssignmentResponse {
     status: "draft";
     /** Server-qualified boundary for Clinical Demo mutations; never inferred by the browser. */
     demoMutable?: boolean;
+    /** Immutable server deadline for a generated synthetic report. */
+    expiresAt?: string;
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
     /** IANA zone used for operational-time presentation. */
@@ -657,6 +661,7 @@ export interface OpenCall {
   formVersionId: string;
   catalogReleaseId: string;
   demoMutable?: boolean;
+  expiresAt?: string;
 }
 
 export interface OpenCallsResponse {
