@@ -1,6 +1,6 @@
 "use client";
 
-import type { AdminContext, AdminPanelKey, ClinicianSession, InstallationSettings } from "@open-triage/contracts";
+import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
 import React, { useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
 import { CatalogAuthoring } from "./catalog-authoring";
@@ -25,9 +25,8 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, installationSettings }: {
+export function AdminShell({ session }: {
   readonly session: ClinicianSession;
-  readonly installationSettings: InstallationSettings;
 }) {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,14 +125,13 @@ export function AdminShell({ session, installationSettings }: {
     {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading">Element catalog</h2></div>
       <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
-        installationSettings={installationSettings} onPublished={setFormCatalogReleaseId} />
+        onPublished={setFormCatalogReleaseId} />
     </section>}
 
     {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
       <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         capabilities={context.capabilities}
-        installationSettings={installationSettings}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />

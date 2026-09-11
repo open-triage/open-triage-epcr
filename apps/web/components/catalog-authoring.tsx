@@ -1,6 +1,6 @@
 "use client";
 
-import type { CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, InstallationSettings } from "@open-triage/contracts";
+import type { CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 
@@ -12,14 +12,13 @@ export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   return { canRead, canWrite, canPublish: canWrite && capabilities.includes("catalog:publish") };
 }
 
-export function CatalogAuthoring({ csrfToken, capabilities, installationSettings, onPublished }: {
+export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
-  readonly installationSettings: InstallationSettings;
   readonly onPublished?: (catalogReleaseId: string) => void;
 }) {
   const { canWrite, canPublish } = catalogAuthority(capabilities);
-  const publicationAllowed = canPublish && !installationSettings.administration.readOnly;
+  const publicationAllowed = canPublish;
   const [draft, setDraft] = useState<CatalogDraft | CatalogDefinitionView | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");

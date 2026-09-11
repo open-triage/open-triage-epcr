@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ConflictException, NotFoundException } from "@nestjs/common";
 import {
   canonicalDefinitionSha256,
   FormPublicationValidationError,
@@ -14,21 +14,6 @@ const validPublishInput = {
   changeNote: "Initial release",
   definitionSha256: "a".repeat(64)
 };
-
-test("synthetic demo blocks direct form publication before database access", async () => {
-  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  let queried = false;
-  const service = new FormPublicationService({ transaction: async () => { queried = true; } });
-  try {
-    await assert.rejects(service.publish("50000000-0000-4000-8000-000000000001", {}),
-      (error) => error instanceof ForbiddenException && /Drafts can still be/.test(error.message));
-    assert.equal(queried, false);
-  } finally {
-    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
-  }
-});
 
 test("canonical form hashes do not depend on object key order", () => {
   const left = { schemaVersion: 1, sections: [{ key: "one", presentation: { title: "One", order: 1 }, fields: [] }] };

@@ -12,6 +12,8 @@ test("stationary repeating rows retain focus, identity, and narrow-layout access
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
@@ -66,6 +68,8 @@ test("single-occurrence nested groups are flattened into their parent dialog", a
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
@@ -95,6 +99,8 @@ test("removing the final required table row removes it and leaves scoped inline 
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
@@ -120,6 +126,8 @@ test("nested repeating rows remain scoped to their originating parent workflow",
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();

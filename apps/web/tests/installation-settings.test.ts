@@ -4,55 +4,31 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { parseInstallationSettings, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import schema from "@open-triage/contracts/installation-settings.schema-1.0.0.json";
 import production from "@open-triage/contracts/config/installation.production.json";
-import syntheticDemo from "@open-triage/contracts/config/installation.synthetic-demo.json";
 import { loadInstallationConfiguration, selectedInstallationSettings } from "../app/installation-settings";
 import { createClinicianSession } from "../app/clinician-session";
 
-test("production and synthetic demo baselines conform to the installation settings schema", () => {
+test("the sole installation policy is the production security and retention baseline", () => {
   const validate = new Ajv2020({ strict: true }).compile(schema);
-  for (const baseline of [production, syntheticDemo]) {
-    assert.equal(validate(baseline), true, JSON.stringify(validate.errors));
-    assert.deepEqual(parseInstallationSettings(baseline), baseline);
+  assert.equal(validate(production), true, JSON.stringify(validate.errors));
+  assert.deepEqual(parseInstallationSettings(production), production);
+  assert.deepEqual(selectedInstallationSettings(), production);
+  assert.equal(production.authentication.minimumPasswordLength, 12);
+  assert.deepEqual(production.clinicalRetention, {
+    durationHours: 10 * 365 * 24,
+    automaticDeletionEnabled: false,
+  });
+  for (const removed of ["syntheticFixtures", "sampleDispatchAssignment", "syntheticDataBanner", "administration"]) {
+    assert.equal(removed in production, false);
   }
 });
 
-test("production defaults do not inherit independently selectable demo behavior", () => {
-  assert.equal(production.syntheticFixtures.enabled, false);
-  assert.equal(production.sampleDispatchAssignment.enabled, false);
-  assert.equal(production.syntheticDataBanner.enabled, false);
-  assert.equal(production.clinicalRetention.durationHours, 10 * 365 * 24);
-  assert.equal(production.clinicalRetention.automaticDeletionEnabled, false);
-  assert.equal(production.administration.readOnly, false);
-  assert.equal(production.exports.downloadsAllowed, true);
-
-  assert.equal(syntheticDemo.syntheticFixtures.enabled, true);
-  assert.equal(syntheticDemo.sampleDispatchAssignment.enabled, true);
-  assert.equal(syntheticDemo.syntheticDataBanner.enabled, true);
-  assert.equal(syntheticDemo.clinicalRetention.durationHours, 24);
-  assert.equal(syntheticDemo.administration.readOnly, true);
-  assert.equal(syntheticDemo.exports.downloadsAllowed, false);
-});
-
-test("the browser selects a baseline explicitly and fails closed on unknown selections", () => {
-  const original = process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
-  try {
-    delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
-    assert.equal(selectedInstallationSettings().syntheticDataBanner.enabled, false);
-    process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-    assert.equal(selectedInstallationSettings().syntheticDataBanner.enabled, true);
-    process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "not-an-installation";
-    assert.throws(() => selectedInstallationSettings(), /Unknown installation settings baseline/);
-  } finally {
-    if (original === undefined) delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = original;
+test("settings reject retired demo-profile behavior", () => {
+  for (const field of ["syntheticFixtures", "sampleDispatchAssignment", "syntheticDataBanner", "administration", "demo"]) {
+    assert.throws(() => parseInstallationSettings({ ...production, [field]: {} }), /invalid keys/);
   }
 });
 
-test("settings reject undeclared fields instead of silently enabling behavior", () => {
-  assert.throws(() => parseInstallationSettings({ ...production, demo: true }), /invalid keys/);
-});
-
-test("server-backed web clients load the API's authoritative installation profile", async () => {
+test("server-backed clients receive no profile, fixture metadata, or credentials", async () => {
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
   try {
@@ -60,12 +36,10 @@ test("server-backed web clients load the API's authoritative installation profil
     process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
     const loaded = await loadInstallationConfiguration(async (input) => {
       assert.equal(String(input), "https://api.example.test/api/installation");
-      return new Response(JSON.stringify({ profile: "synthetic-demo", settings: syntheticDemo,
-        demoLogin: { username: "demo.admin", password: "open-triage-demo" } }), { status: 200 });
+      return new Response(JSON.stringify({ settings: production }), { status: 200 });
     });
-    assert.equal(loaded.profile, "synthetic-demo");
-    assert.equal(loaded.settings.syntheticFixtures.enabled, true);
-    assert.equal(loaded.demoLogin?.username, "demo.admin");
+    assert.deepEqual(loaded, { settings: production });
+    assert.equal(JSON.stringify(loaded).includes(SYNTHETIC_DEMO_FIXTURE.password), false);
   } finally {
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
@@ -74,42 +48,19 @@ test("server-backed web clients load the API's authoritative installation profil
   }
 });
 
-test("the static installation's provided demo credentials authenticate through the live session adapter", async () => {
+test("the static prototype accepts manually supplied local credentials as a clinician only", async () => {
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  const originalBaseline = process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
   try {
     process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
-    process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-    const installation = await loadInstallationConfiguration();
-    assert.deepEqual(installation.demoLogin, {
+    assert.deepEqual(await loadInstallationConfiguration(), { settings: production });
+    const session = await createClinicianSession({
       username: SYNTHETIC_DEMO_FIXTURE.clinicianUsername,
       password: SYNTHETIC_DEMO_FIXTURE.password,
     });
-
-    const session = await createClinicianSession(installation.demoLogin!);
-    assert.equal(session.user.displayName, "Synthetic Clinician");
-    assert.equal(session.organization.name, "OpenTriage Synthetic EMS");
+    assert.deepEqual(session.capabilities, ["clinical:demo", "clinical:document"]);
+    assert.equal(session.capabilities?.some((capability) => capability.startsWith("admin")), false);
   } finally {
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
-    if (originalBaseline === undefined) delete process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE = originalBaseline;
   }
-});
-
-test("fixture, assignment, banner, and restriction controls accept independent combinations", () => {
-  const mixed = parseInstallationSettings({
-    ...production,
-    syntheticFixtures: { enabled: true },
-    sampleDispatchAssignment: { enabled: false },
-    syntheticDataBanner: { ...production.syntheticDataBanner, enabled: true },
-    administration: { readOnly: true },
-  });
-  assert.deepEqual({
-    fixture: mixed.syntheticFixtures.enabled,
-    assignment: mixed.sampleDispatchAssignment.enabled,
-    banner: mixed.syntheticDataBanner.enabled,
-    readOnly: mixed.administration.readOnly,
-    downloads: mixed.exports.downloadsAllowed,
-  }, { fixture: true, assignment: false, banner: true, readOnly: true, downloads: true });
 });

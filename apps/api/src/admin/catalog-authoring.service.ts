@@ -7,7 +7,6 @@ import type {
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
-import { configurationPublishingAllowed, READ_ONLY_ADMINISTRATION_MESSAGE } from "../config/installation-settings.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -153,7 +152,6 @@ export class CatalogAuthoringService {
 
   async publish(sessionToken: string, draftId: string, input: unknown): Promise<PublishedCatalog> {
     const session = await this.authorize(sessionToken, "catalog:publish");
-    if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     const body = this.publishBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<DraftRow[]>(`

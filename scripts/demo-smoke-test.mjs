@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import fixture from "../packages/contracts/src/synthetic-demo-fixture.json" with { type: "json" };
+import productionSettings from "../packages/contracts/config/installation.production.json" with { type: "json" };
 
 const DEFAULT_USERNAME = fixture.administratorUsername;
 const DEFAULT_PASSWORD = fixture.password;
@@ -92,19 +93,12 @@ export async function verifyPublicDemo(
 
   const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", api));
   const installation = await responseJson(installationResponse, "Installation configuration");
-  const activeFixture = installation?.fixture;
-  if (installation?.profile !== "synthetic-demo" || !installation?.settings?.syntheticFixtures?.enabled ||
-      installation?.demoLogin?.username !== fixture.administratorUsername ||
-      installation?.demoLogin?.password !== fixture.password ||
-      activeFixture?.id !== fixture.id || activeFixture?.revision !== fixture.revision ||
-      activeFixture?.activeFormVersionId !== fixture.formVersionId ||
-      !Number.isInteger(activeFixture?.activeFormVersion) || activeFixture.activeFormVersion < 1 ||
-      typeof activeFixture?.activeFormDefinitionSha256 !== "string" || activeFixture.activeFormDefinitionSha256.length !== 64 ||
-      activeFixture?.sectionCount !== fixture.expectedSectionCount ||
-      activeFixture?.fieldCount !== fixture.expectedFieldCount) {
+  if (JSON.stringify(installation?.settings) !== JSON.stringify(productionSettings) ||
+      "profile" in installation || "demoLogin" in installation || "fixture" in installation ||
+      JSON.stringify(installation).includes(fixture.password)) {
     throw new Error("Public demo installation configuration is inconsistent");
   }
-  log("PASS synthetic installation profile and active form");
+  log("PASS production-equivalent installation policy without exposed fixture credentials");
 
   const loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", api), {
     method: "POST",

@@ -29,25 +29,20 @@ The clinical and analytical database design is documented in
 [`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
 load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
 
-For local API journeys, bootstrap a clean PostgreSQL database into a complete,
-fictional installation with one command:
+For database-backed demonstration journeys, first apply migrations and create the
+ordinary installation organization. Then seed the two optional fixture accounts:
 
 ```sh
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
-PATIENT_KEY_INSTALLATION_ID=00000000-0000-4000-8000-000000000001 \
-PATIENT_KEY_VERSION=1 \
-PATIENT_KEY_SECRET_BASE64='<base64-encoded-random-32-byte-secret>' \
   npm run bootstrap:synthetic -w @open-triage/database
 ```
 
-The command applies the foundation migration when needed, loads the pinned catalog,
-creates a synthetic organization, versioned agency demographics, users and
-capabilities, a published form, and a baseline draft report, then ingests only the
-committed initial dispatch sample through the production ingestion library. It is safe to replay:
-stable fixture identities are verified and immutable versions are never rewritten.
-The fixture uses an unknown patient with a one-way synthetic pseudonym and fictional
-dispatch metadata—no real patient data. It is only loaded by this explicit command;
-production API and migration entry points do not import it.
+The command creates only missing `demo.admin` and `demo.clinician` accounts with
+their initial protected roles. Both start with `open-triage-demo` and do not require
+a first-login password change. Replays never reset their passwords, reactivate them,
+or restore roles removed by an owner. The accounts have no authority until the
+organization has a normal installation owner; follow
+[`docs/runbooks/identity-recovery.md`](docs/runbooks/identity-recovery.md) for owner setup.
 
 To ingest one vendor snapshot explicitly, pass the file and caller-owned organization
 and source context to the JSON-output CLI:
@@ -60,15 +55,11 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
   --source-id synthetic-bootstrap
 ```
 
-The mobile entry screen prefills the synthetic clinician credentials and requires
-an explicit **Sign in** action. The seeded organization fixes that session at 14
-hours from login; the API automatically rejects it at that deadline, and **Log out**
-ends it immediately. Deployments can change `shift_session_duration_hours` on the
-organization until the stationary administration interface is available.
-Select `OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the API and
-`NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo` for the web app when
-running this fixture. With no selection, both applications use the safe production
-baseline and synthetic fixtures, sample assignment generation, and the banner stay off.
+The login form never exposes or prefills fixture credentials. Demonstration and
+production deployments use the same ownership, password, authorization, publication,
+export, and ordinary ten-year clinical-retention policy. Synthetic clinical records
+are created explicitly by users with Clinical Demo authority and expire according to
+their own immutable 24-hour record provenance.
 
 Draft clients use `POST /api/reports` with client-generated UUIDv4 report,
 incident, patient, and command identities. The API derives the analytical patient

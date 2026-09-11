@@ -12,8 +12,6 @@ process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-00000000000
 process.env.PATIENT_KEY_VERSION ??= "1";
 process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
-process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-
 const dispatchSample = JSON.parse(readFileSync(new URL("../../../packages/contracts/examples/dispatch/synthetic-assignment-01.json", import.meta.url), "utf8"));
 
 const session = {

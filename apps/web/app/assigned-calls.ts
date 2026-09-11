@@ -9,7 +9,6 @@ import type {
   ReopenOpenCallResponse,
   SyntheticCallGenerationContext,
 } from "@open-triage/contracts";
-import { selectedInstallationSettings } from "./installation-settings";
 import {
   apiRequestUrl,
   browserRequestConfiguration,
@@ -75,9 +74,6 @@ export function assignedCallsUrl(): string {
 }
 
 export async function fetchAssignedCalls(): Promise<AssignedCallsResponse> {
-  if (browserRequestConfiguration().mode === "static" && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
-    return { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() };
-  }
   const response = await fetch(assignedCallsUrl(), browserRequestInit());
   if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Assigned calls could not be refreshed.");
   return response.json() as Promise<AssignedCallsResponse>;
@@ -95,9 +91,6 @@ export async function openAssignedCall(csrfToken: string, assignmentId: string):
   let response: Response;
   try {
     const staticExport = browserRequestConfiguration().mode === "static";
-    if (staticExport && !selectedInstallationSettings().sampleDispatchAssignment.enabled) {
-      throw new Error("Sample dispatch assignments are disabled for this installation.");
-    }
     response = await fetch(staticExport ? staticOpenAssignmentUrl() : openAssignmentUrl(assignmentId), browserRequestInit({
       method: staticExport ? "GET" : "POST",
       headers: staticExport ? {} : { "x-csrf-token": csrfToken }

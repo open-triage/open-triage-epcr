@@ -27,8 +27,9 @@ test("the service worker is generated from TypeScript and excluded from version 
   assert.match(webPackage.scripts.prebuild, /build-service-worker\.ts/);
   assert.match(generator, /entryPoints: \["service-worker\/service-worker\.ts"\]/);
   assert.match(generator, /outfile: "public\/sw\.js"/);
-  assert.match(generator, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
-  assert.match(source, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
+  assert.doesNotMatch(generator, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
+  assert.doesNotMatch(source, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
+  assert.match(source, /new URL\("demo-assigned-calls\.json"/);
 });
 
 test("build and CI require the generated worker in deployable output", async () => {

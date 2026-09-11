@@ -34,6 +34,8 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo.clinician");
+  await page.getByLabel("Password").fill("open-triage-demo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.locator(".app-shell")).toHaveAttribute("data-presentation-mode", "mobile");

@@ -81,9 +81,10 @@ test("the harness guards before its first destructive statement runs", async () 
   assert.ok(guardIndex < createDatabaseIndex, "the scratch-database guard must run before database creation");
 });
 
-test("the harness uses production migrations, bootstrap, schemas, and projector", async () => {
+test("the harness uses production migrations, catalog, schemas, and projector", async () => {
   const harness = await readFile(path.join(packageRoot, "scripts/run-scale-tests.mjs"), "utf8");
-  assert.match(harness, /bootstrap:synthetic/);
+  assert.match(harness, /"migrate"/);
+  assert.match(harness, /"load:catalog"/);
   assert.match(harness, /scripts\/project-analytics\.mjs/);
   assert.match(harness, /analytics_private\.epcr/);
   assert.match(harness, /supabase_migrations\.schema_migrations/);
