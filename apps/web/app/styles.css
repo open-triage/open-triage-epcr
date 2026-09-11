@@ -244,6 +244,10 @@ input, select, textarea { touch-action: manipulation; }
 .safety-notice .demo-data-controls button { min-height: 28px; padding: 2px 9px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-size: var(--text-caption); font-weight: 750; cursor: pointer; }
 .safety-notice .demo-data-controls .delete-record-action { border-color: #ffb4ac; background: #9f241d; }
 .safety-notice .demo-data-controls .delete-record-action:disabled { opacity: .7; cursor: wait; }
+.clinical-demo-banner button { min-height: 28px; padding: 2px 9px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-size: var(--text-caption); font-weight: 750; cursor: pointer; }
+.clinical-demo-banner button:disabled { opacity: .65; cursor: wait; }
+.clinical-demo-unit { display: inline-flex; align-items: center; gap: 5px; color: #fff; font-weight: 700; }
+.clinical-demo-unit select { min-height: 28px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #182019; background: #fff; }
 .encounter-header { padding: 18px 20px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .stationary-presentation { --stationary-top-bars: 86px; --stationary-call-header-height: 88px; }
 .stationary-presentation .encounter-header { position: sticky; z-index: 19; top: var(--stationary-top-bars); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: var(--stationary-call-header-height); padding: 10px 18px; }

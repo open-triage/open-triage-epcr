@@ -6,6 +6,8 @@ import {
   canceledAssignedCalls,
   fetchAssignedCalls,
   fetchOpenCalls,
+  fetchSyntheticCallGenerationContext,
+  generateSyntheticCall,
   openAssignedCall,
   reopenOpenCall,
   resolveDispatchConflict,
@@ -26,6 +28,51 @@ const call = (id: string, callNumber: string): AssignedCall => ({
 
 test("assignment polling uses the agreed ten-second cadence", () => {
   assert.equal(ASSIGNED_CALL_POLL_INTERVAL_MS, 10_000);
+});
+
+test("synthetic generation context and selected unit use only the live authenticated API", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (init?.method === "POST") return Response.json({ assignment: call("generated", "DEMO-1"), reused: false });
+    return Response.json({ eligibleUnits: [{ id: "unit-id", callSign: "Medic 32", name: "Medic 32" }], hasOpenReport: false });
+  };
+  try {
+    const context = await fetchSyntheticCallGenerationContext();
+    const generated = await generateSyntheticCall("csrf-token", context.eligibleUnits[0]!.id);
+    assert.equal(generated.assignment.id, "generated");
+    assert.deepEqual(requests.map(({ url }) => url), [
+      "http://localhost:3001/api/calls/synthetic-generation",
+      "http://localhost:3001/api/calls/synthetic-generation",
+    ]);
+    assert.equal(requests[1]?.init?.method, "POST");
+    assert.equal(new Headers(requests[1]?.init?.headers).get("x-csrf-token"), "csrf-token");
+    assert.deepEqual(JSON.parse(String(requests[1]?.init?.body)), { unitId: "unit-id" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
+});
+
+test("synthetic call generation is unavailable to static and disconnected clients", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
+  try {
+    await assert.rejects(fetchSyntheticCallGenerationContext(), /live connection/i);
+    await assert.rejects(generateSyntheticCall("csrf-token", "unit-id"), /live connection/i);
+    delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    globalThis.fetch = async () => { throw new TypeError("offline"); };
+    await assert.rejects(generateSyntheticCall("csrf-token", "unit-id"), /live connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
 });
 
 test("first-open has no offline fallback and requires the server to create authoritative identities", async () => {

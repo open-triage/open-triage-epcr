@@ -540,6 +540,26 @@ export interface AssignedCallsResponse {
   refreshedAt: string;
 }
 
+export interface ClinicalDemoUnit {
+  id: string;
+  callSign: string;
+  name: string;
+}
+
+export interface SyntheticCallGenerationContext {
+  eligibleUnits: ClinicalDemoUnit[];
+  hasOpenReport: boolean;
+}
+
+export interface GenerateSyntheticCallCommand {
+  unitId: string;
+}
+
+export interface GenerateSyntheticCallResponse {
+  assignment: AssignedCall;
+  reused: boolean;
+}
+
 export interface OpenAssignmentResponse {
   assignmentId: string;
   report: {

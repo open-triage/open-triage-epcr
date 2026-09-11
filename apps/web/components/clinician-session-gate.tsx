@@ -22,12 +22,11 @@ import {
   storePresentationMode,
   type PresentationMode
 } from "../app/presentation-mode";
-import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 import { loadInstallationConfiguration } from "../app/installation-settings";
 import { AdminShell } from "./admin-shell";
-import { deleteDraftReport } from "../app/draft-report";
-import { clearShellState } from "../app/local-persistence";
-import { removeSignedOfflineReport } from "../app/offline-reports";
+import { browserRequestConfiguration } from "../app/browser-api";
+import { ClinicalDemoBanner } from "./clinical-demo-banner";
+import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
@@ -52,8 +51,9 @@ export function ClinicianSessionGate({ children }: {
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
-  const [reportWithErrorsId, setReportWithErrorsId] = useState<string | null>(null);
-  const [deletingReport, setDeletingReport] = useState(false);
+  const [, setReportWithErrorsId] = useState<string | null>(null);
+  const [online, setOnline] = useState(false);
+  const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
   const completionNoticeRef = useRef<HTMLParagraphElement>(null);
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
@@ -77,6 +77,17 @@ export function ClinicianSessionGate({ children }: {
       if (current) setReady(true);
     });
     return () => { current = false; };
+  }, []);
+
+  useEffect(() => {
+    const updateOnline = () => setOnline(window.navigator.onLine);
+    updateOnline();
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
   }, []);
 
   useEffect(() => {
@@ -164,30 +175,6 @@ export function ClinicianSessionGate({ children }: {
     setPresentationMode(mode);
   }
 
-  async function deleteActiveRecord() {
-    if (!session || !activeReport || deletingReport) return;
-    const call = activeReport.callNumber ? ` for ${activeReport.callNumber}` : "";
-    if (!window.confirm(`Permanently delete this synthetic record${call}? This will not reassign the call.`)) return;
-    setDeletingReport(true);
-    setModeMessage(null);
-    try {
-      await deleteDraftReport(sessionRequestToken(session), activeReport.id);
-      clearShellState(window.localStorage, activeReport.id);
-      removeSignedOfflineReport(window.localStorage, activeReport.id);
-      setActiveReport(null);
-      setReportWithErrorsId(null);
-      setOpenCallsRevision((value) => value + 1);
-      setRefreshRequest((value) => value + 1);
-      setCompletionNotice(activeReport.callNumber
-        ? `Deleted the synthetic record for ${activeReport.callNumber}.`
-        : "Deleted the synthetic record.");
-    } catch (reason) {
-      setModeMessage(reason instanceof Error ? reason.message : "The record could not be deleted.");
-    } finally {
-      setDeletingReport(false);
-    }
-  }
-
   const sessionEnded = useCallback(() => {
     clearClinicianSession(window.localStorage);
     setSession(null);
@@ -198,14 +185,9 @@ export function ClinicianSessionGate({ children }: {
   if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
   const installationSettings = installation.settings;
-  const banner = installationSettings.syntheticDataBanner;
   if (!session) {
     return (
       <main className="login-shell">
-        {banner.enabled && <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-          <strong>{banner.heading}</strong>
-          <span>{banner.message}</span>
-        </aside>}
         <form className="login-card" onSubmit={signIn}>
           <p className="eyebrow">{installationSettings.syntheticFixtures.enabled ? "Demo unit" : "Clinical documentation"}</p>
           <h1>Sign in for your shift</h1>
@@ -268,21 +250,20 @@ export function ClinicianSessionGate({ children }: {
         <button type="button" onClick={logOut}>Log out</button>
       </header>
       {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
-      {banner.enabled && <aside className="safety-notice" role="note" aria-label="Prototype safety notice">
-        <strong>{banner.heading}</strong>
-        <span>{banner.message}</span>
-        {installationSettings.syntheticFixtures.enabled && activeReport && <span className="demo-data-controls" role="group" aria-label="Demo record data">
-          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}>Populate</button>
-          <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}>Clear</button>
-          {reportWithErrorsId === activeReport.id &&
-            <button className="delete-record-action" type="button" disabled={deletingReport} onClick={() => void deleteActiveRecord()}>
-              {deletingReport ? "Deleting…" : "Delete record"}
-            </button>}
-        </span>}
-      </aside>}
+      {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,
+        presentationMode, online, requestMode: browserRequestConfiguration().mode }) && <ClinicalDemoBanner
+          session={session}
+          activeReport={activeReport !== null}
+          refreshRequest={refreshRequest}
+          onGenerated={(assignmentId) => {
+            setGeneratedAssignmentId(assignmentId);
+            setRefreshRequest((value) => value + 1);
+          }}
+        />}
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
-        <AssignedCalls session={session} refreshRequest={refreshRequest} suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
+        <AssignedCalls session={session} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
+          suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
           setCompletionNotice(null);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
           setActiveReport(cached.report);
