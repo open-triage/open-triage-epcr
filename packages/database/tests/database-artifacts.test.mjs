@@ -28,7 +28,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
-  roleAuthorizationMigration] = await Promise.all([
+  roleAuthorizationMigration, installationOwnerMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -54,7 +54,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908141346_prototype_synthetic_draft_deletion.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8")
 ]);
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
@@ -94,6 +95,22 @@ test("role constraints cover organizations, prerequisites, audit redaction, and 
   assert.match(roleAuthorizationMigration, /authorization_event_append_only/);
   assert.match(roleAuthorizationMigration, /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
   assert.match(roleAuthorizationMigration, /role\.version_activate/);
+});
+
+test("installation ownership is singular, durable, least-privilege, and gates role authority", () => {
+  assert.match(installationOwnerMigration,
+    /create table app_identity\.installation_owner[\s\S]*organization_id uuid primary key/);
+  assert.match(installationOwnerMigration, /installation_owner_not_deleted/);
+  assert.match(installationOwnerMigration, /active_owner_user_protected/);
+  assert.match(installationOwnerMigration, /owner_local_credential_protected/);
+  assert.match(installationOwnerMigration, /owner_administrator_assignment_protected/);
+  assert.match(installationOwnerMigration,
+    /create or replace function app_identity\.user_has_capability[\s\S]*app_identity\.installation_owner/);
+  assert.match(installationOwnerMigration,
+    /create table app_identity\.operator_identity_event[\s\S]*operator_id text not null[\s\S]*os_account text not null[\s\S]*host text not null/);
+  assert.match(installationOwnerMigration, /operator_identity_event_append_only/);
+  assert.match(installationOwnerMigration,
+    /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
 });
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {

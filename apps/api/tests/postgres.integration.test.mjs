@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { UnauthorizedException } from "@nestjs/common";
+import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -94,6 +95,20 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const roleAuthorization = await client.query("select to_regclass('app_identity.role') as role");
+  if (!roleAuthorization.rows[0].role) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const installationOwner = await client.query("select to_regclass('app_identity.installation_owner') as owner");
+  if (!installationOwner.rows[0].owner) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -121,6 +136,23 @@ function singleClientDataSource(client) {
   };
 }
 
+async function ensureSyntheticOwner(client) {
+  const existing = await client.query(
+    "select user_id from app_identity.installation_owner where organization_id = $1",
+    [SYNTHETIC_DEMO_FIXTURE.organizationId]
+  );
+  if (existing.rows[0]) return existing.rows[0].user_id;
+  const owner = await new AccountService(singleClientDataSource(client)).bootstrapOwner({
+    organizationId: SYNTHETIC_DEMO_FIXTURE.organizationId,
+    username: `integration.synthetic.owner.${randomUUID()}`,
+    displayName: "Synthetic integration owner",
+    temporaryPassword: "Temporary!Synthetic-Owner-253",
+    clinician: false,
+    operator: { operatorId: "integration-synthetic-setup", osAccount: "test", host: "localhost" }
+  });
+  return owner.userId;
+}
+
 integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
@@ -132,9 +164,14 @@ integrationTest("provisioned local accounts require password replacement and use
   const organizationId = randomUUID();
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Local identity', 'UTC')", [organizationId]);
 
-  const provisioned = await accounts.provision({
+  const installationOwner = await accounts.bootstrapOwner({
     organizationId, username: `owner.${randomUUID()}`, displayName: "Installation Owner",
-    role: "owner", temporaryPassword: "Temporary!Password-253"
+    clinician: false, temporaryPassword: "Temporary!Password-253",
+    operator: { operatorId: "integration-owner-bootstrap", osAccount: "test", host: "localhost" }
+  });
+  const provisioned = await accounts.provision({
+    organizationId, username: `admin.${randomUUID()}`, displayName: "Recoverable Administrator",
+    role: "administrator", temporaryPassword: "Temporary!Password-253"
   });
   const credential = await client.query(
     "select username, password_verifier, must_change_password from app_identity.local_credential where user_id = $1",
@@ -164,10 +201,14 @@ integrationTest("provisioned local accounts require password replacement and use
 
   const beforeReset = await sessions.create({ username: provisioned.username, password: "Permanent!Password-253" });
   await assert.rejects(sessions.create({ username: provisioned.username, password: "wrong password value" }), UnauthorizedException);
-  await accounts.resetPassword(provisioned.username, "Reset!Temporary-Password-253");
+  await accounts.resetUserPassword(provisioned.userId, "Reset!Temporary-Password-253",
+    { operatorId: "integration-user-recovery", osAccount: "test", host: "localhost" });
   await assert.rejects(sessions.get(beforeReset.sessionToken), UnauthorizedException);
   const reset = await sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" });
   assert.equal(reset.session.passwordChangeRequired, true);
+  assert.deepEqual(await accounts.resetOwnerPassword(organizationId, "Reset!Owner-Password-253",
+    { operatorId: "integration-owner-recovery", osAccount: "test", host: "localhost" }),
+  { organizationId, userId: installationOwner.userId });
   await client.query("update app_identity.app_user set active = false, deactivated_at = now() where id = $1", [provisioned.userId]);
   await assert.rejects(sessions.get(reset.sessionToken, new Date(), true), UnauthorizedException);
   await assert.rejects(sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" }), UnauthorizedException);
@@ -179,7 +220,73 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.ok(audit.rows.some(({ action, result }) => action === "authentication.password_change" && result === "succeeded"));
   assert.ok(audit.rows.some(({ action }) => action === "account.reset_password"));
   assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
+  const operatorAudit = await client.query(`select command,target_organization_id,target_user_id,
+    operator_id,os_account,host,result from app_identity.operator_identity_event
+    where target_organization_id = $1 order by id`, [organizationId]);
+  assert.ok(operatorAudit.rows.some((event) => event.command === "user.reset_password"
+    && event.target_user_id === provisioned.userId && event.operator_id === "integration-user-recovery"
+    && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
+  assert.ok(operatorAudit.rows.some((event) => event.command === "owner.reset_password"
+    && event.target_user_id === installationOwner.userId && event.operator_id === "integration-owner-recovery"
+    && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
+  assert.doesNotMatch(JSON.stringify(operatorAudit.rows), /Reset!|password_verifier|token|csrf|secret/i);
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("concurrent owner bootstrap leaves exactly one protected admin-only owner", async (t) => {
+  const firstClient = new pg.Client({ connectionString: databaseUrl });
+  const secondClient = new pg.Client({ connectionString: databaseUrl });
+  await Promise.all([firstClient.connect(), secondClient.connect()]);
+  t.after(() => Promise.all([firstClient.end(), secondClient.end()]));
+  await ensureFoundation(firstClient);
+  const organizationId = randomUUID();
+  await firstClient.query(`insert into app_identity.organization (id, name, deployment_timezone)
+    values ($1, 'Concurrent owner bootstrap', 'UTC')`, [organizationId]);
+  const preSetupAdmin = await new AccountService(singleClientDataSource(firstClient)).provision({
+    organizationId, username: `pre.setup.${randomUUID()}`, displayName: "Pre-setup administrator",
+    role: "administrator", temporaryPassword: "Temporary!Password-pre-setup"
+  });
+  assert.equal((await firstClient.query(
+    "select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed",
+    [preSetupAdmin.userId, organizationId])).rows[0].allowed, false);
+  assert.equal((await firstClient.query(
+    "select app_identity.user_has_capability($1, $2, 'clinical:document') allowed",
+    [preSetupAdmin.userId, organizationId])).rows[0].allowed, false);
+  const input = (suffix) => ({
+    organizationId, username: `owner.${suffix}.${randomUUID()}`, displayName: `Owner ${suffix}`,
+    temporaryPassword: `Temporary!Password-${suffix}-253`, clinician: false,
+    operator: { operatorId: `integration-${suffix}`, osAccount: "test", host: "localhost" }
+  });
+  const attempts = await Promise.allSettled([
+    new AccountService(singleClientDataSource(firstClient)).bootstrapOwner(input("one")),
+    new AccountService(singleClientDataSource(secondClient)).bootstrapOwner(input("two"))
+  ]);
+  assert.equal(attempts.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(attempts.filter(({ status }) => status === "rejected").length, 1);
+
+  const owner = (await firstClient.query(`select owner_record.user_id
+    from app_identity.installation_owner owner_record where organization_id = $1`, [organizationId])).rows[0];
+  assert.ok(owner.user_id);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:document') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, false);
+  assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner
+    where organization_id = $1`, [organizationId])).rows[0].count, 1);
+  assert.deepEqual((await firstClient.query(`select result from app_identity.operator_identity_event
+    where target_organization_id = $1 order by id`, [organizationId])).rows.map(({ result }) => result).sort(),
+  ["failed", "succeeded"]);
+
+  await assert.rejects(firstClient.query("delete from app_identity.installation_owner where organization_id = $1",
+    [organizationId]), /cannot be removed/);
+  await assert.rejects(firstClient.query("update app_identity.app_user set active = false where id = $1",
+    [owner.user_id]), /cannot be disabled/);
+  await assert.rejects(firstClient.query("delete from app_identity.local_credential where user_id = $1",
+    [owner.user_id]), /credential cannot be removed/);
+  await assert.rejects(firstClient.query(`update app_identity.user_role_assignment set ended_at = now(), ended_by = $1
+    where user_id = $1 and ended_at is null and role_id = (
+      select id from app_identity.role where organization_id = $2 and system_key = 'administrator'
+    )`, [owner.user_id, organizationId]), /Administrator assignment cannot be removed/);
 });
 
 integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
@@ -196,9 +303,10 @@ integrationTest("authorized Admin context resolves only the session organization
   const formVersionId = randomUUID();
   const unitId = randomUUID();
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Admin shell', 'UTC')", [organizationId]);
-  const owner = await accounts.provision({
+  const owner = await accounts.bootstrapOwner({
     organizationId, username: `admin.${randomUUID()}`, displayName: "Installation Owner",
-    role: "owner", temporaryPassword: "Temporary!Password-254"
+    clinician: false, temporaryPassword: "Temporary!Password-254",
+    operator: { operatorId: "integration-owner-bootstrap", osAccount: "test", host: "localhost" }
   });
   const temporary = await sessions.create({ username: owner.username, password: "Temporary!Password-254" });
   const active = await sessions.changePassword(temporary.sessionToken, {
@@ -716,6 +824,7 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
+  await ensureSyntheticOwner(client);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   app.setGlobalPrefix("api");
@@ -781,6 +890,7 @@ integrationTest("assignment opening is idempotent, creator-owned, form-pinned, a
   await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
+  await ensureSyntheticOwner(client);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   app.setGlobalPrefix("api");

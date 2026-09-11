@@ -74,13 +74,15 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const organizationId = randomUUID();
     const otherOrganizationId = randomUUID();
     const userId = randomUUID();
+    const ownerUserId = randomUUID();
     await client.query("begin");
     try {
       await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
         values ($1, 'Authorization test', 'UTC'), ($2, 'Other authorization test', 'UTC')`,
       [organizationId, otherOrganizationId]);
       await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
-        values ($1, $2, 'Authorization user')`, [userId, organizationId]);
+        values ($1, $3, 'Authorization user'), ($2, $3, 'Authorization owner')`,
+      [userId, ownerUserId, organizationId]);
 
       const protectedRoles = await client.query(`
         select r.system_key, r.hidden, r.assignable,
@@ -97,6 +99,14 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), false);
       assert.equal(administrator.capabilities.length, 15);
+      await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note)
+        select $1, $2, id, $2, 'Authorization test owner'
+        from app_identity.role where organization_id = $1 and system_key = 'administrator'`,
+      [organizationId, ownerUserId]);
+      await client.query(`insert into app_identity.installation_owner
+        (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
+      [organizationId, ownerUserId]);
       const reviewerRoleId = protectedRoles.rows.find(({ system_key }) => system_key === "reviewer");
       const reviewerId = (await client.query(`select id from app_identity.role
         where organization_id = $1 and system_key = 'reviewer'`, [organizationId])).rows[0].id;
@@ -116,7 +126,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         where organization_id = $1 and system_key = 'clinician'`, [otherOrganizationId])).rows[0].id;
       await rejectsSql(client, `insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
-      [organizationId, userId, foreignRoleId], "23503");
+      // The assignment validator rejects the tenant mismatch before the
+      // redundant composite foreign key is evaluated.
+      [organizationId, userId, foreignRoleId], "P0001");
 
       const roleId = randomUUID();
       const versionOneId = randomUUID();
@@ -494,6 +506,21 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       form_versions: 1,
       reports: 1
     });
+
+    // The fixture intentionally does not create ownership. Establish a normal,
+    // non-synthetic owner before later tests exercise privileged operations.
+    const syntheticOwnerId = "32000000-0000-4000-8000-000000000099";
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Synthetic integration owner')`,
+    [syntheticOwnerId, SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    await client.query(`insert into app_identity.user_role_assignment
+      (organization_id, user_id, role_id, assigned_by, note)
+      select $1, $2, id, $2, 'Integration owner setup' from app_identity.role
+      where organization_id = $1 and system_key = 'administrator'`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
+    await client.query(`insert into app_identity.installation_owner
+      (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
 
     await client.query("begin");
     try {

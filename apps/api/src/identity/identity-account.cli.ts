@@ -1,13 +1,24 @@
+import { hostname, userInfo } from "node:os";
 import { DataSource } from "typeorm";
-import { AccountService, type BuiltInAccountRole } from "./account.service.js";
+import { AccountService } from "./account.service.js";
 
-function options(argv: string[]): Map<string, string> {
-  const parsed = new Map<string, string>();
-  for (let index = 0; index < argv.length; index += 2) {
+type ParsedOptions = Map<string, string | true>;
+
+function options(argv: string[]): ParsedOptions {
+  const parsed: ParsedOptions = new Map();
+  for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
-    const value = argv[index + 1];
-    if (!key?.startsWith("--") || !value) throw new Error(`Missing value for ${key ?? "option"}`);
-    parsed.set(key.slice(2), value);
+    if (!key?.startsWith("--")) throw new Error(`Unexpected argument ${key ?? ""}`);
+    const name = key.slice(2);
+    if (parsed.has(name)) throw new Error(`Duplicate option --${name}`);
+    if (name === "clinician") {
+      parsed.set(name, true);
+      continue;
+    }
+    const optionValue = argv[index + 1];
+    if (!optionValue || optionValue.startsWith("--")) throw new Error(`Missing value for ${key}`);
+    parsed.set(name, optionValue);
+    index += 1;
   }
   return parsed;
 }
@@ -20,7 +31,6 @@ async function readTemporaryPassword(): Promise<string> {
     if (!password) throw new Error("A temporary password is required on standard input");
     return password;
   }
-
   process.stderr.write("Temporary password: ");
   process.stdin.setRawMode(true);
   process.stdin.resume();
@@ -53,25 +63,53 @@ async function readTemporaryPassword(): Promise<string> {
   });
 }
 
-export async function runIdentityAccountCli(dataSource: DataSource, argv: string[]): Promise<Record<string, string>> {
+function value(parsed: ParsedOptions, name: string): string | undefined {
+  const candidate = parsed.get(name);
+  return typeof candidate === "string" ? candidate : undefined;
+}
+
+function assertOnly(parsed: ParsedOptions, allowed: readonly string[]): void {
+  for (const key of parsed.keys()) if (!allowed.includes(key)) throw new Error(`Unknown option --${key}`);
+}
+
+export async function runIdentityAccountCli(
+  dataSource: DataSource,
+  argv: string[],
+  dependencies: { readPassword?: () => Promise<string>; osAccount?: string; host?: string } = {}
+): Promise<Record<string, string | boolean>> {
   const command = argv[0];
   const parsed = options(argv.slice(1));
-  const temporaryPassword = await readTemporaryPassword();
+  const operatorId = value(parsed, "operator-id");
+  const operator = {
+    operatorId: operatorId ?? "",
+    osAccount: dependencies.osAccount ?? userInfo().username,
+    host: dependencies.host ?? hostname()
+  };
+  const passwordReader = dependencies.readPassword ?? readTemporaryPassword;
   const service = new AccountService(dataSource);
-  if (command === "provision") {
-    const organizationId = parsed.get("organization-id");
-    const username = parsed.get("username");
-    const displayName = parsed.get("display-name");
-    const role = parsed.get("role") as BuiltInAccountRole | undefined;
-    if (!organizationId || !username || !displayName || !role || !["owner", "clinician"].includes(role)) {
-      throw new Error("provision requires --organization-id, --username, --display-name, and --role owner|clinician");
+
+  if (command === "bootstrap-owner") {
+    assertOnly(parsed, ["organization-id", "username", "display-name", "operator-id", "clinician"]);
+    const organizationId = value(parsed, "organization-id");
+    const username = value(parsed, "username");
+    const displayName = value(parsed, "display-name");
+    if (!organizationId || !username || !displayName || !operatorId) {
+      throw new Error("bootstrap-owner requires --organization-id, --username, --display-name, and --operator-id");
     }
-    return service.provision({ organizationId, username, displayName, role, temporaryPassword });
+    return service.bootstrapOwner({ organizationId, username, displayName, operator,
+      clinician: parsed.get("clinician") === true, temporaryPassword: await passwordReader() });
   }
-  if (command === "reset") {
-    const username = parsed.get("username");
-    if (!username) throw new Error("reset requires --username");
-    return service.resetPassword(username, temporaryPassword);
+  if (command === "reset-owner") {
+    assertOnly(parsed, ["organization-id", "operator-id"]);
+    const organizationId = value(parsed, "organization-id");
+    if (!organizationId || !operatorId) throw new Error("reset-owner requires --organization-id and --operator-id");
+    return service.resetOwnerPassword(organizationId, await passwordReader(), operator);
   }
-  throw new Error("Usage: identity-account provision|reset [options]; temporary password is read from stdin");
+  if (command === "reset-user") {
+    assertOnly(parsed, ["user-id", "operator-id"]);
+    const userId = value(parsed, "user-id");
+    if (!userId || !operatorId) throw new Error("reset-user requires --user-id and --operator-id");
+    return service.resetUserPassword(userId, await passwordReader(), operator);
+  }
+  throw new Error("Usage: identity-account bootstrap-owner|reset-owner|reset-user [options]; temporary password is read from stdin");
 }
