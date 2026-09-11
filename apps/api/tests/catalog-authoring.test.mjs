@@ -119,10 +119,10 @@ test("catalog publication fails when its source has no effective agency demograp
   );
 });
 
-test("direct catalog authoring requires the administrator capability", async () => {
+test("catalog reads require their granular capability", async () => {
   const service = serviceWith({ query: async () => [] }, {
     requireCapability: async (_token, capability) => {
-      assert.equal(capability, "installation:administer");
+      assert.equal(capability, "catalog:read");
       throw new UnauthorizedException();
     }
   });

@@ -11,7 +11,7 @@ export class FormPublicationController {
   @Post(":id/publish")
   async publish(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: { headers: { cookie?: string } }, @Headers("authorization") authorization?: string): Promise<PublishedFormVersion> {
-    const session = await this.sessions.requireCapability(sessionToken(request, authorization), "installation:administer");
+    const session = await this.sessions.requireCapability(sessionToken(request, authorization), "forms:publish");
     return this.formPublication.publish(id, { ...(body && typeof body === "object" ? body : {}), publishedBy: session.user.id },
       session.organization.id);
   }

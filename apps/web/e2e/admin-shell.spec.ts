@@ -31,7 +31,7 @@ async function signInAsCombinedOwner(page: Page) {
       organization: { id: "organization-id", name: "Example EMS" },
       startedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
-      capabilities: ["clinical:document", "installation:administer"]
+      capabilities: ["clinical:document", "admin-dashboard:read"]
     }));
     window.localStorage.removeItem("open-triage.presentation-mode.v1");
   });

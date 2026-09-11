@@ -50,14 +50,15 @@ test("account provisioning uses one transaction connection and commits all write
   const credentialInsert = events.find(({ sql }) => sql.startsWith("insert into app_identity.local_credential"));
   assert.equal(credentialInsert.parameters[1], "shift.owner");
   assert.equal(await verifyPassword("Temporary password 42!", credentialInsert.parameters[2]), true);
-  assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.user_capability"))
-    .map(({ parameters }) => parameters[1]), ["installation:administer", "clinical:document"]);
+  assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment"))
+    .map(({ parameters }) => parameters[2]), ["administrator", "clinician"]);
+  assert.equal(events.some(({ sql }) => sql.includes("app_identity.user_capability")), false);
 });
 
-test("account provisioning rolls back every write when a capability assignment fails", async () => {
-  const failure = new Error("capability write failed");
+test("account provisioning rolls back every write when a role assignment fails", async () => {
+  const failure = new Error("role assignment failed");
   const { dataSource, events } = instrumentedDataSource(({ sql }) => {
-    if (sql.startsWith("insert into app_identity.user_capability")) throw failure;
+    if (sql.startsWith("insert into app_identity.user_role_assignment")) throw failure;
     return [];
   });
 

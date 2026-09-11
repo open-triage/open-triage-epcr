@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -55,6 +56,108 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const migrationRunner = path.join(packageRoot, "scripts/migrate.mjs");
   await execFileAsync(process.execPath, [migrationRunner], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
+  });
+
+  await t.test("enforces role-resolved authorization invariants", async () => {
+    const capabilityKeys = (await client.query(
+      "select key from app_identity.capability order by key"
+    )).rows.map(({ key }) => key);
+    assert.deepEqual(capabilityKeys, [
+      "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
+      "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
+      "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
+      "sessions:read", "sessions:revoke", "users:read", "users:write"
+    ]);
+    assert.equal(capabilityKeys.includes("installation:administer"), false);
+    assert.equal(capabilityKeys.includes("reports:document"), false);
+
+    const organizationId = randomUUID();
+    const otherOrganizationId = randomUUID();
+    const userId = randomUUID();
+    await client.query("begin");
+    try {
+      await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+        values ($1, 'Authorization test', 'UTC'), ($2, 'Other authorization test', 'UTC')`,
+      [organizationId, otherOrganizationId]);
+      await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+        values ($1, $2, 'Authorization user')`, [userId, organizationId]);
+
+      const protectedRoles = await client.query(`
+        select r.system_key, r.hidden, r.assignable,
+          coalesce(array_agg(rvc.capability_key order by rvc.capability_key)
+            filter (where rvc.capability_key is not null), '{}') capabilities
+        from app_identity.role r
+        join app_identity.role_version rv on rv.id = r.current_version_id
+        left join app_identity.role_version_capability rvc on rvc.role_version_id = rv.id
+        where r.organization_id = $1 and r.protected
+        group by r.id order by r.system_key`, [organizationId]);
+      assert.equal(protectedRoles.rows.length, 5);
+      const reviewer = protectedRoles.rows.find(({ system_key }) => system_key === "reviewer");
+      assert.deepEqual(reviewer, { system_key: "reviewer", hidden: true, assignable: false, capabilities: [] });
+      const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
+      assert.equal(administrator.capabilities.includes("clinical:document"), false);
+      assert.equal(administrator.capabilities.length, 15);
+      const reviewerRoleId = protectedRoles.rows.find(({ system_key }) => system_key === "reviewer");
+      const reviewerId = (await client.query(`select id from app_identity.role
+        where organization_id = $1 and system_key = 'reviewer'`, [organizationId])).rows[0].id;
+      assert.ok(reviewerRoleId);
+      await rejectsSql(client, `insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
+      [organizationId, userId, reviewerId], "P0001");
+
+      const immutableVersionId = (await client.query(`select current_version_id from app_identity.role
+        where organization_id = $1 and system_key = 'clinician'`, [organizationId])).rows[0].current_version_id;
+      await rejectsSql(client, "update app_identity.role_version set note = 'changed' where id = $1",
+        [immutableVersionId], "P0001");
+      await rejectsSql(client, `insert into app_identity.user_capability
+        (user_id, capability_key, granted_by) values ($1, 'clinical:document', $1)`, [userId], "42P01");
+
+      const foreignRoleId = (await client.query(`select id from app_identity.role
+        where organization_id = $1 and system_key = 'clinician'`, [otherOrganizationId])).rows[0].id;
+      await rejectsSql(client, `insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
+      [organizationId, userId, foreignRoleId], "23503");
+
+      const roleId = randomUUID();
+      const versionOneId = randomUUID();
+      const versionTwoId = randomUUID();
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, current_version_id) values ($1, $2, 'Immediate role', $3)`,
+      [roleId, organizationId, versionOneId]);
+      await client.query(`insert into app_identity.role_version (id, organization_id, role_id, version)
+        values ($1, $3, $4, 1), ($2, $3, $4, 2)`,
+      [versionOneId, versionTwoId, organizationId, roleId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key)
+        values ($1, $2, $4, 'catalog:read'), ($1, $3, $4, 'forms:read')`,
+      [organizationId, versionOneId, versionTwoId, roleId]);
+      await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
+      [organizationId, userId, roleId]);
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'catalog:read') allowed",
+        [userId, organizationId])).rows[0].allowed, true);
+      await client.query("update app_identity.role set current_version_id = $2 where id = $1", [roleId, versionTwoId]);
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'catalog:read') allowed",
+        [userId, organizationId])).rows[0].allowed, false);
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'forms:read') allowed",
+        [userId, organizationId])).rows[0].allowed, true);
+
+      await client.query("savepoint invalid_prerequisite");
+      const invalidRoleId = randomUUID();
+      const invalidVersionId = randomUUID();
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, current_version_id) values ($1, $2, 'Invalid role', $3)`,
+      [invalidRoleId, organizationId, invalidVersionId]);
+      await client.query(`insert into app_identity.role_version (id, organization_id, role_id, version)
+        values ($1, $2, $3, 1)`, [invalidVersionId, organizationId, invalidRoleId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key)
+        values ($1, $2, $3, 'users:write')`, [organizationId, invalidVersionId, invalidRoleId]);
+      await assert.rejects(client.query("set constraints all immediate"), (error) => error.code === "P0001");
+      await client.query("rollback to savepoint invalid_prerequisite");
+    } finally {
+      await client.query("rollback");
+    }
   });
 
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
@@ -351,7 +454,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       join clinical.patient p on p.id = r.patient_id
       join forms.form_version fv on fv.id = r.form_version_id
       join app_identity.app_user u on u.organization_id = r.organization_id and u.synthetic
-      join app_identity.user_capability uc on uc.user_id = u.id
+      join app_identity.user_role_assignment ura
+        on ura.user_id = u.id and ura.organization_id = u.organization_id and ura.ended_at is null
+      join app_identity.role ar on ar.id = ura.role_id and ar.organization_id = ura.organization_id and ar.active
+      join app_identity.role_version rv on rv.id = ar.current_version_id and rv.role_id = ar.id
+      join app_identity.role_version_capability uc on uc.role_version_id = rv.id
       where r.id = '32000000-0000-4000-8000-00000000000e'
       group by r.id, i.id, p.id, fv.id
     `);
@@ -367,7 +474,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       identity_state: "unknown",
       form_status: "published",
       users: 2,
-      capabilities: 4
+      capabilities: 17
     });
 
     const stableCounts = await client.query(`

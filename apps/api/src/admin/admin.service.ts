@@ -36,7 +36,7 @@ export class AdminService {
   ) {}
 
   async context(sessionToken: string): Promise<AdminContext> {
-    const session = await this.sessions.requireCapability(sessionToken, "installation:administer");
+    const session = await this.sessions.requireCapability(sessionToken, "admin-dashboard:read");
     const rows = await this.dataSource.query<ActiveConfigurationRow[]>(`
       select fv.id as form_version_id, f.id as form_id, coalesce(fv.display_name, f.name) as form_name,
              fv.version as form_version, cr.id as catalog_release_id,

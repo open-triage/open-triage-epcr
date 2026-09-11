@@ -238,6 +238,16 @@ export function ClinicianSessionGate({ children }: {
       </form>
     </main>;
   }
+  if (session.workspaceAvailable === false || session.capabilities?.length === 0) {
+    return <main className="login-shell">
+      <section className="login-card" aria-labelledby="no-workspace-heading">
+        <p className="eyebrow">Signed in</p>
+        <h1 id="no-workspace-heading">No workspace assigned</h1>
+        <p>Your account is active, but it does not have an active workspace role. Contact an administrator for access.</p>
+        <button type="button" onClick={logOut}>Log out</button>
+      </section>
+    </main>;
+  }
 
   return (
     <div className={`authenticated-shell ${presentationMode}-shell`}>

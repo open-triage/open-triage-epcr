@@ -30,10 +30,10 @@ test("presentation mode persists independently in browser storage", () => {
 test("capabilities control available modes and safe session defaults", () => {
   assert.equal(hasClinicalMode(["clinical:document"]), true);
   assert.equal(hasAdminMode(["clinical:document"]), false);
-  assert.equal(defaultPresentationMode(["installation:administer"]), "admin");
-  assert.equal(defaultPresentationMode(["installation:administer", "clinical:document"]), "mobile");
+  assert.equal(defaultPresentationMode(["admin-dashboard:read"]), "admin");
+  assert.equal(defaultPresentationMode(["admin-dashboard:read", "clinical:document"]), "mobile");
   assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["clinical:document"]), "mobile");
-  assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["installation:administer"]), "admin");
+  assert.equal(loadPresentationMode({ getItem: () => "admin" }, ["admin-dashboard:read"]), "admin");
   assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["clinical:document"]), "stationary");
-  assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["installation:administer"]), "admin");
+  assert.equal(loadPresentationMode({ getItem: () => "stationary" }, ["admin-dashboard:read"]), "admin");
 });

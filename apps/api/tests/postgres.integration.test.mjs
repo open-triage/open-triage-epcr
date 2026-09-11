@@ -146,7 +146,7 @@ integrationTest("provisioned local accounts require password replacement and use
   const limited = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" });
   assert.equal(limited.session.passwordChangeRequired, true);
   assert.equal(limited.session.accessToken, undefined);
-  assert.ok(limited.session.capabilities.includes("installation:administer"));
+  assert.ok(limited.session.capabilities.includes("admin-dashboard:read"));
   await assert.rejects(sessions.get(limited.sessionToken), /password change is required/i);
 
   const active = await sessions.changePassword(limited.sessionToken, {
@@ -156,7 +156,7 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.equal(active.session.passwordChangeRequired, false);
   await assert.rejects(sessions.get(limited.sessionToken), UnauthorizedException);
   assert.equal((await sessions.get(active.sessionToken)).organization.id, organizationId);
-  assert.equal((await sessions.requireCapability(active.sessionToken, "installation:administer")).user.id, provisioned.userId);
+  assert.equal((await sessions.requireCapability(active.sessionToken, "admin-dashboard:read")).user.id, provisioned.userId);
   await assert.rejects(sessions.get(active.sessionToken, new Date(active.session.expiresAt)), UnauthorizedException);
   await assert.rejects(sessions.end(active.sessionToken, "forged-csrf"), /CSRF/);
   await sessions.end(active.sessionToken, active.session.csrfToken);
@@ -512,7 +512,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   app.get(ClinicianSessionService).requireCapability = async () => ({
     user: { id: userId, displayName: "Publisher" }, organization: { id: organizationId, name: "Publication API" },
     startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-    capabilities: ["installation:administer"]
+    capabilities: ["admin-dashboard:read"]
   });
   app.get(ClinicianSessionService).assertCsrf = async () => {};
   app.setGlobalPrefix("api");

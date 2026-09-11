@@ -27,7 +27,7 @@ test("admin context is resolved from the authorized session organization", async
   }, {
     requireCapability: async (token, capability) => {
       assert.equal(token, "opaque-session");
-      assert.equal(capability, "installation:administer");
+      assert.equal(capability, "admin-dashboard:read");
       return session;
     }
   });

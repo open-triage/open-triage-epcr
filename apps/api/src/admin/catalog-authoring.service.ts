@@ -54,7 +54,7 @@ export class CatalogAuthoringService {
   ) {}
 
   async current(sessionToken: string): Promise<CatalogDraft | null> {
-    const session = await this.admin(sessionToken);
+    const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
       select * from catalog.authoring_draft
       where organization_id = $1 and published_release_id is null
@@ -66,7 +66,7 @@ export class CatalogAuthoringService {
   }
 
   async cloneActive(sessionToken: string, input: unknown): Promise<CatalogDraft> {
-    const session = await this.admin(sessionToken);
+    const session = await this.authorize(sessionToken, "catalog:write");
     const displayName = this.displayName(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
@@ -96,7 +96,7 @@ export class CatalogAuthoringService {
   }
 
   async save(sessionToken: string, draftId: string, input: unknown): Promise<CatalogDraft> {
-    const session = await this.admin(sessionToken);
+    const session = await this.authorize(sessionToken, "catalog:write");
     const body = this.saveBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<DraftRow[]>(`
@@ -125,7 +125,7 @@ export class CatalogAuthoringService {
   }
 
   async validate(sessionToken: string, draftId: string): Promise<CatalogValidationResult> {
-    const session = await this.admin(sessionToken);
+    const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
       select * from catalog.authoring_draft where id = $1 and organization_id = $2
     `, [draftId, session.organization.id]);
@@ -136,7 +136,7 @@ export class CatalogAuthoringService {
   }
 
   async publish(sessionToken: string, draftId: string, input: unknown): Promise<PublishedCatalog> {
-    const session = await this.admin(sessionToken);
+    const session = await this.authorize(sessionToken, "catalog:publish");
     if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     const body = this.publishBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
@@ -233,8 +233,8 @@ export class CatalogAuthoringService {
     });
   }
 
-  private async admin(token: string): Promise<ClinicianSession> {
-    return this.sessions.requireCapability(token, "installation:administer");
+  private async authorize(token: string, capability: string): Promise<ClinicianSession> {
+    return this.sessions.requireCapability(token, capability);
   }
 
   private async cloneAgencyDemographics(manager: Pick<EntityManager, "query">, organizationId: string,

@@ -31,6 +31,8 @@ export interface ClinicianSession {
   expiresAt: string;
   passwordChangeRequired?: boolean;
   capabilities?: string[];
+  /** False when authentication succeeded but no active role opens a workspace. */
+  workspaceAvailable?: boolean;
 }
 
 export interface ChangePasswordCommand {

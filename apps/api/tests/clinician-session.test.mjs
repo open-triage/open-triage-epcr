@@ -79,7 +79,7 @@ test("password replacement commits credential, revocation, audits, and its repla
     if (sql.startsWith("select c.password_verifier")) return [credentialRow];
     if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
     if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
-    if (sql.startsWith("select capability_key")) return [{ capability_key: "clinical:document" }];
+    if (sql.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "clinical:document" }];
     return [];
   });
 
@@ -89,6 +89,7 @@ test("password replacement commits credential, revocation, audits, and its repla
 
   assert.equal(created.session.passwordChangeRequired, false);
   assert.deepEqual(created.session.capabilities, ["clinical:document"]);
+  assert.equal(created.session.workspaceAvailable, true);
   assert.equal(events[0].sql, "begin");
   assert.equal(events.at(-1).sql, "commit");
   assert.deepEqual(new Set(events.map(({ connection }) => connection)), new Set(["transaction-connection"]));
@@ -96,6 +97,54 @@ test("password replacement commits credential, revocation, audits, and its repla
   assert.ok(events.some(({ sql }) => sql.includes("revocation_reason = 'password_change'")));
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"))
     .map(({ parameters }) => parameters[2]), ["authentication.password_change", "authentication.sign_in"]);
+});
+
+test("active zero-role users receive a clear session result but cannot enter a workspace", async () => {
+  const now = new Date("2026-09-10T10:00:00.000Z");
+  const row = {
+    session_id: "session-id", created_at: now, expires_at: new Date("2026-09-10T22:00:00.000Z"),
+    csrf_sha256: digest("csrf"), session_credential_version: "1", revoked_at: null,
+    user_id: "user-id", display_name: "Unprovisioned", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    must_change_password: false, credential_version: "1"
+  };
+  const query = async (sql) =>
+    sql.replace(/\s+/g, " ").trim().startsWith("select s.id as session_id") ? [row] : [];
+  const dataSource = { manager: { query }, query };
+  const sessions = new ClinicianSessionService(dataSource);
+
+  const current = await sessions.get("token", now, true);
+  assert.deepEqual(current.capabilities, []);
+  assert.equal(current.workspaceAvailable, false);
+  await assert.rejects(sessions.get("token", now), /No workspace role/);
+});
+
+test("capabilities are resolved from the current active role version on every request", async () => {
+  const now = new Date("2026-09-10T10:00:00.000Z");
+  const row = {
+    session_id: "session-id", created_at: now, expires_at: new Date("2026-09-10T22:00:00.000Z"),
+    csrf_sha256: digest("csrf"), session_credential_version: "1", revoked_at: null,
+    user_id: "user-id", display_name: "Role User", active: true,
+    organization_id: "organization-id", organization_name: "Organization", shift_session_duration_hours: 12,
+    must_change_password: false, credential_version: "1"
+  };
+  let capability = "catalog:read";
+  const statements = [];
+  const dataSource = { manager: { query: async () => [] }, query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    statements.push(normalized);
+    if (normalized.startsWith("select s.id as session_id")) return [row];
+    if (normalized.startsWith("select distinct rvc.capability_key")) return [{ capability_key: capability }];
+    return [];
+  } };
+  dataSource.manager.query = dataSource.query;
+  const sessions = new ClinicianSessionService(dataSource);
+
+  assert.deepEqual((await sessions.get("token", now)).capabilities, ["catalog:read"]);
+  capability = "forms:read";
+  assert.deepEqual((await sessions.get("token", now)).capabilities, ["forms:read"]);
+  assert.equal(statements.filter((sql) => sql.startsWith("select distinct rvc.capability_key")).length, 2);
+  assert.ok(statements.every((sql) => !sql.includes("user_capability")));
 });
 
 test("a late password replacement audit failure rolls back credentials, revocations, and the replacement session", async () => {
