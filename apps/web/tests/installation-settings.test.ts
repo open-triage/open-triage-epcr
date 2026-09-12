@@ -13,6 +13,10 @@ test("the sole installation policy is the production security and retention base
   assert.deepEqual(parseInstallationSettings(production), production);
   assert.deepEqual(selectedInstallationSettings(), production);
   assert.equal(production.authentication.minimumPasswordLength, 12);
+  assert.deepEqual(production.signIn, {
+    brandText: "OpenTriage ePCR",
+    helperText: "Demo credentials: username **demo**, password **opentriagedemo**",
+  });
   assert.deepEqual(production.clinicalRetention, {
     durationHours: 10 * 365 * 24,
     automaticDeletionEnabled: false,
@@ -28,7 +32,7 @@ test("settings reject retired demo-profile behavior", () => {
   }
 });
 
-test("server-backed clients receive no profile, fixture metadata, or credentials", async () => {
+test("server-backed clients receive configurable public sign-in copy without fixture metadata", async () => {
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
   try {
@@ -39,7 +43,7 @@ test("server-backed clients receive no profile, fixture metadata, or credentials
       return new Response(JSON.stringify({ settings: production }), { status: 200 });
     });
     assert.deepEqual(loaded, { settings: production });
-    assert.equal(JSON.stringify(loaded).includes(SYNTHETIC_DEMO_FIXTURE.password), false);
+    assert.equal(loaded.settings.signIn.helperText.includes(SYNTHETIC_DEMO_FIXTURE.password), true);
   } finally {
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;

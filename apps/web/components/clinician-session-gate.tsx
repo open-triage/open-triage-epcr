@@ -28,6 +28,14 @@ import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 
+function emphasizedText(value: string): ReactNode[] {
+  return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={index}>{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 export function ClinicianSessionGate({ children }: {
   readonly children: ReactNode | ((context: {
     session: ClinicianSession;
@@ -187,20 +195,24 @@ export function ClinicianSessionGate({ children }: {
   if (!session) {
     return (
       <main className="login-shell">
-        <form className="login-card" onSubmit={signIn}>
-          <p className="eyebrow">Clinical documentation</p>
-          <h1>Sign in for your shift</h1>
-          <p>Enter your organization credentials to begin.</p>
-          {message && <p className="login-message" role="status">{message}</p>}
-          <label>
-            Username
-            <input name="username" autoComplete="username" required />
-          </label>
-          <label>
-            Password
-            <input name="password" type="password" autoComplete="current-password" required />
-          </label>
-          <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
+        <form className="login-card login-sign-in" onSubmit={signIn}>
+          <header className="login-intro">
+            <p className="eyebrow">{installation.settings.signIn.brandText}</p>
+            <h1>Sign in</h1>
+            <p>{emphasizedText(installation.settings.signIn.helperText)}</p>
+          </header>
+          <div className="login-fields">
+            {message && <p className="login-message" role="status">{message}</p>}
+            <label>
+              Username
+              <input name="username" autoComplete="username" required />
+            </label>
+            <label>
+              Password
+              <input name="password" type="password" autoComplete="current-password" required />
+            </label>
+            <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
+          </div>
         </form>
       </main>
     );
