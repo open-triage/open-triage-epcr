@@ -4,7 +4,7 @@ import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
-export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
+export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 

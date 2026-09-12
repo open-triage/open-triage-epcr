@@ -313,6 +313,8 @@ integrationTest("provisioned local accounts require password replacement and use
     "select id from app_identity.role where organization_id = $1 and system_key = 'administrator'", [organizationId]
   );
   const provisioningNow = new Date();
+  await sessions.reauthenticate(ownerSession.sessionToken, ownerSession.session.csrfToken,
+    "Permanent!Owner-Password-253", provisioningNow);
   const provisioned = await new UserProvisioningService(database, sessions).provision(ownerSession.sessionToken, {
     username: `admin.${randomUUID()}`, displayName: "Recoverable Administrator",
     roleIds: [administratorRole.rows[0].id], temporaryPassword: "Temporary!Password-253",
@@ -1195,7 +1197,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   });
 });
 
-integrationTest("fixture accounts authenticate with exact roles only after ordinary owner setup", async (t) => {
+integrationTest("the demo account authenticates with its exact role only after ordinary owner setup", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -1223,22 +1225,17 @@ integrationTest("fixture accounts authenticate with exact roles only after ordin
   assert.deepEqual((await beforeOwner.json()).capabilities, []);
 
   await ensureSyntheticOwner(client);
-  const clinician = await signIn(DEMO_CLINICIAN_USERNAME);
-  const clinicianSession = await clinician.json();
-  assert.equal(clinician.status, 201);
-  assert.deepEqual(clinicianSession.capabilities, ["clinical:demo", "clinical:document"]);
-  assert.equal(clinicianSession.passwordChangeRequired, false);
-
-  const administrator = await signIn(SYNTHETIC_DEMO_FIXTURE.administratorUsername);
-  const administratorSession = await administrator.json();
-  assert.equal(administrator.status, 201);
-  assert.deepEqual(administratorSession.capabilities, [
+  const demo = await signIn(DEMO_CLINICIAN_USERNAME);
+  const demoSession = await demo.json();
+  assert.equal(demo.status, 201);
+  assert.deepEqual(demoSession.capabilities, [
     "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
     "forms:read", "forms:write", "roles:read", "users:read",
   ]);
-  assert.equal(administratorSession.capabilities.includes("catalog:publish"), false);
-  assert.equal(administratorSession.capabilities.includes("forms:publish"), false);
-  assert.equal(administratorSession.capabilities.includes("roles:assign"), false);
+  assert.equal(demoSession.passwordChangeRequired, false);
+  assert.equal(demoSession.capabilities.includes("catalog:publish"), false);
+  assert.equal(demoSession.capabilities.includes("forms:publish"), false);
+  assert.equal(demoSession.capabilities.includes("roles:assign"), false);
 });
 
 

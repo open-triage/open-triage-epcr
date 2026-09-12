@@ -53,8 +53,8 @@ export class UserProvisioningService {
           throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
         }
         if ([...roles.values()].some((role) =>
-          role.systemKey === "administrator" || role.systemKey === "clinical-demo")) {
-          if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Clinical Demo");
+          role.systemKey === "administrator" || role.systemKey === "demo")) {
+          if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Demo");
           await this.sessions.requireRecentReauthentication(token, manager, now);
         }
         await manager.query(

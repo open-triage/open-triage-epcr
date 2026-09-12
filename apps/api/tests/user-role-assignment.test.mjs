@@ -92,7 +92,7 @@ test("non-owners need every capability affected by additions and removals", asyn
     { expectedRevision: 7, roleIds: [roleA] }), /add or remove only roles/);
 });
 
-test("Administrator and Clinical Demo changes require the owner and recent reauthentication", async () => {
+test("Administrator and Demo changes require the owner and recent reauthentication", async () => {
   const administrator = { id: roleB, display_name: "Administrator", active: true, protected: true,
     assignable: true, system_key: "administrator", capability_key: "roles:assign" };
   const delegate = setup({ currentRoleIds: [], roleRows: [administrator], actorCapabilities: ["roles:assign"] });

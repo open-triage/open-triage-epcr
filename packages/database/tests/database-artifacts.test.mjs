@@ -32,7 +32,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
   roleRetirementMigration, sessionAdministrationMigration,
   portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration,
-  syntheticExpiryMigration] = await Promise.all([
+  syntheticExpiryMigration, protectedRoleSimplificationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -69,7 +69,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911270000_expire_synthetic_records.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911270000_expire_synthetic_records.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260912120000_simplify_protected_demo_role.sql"), "utf8")
 ]);
 
 test("synthetic expiry is immutable, indexed, concurrency-safe, and retains only anti-replay facts", () => {
@@ -121,16 +122,23 @@ test("authorization uses a fixed capability registry and current immutable role 
   assert.match(roleAuthorizationMigration, /capability_fixed_registry/);
 });
 
-test("protected roles are explicit, immutable, and keep Reviewer hidden and unassignable", () => {
-  for (const role of ["clinician", "administrator", "configuration-author", "clinical-demo", "reviewer"]) {
-    assert.ok(roleAuthorizationMigration.includes(`'${role}'`), `missing protected role ${role}`);
+test("the three protected roles are explicit and immutable", () => {
+  for (const role of ["clinician", "administrator", "demo"]) {
+    assert.ok(protectedRoleSimplificationMigration.includes(`'${role}'`), `missing protected role ${role}`);
   }
-  assert.match(roleAuthorizationMigration, /'reviewer', 'Reviewer', true, false, array\[\]::text\[\]/);
+  assert.match(protectedRoleSimplificationMigration,
+    /system_key in \('configuration-author', 'reviewer'\)/);
+  const demoDefinition = protectedRoleSimplificationMigration.match(
+    /'demo', 'Demo', false, true, array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
+  for (const capability of ["catalog:write", "clinical:demo", "clinical:document", "forms:write"]) {
+    assert.ok(demoDefinition.includes(`'${capability}'`), `Demo is missing ${capability}`);
+  }
   assert.match(roleAuthorizationMigration, /protected_role_immutable/);
   assert.match(roleAuthorizationMigration, /user_role_assignment_valid/);
   assert.match(roleAuthorizationMigration, /protected role % requires its exact capability set/);
-  assert.doesNotMatch(roleAuthorizationMigration,
-    /'administrator'[\s\S]{0,500}'clinical:document'/,
+  const administratorDefinition = protectedRoleSimplificationMigration.match(
+    /when 'administrator' then array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
+  assert.doesNotMatch(administratorDefinition, /clinical:document/,
     "Administrator must not silently inherit clinical access");
 });
 

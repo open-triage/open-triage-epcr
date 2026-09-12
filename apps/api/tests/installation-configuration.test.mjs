@@ -9,5 +9,5 @@ test("publishes policy without a deployment profile, fixture evidence, or creden
   assert.equal("profile" in result, false);
   assert.equal("fixture" in result, false);
   assert.equal("demoLogin" in result, false);
-  assert.equal(JSON.stringify(result).includes("open-triage-demo"), false);
+  assert.equal(JSON.stringify(result).includes("opentriagedemo"), false);
 });

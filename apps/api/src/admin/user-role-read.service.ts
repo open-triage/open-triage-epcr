@@ -137,10 +137,10 @@ export class UserRoleReadService {
       id: string; display_name: string; active: boolean; protected: boolean;
       assignment_restricted: boolean; assignment_mutable: boolean;
     }>>(`select role.id, role.display_name, role.active, role.protected,
-        role.system_key in ('administrator', 'clinical-demo') assignment_restricted,
+        role.system_key in ('administrator', 'demo') assignment_restricted,
         exists (select 1 from app_identity.installation_owner
           where organization_id = $1 and user_id = $2)
-        or ((role.system_key is null or role.system_key not in ('administrator', 'clinical-demo'))
+        or ((role.system_key is null or role.system_key not in ('administrator', 'demo'))
           and not exists (
             select 1 from app_identity.role_version_capability definition
             where definition.role_version_id = role.current_version_id

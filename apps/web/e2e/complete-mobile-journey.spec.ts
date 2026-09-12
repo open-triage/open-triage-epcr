@@ -142,8 +142,8 @@ test("the complete synthetic mobile call journey survives offline work, restart,
 
     await expect(page.getByLabel("Username")).toHaveValue("");
     await expect(page.getByLabel("Password")).toHaveValue("");
-    await page.getByLabel("Username").fill("demo.clinician");
-    await page.getByLabel("Password").fill("open-triage-demo");
+    await page.getByLabel("Username").fill("demo");
+    await page.getByLabel("Password").fill("opentriagedemo");
     const signedInAt = Date.now();
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toBeVisible({ timeout: 10_000 });

@@ -49,8 +49,8 @@ test.beforeEach(async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Username")).toHaveValue("");
   await expect(page.getByLabel("Password")).toHaveValue("");
-  await page.getByLabel("Username").fill("demo.clinician");
-  await page.getByLabel("Password").fill("open-triage-demo");
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
 });
 
