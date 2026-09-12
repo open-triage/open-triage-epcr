@@ -127,16 +127,23 @@ input, select, textarea { touch-action: manipulation; }
 .admin-role-badges li { padding: 3px 7px; border-radius: 999px; background: #e8f3ee; font-size: var(--text-caption); }
 .admin-muted { color: var(--muted); }
 .admin-role-state { max-width: 220px; margin: 18px; }
-.admin-role-cards { display: grid; gap: 14px; padding: 0 18px; }
-.admin-role-card { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-.admin-role-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.admin-role-card h3, .admin-role-card h4 { margin: 0; }
-.admin-role-card > p { color: var(--muted); }
-.admin-role-card dl { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 12px 0; }
-.admin-role-card > ul { display: grid; gap: 7px; margin-bottom: 0; padding-left: 20px; }
-.admin-role-card > ul li span { display: block; color: var(--muted); font-size: var(--text-caption); }
-.admin-role-card > button, .admin-role-editor-actions button, .section-heading > button { min-height: 42px; padding: 8px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; cursor: pointer; }
-.admin-role-card > button { margin-top: 14px; }
+.admin-role-matrix-scroll { margin: 0 18px 18px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.admin-role-matrix { min-width: max-content; }
+.admin-role-matrix caption { padding: 12px; color: var(--muted); text-align: left; font-size: var(--text-caption); font-weight: 750; }
+.admin-role-matrix th:first-child { position: sticky; z-index: 1; left: 0; min-width: 230px; max-width: 280px; background: #f8faf8; }
+.admin-role-matrix thead th:first-child { z-index: 2; background: #edf3ee; }
+.admin-role-matrix thead th:not(:first-child) { min-width: 170px; max-width: 220px; }
+.admin-role-column-heading { display: grid; gap: 3px; }
+.admin-role-column-heading strong { color: var(--ink); font-size: var(--text-body); }
+.admin-role-column-heading small, .admin-role-matrix tbody th small { display: block; color: var(--muted); font-size: var(--text-caption); font-weight: 500; }
+.admin-role-matrix tbody th code { display: block; margin-bottom: 4px; overflow-wrap: anywhere; }
+.admin-role-matrix tbody td { text-align: center; vertical-align: middle; }
+.admin-role-matrix .capability-included { background: #eef8f1; }
+.admin-capability-mark { display: inline-grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: #68716b; font-size: 20px; font-weight: 900; }
+.admin-role-matrix .capability-included .admin-capability-mark { color: #fff; background: var(--green); }
+.admin-role-matrix-actions { display: grid; gap: 7px; }
+.admin-role-matrix-actions button, .admin-role-editor-actions button, .section-heading > button { min-height: 42px; padding: 8px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; cursor: pointer; }
+.admin-role-matrix-actions button { min-height: 36px; padding: 6px 9px; }
 .admin-role-editor { margin: 0 18px 18px; padding: 16px; border: 1px solid var(--green); border-radius: 8px; background: #f8fbf8; }
 .admin-role-editor > fieldset { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; }
 .admin-role-editor > fieldset > legend { padding: 0; font-size: var(--text-heading); font-weight: 800; }

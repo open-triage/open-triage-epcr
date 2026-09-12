@@ -6,7 +6,7 @@ import { type ClinicianSession } from "@open-triage/contracts";
 import { acceptOwnershipTransfer, activateStationaryForm, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
-import { roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
+import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
 import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
 import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
@@ -97,6 +97,31 @@ test("role editor explains prerequisite validation and protects capabilities out
   const markup = renderToStaticMarkup(createElement(RolesPanel,
     { csrfToken: "csrf", capabilities: ["roles:read", "roles:write"] }));
   assert.match(markup, /Create custom role/);
+});
+
+test("role capabilities render as rows with roles as columns", () => {
+  const roles = [{ id: "clinician", displayName: "Clinician", description: "Documents care", active: true,
+    protected: true, version: 1, assigneeCount: 4,
+    capabilities: [{ key: "clinical:document", description: "Document patient care", administrative: false,
+      systemOnly: false }] },
+  { id: "administrator", displayName: "Administrator", description: null, active: true,
+    protected: true, version: 2, assigneeCount: 1,
+    capabilities: [{ key: "users:read", description: "View users", administrative: true, systemOnly: false }] }];
+  const options = [
+    { key: "clinical:document", description: "Document patient care", administrative: false, systemOnly: false,
+      prerequisites: [], mutable: true },
+    { key: "users:read", description: "View users", administrative: true, systemOnly: false,
+      prerequisites: [], mutable: true }
+  ];
+  const markup = renderToStaticMarkup(createElement(RoleCapabilityMatrix, { roles, capabilityOptions: options,
+    canWrite: false, onHistory: () => undefined, onEdit: () => undefined, onDeactivate: () => undefined,
+    onReactivate: () => undefined }));
+  assert.match(markup, /<caption>Capabilities assigned to each role<\/caption>/);
+  assert.match(markup, /<th scope="col">Capability<\/th><th scope="col"><span class="admin-role-column-heading"><strong>Clinician/);
+  assert.match(markup, /<th scope="row"><code>clinical:document<\/code>/);
+  assert.match(markup, /capability-included[^>]*><span class="admin-capability-mark" aria-hidden="true">✓<\/span>/);
+  assert.match(markup, /capability-not-included[^>]*><span class="admin-capability-mark" aria-hidden="true">—<\/span>/);
+  assert.doesNotMatch(markup, />Edit<\/button>|>Deactivate<\/button>/);
 });
 
 test("role mutations send CSRF proof and optimistic version without mutable audit details", async (t) => {
