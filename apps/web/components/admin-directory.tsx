@@ -391,6 +391,62 @@ export function roleDraftFindings(draft: RoleDraft, options: AdminCapabilityOpti
   return findings;
 }
 
+function capabilityRows(roles: AdminRole[], options: AdminCapabilityOption[]): Array<{ key: string; description: string }> {
+  const rows = new Map<string, { key: string; description: string }>();
+  for (const option of options) rows.set(option.key, { key: option.key, description: option.description });
+  for (const role of roles) for (const capability of role.capabilities) {
+    if (!rows.has(capability.key)) rows.set(capability.key, capability);
+  }
+  return [...rows.values()].sort((left, right) => left.key.localeCompare(right.key));
+}
+
+export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHistory, onEdit, onDeactivate,
+  onReactivate }: {
+  readonly roles: AdminRole[];
+  readonly capabilityOptions: AdminCapabilityOption[];
+  readonly canWrite: boolean;
+  readonly onHistory: (roleId: string) => void;
+  readonly onEdit: (role: AdminRole) => void;
+  readonly onDeactivate: (role: AdminRole) => void;
+  readonly onReactivate: (role: AdminRole) => void;
+}) {
+  const rows = capabilityRows(roles, capabilityOptions);
+  return <div className="admin-role-matrix-scroll">
+    <table className="admin-role-matrix">
+      <caption>Capabilities assigned to each role</caption>
+      <thead><tr><th scope="col">Capability</th>{roles.map((role) => <th scope="col" key={role.id}>
+        <span className="admin-role-column-heading"><strong>{role.displayName}</strong>
+          <small>{role.active ? "Active" : "Deactivated"} · {role.protected ? "Protected" : "Custom"}</small>
+          <small>Version {role.version} · {role.assigneeCount} assignee{role.assigneeCount === 1 ? "" : "s"}</small>
+          {role.description && <small>{role.description}</small>}
+        </span>
+      </th>)}</tr></thead>
+      <tbody>{rows.map((capability) => <tr key={capability.key}>
+        <th scope="row"><code>{capability.key}</code><small>{capability.description}</small></th>
+        {roles.map((role) => {
+          const included = role.capabilities.some(({ key }) => key === capability.key);
+          return <td key={role.id} className={included ? "capability-included" : "capability-not-included"}>
+            <span className="admin-capability-mark" aria-hidden="true">{included ? "✓" : "—"}</span>
+            <span className="sr-only">{included ? "Included" : "Not included"}</span>
+          </td>;
+        })}
+      </tr>)}</tbody>
+      <tfoot><tr><th scope="row">Role actions</th>{roles.map((role) => <td key={role.id}>
+        <div className="admin-role-matrix-actions">
+          <button type="button" onClick={() => onHistory(role.id)}>View history</button>
+          {canWrite && !role.protected && role.active && <>
+            <button type="button" onClick={() => onEdit(role)}>Edit</button>
+            <button type="button" onClick={() => onDeactivate(role)}>Deactivate</button>
+          </>}
+          {canWrite && !role.protected && !role.active && <button type="button" onClick={() => onReactivate(role)}>
+            Reactivate
+          </button>}
+        </div>
+      </td>)}</tr></tfoot>
+    </table>
+  </div>;
+}
+
 export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [] }: {
   readonly csrfToken?: string; readonly capabilities?: string[];
 }) {
@@ -419,9 +475,9 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     loadAdminRoles("active").then((result) => setItems(result.items))
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Roles could not be loaded."))
       .finally(() => setLoading(false));
-    if (canWrite) loadAdminRoleCapabilities().then((result) => setCapabilityOptions(result.items))
+    loadAdminRoleCapabilities().then((result) => setCapabilityOptions(result.items))
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Capabilities could not be loaded."));
-  }, [canWrite]);
+  }, []);
 
   function begin(role: AdminRole | null) {
     setError(null);
@@ -554,20 +610,8 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
         <code>{event.action}</code> at {event.occurredAt}{event.note && <small> Note: {event.note}</small>}
       </li>)}</ol>
     </section>}
-    {items.length > 0 && <div className="admin-role-cards">{items.map((role) => <article key={role.id} className="admin-role-card">
-      <header><h3>{role.displayName}</h3><span>{role.active ? "Active" : "Deactivated"}</span></header>
-      {role.description && <p>{role.description}</p>}
-      <dl><div><dt>Type</dt><dd>{role.protected ? "Protected" : "Custom"}</dd></div>
-        <div><dt>Version</dt><dd>{role.version}</dd></div><div><dt>Assignees</dt><dd>{role.assigneeCount}</dd></div></dl>
-      <h4>Capabilities</h4>
-      {role.capabilities.length ? <ul>{role.capabilities.map((capability) => <li key={capability.key}>
-        <code>{capability.key}</code><span>{capability.description}</span>
-      </li>)}</ul> : <p className="admin-muted">No capabilities</p>}
-      <div className="admin-role-editor-actions"><button type="button" onClick={() => void showHistory(role.id)}>View history</button>
-        {canWrite && !role.protected && role.active && <><button type="button" onClick={() => begin(role)}>Edit custom role</button>
-          <button type="button" onClick={() => { setRetiringRole(role); setRetirementNote(""); }}>Deactivate custom role</button></>}
-        {canWrite && !role.protected && !role.active && <button type="button" onClick={() => begin(role)}>Reactivate custom role</button>}
-      </div>
-    </article>)}</div>}
+    {items.length > 0 && <RoleCapabilityMatrix roles={items} capabilityOptions={capabilityOptions} canWrite={canWrite}
+      onHistory={(roleId) => void showHistory(roleId)} onEdit={begin}
+      onDeactivate={(role) => { setRetiringRole(role); setRetirementNote(""); }} onReactivate={begin} />}
   </section>;
 }
