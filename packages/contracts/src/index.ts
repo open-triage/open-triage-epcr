@@ -125,7 +125,7 @@ export interface AdminRoleSummary {
 }
 
 export interface AdminAssignableRoleSummary extends AdminRoleSummary {
-  /** Administrator and Clinical Demo assignments are reserved to the installation owner. */
+  /** Administrator and Demo assignments are reserved to the installation owner. */
   assignmentRestricted: boolean;
   /** Whether the current actor may add or remove this role. */
   assignmentMutable: boolean;

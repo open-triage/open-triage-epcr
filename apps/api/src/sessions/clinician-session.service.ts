@@ -6,7 +6,7 @@ import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSessi
 import { DataSource, type EntityManager } from "typeorm";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
 
-export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
+export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 
 type CredentialRow = {

@@ -15,7 +15,7 @@ type RoleDefinition = AdminRoleSummary & {
   assignable: boolean; systemKey: string | null; capabilities: string[];
 };
 
-const OWNER_ONLY_ROLE_KEYS = new Set(["administrator", "clinical-demo"]);
+const OWNER_ONLY_ROLE_KEYS = new Set(["administrator", "demo"]);
 
 @Injectable()
 export class UserRoleAssignmentService {
@@ -94,7 +94,7 @@ export class UserRoleAssignmentService {
       }
       if (changed.some((role) => role.systemKey && OWNER_ONLY_ROLE_KEYS.has(role.systemKey))) {
         if (!actorIsOwner) {
-          throw new ForbiddenException("Only the installation owner may assign or remove Administrator or Clinical Demo");
+          throw new ForbiddenException("Only the installation owner may assign or remove Administrator or Demo");
         }
         await this.sessions.requireRecentReauthentication(token, manager, now);
       }

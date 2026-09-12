@@ -6,13 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const [databasePackage, bootstrap, apiMain, apiModule, initialMigration, fixtureRevision] = await Promise.all([
+const [databasePackage, bootstrap, apiMain, apiModule, initialMigration] = await Promise.all([
   readFile(path.join(packageRoot, "package.json"), "utf8").then(JSON.parse),
   readFile(path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs"), "utf8"),
   readFile(path.join(repoRoot, "apps/api/src/main.ts"), "utf8"),
   readFile(path.join(repoRoot, "apps/api/src/app.module.ts"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911280000_production_equivalent_demo_fixtures.sql"), "utf8"),
 ]);
 
 test("exposes fixture accounts only through an explicit insert-only command", () => {
@@ -28,11 +27,10 @@ test("exposes fixture accounts only through an explicit insert-only command", ()
   assert.doesNotMatch(bootstrap, /\bdelete from\b|\breactivat/i);
 });
 
-test("creates only the two ordinary accounts with exact initial roles", () => {
-  assert.match(bootstrap, /administratorUserId/);
-  assert.match(bootstrap, /clinicianUserId/);
-  assert.match(bootstrap, /roles: \["configuration-author", "clinical-demo"\]/);
-  assert.match(bootstrap, /roles: \["clinical-demo"\]/);
+test("creates only one ordinary demo account with its exact initial role", () => {
+  assert.match(bootstrap, /SYNTHETIC_DEMO_FIXTURE\.userId/);
+  assert.match(bootstrap, /SYNTHETIC_DEMO_FIXTURE\.username/);
+  assert.match(bootstrap, /roles: \["demo"\]/);
   assert.doesNotMatch(bootstrap, /roles: \[[^\]]*"administrator"/);
   assert.doesNotMatch(bootstrap, /roles: \[[^\]]*"clinician"/);
   assert.match(bootstrap, /must_change_password,[\s\S]*values \(\$1, \$2, \$3, false, null, now\(\)\)/);
@@ -52,13 +50,4 @@ test("records fixture provisioning without exposing credential material to audit
   assert.match(bootstrap, /'account\.provision'/);
   assert.match(bootstrap, /'demonstration-fixture'/);
   assert.doesNotMatch(bootstrap, /jsonb_build_object\([^)]*(?:password|verifier|token)/i);
-  assert.match(fixtureRevision, /'account\.roles_change'/);
-  assert.doesNotMatch(fixtureRevision, /jsonb_build_object\([^)]*(?:password|verifier|token)/i);
-});
-
-test("uses a one-time data revision for legacy role replacement", () => {
-  assert.match(fixtureRevision, /configuration-author/);
-  assert.match(fixtureRevision, /clinical-demo/);
-  assert.match(fixtureRevision, /ended_at = now\(\), ended_by = assignment\.user_id/);
-  assert.match(fixtureRevision, /set synthetic = false/);
 });

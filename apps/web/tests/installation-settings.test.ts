@@ -54,7 +54,7 @@ test("the static prototype accepts manually supplied local credentials as a clin
     process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
     assert.deepEqual(await loadInstallationConfiguration(), { settings: production });
     const session = await createClinicianSession({
-      username: SYNTHETIC_DEMO_FIXTURE.clinicianUsername,
+      username: SYNTHETIC_DEMO_FIXTURE.username,
       password: SYNTHETIC_DEMO_FIXTURE.password,
     });
     assert.deepEqual(session.capabilities, ["clinical:demo", "clinical:document"]);

@@ -76,7 +76,7 @@ test("role readers receive definitions and aggregate counts but no personnel ide
 
 test("role options identify owner-only assignments and actor-safe mutable roles", async () => {
   const service = new UserRoleReadService({ query: async (sql, parameters) => {
-    assert.match(sql, /administrator.*clinical-demo/);
+    assert.match(sql, /administrator.*demo/);
     assert.match(sql, /role_version_capability/);
     assert.deepEqual(parameters, [organizationId, "actor-id", ["roles:assign", "users:read"]]);
     return [{ id: roleId, display_name: "Administrator", active: true, protected: true,

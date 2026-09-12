@@ -11,8 +11,8 @@ async function openStationaryRecord(page: import("@playwright/test").Page, assig
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await page.getByLabel("Username").fill("demo.clinician");
-  await page.getByLabel("Password").fill("open-triage-demo");
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
@@ -143,8 +143,8 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
-  await page.getByLabel("Username").fill("demo.clinician");
-  await page.getByLabel("Password").fill("open-triage-demo");
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.getByRole("navigation", { name: "Quick documentation" })).toBeVisible();

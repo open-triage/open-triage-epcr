@@ -12,16 +12,10 @@ if (!databaseUrl) throw new Error("DATABASE_URL is required to bootstrap demonst
 
 const accounts = Object.freeze([
   {
-    id: SYNTHETIC_DEMO_FIXTURE.administratorUserId,
-    username: SYNTHETIC_DEMO_FIXTURE.administratorUsername,
-    displayName: "Demonstration Configuration Author",
-    roles: ["configuration-author", "clinical-demo"],
-  },
-  {
-    id: SYNTHETIC_DEMO_FIXTURE.clinicianUserId,
-    username: SYNTHETIC_DEMO_FIXTURE.clinicianUsername,
-    displayName: "Demonstration Clinician",
-    roles: ["clinical-demo"],
+    id: SYNTHETIC_DEMO_FIXTURE.userId,
+    username: SYNTHETIC_DEMO_FIXTURE.username,
+    displayName: "Demo",
+    roles: ["demo"],
   },
 ]);
 
@@ -37,7 +31,7 @@ try {
   const passwordVerifier = await createPasswordVerifier(SYNTHETIC_DEMO_FIXTURE.password);
   await client.query("begin");
   try {
-    await client.query("select pg_advisory_xact_lock(hashtext('open-triage-demo-fixture-accounts-v3'))");
+    await client.query("select pg_advisory_xact_lock(hashtext('open-triage-demo-fixture-accounts-v4'))");
     const organization = await client.query(
       "select id from app_identity.organization where id = $1 for update",
       [SYNTHETIC_DEMO_FIXTURE.organizationId],
