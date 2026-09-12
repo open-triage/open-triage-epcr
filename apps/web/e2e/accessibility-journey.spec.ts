@@ -58,7 +58,7 @@ test("demo sign in is explicit and manual logout immediately hides clinical cont
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("status")).toHaveText("You have logged out.");
 });
@@ -71,7 +71,7 @@ test("the browser hides clinical content at the fixed session deadline", async (
     window.localStorage.setItem(key, JSON.stringify(session));
   });
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("status")).toContainText("shift session expired");
 });

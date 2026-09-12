@@ -319,7 +319,7 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   await page.getByLabel("Note summary").fill("Preserved across API restart");
   await page.getByRole("button", { name: "Add to timeline" }).click();
 
-  await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByText("Your shift session ended. Sign in again to sync your saved work.")).toBeVisible();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toHaveLength(1);
 

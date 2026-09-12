@@ -126,7 +126,7 @@ test("a persistent browser profile recovers only its clinician's open work after
     await expect(recoveredCard).toContainText("Pending sync");
 
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
     const retainedAfterLogout = await page.evaluate(({ metadataKey, expectedReportId }) => ({

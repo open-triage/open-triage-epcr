@@ -1,5 +1,9 @@
 {
   "schemaVersion": "1.0.0",
+  "signIn": {
+    "brandText": "OpenTriage ePCR",
+    "helperText": "Demo credentials: username **demo**, password **opentriagedemo**"
+  },
   "clinicalRetention": {
     "durationHours": 87600,
     "automaticDeletionEnabled": false

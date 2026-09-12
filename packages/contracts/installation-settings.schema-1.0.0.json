@@ -6,12 +6,22 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion",
+    "signIn",
     "clinicalRetention",
     "authentication",
     "exports"
   ],
   "properties": {
     "schemaVersion": { "const": "1.0.0" },
+    "signIn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["brandText", "helperText"],
+      "properties": {
+        "brandText": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "helperText": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
     "clinicalRetention": {
       "type": "object",
       "additionalProperties": false,

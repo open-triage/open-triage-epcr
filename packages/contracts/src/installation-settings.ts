@@ -1,5 +1,9 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
+  signIn: {
+    brandText: string;
+    helperText: string;
+  };
   clinicalRetention: { durationHours: number; automaticDeletionEnabled: boolean };
   authentication: {
     sessionDurationMinutes: number;
@@ -40,19 +44,32 @@ function integerAt(value: unknown, path: string, minimum: number): number {
   return value as number;
 }
 
+function stringAt(value: unknown, path: string, maximumLength: number): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > maximumLength) {
+    throw new TypeError(`${path} must be a string between 1 and ${maximumLength} characters`);
+  }
+  return value;
+}
+
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "clinicalRetention", "authentication", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
+  const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
   const authentication = objectAt(root.authentication, "authentication");
   const exports = objectAt(root.exports, "exports");
+  exactKeys(signIn, "signIn", ["brandText", "helperText"]);
   exactKeys(retention, "clinicalRetention", ["durationHours", "automaticDeletionEnabled"]);
   exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength"]);
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
+    signIn: {
+      brandText: stringAt(signIn.brandText, "signIn.brandText", 100),
+      helperText: stringAt(signIn.helperText, "signIn.helperText", 300),
+    },
     clinicalRetention: {
       durationHours: integerAt(retention.durationHours, "clinicalRetention.durationHours", 1),
       automaticDeletionEnabled: booleanAt(retention.automaticDeletionEnabled, "clinicalRetention.automaticDeletionEnabled"),
