@@ -82,7 +82,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
 
   return <div className="catalog-editor">
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
-      : `Active Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
+      : canWrite ? `Active Catalog ${draft.displayName}, version ${draft.version}. Clone it to create an editable version.`
+        : `Active Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
     <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
     <h3 id="element-catalog-heading">Element catalog</h3>
     <label htmlFor="catalog-search">Find by identifier or label</label>

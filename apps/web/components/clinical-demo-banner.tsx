@@ -89,7 +89,6 @@ export function ClinicalDemoBanner({
 
   return <aside className="safety-notice clinical-demo-banner" role="note" aria-label="Clinical Demo tools">
     <strong>Clinical Demo</strong>
-    <span>Synthetic tools affect demo records only.</span>
     {canGenerate && context.eligibleUnits.length === 0 && <span>No eligible active unit is assigned.</span>}
     {canGenerate && multipleUnits && <label className="clinical-demo-unit">
       Unit

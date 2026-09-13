@@ -10,7 +10,7 @@ npm run identity:account -w @open-triage/api -- bootstrap-owner \
   --operator-id <change-or-incident-id>
 ```
 
-The initial owner receives Administrator only. Add `--clinician` only when the same person genuinely needs clinical documentation access. A replay or concurrent second attempt fails without creating another user. Until bootstrap succeeds, role assignments remain ineffective and both Admin and clinical work are unavailable.
+The owner receives no role assignment. Ownership itself grants every registered capability, including administration, publishing, ordinary clinical documentation, and clinical demonstration tools. The legacy `--clinician` option is accepted for command compatibility but no longer changes access. A replay or concurrent second attempt fails without creating another user. Until bootstrap succeeds, ordinary role assignments remain ineffective and neither Admin nor clinical work is available.
 
 Recover the current owner by immutable organization ownership, so a username rename cannot redirect the operation:
 

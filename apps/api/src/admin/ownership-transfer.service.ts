@@ -101,17 +101,6 @@ export class OwnershipTransferService {
           "owner.transfer.ineligible", "succeeded", { reason: "nominee_not_active_administrator" });
         return { failure: "ineligible" };
       }
-      await manager.query(`insert into app_identity.user_role_assignment
-        (organization_id, user_id, role_id, assigned_by, note)
-        select $1, $2, role.id, $2, 'Required for installation ownership'
-        from app_identity.role role
-        where role.organization_id = $1 and role.system_key = 'clinician'
-          and role.protected and role.active and role.assignable
-          and not exists (
-            select 1 from app_identity.user_role_assignment assignment
-            where assignment.organization_id = $1 and assignment.user_id = $2
-              and assignment.role_id = role.id and assignment.ended_at is null
-          )`, [actor.organization.id, actor.user.id]);
       await manager.query(`update app_identity.installation_owner
         set user_id = $2, established_at = $3, established_by_operator_id = 'accepted-owner-nomination'
         where organization_id = $1 and user_id = $4`,
@@ -119,6 +108,11 @@ export class OwnershipTransferService {
       await manager.query(`update app_identity.ownership_transfer set status = 'accepted', resolved_at = $2,
         resolved_by = $3, resolution_reason = 'nominee_accepted' where id = $1 and status = 'pending'`,
       [transfer.id, now, actor.user.id]);
+      await manager.query(`update app_identity.user_role_assignment
+        set ended_at = $3, ended_by = $2,
+            note = coalesce(note, 'Ended when user accepted installation ownership')
+        where organization_id = $1 and user_id = $2 and ended_at is null`,
+      [actor.organization.id, actor.user.id, now]);
       await this.audit(manager, actor.organization.id, transfer.id, actor.user.id,
         "owner.transfer.accept", "succeeded", { formerOwnerUserId: owner.user_id, newOwnerUserId: actor.user.id });
       return { value: await this.readState(manager, actor.organization.id, actor.user.id, now, false) };

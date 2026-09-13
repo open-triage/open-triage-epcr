@@ -39,9 +39,10 @@ test("creates only one ordinary demo account with its exact initial role", () =>
   assert.match(bootstrap, /insert into forms\.form_version/);
   assert.match(bootstrap, /insert into forms\.agency_stationary_default/);
   assert.match(bootstrap, /insert into app_identity\.agency_demographic_version/);
+  assert.match(bootstrap, /insert into app_identity\.operational_unit/);
+  assert.match(bootstrap, /insert into app_identity\.unit_clinician/);
   assert.doesNotMatch(bootstrap, /insert into (?:clinical|catalog)\./);
-  assert.doesNotMatch(bootstrap, /insert into app_identity\.(?:organization|operational_unit|unit_clinician|external_identity)/);
-  assert.doesNotMatch(bootstrap, /synthetic\)\s*values/i);
+  assert.doesNotMatch(bootstrap, /insert into app_identity\.(?:organization|external_identity)/);
 });
 
 test("requires an existing organization and reports owner readiness without creating ownership", () => {

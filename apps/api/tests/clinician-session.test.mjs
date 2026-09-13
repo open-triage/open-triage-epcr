@@ -91,7 +91,7 @@ test("temporary credentials sign in only before expiry and cannot outlive their 
       events.push({ sql: normalized, parameters });
       if (normalized.startsWith("select u.id as user_id")) return [account];
       if (normalized.startsWith("insert into app_identity.app_session")) return [{ id: "session-id" }];
-      if (normalized.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "clinical:document" }];
+      if (normalized.startsWith("select capability.key as capability_key")) return [{ capability_key: "clinical:document" }];
       return [];
     };
     return { events, sessions: new ClinicianSessionService({ query, manager: { query } }) };
@@ -132,7 +132,7 @@ test("password replacement commits credential, revocation, audits, and its repla
     if (sql.startsWith("select c.password_verifier")) return [credentialRow];
     if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
     if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
-    if (sql.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "clinical:document" }];
+    if (sql.startsWith("select capability.key as capability_key")) return [{ capability_key: "clinical:document" }];
     return [];
   });
 
@@ -168,7 +168,7 @@ test("successful reauthentication records five-minute server-side assurance with
   const { dataSource, events } = instrumentedDataSource(({ sql }) => {
     if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
     if (sql.startsWith("select s.id as session_id")) return [sessionRow];
-    if (sql.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "roles:assign" }];
+    if (sql.startsWith("select capability.key as capability_key")) return [{ capability_key: "roles:assign" }];
     if (sql.startsWith("select c.password_verifier")) return [{ ...sessionRow, password_verifier: verifier }];
     return [];
   });
@@ -218,7 +218,7 @@ test("capabilities are resolved from the current active role version on every re
     const normalized = sql.replace(/\s+/g, " ").trim();
     statements.push(normalized);
     if (normalized.startsWith("select s.id as session_id")) return [row];
-    if (normalized.startsWith("select distinct rvc.capability_key")) return [{ capability_key: capability }];
+    if (normalized.startsWith("select capability.key as capability_key")) return [{ capability_key: capability }];
     return [];
   } };
   dataSource.manager.query = dataSource.query;
@@ -227,7 +227,7 @@ test("capabilities are resolved from the current active role version on every re
   assert.deepEqual((await sessions.get("token", now)).capabilities, ["catalog:read"]);
   capability = "forms:read";
   assert.deepEqual((await sessions.get("token", now)).capabilities, ["forms:read"]);
-  assert.equal(statements.filter((sql) => sql.startsWith("select distinct rvc.capability_key")).length, 2);
+  assert.equal(statements.filter((sql) => sql.startsWith("select capability.key as capability_key")).length, 2);
   assert.ok(statements.every((sql) => !sql.includes("user_capability")));
 });
 

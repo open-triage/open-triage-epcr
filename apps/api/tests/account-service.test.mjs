@@ -52,7 +52,7 @@ test("ordinary account provisioning grants only its explicit protected role", as
   assert.equal(events.at(-1).sql, "commit");
 });
 
-test("owner bootstrap atomically creates an Administrator and Clinician owner", async () => {
+test("owner bootstrap creates an intrinsically authorized owner without role assignments", async () => {
   const { dataSource, events } = instrumentedDataSource(defaultResponse);
   const result = await new AccountService(dataSource).bootstrapOwner({
     organizationId: "organization-id", username: "  First.Owner  ", displayName: " First Owner ",
@@ -62,7 +62,7 @@ test("owner bootstrap atomically creates an Administrator and Clinician owner", 
   assert.equal(result.clinician, true);
   assert.match(result.userId, /^[0-9a-f-]{36}$/);
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment"))
-    .map(({ parameters }) => parameters[2]), ["administrator", "clinician"]);
+    .map(({ parameters }) => parameters[2]), []);
   assert.ok(events.some(({ sql }) => sql.startsWith("insert into app_identity.installation_owner")));
   const audit = events.find(({ sql }) => sql.startsWith("insert into app_identity.operator_identity_event"));
   assert.deepEqual(audit.parameters.slice(0, 2), ["owner.bootstrap", "organization-id"]);
@@ -71,14 +71,14 @@ test("owner bootstrap atomically creates an Administrator and Clinician owner", 
   assert.equal(events.at(-1).sql, "commit");
 });
 
-test("owner bootstrap retains the compatibility option while always granting Clinician", async () => {
+test("owner bootstrap compatibility option does not create owner roles", async () => {
   const { dataSource, events } = instrumentedDataSource(defaultResponse);
   await new AccountService(dataSource).bootstrapOwner({
     organizationId: "organization-id", username: "clinical.owner", displayName: "Clinical Owner",
     temporaryPassword: "Temporary password 42!", clinician: true, operator
   });
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment"))
-    .map(({ parameters }) => parameters[2]), ["administrator", "clinician"]);
+    .map(({ parameters }) => parameters[2]), []);
 });
 
 test("owner bootstrap replay creates nothing and records the failed immutable target", async () => {
