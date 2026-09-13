@@ -130,8 +130,8 @@ test("password replacement commits credential, revocation, audits, and its repla
     if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
     if (sql.startsWith("select s.id as session_id")) return [sessionRow];
     if (sql.startsWith("select c.password_verifier")) return [credentialRow];
-    if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
-    if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
+    if (sql.startsWith("update app_identity.local_credential")) return [[{ credential_version: "2" }], 1];
+    if (sql.startsWith("insert into app_identity.app_session")) return [[{ id: "replacement-session" }], 1];
     if (sql.startsWith("select capability.key as capability_key")) return [{ capability_key: "clinical:document" }];
     return [];
   });

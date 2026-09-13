@@ -4,6 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
@@ -63,12 +64,12 @@ export class ClinicianSessionService {
     const expiresAt = account.must_change_password
       ? new Date(Math.min(normalExpiry.getTime(), timestamp(account.temporary_password_expires_at!)))
       : normalExpiry;
-    const inserted = await this.dataSource.query<Array<{ id: string }>>(`
+    const inserted = mutationRows<{ id: string }>(await this.dataSource.query(`
       insert into app_identity.app_session
         (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label)
       values ($1, $2, $3, $4, $5, $5, $6, $7) returning id
     `, [account.user_id, digest(sessionToken), digest(csrfToken), account.credential_version, now, expiresAt,
-      coarseDeviceLabel(userAgent)]);
+      coarseDeviceLabel(userAgent)]));
     await this.audit(this.dataSource.manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
     return { sessionToken, session: await this.publicSession(account, now, expiresAt, csrfToken) };
   }
@@ -130,11 +131,12 @@ export class ClinicianSessionService {
         await this.audit(manager, account, "authentication.password_change", "failed");
         return undefined;
       }
-      const credentials = await manager.query<Array<{ credential_version: string }>>(`update app_identity.local_credential set password_verifier = $2,
+      const credentials = mutationRows<{ credential_version: string }>(await manager.query(`update app_identity.local_credential set password_verifier = $2,
         must_change_password = false, temporary_password_expires_at = null,
         credential_version = credential_version + 1,
         password_changed_at = $3, updated_at = $3 where user_id = $1
-        returning credential_version`, [account.user_id, passwordVerifier, now]);
+        returning credential_version`, [account.user_id, passwordVerifier, now]));
+      if (!credentials[0]) throw new Error("The password credential update returned no row");
       await manager.query(`update app_identity.app_session set revoked_at = $2,
         revocation_reason = 'password_change' where user_id = $1 and revoked_at is null`, [account.user_id, now]);
       await this.audit(manager, account, "authentication.password_change", "succeeded");
@@ -142,12 +144,12 @@ export class ClinicianSessionService {
       const replacementSessionToken = randomBytes(32).toString("base64url");
       const csrfToken = randomBytes(32).toString("base64url");
       const expiresAt = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
-      const inserted = await manager.query<Array<{ id: string }>>(`
+      const inserted = mutationRows<{ id: string }>(await manager.query(`
         insert into app_identity.app_session
           (user_id, token_sha256, csrf_sha256, credential_version, created_at, last_activity_at, expires_at, device_label)
         values ($1, $2, $3, $4, $5, $5, $6, $7) returning id
-      `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0]!.credential_version,
-        now, expiresAt, coarseDeviceLabel(userAgent)]);
+      `, [account.user_id, digest(replacementSessionToken), digest(csrfToken), credentials[0].credential_version,
+        now, expiresAt, coarseDeviceLabel(userAgent)]));
       await this.audit(manager, account, "authentication.sign_in", "succeeded", inserted[0]?.id);
       return {
         sessionToken: replacementSessionToken,
