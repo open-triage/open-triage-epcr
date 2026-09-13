@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { syntheticStationaryDefinition } from "../scripts/synthetic-stationary-definition.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -13,6 +14,23 @@ const [databasePackage, bootstrap, apiMain, apiModule, initialMigration] = await
   readFile(path.join(repoRoot, "apps/api/src/app.module.ts"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
 ]);
+
+test("builds the Stationary bootstrap from the complete NEMSIS dataset", async () => {
+  const [definition, catalog] = await Promise.all([
+    syntheticStationaryDefinition(),
+    readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
+  ]);
+  const placed = definition.sections.flatMap(({ fields }) => fields.map(({ source }) => source.elementId));
+
+  assert.equal(definition.sections.length, 27);
+  assert.equal(placed.length, 453);
+  assert.equal(new Set(placed).size, 453);
+  assert.deepEqual(new Set(placed), new Set(catalog.elements.map(({ id }) => id)));
+  assert.deepEqual(definition.sections.slice(0, 7).map(({ key }) => key), [
+    "DemographicGroup", "eCustomConfigurationSection", "eRecordSection", "eResponseSection",
+    "eDispatchSection", "eCrewSection", "eTimesSection",
+  ]);
+});
 
 test("exposes fixture accounts only through an explicit insert-only command", () => {
   assert.equal(databasePackage.scripts["bootstrap:synthetic:runtime"],
