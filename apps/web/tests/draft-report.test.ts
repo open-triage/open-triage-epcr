@@ -9,6 +9,7 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   deleteDraftReport,
+  demoActionMutationDelta,
   encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
@@ -83,6 +84,29 @@ test("the draft adapter normalizes legacy string vital integers before saving", 
     .find(({ elementId }) => elementId === "eVitals.06");
 
   assert.deepEqual(systolic?.value, { kind: "integer", value: 100 });
+});
+
+test("Populate excludes incidental changes to an existing clinician vital set", () => {
+  const clinicianGroupId = "52000000-0000-4000-8000-000000000031";
+  const clinicianOccurrenceId = "52000000-0000-4000-8000-000000000032";
+  const demoGroupId = "52000000-0000-4000-8000-000000000033";
+  const demoOccurrenceId = "52000000-0000-4000-8000-000000000034";
+  const scoped = demoActionMutationDelta("populate", {
+    groups: [
+      { id: clinicianGroupId, groupId: "eVitals.VitalGroup", ordinal: 0, parentGroupInstanceId: demoGroupId },
+      { id: demoGroupId, groupId: "eVitalsSection", ordinal: 0, correlationId: "demo:stationary-populate-v1:vitals" },
+    ],
+    occurrences: [
+      { id: clinicianOccurrenceId, elementId: "eVitals.01", groupInstanceId: clinicianGroupId, ordinal: 0,
+        value: { kind: "datetime", value: "2026-09-13T12:34:00-04:00" } },
+      { id: demoOccurrenceId, elementId: "eVitals.10", groupInstanceId: clinicianGroupId, ordinal: 0,
+        sourceAttributes: { "x-open-triage-demo": "stationary-populate-v1" }, provenanceKind: "demo",
+        provenanceDetail: { generator: "stationary-populate-v1" }, value: { kind: "integer", value: 80 } },
+    ],
+  }, { groups: [], occurrences: [] });
+
+  assert.deepEqual(scoped.groups.map(({ id }) => id), [demoGroupId]);
+  assert.deepEqual(scoped.occurrences.map(({ id }) => id), [demoOccurrenceId]);
 });
 
 test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {

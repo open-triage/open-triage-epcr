@@ -3,6 +3,7 @@ import type { AssignedCall, EncounterDocument, OpenAssignmentResponse } from "@o
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import { incidentSummary } from "../app/incident-document";
+import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
 const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
 const generatedSummary = incidentSummary(demoOpenAssignment.report.document as EncounterDocument);
@@ -331,6 +332,86 @@ test("draft synchronization immediately rebases a rejected retry without showing
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
+});
+
+test("mobile vital signs remain saved when the rest of the synthetic form is populated", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
+  let revision = 0;
+  const commands: Array<{
+    demoAction?: "populate" | "clear";
+    groups?: ReadonlyArray<{ correlationId?: string }>;
+    occurrences?: ReadonlyArray<{
+      elementId: string;
+      provenanceKind?: string;
+      provenanceDetail?: { generator?: string };
+      sourceAttributes?: Record<string, unknown>;
+      value?: { value?: unknown };
+    }>;
+  }> = [];
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/api/sessions", (route) => route.fulfill({ json: {
+    csrfToken: "browser-test-csrf",
+    user: { id: "32000000-0000-4000-8000-000000000002", displayName: "Synthetic Clinician" },
+    organization: { id: "32000000-0000-4000-8000-000000000001", name: "OpenTriage Synthetic EMS" },
+    startedAt: "2026-09-13T10:00:00.000Z",
+    expiresAt: "2099-09-13T18:00:00.000Z",
+    capabilities: ["clinical:demo", "clinical:document"],
+    workspaceAvailable: true,
+  } }));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+  await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
+    openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString(),
+  } }));
+  await page.route("**/api/calls/synthetic-generation", (route) => route.fulfill({ json: {
+    eligibleUnits: [assignedCall.unit], hasUnopenedCall: true,
+  } }));
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({
+      ...openedAssignment,
+      report: { ...openedAssignment.report, demoMutable: true },
+    }),
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    const command = route.request().postDataJSON() as typeof commands[number] & { expectedRevision: number };
+    commands.push(command);
+    if (command.expectedRevision !== revision) {
+      return route.fulfill({ status: 409, json: { message: "Draft revision is stale" } });
+    }
+    if (command.demoAction === "populate") {
+      const invalidGroup = command.groups?.some(({ correlationId }) => !correlationId?.startsWith("demo:stationary-populate-v1:"));
+      const invalidOccurrence = command.occurrences?.some((occurrence) => occurrence.provenanceKind !== "demo" ||
+        occurrence.provenanceDetail?.generator !== "stationary-populate-v1" ||
+        occurrence.sourceAttributes?.["x-open-triage-demo"] !== "stationary-populate-v1");
+      if (invalidGroup || invalidOccurrence) {
+        return route.fulfill({ status: 409, json: { message: "Populate accepts only immutable demo-owned values" } });
+      }
+    }
+    revision += 1;
+    return route.fulfill({ status: 201, json: { id: openedAssignment.report.id, status: "draft", revision } });
+  });
+
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  const dialog = page.getByRole("dialog", { name: "Vital signs" });
+  await dialog.getByRole("textbox", { name: /Systolic BP/ }).fill("100");
+  await dialog.getByRole("textbox", { name: /Diastolic BP/ }).fill("50");
+  await page.getByRole("button", { name: "Add vital set" }).click();
+  await expect.poll(() => commands.some((command) => command.occurrences?.some(({ elementId }) => elementId === "eVitals.06")))
+    .toBe(true);
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+
+  await page.getByRole("button", { name: "Populate" }).click();
+  await expect.poll(() => commands.some(({ demoAction }) => demoAction === "populate")).toBe(true);
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  const populate = commands.find(({ demoAction }) => demoAction === "populate")!;
+  expect(populate.groups?.every(({ correlationId }) => correlationId?.startsWith("demo:stationary-populate-v1:"))).toBe(true);
+  expect(populate.occurrences?.every(({ provenanceKind }) => provenanceKind === "demo")).toBe(true);
+  expect(commands.some((command) => command.occurrences?.some(({ elementId, value }) =>
+    elementId === "eVitals.06" && value?.value === 100))).toBe(true);
 });
 
 test("an ended API session preserves queued work and resumes it after sign-in", async ({ page }) => {

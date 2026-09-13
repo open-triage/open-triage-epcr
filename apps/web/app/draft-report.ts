@@ -217,6 +217,33 @@ export function draftMutationDelta(
   };
 }
 
+/** Keeps privileged demo commands ownership-pure at the browser/API boundary. */
+export function demoActionMutationDelta(
+  action: "populate" | "clear",
+  mutations: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  persisted: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): Pick<SaveDraftReportCommand, "groups" | "occurrences"> {
+  if (action === "populate") {
+    return {
+      groups: mutations.groups.filter((group) => !group.tombstone && group.correlationId?.startsWith(DEMO_GROUP_CORRELATION_PREFIX)),
+      occurrences: mutations.occurrences.filter((occurrence) => !occurrence.tombstone &&
+        occurrence.provenanceKind === "demo" &&
+        occurrence.provenanceDetail?.generator === DEMO_PROVENANCE_VALUE &&
+        occurrence.sourceAttributes?.["x-open-triage-demo"] === DEMO_PROVENANCE_VALUE),
+    };
+  }
+  const demoGroupIds = new Set(persisted.groups
+    .filter((group) => group.correlationId?.startsWith(DEMO_GROUP_CORRELATION_PREFIX))
+    .map(({ id }) => id));
+  const demoOccurrenceIds = new Set(persisted.occurrences
+    .filter((occurrence) => occurrence.provenanceKind === "demo" && occurrence.provenanceDetail?.generator === DEMO_PROVENANCE_VALUE)
+    .map(({ id }) => id));
+  return {
+    groups: mutations.groups.filter((group) => group.tombstone && demoGroupIds.has(group.id)),
+    occurrences: mutations.occurrences.filter((occurrence) => occurrence.tombstone && demoOccurrenceIds.has(occurrence.id)),
+  };
+}
+
 /** Advances an accepted full baseline by one target-level mutation set. */
 export function applyDraftMutationDelta(
   baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,

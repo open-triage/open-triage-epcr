@@ -7,6 +7,7 @@ import { resolveDispatchConflict } from "./assigned-calls";
 import {
   ACTIVE_REPORT_POLL_INTERVAL_MS,
   applyDraftMutationDelta,
+  demoActionMutationDelta,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   draftMutationDelta,
@@ -236,7 +237,7 @@ export function useReportWorkspace({
     if (!report) return;
     cacheLocalReportDocument(window.localStorage, report.id, shell.encounter.document);
     const projected = shellStateToDraftMutations(report.id, shell, persistedDraft.current);
-    const mutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
+    const unscopedMutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
       projected,
       persistedDraft.current,
     );
@@ -252,10 +253,16 @@ export function useReportWorkspace({
       }
       return;
     }
-    if (!mutations.groups.length && !mutations.occurrences.length) return;
-    queueInitialSnapshot.current = false;
     const existing = nextDraftChange(window.localStorage, report.id);
     const demoAction = pendingDemoAction.current ?? existing?.command.demoAction;
+    const mutations = demoAction
+      ? demoActionMutationDelta(demoAction, unscopedMutations, persistedDraft.current)
+      : unscopedMutations;
+    if (!mutations.groups.length && !mutations.occurrences.length) {
+      pendingDemoAction.current = null;
+      return;
+    }
+    queueInitialSnapshot.current = false;
     queueDraftChange(window.localStorage, report.id, {
       commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
       expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
