@@ -649,8 +649,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       values ('32000000-0000-4000-8000-000000000011', '32000000-0000-4000-8000-000000000012', $1,
        1, 'published', '{"schemaVersion":1,"sections":[]}', repeat('b',64), 'Integration fixture', $2, $2, now())`,
     [releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
-    await client.query(`insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
-      values ($1, '32000000-0000-4000-8000-000000000011', $2)`,
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = '32000000-0000-4000-8000-000000000011',
+          activated_by = $2, activated_at = now()
+      where organization_id = $1`,
     [SYNTHETIC_DEMO_FIXTURE.organizationId, SYNTHETIC_DEMO_FIXTURE.userId]);
     await client.query(`insert into clinical.incident (id, organization_id)
       values ('32000000-0000-4000-8000-00000000000c', $1)`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);

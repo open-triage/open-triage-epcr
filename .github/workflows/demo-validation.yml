@@ -125,6 +125,12 @@ jobs:
           -e DATABASE_URL
           "$API_RUNTIME_IMAGE"
           npm run migrate -w @open-triage/database
+      - name: Load the NEMSIS catalog from the runtime image
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL
+          "$API_RUNTIME_IMAGE"
+          npm run load:catalog -w @open-triage/database
       - name: Create the ordinary fixture-test organization
         run: >-
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c
