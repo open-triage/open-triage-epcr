@@ -70,8 +70,8 @@ export class AccountService {
             (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
            values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
         );
-        const roleKeys = input.clinician ? ["administrator", "clinician"] : ["administrator"];
-        await this.assignProtectedRoles(manager, input.organizationId, userId, roleKeys, "Owner bootstrap");
+        await this.assignProtectedRoles(manager, input.organizationId, userId,
+          ["administrator", "clinician"], "Owner bootstrap");
         await manager.query(
           `insert into app_identity.installation_owner
             (organization_id, user_id, established_by_operator_id)
@@ -83,7 +83,7 @@ export class AccountService {
            values ($1, $2, 'account.provision', 'succeeded', $2)`, [input.organizationId, userId]
         );
         await this.auditOperator(manager, "owner.bootstrap", target, input.operator, "succeeded");
-        return { organizationId: input.organizationId, userId, username, clinician: input.clinician };
+        return { organizationId: input.organizationId, userId, username, clinician: true };
       });
     });
   }

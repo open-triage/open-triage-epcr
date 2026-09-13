@@ -21,6 +21,7 @@ type UserCursor = {
 };
 type UserRow = {
   id: string; display_name: string; username: string; active: boolean; revision: string | number;
+  owner: boolean;
   roles: AdminRoleSummary[] | string | null;
 };
 type RoleRow = {
@@ -92,6 +93,9 @@ export class UserRoleReadService {
     const cursor = decodeCursor(one(input.cursor), { state: selectedState, search, roleId });
     const rows = await this.dataSource.query<UserRow[]>(`
       select u.id, u.display_name, credential.username, u.active, u.revision,
+        exists (select 1 from app_identity.installation_owner installation_owner
+          where installation_owner.organization_id = u.organization_id
+            and installation_owner.user_id = u.id) as owner,
         coalesce((
           select jsonb_agg(jsonb_build_object(
             'id', role.id, 'displayName', role.display_name,
@@ -123,7 +127,8 @@ export class UserRoleReadService {
     const last = visible.at(-1);
     return {
       items: visible.map((row) => ({ id: row.id, displayName: row.display_name, username: row.username,
-        active: row.active, revision: Number(row.revision), roles: parsedJsonArray(row.roles) })),
+        active: row.active, revision: Number(row.revision), owner: row.owner,
+        roles: parsedJsonArray(row.roles) })),
       pageSize,
       nextCursor: rows.length > pageSize && last ? encodeCursor({ active: last.active,
         displayName: last.display_name.normalize("NFC").toLocaleLowerCase("en-US"), id: last.id,

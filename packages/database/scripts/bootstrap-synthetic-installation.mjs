@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -18,6 +20,127 @@ const accounts = Object.freeze([
     roles: ["demo"],
   },
 ]);
+
+const baselineFormId = "33000000-0000-4000-8000-000000000001";
+const baselineFormVersionId = "34000000-0000-4000-8000-000000000001";
+const baselineDemographicId = "35000000-0000-4000-8000-000000000001";
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+}
+
+function sha256(value) {
+  return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
+}
+
+async function baselineDefinition() {
+  const profile = JSON.parse(await readFile(path.join(repoRoot, "apps/web/app/data/standard-encounter-form.json"), "utf8"));
+  return {
+    schemaVersion: 1,
+    sections: profile.sections.filter((section) => section.visible).map((section) => ({
+      key: section.id,
+      presentation: { quickActionLabel: section.quickActionLabel },
+      fields: section.elements.map((elementId) => ({
+        key: elementId,
+        source: { kind: "nemsis", elementId },
+        configuration: {
+          ...(profile.labels[elementId] ? { label: profile.labels[elementId] } : {}),
+          ...(profile.helpText[elementId] ? { helpText: profile.helpText[elementId] } : {}),
+        },
+      })),
+    })),
+  };
+}
+
+async function ensureBaselineConfiguration(client, actorId) {
+  const active = await client.query(
+    "select form_version_id from forms.agency_stationary_default where organization_id = $1",
+    [SYNTHETIC_DEMO_FIXTURE.organizationId],
+  );
+  if (active.rows[0]) return { created: false, formVersionId: active.rows[0].form_version_id };
+
+  const release = await client.query(`select id from catalog.release
+    where standard = 'NEMSIS' and version = '3.5.1' and dataset = 'EMSDataSet' and sealed
+    limit 1`);
+  if (!release.rows[0]) throw new Error("Load the sealed NEMSIS 3.5.1 EMSDataSet catalog before bootstrapping the demo configuration");
+  const catalogReleaseId = release.rows[0].id;
+  const existing = await client.query(`select fv.id
+    from forms.form_version fv join forms.form f on f.id = fv.form_id
+    where f.organization_id = $1 and fv.status = 'published'
+    order by fv.published_at desc, fv.version desc limit 1`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+  let formVersionId = existing.rows[0]?.id;
+  let created = false;
+
+  if (!formVersionId) {
+    const definition = await baselineDefinition();
+    const definitionSha256 = sha256(definition);
+    await client.query(`insert into forms.form (id, organization_id, slug, name)
+      values ($1, $2, 'stationary', 'Stationary') on conflict (id) do nothing`,
+    [baselineFormId, SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    const inserted = await client.query(`insert into forms.form_version
+      (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+       created_by, display_name)
+      values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, 'Stationary')
+      on conflict (id) do nothing returning id`,
+    [baselineFormVersionId, baselineFormId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId]);
+    formVersionId = inserted.rows[0]?.id ?? baselineFormVersionId;
+    for (const [sectionPosition, section] of definition.sections.entries()) {
+      const sectionId = randomUUID();
+      await client.query(`insert into forms.form_section
+        (id, form_version_id, stable_key, position, presentation) values ($1, $2, $3, $4, $5::jsonb)`,
+      [sectionId, formVersionId, section.key, sectionPosition, JSON.stringify(section.presentation)]);
+      for (const [fieldPosition, field] of section.fields.entries()) {
+        const metadata = await client.query(`select definition.element_identity_id,
+          mapping.analytical_location = 'repeatable' as analytical_repeatable
+          from catalog.element_definition definition
+          join catalog.analytics_element_mapping mapping
+            on mapping.release_id = definition.release_id and mapping.element_id = definition.element_id
+          where definition.release_id = $1 and definition.element_id = $2`,
+        [catalogReleaseId, field.source.elementId]);
+        if (!metadata.rows[0]) throw new Error(`The baseline form element ${field.source.elementId} is unavailable`);
+        await client.query(`insert into forms.form_field
+          (form_version_id, section_id, stable_key, position, source_kind,
+           catalog_element_identity_id, required, analytical_repeatable, configuration)
+          values ($1, $2, $3, $4, 'nemsis', $5, false, $6, $7::jsonb)`,
+        [formVersionId, sectionId, field.key, fieldPosition, metadata.rows[0].element_identity_id,
+          metadata.rows[0].analytical_repeatable, JSON.stringify(field.configuration)]);
+      }
+    }
+    await client.query(`update forms.form_version
+      set status = 'published', change_note = 'Initial demonstration configuration',
+          published_by = $2, published_at = now(), publication_acknowledgements = '{}'::jsonb
+      where id = $1 and status = 'draft'`, [formVersionId, actorId]);
+    await client.query(`insert into app_identity.configuration_event
+      (organization_id, actor_id, action, result, form_version_id, catalog_release_id,
+       change_note, content_sha256, details)
+      values ($1, $2, 'form.publish', 'succeeded', $3, $4,
+        'Initial demonstration configuration', $5, jsonb_build_object('source', 'demonstration-fixture'))`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, actorId, formVersionId, catalogReleaseId, definitionSha256]);
+    created = true;
+  }
+
+  const version = await client.query("select catalog_release_id from forms.form_version where id = $1", [formVersionId]);
+  await client.query(`insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
+    values ($1, $2, $3)`, [SYNTHETIC_DEMO_FIXTURE.organizationId, formVersionId, actorId]);
+  await client.query(`insert into app_identity.configuration_event
+    (organization_id, actor_id, action, result, form_version_id, catalog_release_id, change_note, details)
+    values ($1, $2, 'form.activate', 'succeeded', $3, $4,
+      'Initial demonstration configuration', jsonb_build_object('source', 'demonstration-fixture'))`,
+  [SYNTHETIC_DEMO_FIXTURE.organizationId, actorId, formVersionId, version.rows[0].catalog_release_id]);
+
+  const demographicDefinition = { source: "demonstration-fixture", agency: "Demonstration EMS" };
+  await client.query(`insert into app_identity.agency_demographic_version
+    (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
+     dagency_04_display, definition_sha256, effective_from, created_by)
+    values ($1, $2, $3, 1, 'DEMO-EMS', 'Demonstration EMS', '9920003',
+      'Emergency Medical Services', $4, now(), $5)
+    on conflict (id) do nothing`,
+  [baselineDemographicId, SYNTHETIC_DEMO_FIXTURE.organizationId, version.rows[0].catalog_release_id,
+    sha256(demographicDefinition), actorId]);
+  return { created, formVersionId };
+}
 
 async function ensureFoundation(client) {
   const migrations = await readMigrations(path.join(repoRoot, "supabase/migrations"));
@@ -78,6 +201,8 @@ try {
       created.push(account.username);
     }
 
+    const baselineConfiguration = await ensureBaselineConfiguration(client, SYNTHETIC_DEMO_FIXTURE.userId);
+
     const owner = await client.query(
       "select exists (select 1 from app_identity.installation_owner where organization_id = $1) as configured",
       [SYNTHETIC_DEMO_FIXTURE.organizationId],
@@ -90,6 +215,7 @@ try {
       migrated,
       organizationId: SYNTHETIC_DEMO_FIXTURE.organizationId,
       createdAccounts: created,
+      baselineConfiguration,
       ownerConfigured: Boolean(owner.rows[0]?.configured),
     }, null, 2));
   } catch (error) {

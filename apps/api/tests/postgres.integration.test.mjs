@@ -548,7 +548,7 @@ integrationTest("user lifecycle is atomic, permanently reserves names, revokes s
   assert.doesNotMatch(JSON.stringify(audit.rows), /password|verifier|token|csrf|secret/i);
 });
 
-integrationTest("concurrent owner bootstrap leaves exactly one protected admin-only owner", async (t) => {
+integrationTest("concurrent owner bootstrap leaves exactly one fully privileged protected owner", async (t) => {
   const firstClient = new pg.Client({ connectionString: databaseUrl });
   const secondClient = new pg.Client({ connectionString: databaseUrl });
   await Promise.all([firstClient.connect(), secondClient.connect()]);
@@ -585,7 +585,7 @@ integrationTest("concurrent owner bootstrap leaves exactly one protected admin-o
   assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed`,
     [owner.user_id, organizationId])).rows[0].allowed, true);
   assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:document') allowed`,
-    [owner.user_id, organizationId])).rows[0].allowed, false);
+    [owner.user_id, organizationId])).rows[0].allowed, true);
   assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner
     where organization_id = $1`, [organizationId])).rows[0].count, 1);
   assert.deepEqual((await firstClient.query(`select result from app_identity.operator_identity_event
@@ -601,7 +601,7 @@ integrationTest("concurrent owner bootstrap leaves exactly one protected admin-o
   await assert.rejects(firstClient.query(`update app_identity.user_role_assignment set ended_at = now(), ended_by = $1
     where user_id = $1 and ended_at is null and role_id = (
       select id from app_identity.role where organization_id = $2 and system_key = 'administrator'
-    )`, [owner.user_id, organizationId]), /Administrator assignment cannot be removed/);
+    )`, [owner.user_id, organizationId]), /Administrator and Clinician assignments cannot be removed/);
 });
 
 integrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
@@ -647,6 +647,10 @@ integrationTest("ownership moves only after an eligible nominee independently ac
     join app_identity.role role on role.organization_id = assignment.organization_id and role.id = assignment.role_id
     where assignment.organization_id = $1 and assignment.ended_at is null and role.system_key = 'administrator'`, [organizationId]);
   assert.deepEqual(new Set(administratorAssignments.rows.map(({ user_id }) => user_id)), new Set([owner.userId, nominee.userId]));
+  const clinicianAssignments = await client.query(`select user_id from app_identity.user_role_assignment assignment
+    join app_identity.role role on role.organization_id = assignment.organization_id and role.id = assignment.role_id
+    where assignment.organization_id = $1 and assignment.ended_at is null and role.system_key = 'clinician'`, [organizationId]);
+  assert.deepEqual(new Set(clinicianAssignments.rows.map(({ user_id }) => user_id)), new Set([owner.userId, nominee.userId]));
 });
 
 integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {

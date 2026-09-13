@@ -52,17 +52,17 @@ test("ordinary account provisioning grants only its explicit protected role", as
   assert.equal(events.at(-1).sql, "commit");
 });
 
-test("owner bootstrap atomically creates an ordinary admin-only owner by default", async () => {
+test("owner bootstrap atomically creates an Administrator and Clinician owner", async () => {
   const { dataSource, events } = instrumentedDataSource(defaultResponse);
   const result = await new AccountService(dataSource).bootstrapOwner({
     organizationId: "organization-id", username: "  First.Owner  ", displayName: " First Owner ",
     temporaryPassword: "Temporary password 42!", clinician: false, operator
   });
   assert.equal(result.username, "first.owner");
-  assert.equal(result.clinician, false);
+  assert.equal(result.clinician, true);
   assert.match(result.userId, /^[0-9a-f-]{36}$/);
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.user_role_assignment"))
-    .map(({ parameters }) => parameters[2]), ["administrator"]);
+    .map(({ parameters }) => parameters[2]), ["administrator", "clinician"]);
   assert.ok(events.some(({ sql }) => sql.startsWith("insert into app_identity.installation_owner")));
   const audit = events.find(({ sql }) => sql.startsWith("insert into app_identity.operator_identity_event"));
   assert.deepEqual(audit.parameters.slice(0, 2), ["owner.bootstrap", "organization-id"]);
@@ -71,7 +71,7 @@ test("owner bootstrap atomically creates an ordinary admin-only owner by default
   assert.equal(events.at(-1).sql, "commit");
 });
 
-test("owner bootstrap adds Clinician only through the explicit option", async () => {
+test("owner bootstrap retains the compatibility option while always granting Clinician", async () => {
   const { dataSource, events } = instrumentedDataSource(defaultResponse);
   await new AccountService(dataSource).bootstrapOwner({
     organizationId: "organization-id", username: "clinical.owner", displayName: "Clinical Owner",

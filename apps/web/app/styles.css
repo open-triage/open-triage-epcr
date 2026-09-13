@@ -147,7 +147,7 @@ input, select, textarea { touch-action: manipulation; }
 .admin-role-matrix th, .admin-role-matrix td { padding: 6px 8px; }
 .admin-role-matrix th:first-child { position: sticky; z-index: 1; left: 0; min-width: 190px; max-width: 230px; background: #f8faf8; }
 .admin-role-matrix thead th:first-child { z-index: 2; background: #edf3ee; }
-.admin-role-matrix thead th:not(:first-child) { min-width: 130px; max-width: 175px; }
+.admin-role-matrix thead th:not(:first-child) { min-width: 104px; max-width: 132px; }
 .admin-role-column-heading { display: block; cursor: help; }
 .admin-role-column-heading strong { color: var(--ink); font-size: var(--text-body); }
 .admin-role-matrix tbody th { cursor: help; }

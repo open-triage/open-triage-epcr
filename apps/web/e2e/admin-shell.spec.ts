@@ -434,7 +434,7 @@ test("a role author deactivates, inspects redacted history, and reactivates with
   expect(deactivateBody).toEqual({ expectedVersion: 1, note: "Duty retired" });
 
   await page.getByLabel("Status").selectOption("disabled");
-  await page.getByRole("button", { name: "View history" }).click();
+  await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByText(`Stable role ID: ${role.id}`)).toBeVisible();
   await expect(page.getByText(/redacted-user-id/)).toBeVisible();
   await expect(page.getByText(/Version 1: Dispatch Lead/)).toBeVisible();
