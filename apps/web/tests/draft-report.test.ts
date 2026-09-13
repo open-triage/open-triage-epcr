@@ -9,6 +9,7 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   deleteDraftReport,
+  encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
   shouldQueueInitialDraftSnapshot,
@@ -60,6 +61,28 @@ test("the draft adapter preserves identities rehydrated from PostgreSQL", () => 
   const mutations = shellStateToDraftMutations(reportId, shell);
   assert.ok(mutations.groups.some(({ id }) => id === serverGroupId));
   if (value) assert.ok(mutations.occurrences.some(({ id }) => id === serverOccurrenceId));
+});
+
+test("the draft adapter normalizes legacy string vital integers before saving", () => {
+  const baseline = structuredClone(INITIAL_SHELL_STATE.encounter.document);
+  const document = {
+    ...baseline,
+    groups: [...baseline.groups, {
+      id: "eVitals.BloodPressureGroup",
+      instances: [{
+        instanceId: "legacy-blood-pressure",
+        elements: [{
+          id: "eVitals.06",
+          values: [{ kind: "scalar" as const, occurrenceId: "legacy-systolic", value: "100" }],
+        }],
+      }],
+    }],
+  };
+
+  const systolic = encounterDocumentToDraftMutations(reportId, document).occurrences
+    .find(({ elementId }) => elementId === "eVitals.06");
+
+  assert.deepEqual(systolic?.value, { kind: "integer", value: 100 });
 });
 
 test("active report polling sends an ETag and accepts a bodyless unchanged response", async () => {

@@ -122,8 +122,18 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
     : { kind: "absent" };
   if (value.kind === "absent") return { kind: "absent" };
   const base = requireNemsisDataElement(elementId).datatype.base;
-  if (base === "integer") return { kind: "integer", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
-  if (["decimal", "double", "float"].includes(base)) return { kind: "numeric", value: typeof value.value === "boolean" ? Number(value.value) : value.value, ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+  if (base === "integer") {
+    const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
+    const numeric = Number(scalar);
+    return { kind: "integer", value: Number.isInteger(numeric) ? numeric : scalar,
+      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+  }
+  if (["decimal", "double", "float"].includes(base)) {
+    const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
+    const numeric = Number(scalar);
+    return { kind: "numeric", value: Number.isFinite(numeric) ? numeric : scalar,
+      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+  }
   if (base === "boolean") return { kind: "boolean", value: Boolean(value.value) };
   if (base === "date") return { kind: "date", value: String(value.value), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
   if (base === "dateTime") return { kind: "datetime", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };

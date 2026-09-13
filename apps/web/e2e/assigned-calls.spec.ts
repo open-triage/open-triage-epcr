@@ -267,15 +267,23 @@ test("Sign record requires acknowledged validation and removes the report from O
 test("draft synchronization immediately rebases a rejected retry without showing a persistent conflict", async ({ page }) => {
   const commandIds: string[] = [];
   const expectedRevisions: number[] = [];
+  const systolicValues: unknown[] = [];
   let requests = 0;
   let activeRequests = 0;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     requests += 1;
-    const command = route.request().postDataJSON() as { commandId: string; expectedRevision: number };
+    const command = route.request().postDataJSON() as {
+      commandId: string;
+      expectedRevision: number;
+      occurrences?: ReadonlyArray<{ elementId: string; value: { value?: unknown } }>;
+    };
     commandIds.push(command.commandId);
     expectedRevisions.push(command.expectedRevision);
+    systolicValues.push(...(command.occurrences ?? [])
+      .filter(({ elementId }) => elementId === "eVitals.06")
+      .map(({ value }) => value.value));
     if (requests === 1) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: openedAssignment.report.id, status: "draft", revision: 1 }) });
     if (requests === 2) return route.abort("internetdisconnected");
     if (requests === 3) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "Draft revision is stale" }) });
@@ -318,6 +326,8 @@ test("draft synchronization immediately rebases a rejected retry without showing
   expect(commandIds[1]).toBe(commandIds[2]);
   expect(commandIds[3]).not.toBe(commandIds[2]);
   expect(expectedRevisions[3]).toBe(6);
+  expect(systolicValues).toContain(118);
+  expect(systolicValues).not.toContain("118");
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
