@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import type { ResetAdminCredentialCommand, RevokeAdminSessionCommand } from "@open-triage/contracts";
 import { validatePassword } from "../identity/password.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 const CONTROL_CHARACTER = /[\p{Cc}\p{Cf}]/u;
 
@@ -35,9 +36,9 @@ export function validateResetAdminCredential(input: unknown): ResetAdminCredenti
   } catch (error) {
     throw new BadRequestException(error instanceof Error ? error.message : "The temporary password is invalid");
   }
-  const hours = value.temporaryPasswordHours ?? 72;
-  if (typeof hours !== "number" || !Number.isInteger(hours) || hours < 1 || hours > 168) {
-    throw new BadRequestException("Temporary password duration must be a whole number from 1 to 168 hours");
+  const hours = selectedInstallationSettings().authentication.temporaryPasswordHours;
+  if (value.temporaryPasswordHours !== undefined && value.temporaryPasswordHours !== hours) {
+    throw new BadRequestException(`Temporary password duration must match the configured ${hours} hours`);
   }
   const note = value.note === undefined || value.note === null ? undefined
     : typeof value.note === "string" ? value.note.trim().normalize("NFC") : null;

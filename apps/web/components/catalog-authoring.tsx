@@ -73,6 +73,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
         const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
       })}>Clone active catalog</button>
     </> : <p role="note">There is no Catalog draft available to inspect.</p>}
+    {error && <p role="alert">{error}</p>}
+    <p role="status" aria-live="polite">{status}</p>
   </div>;
 
   const authoringDraft = "revision" in draft ? draft : null;

@@ -6,6 +6,8 @@ import type { AdminSessionList, ResetAdminCredentialCommand, ResetAdminCredentia
 import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "../identity/password.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const iso = (value: Date | string) => new Date(value).toISOString();
@@ -90,7 +92,8 @@ export class SessionAdministrationService {
   async resetCredential(token: string, targetUserId: string, command: ResetAdminCredentialCommand,
     now = new Date()): Promise<ResetAdminCredentialResult> {
     const verifier = await createPasswordVerifier(command.temporaryPassword);
-    const expiresAt = new Date(now.getTime() + command.temporaryPasswordHours * 60 * 60 * 1_000);
+    const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
+    const expiresAt = new Date(now.getTime() + temporaryPasswordHours * 60 * 60 * 1_000);
     return this.dataSource.transaction(async (manager) => {
       const actor = await this.sessions.requireCapability(token, "credentials:reset", manager, now);
       if (!actor.capabilities?.includes("users:read")) {
@@ -139,9 +142,9 @@ export class SessionAdministrationService {
             credential_version = credential_version + 1, password_changed_at = null, updated_at = $4
         where user_id = $1`, [target.id, verifier, expiresAt, now]);
       await manager.query("update app_identity.app_user set revision = revision + 1 where id = $1", [target.id]);
-      const revoked = await manager.query<Array<{ id: string }>>(`update app_identity.app_session
+      const revoked = mutationRows<{ id: string }>(await manager.query(`update app_identity.app_session
         set revoked_at = $2, revocation_reason = 'password_reset'
-        where user_id = $1 and revoked_at is null returning id`, [target.id, now]);
+        where user_id = $1 and revoked_at is null returning id`, [target.id, now]));
       await manager.query(`insert into app_identity.authentication_event
         (organization_id, actor_id, action, result, target_user_id, note, details)
         values ($1, $2, 'account.reset_password', 'succeeded', $3, $4,

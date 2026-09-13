@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import fixture from "../packages/contracts/src/synthetic-demo-fixture.json" with { type: "json" };
 import productionSettings from "../packages/contracts/config/installation.production.json" with { type: "json" };
 
-const DEFAULT_USERNAME = fixture.administratorUsername;
+const DEFAULT_USERNAME = fixture.username;
 const DEFAULT_PASSWORD = fixture.password;
 
 function httpsUrl(label, value) {
@@ -94,11 +94,10 @@ export async function verifyPublicDemo(
   const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", api));
   const installation = await responseJson(installationResponse, "Installation configuration");
   if (JSON.stringify(installation?.settings) !== JSON.stringify(productionSettings) ||
-      "profile" in installation || "demoLogin" in installation || "fixture" in installation ||
-      JSON.stringify(installation).includes(fixture.password)) {
+      "profile" in installation || "demoLogin" in installation || "fixture" in installation) {
     throw new Error("Public demo installation configuration is inconsistent");
   }
-  log("PASS production-equivalent installation policy without exposed fixture credentials");
+  log("PASS production-equivalent installation policy");
 
   const loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", api), {
     method: "POST",

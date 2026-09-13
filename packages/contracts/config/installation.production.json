@@ -11,7 +11,8 @@
   "authentication": {
     "sessionDurationMinutes": 720,
     "idleTimeoutMinutes": 30,
-    "minimumPasswordLength": 12
+    "minimumPasswordLength": 12,
+    "temporaryPasswordHours": 72
   },
   "exports": {
     "downloadsAllowed": true,

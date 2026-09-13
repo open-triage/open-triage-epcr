@@ -7,6 +7,7 @@ import type {
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -101,11 +102,11 @@ export class CatalogAuthoringService {
       if (!releases[0]) throw new NotFoundException("No active catalog is available to clone");
       const definition = await this.cloneDefinition(manager, releases[0].id);
       const digest = catalogDefinitionSha256(definition);
-      const inserted = await manager.query<DraftRow[]>(`
+      const inserted = mutationRows<DraftRow>(await manager.query(`
         insert into catalog.authoring_draft
           (organization_id, source_release_id, canonical_definition, definition_sha256, created_by, display_name)
         values ($1, $2, $3::jsonb, $4, $5, $6) returning *
-      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id, displayName]);
+      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id, displayName]));
       return this.result(inserted[0]!);
     });
   }
@@ -253,7 +254,7 @@ export class CatalogAuthoringService {
 
   private async cloneAgencyDemographics(manager: Pick<EntityManager, "query">, organizationId: string,
     sourceReleaseId: string, targetReleaseId: string, createdBy: string): Promise<void> {
-    const cloned = await manager.query<Array<{ id: string }>>(`
+    const cloned = mutationRows<{ id: string }>(await manager.query(`
       insert into app_identity.agency_demographic_version
         (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
          dagency_04_display,dagency_04_system,dagency_04_terminology_version,
@@ -267,7 +268,7 @@ export class CatalogAuthoringService {
       where source.organization_id=$1 and source.catalog_release_id=$2 and source.effective_from<=now()
       order by source.effective_from desc,source.version desc limit 1
       returning id
-    `, [organizationId, sourceReleaseId, targetReleaseId, createdBy]);
+    `, [organizationId, sourceReleaseId, targetReleaseId, createdBy]));
     if (!cloned[0]) {
       throw new UnprocessableEntityException("No effective agency demographics match the source catalog");
     }

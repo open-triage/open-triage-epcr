@@ -150,7 +150,8 @@ export interface ProvisionAdminUserCommand {
   username: string;
   displayName: string;
   temporaryPassword: string;
-  temporaryPasswordHours: number;
+  /** Optional compatibility assertion; the server always applies the installation setting. */
+  temporaryPasswordHours?: number;
   /** The complete initial role set; an empty set intentionally creates a no-workspace user. */
   roleIds: string[];
   note?: string;
@@ -209,7 +210,8 @@ export interface RevokedAdminSession {
 export interface ResetAdminCredentialCommand {
   expectedRevision: number;
   temporaryPassword: string;
-  temporaryPasswordHours: number;
+  /** Optional compatibility assertion; the server always applies the installation setting. */
+  temporaryPasswordHours?: number;
   note?: string;
 }
 

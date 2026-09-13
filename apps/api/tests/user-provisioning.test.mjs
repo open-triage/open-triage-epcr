@@ -12,15 +12,16 @@ const actor = {
   capabilities: ["users:read", "users:write", "roles:read", "roles:assign"]
 };
 
-function setup({ availableRoles = [roleId], capabilities = actor.capabilities } = {}) {
+function setup({ availableRoles = [roleId], capabilities = actor.capabilities, owner = false,
+  systemKey = null, onReauthenticate = () => undefined } = {}) {
   const events = [];
   const manager = { query: async (sql, parameters = []) => {
     const event = { sql: sql.replace(/\s+/g, " ").trim(), parameters };
     events.push(event);
     if (event.sql.startsWith("select role.id, role.system_key")) {
-      return availableRoles.map((id) => ({ id, system_key: null, capability_key: null }));
+      return availableRoles.map((id) => ({ id, system_key: systemKey, capability_key: null }));
     }
-    if (event.sql.startsWith("select exists") && event.sql.includes("installation_owner")) return [{ owner: false }];
+    if (event.sql.startsWith("select exists") && event.sql.includes("installation_owner")) return [{ owner }];
     return [];
   } };
   const dataSource = { transaction: async (work) => {
@@ -37,7 +38,7 @@ function setup({ availableRoles = [roleId], capabilities = actor.capabilities } 
   const sessions = { requireCapability: async (token, capability, selectedManager, now) => {
     events.push({ sql: "authorize", parameters: [token, capability, selectedManager, now] });
     return { ...actor, capabilities };
-  }, requireRecentReauthentication: async () => undefined };
+  }, requireRecentReauthentication: onReauthenticate };
   return { events, service: new UserProvisioningService(dataSource, sessions), manager };
 }
 
@@ -53,15 +54,24 @@ test("creation normalizes and validates its entire write-only command", () => {
     { username: "bad user", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: [] },
     { username: "medic", displayName: "", temporaryPassword: "Temporary password 42!", roleIds: [] },
     { username: "medic", displayName: "Medic", temporaryPassword: "short", roleIds: [] },
-    { username: "medic", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: [], temporaryPasswordHours: 169 },
+    { username: "medic", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: [], temporaryPasswordHours: 24 },
     { username: "medic", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: ["not-a-uuid"] },
     { username: "medic", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: [], note: "Temporary password 42!" },
     { organizationId: "forged", username: "medic", displayName: "Medic", temporaryPassword: "Temporary password 42!", roleIds: [] }
   ]) assert.throws(() => validateProvisionAdminUser(invalid), BadRequestException);
   assert.equal(validateProvisionAdminUser({ username: "medic", displayName: "Medic",
-    temporaryPassword: "Temporary password 42!", roleIds: [], temporaryPasswordHours: 1 }).temporaryPasswordHours, 1);
-  assert.equal(validateProvisionAdminUser({ username: "medic", displayName: "Medic",
-    temporaryPassword: "Temporary password 42!", roleIds: [], temporaryPasswordHours: 168 }).temporaryPasswordHours, 168);
+    temporaryPassword: "Temporary password 42!", roleIds: [] }).temporaryPasswordHours, 72);
+});
+
+test("the owner may assign Administrator during creation without recent reauthentication", async () => {
+  let reauthentications = 0;
+  const { service } = setup({ owner: true, systemKey: "administrator",
+    onReauthenticate: async () => { reauthentications += 1; } });
+  await service.provision("session-token", validateProvisionAdminUser({
+    username: "new.admin", displayName: "New Administrator", temporaryPassword: "Temporary password 42!",
+    roleIds: [roleId]
+  }), new Date("2026-09-11T10:00:00.000Z"));
+  assert.equal(reauthentications, 0);
 });
 
 test("authorized creation validates roles and persists identity, complete roles, credential, and safe audit atomically", async () => {

@@ -6,6 +6,7 @@ import { canonicalDefinitionSha256, FormPublicationValidationError, validateCano
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
 import { catalogFieldsConfiguration } from "../forms/clinical-form-configuration.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -73,12 +74,12 @@ export class FormAuthoringService {
       const cloned = await this.compatibleClone(manager, source[0].catalog_release_id, catalogReleaseId,
         this.definition(source[0].canonical_definition));
       const digest = canonicalDefinitionSha256(cloned.definition);
-      const inserted = await manager.query<VersionRow[]>(`
+      const inserted = mutationRows<VersionRow>(await manager.query(`
         insert into forms.form_version
           (form_id,catalog_release_id,version,canonical_definition,definition_sha256,cloned_from_id,created_by,display_name)
         select $1,$2,coalesce(max(version),0)+1,$3::jsonb,$4,$5,$6,$7
         from forms.form_version where form_id=$1 returning *
-      `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id, displayName]);
+      `, [source[0].form_id, catalogReleaseId, JSON.stringify(cloned.definition), digest, source[0].id, session.user.id, displayName]));
       await this.auditDraftMutation(manager, session, "form.draft_create", inserted[0]!, {
         clonedFromId: source[0].id, diagnostics: cloned.diagnostics
       });
@@ -154,10 +155,10 @@ export class FormAuthoringService {
         message: "Form draft revision is stale", expectedRevision, actualRevision: draft.revision
       });
       await this.auditDraftMutation(manager, session, "form.draft_delete", draft, { deletedFormVersionId: draft.id });
-      const deleted = await manager.query<Array<{ id: string }>>(
+      const deleted = mutationRows<{ id: string }>(await manager.query(
         "delete from forms.form_version where id=$1 and revision=$2 and status='draft' returning id",
         [id, expectedRevision]
-      );
+      ));
       if (!deleted[0]) throw new ConflictException("Form draft revision is stale or the form was published");
     });
   }

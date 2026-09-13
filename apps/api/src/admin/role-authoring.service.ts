@@ -9,6 +9,7 @@ import type {
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 const MAX_NAME = 100;
 const MAX_DESCRIPTION = 500;
@@ -140,13 +141,13 @@ export class RoleAuthoringService {
         `, [versionId, session.organization.id, roleId, nextVersion, body.displayName, body.description,
           session.user.id, body.note]);
         await this.insertCapabilities(manager, session.organization.id, roleId, versionId, body.capabilityKeys);
-        const updated = await manager.query<Array<{ id: string }>>(`
+        const updated = mutationRows<{ id: string }>(await manager.query(`
           update app_identity.role
           set display_name = $3, description = $4, current_version_id = $5, note = $6
           where id = $1 and organization_id = $2 and current_version_id = $7
           returning id
         `, [roleId, session.organization.id, body.displayName, body.description, versionId, body.note,
-          role.current_version_id]);
+          role.current_version_id]));
         if (!updated[0]) throw new ConflictException("Role version is stale");
         const counts = await manager.query<Array<{ count: number | string }>>(`
           select count(distinct user_id) count from app_identity.user_role_assignment
@@ -169,17 +170,17 @@ export class RoleAuthoringService {
         await this.assertNotSelfAssigned(manager, session.organization.id, session.user.id, roleId);
         const definition = await this.currentDefinition(manager, role);
         await this.assertCapabilityCeiling(manager, session, definition.map(({ capability_key }) => capability_key));
-        const ended = await manager.query<Array<{ id: string; ended_at: Date | string }>>(`
+        const ended = mutationRows<{ id: string; ended_at: Date | string }>(await manager.query(`
           update app_identity.user_role_assignment
           set ended_at = now(), ended_by = $3
           where organization_id = $1 and role_id = $2 and ended_at is null
           returning id, ended_at
-        `, [session.organization.id, roleId, session.user.id]);
-        const updated = await manager.query<Array<{ id: string }>>(`
+        `, [session.organization.id, roleId, session.user.id]));
+        const updated = mutationRows<{ id: string }>(await manager.query(`
           update app_identity.role set active = false, assignable = false, note = $3
           where organization_id = $1 and id = $2 and active and current_version_id = $4
           returning id
-        `, [session.organization.id, roleId, body.note, role.current_version_id]);
+        `, [session.organization.id, roleId, body.note, role.current_version_id]));
         if (!updated[0]) throw new ConflictException("Role version is stale");
         await manager.query(`insert into app_identity.authorization_event
           (organization_id, actor_id, action, target_type, target_key, note, details)
@@ -214,12 +215,12 @@ export class RoleAuthoringService {
         [versionId, session.organization.id, roleId, nextVersion, body.displayName, body.description,
           session.user.id, body.note]);
         await this.insertCapabilities(manager, session.organization.id, roleId, versionId, body.capabilityKeys);
-        const updated = await manager.query<Array<{ id: string }>>(`update app_identity.role
+        const updated = mutationRows<{ id: string }>(await manager.query(`update app_identity.role
           set display_name = $3, description = $4, current_version_id = $5,
             active = true, assignable = true, note = $6
           where organization_id = $1 and id = $2 and not active and current_version_id = $7
           returning id`, [session.organization.id, roleId, body.displayName, body.description,
-          versionId, body.note, role.current_version_id]);
+          versionId, body.note, role.current_version_id]));
         if (!updated[0]) throw new ConflictException("Role version is stale");
         await manager.query(`insert into app_identity.authorization_event
           (organization_id, actor_id, action, target_type, target_key, note, details)

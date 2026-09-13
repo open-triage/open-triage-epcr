@@ -12,6 +12,7 @@ test("the API always uses ordinary production installation policy", () => {
       assert.equal(removed in selectedInstallationSettings(), false);
     }
     assert.equal(production.authentication.minimumPasswordLength, 12);
+    assert.equal(production.authentication.temporaryPasswordHours, 72);
     assert.deepEqual(production.clinicalRetention, {
       durationHours: 10 * 365 * 24,
       automaticDeletionEnabled: false,

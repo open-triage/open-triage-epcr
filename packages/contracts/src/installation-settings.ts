@@ -9,6 +9,7 @@ export interface InstallationSettings {
     sessionDurationMinutes: number;
     idleTimeoutMinutes: number;
     minimumPasswordLength: number;
+    temporaryPasswordHours: number;
   };
   exports: {
     downloadsAllowed: boolean;
@@ -62,7 +63,7 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
   const exports = objectAt(root.exports, "exports");
   exactKeys(signIn, "signIn", ["brandText", "helperText"]);
   exactKeys(retention, "clinicalRetention", ["durationHours", "automaticDeletionEnabled"]);
-  exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength"]);
+  exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength", "temporaryPasswordHours"]);
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
@@ -78,6 +79,7 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
       sessionDurationMinutes: integerAt(authentication.sessionDurationMinutes, "authentication.sessionDurationMinutes", 15),
       idleTimeoutMinutes: integerAt(authentication.idleTimeoutMinutes, "authentication.idleTimeoutMinutes", 5),
       minimumPasswordLength: integerAt(authentication.minimumPasswordLength, "authentication.minimumPasswordLength", 8),
+      temporaryPasswordHours: integerAt(authentication.temporaryPasswordHours, "authentication.temporaryPasswordHours", 1),
     },
     exports: {
       downloadsAllowed: booleanAt(exports.downloadsAllowed, "exports.downloadsAllowed"),
