@@ -5,6 +5,7 @@ import type { ProvisionAdminUserCommand, ProvisionedAdminUser } from "@open-tria
 import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "../identity/password.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 type RoleRow = { id: string; system_key: string | null; capability_key: string | null };
 
@@ -18,7 +19,8 @@ export class UserProvisioningService {
   async provision(token: string, command: ProvisionAdminUserCommand, now = new Date()): Promise<ProvisionedAdminUser> {
     const passwordVerifier = await createPasswordVerifier(command.temporaryPassword);
     const userId = randomUUID();
-    const expiresAt = new Date(now.getTime() + command.temporaryPasswordHours * 60 * 60 * 1_000);
+    const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
+    const expiresAt = new Date(now.getTime() + temporaryPasswordHours * 60 * 60 * 1_000);
     try {
       return await this.dataSource.transaction(async (manager) => {
         const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
@@ -52,10 +54,8 @@ export class UserProvisioningService {
           role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
           throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
         }
-        if ([...roles.values()].some((role) =>
-          role.systemKey === "administrator" || role.systemKey === "demo")) {
+        if ([...roles.values()].some((role) => role.systemKey === "administrator" || role.systemKey === "demo")) {
           if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Demo");
-          await this.sessions.requireRecentReauthentication(token, manager, now);
         }
         await manager.query(
           "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",

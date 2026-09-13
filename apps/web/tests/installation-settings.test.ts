@@ -13,6 +13,7 @@ test("the sole installation policy is the production security and retention base
   assert.deepEqual(parseInstallationSettings(production), production);
   assert.deepEqual(selectedInstallationSettings(), production);
   assert.equal(production.authentication.minimumPasswordLength, 12);
+  assert.equal(production.authentication.temporaryPasswordHours, 72);
   assert.deepEqual(production.signIn, {
     brandText: "OpenTriage ePCR",
     helperText: "Demo credentials: username **demo**, password **opentriagedemo**",

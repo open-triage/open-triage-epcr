@@ -1,15 +1,17 @@
 "use client";
 
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
-import React, { useEffect, useState, type FormEvent } from "react";
+import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
   loadAdminUserRoleOptions, loadAdminUserSessions, loadAdminUsers, provisionAdminUser, reactivateAdminRole,
   replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, updateAdminRole, updateAdminUser,
   type AdminUserQuery } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
+import { selectedInstallationSettings } from "../app/installation-settings";
 import { OwnershipTransferPanel } from "./ownership-transfer";
 
 type StateFilter = "active" | "disabled" | "all";
+const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
 
 function RoleBadges({ roles, effective = true }: { readonly roles: AdminRoleSummary[]; readonly effective?: boolean }) {
   if (!roles.length) return <span className="admin-muted">No roles</span>;
@@ -94,7 +96,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       username: String(data.get("username") ?? ""),
       displayName: String(data.get("displayName") ?? ""),
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours: Number(data.get("temporaryPasswordHours")),
+      temporaryPasswordHours,
       roleIds: data.getAll("roleIds").map(String),
       note: String(data.get("note") ?? "") || undefined
     };
@@ -169,7 +171,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     const data = new FormData(form);
     const command: ResetAdminCredentialCommand = { expectedRevision: editing.revision,
       temporaryPassword: String(data.get("temporaryPassword") ?? ""),
-      temporaryPasswordHours: Number(data.get("temporaryPasswordHours")),
+      temporaryPasswordHours,
       note: String(data.get("note") ?? "") || undefined };
     if (!window.confirm(`Reset ${editing.displayName}'s credential and revoke every session?`)) return;
     setResetting(true);
@@ -260,13 +262,12 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           required autoComplete="off" /></label>
         <label>Temporary password<input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
           required autoComplete="new-password" /></label>
-        <label>Expires after (hours)<input name="temporaryPasswordHours" type="number" min={1} max={168} step={1}
-          defaultValue={72} required /></label>
+        <p className="admin-muted">Temporary access expires after {temporaryPasswordHours} hours (system setting).</p>
         <fieldset className="admin-role-selection"><legend>Initial roles</legend>
           {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
             <input name="roleIds" type="checkbox" value={role.id}
-              disabled={!role.assignmentMutable || role.assignmentRestricted} />{role.displayName}
-            {role.assignmentRestricted ? " (assign after creation with reauthentication)" : ""}
+              disabled={!role.assignmentMutable} />{role.displayName}
+            {role.assignmentRestricted ? " (owner only)" : ""}
           </label>)}
           {!roleOptions.some((role) => role.active) && <p>No assignable roles are available.</p>}
         </fieldset>
@@ -334,8 +335,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <p>This does not reactivate the account. Every existing session is revoked transactionally.</p>
           <label>Temporary password<input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
             required autoComplete="new-password" /></label>
-          <label>Expires after (hours)<input name="temporaryPasswordHours" type="number" min={1} max={168} step={1}
-            defaultValue={72} required /></label>
+          <p className="admin-muted">Temporary access expires after {temporaryPasswordHours} hours (system setting).</p>
           <label>Note (optional)<textarea name="note" maxLength={1000} /></label>
           <button type="submit">{resetting ? "Resetting…" : "Reset credential and revoke sessions"}</button>
         </fieldset>
@@ -361,7 +361,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         {hasActions && <th scope="col">Actions</th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
-        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active} /></td>
         <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions ? "Current account"
           : <button type="button" onClick={() => beginEdit(user)}>{user.id === currentUserId ? "View sessions" : "Manage"}</button>}</td>}
@@ -415,14 +414,12 @@ export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHis
     <table className="admin-role-matrix">
       <caption>Capabilities assigned to each role</caption>
       <thead><tr><th scope="col">Capability</th>{roles.map((role) => <th scope="col" key={role.id}>
-        <span className="admin-role-column-heading"><strong>{role.displayName}</strong>
-          <small>{role.active ? "Active" : "Deactivated"} · {role.protected ? "Protected" : "Custom"}</small>
-          <small>Version {role.version} · {role.assigneeCount} assignee{role.assigneeCount === 1 ? "" : "s"}</small>
-          {role.description && <small>{role.description}</small>}
+        <span className="admin-role-column-heading" title={`${role.active ? "Active" : "Deactivated"} · ${role.protected ? "Protected" : "Custom"} · Version ${role.version} · ${role.assigneeCount} assignee${role.assigneeCount === 1 ? "" : "s"}${role.description ? ` · ${role.description}` : ""}`}>
+          <strong>{role.displayName}</strong><span className="sr-only">. {role.active ? "Active" : "Deactivated"}, {role.protected ? "protected" : "custom"}, version {role.version}, {role.assigneeCount} assignees{role.description ? `. ${role.description}` : ""}</span>
         </span>
       </th>)}</tr></thead>
       <tbody>{rows.map((capability) => <tr key={capability.key}>
-        <th scope="row"><code>{capability.key}</code><small>{capability.description}</small></th>
+        <th scope="row" title={capability.description}><code>{capability.key}</code><span className="sr-only">. {capability.description}</span></th>
         {roles.map((role) => {
           const included = role.capabilities.some(({ key }) => key === capability.key);
           return <td key={role.id} className={included ? "capability-included" : "capability-not-included"}>
@@ -462,6 +459,15 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   const [retirementNote, setRetirementNote] = useState("");
   const [history, setHistory] = useState<AdminRoleHistory | null>(null);
   const canWrite = actorCapabilities.includes("roles:write");
+  const interactionRevision = useRef(0);
+
+  function closeInteractions() {
+    interactionRevision.current += 1;
+    setEditorRole(undefined);
+    setRetiringRole(null);
+    setRetirementNote("");
+    setHistory(null);
+  }
 
   function load(state: StateFilter) {
     setLoading(true);
@@ -480,6 +486,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   }, []);
 
   function begin(role: AdminRole | null) {
+    closeInteractions();
     setError(null);
     setEditorRole(role);
     setDraft(role ? { displayName: role.displayName, description: role.description ?? "",
@@ -538,8 +545,13 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   }
 
   async function showHistory(roleId: string) {
+    closeInteractions();
+    const revision = interactionRevision.current;
     setError(null);
-    try { setHistory(await loadAdminRoleHistory(roleId)); }
+    try {
+      const loadedHistory = await loadAdminRoleHistory(roleId);
+      if (revision === interactionRevision.current) setHistory(loadedHistory);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Role history could not be loaded."); }
   }
 
@@ -551,6 +563,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     </div>
     <label className="admin-role-state">Status<select value={selectedState} onChange={(event) => {
       const next = event.target.value as StateFilter;
+      closeInteractions();
       setSelectedState(next);
       load(next);
     }}><option value="active">Active</option><option value="disabled">Deactivated</option><option value="all">All</option></select></label>
@@ -612,6 +625,6 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     </section>}
     {items.length > 0 && <RoleCapabilityMatrix roles={items} capabilityOptions={capabilityOptions} canWrite={canWrite}
       onHistory={(roleId) => void showHistory(roleId)} onEdit={begin}
-      onDeactivate={(role) => { setRetiringRole(role); setRetirementNote(""); }} onReactivate={begin} />}
+      onDeactivate={(role) => { closeInteractions(); setRetiringRole(role); }} onReactivate={begin} />}
   </section>;
 }

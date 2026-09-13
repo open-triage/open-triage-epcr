@@ -128,13 +128,14 @@ export function AdminShell({ session }: {
         onPublished={setFormCatalogReleaseId} />
     </section>}
 
-    {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
+    {context && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
-      <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      {context.activeConfiguration ? <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         capabilities={context.capabilities}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
+        : <p role="status">No active Stationary configuration is available to clone. Publish and activate a form configuration first.</p>}
     </section>}
 
       </div>

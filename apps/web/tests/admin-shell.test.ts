@@ -117,8 +117,10 @@ test("role capabilities render as rows with roles as columns", () => {
     canWrite: false, onHistory: () => undefined, onEdit: () => undefined, onDeactivate: () => undefined,
     onReactivate: () => undefined }));
   assert.match(markup, /<caption>Capabilities assigned to each role<\/caption>/);
-  assert.match(markup, /<th scope="col">Capability<\/th><th scope="col"><span class="admin-role-column-heading"><strong>Clinician/);
-  assert.match(markup, /<th scope="row"><code>clinical:document<\/code>/);
+  assert.match(markup, /<th scope="col">Capability<\/th><th scope="col"><span class="admin-role-column-heading"[^>]*><strong>Clinician/);
+  assert.match(markup, /<th scope="row"[^>]*><code>clinical:document<\/code>/);
+  assert.match(markup, /title="Document patient care"/);
+  assert.doesNotMatch(markup, /<small>Document patient care<\/small>/);
   assert.match(markup, /capability-included[^>]*><span class="admin-capability-mark" aria-hidden="true">✓<\/span>/);
   assert.match(markup, /capability-not-included[^>]*><span class="admin-capability-mark" aria-hidden="true">—<\/span>/);
   assert.doesNotMatch(markup, />Edit<\/button>|>Deactivate<\/button>/);

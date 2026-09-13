@@ -53,11 +53,11 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
       if (sql.includes("from catalog.element_definition")) {
         return parameters[0] === sourceCatalogId ? sourceElements : targetElements;
       }
-      if (sql.includes("insert into forms.form_version")) return [{
+      if (sql.includes("insert into forms.form_version")) return [[{
         id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
         revision: 1, canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3],
         updated_at: "2026-09-07T01:00:00.000Z"
-      }];
+      }], 1];
       if (sql.includes("insert into app_identity.configuration_event")) return [];
       if (sql.includes("from catalog.value_set_element")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);

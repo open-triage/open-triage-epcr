@@ -175,6 +175,27 @@ test("Catalog readers inspect the active sealed definition when no authoring dra
   assert.deepEqual(viewed.definition.elements, [element]);
 });
 
+test("cloning the active catalog unwraps PostgreSQL mutation tuples into a usable draft", async () => {
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select * from catalog.authoring_draft")) return [];
+    if (sql.includes("select fv.catalog_release_id as id")) return [{ id: "release-1" }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("insert into catalog.authoring_draft")) return [[{
+      id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 1,
+      display_name: parameters[5], canonical_definition: JSON.parse(parameters[2]),
+      definition_sha256: parameters[3], updated_at: "2026-09-13T10:00:00.000Z", published_release_id: null
+    }], 1];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const cloned = await serviceWith(manager).cloneActive("owner-session", { displayName: "Night catalog" });
+  assert.equal(cloned.id, "draft-1");
+  assert.equal(cloned.displayName, "Night catalog");
+  assert.equal(cloned.updatedAt, "2026-09-13T10:00:00.000Z");
+  assert.deepEqual(cloned.definition.elements, [element]);
+});
+
 const sourceCodeList = { list_id: "patient-activity", name: "Patient Activity", classification: "suggested",
   element_ids: ["ePatient.01"], default_value: null, values: [
   { code: "Y93.K", codeSystem: "ICD-10-CM", label: "Animal care activity",

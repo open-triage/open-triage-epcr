@@ -102,7 +102,7 @@ test("credential reset validates revision and privilege, retains disabled state,
     expectedRevision: 7, temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 24, note: "Lost device"
   }, now);
   assert.deepEqual(result, { userId: targetId, revision: 8, active: false,
-    temporaryPasswordExpiresAt: "2026-09-12T12:00:00.000Z", sessionsRevoked: 2 });
+    temporaryPasswordExpiresAt: "2026-09-14T12:00:00.000Z", sessionsRevoked: 2 });
   const credential = events.find(({ sql }) => sql.startsWith("update app_identity.local_credential"));
   assert.equal(await verifyPassword("Replacement password 84!", credential.parameters[1]), true);
   assert.match(credential.sql, /must_change_password = true/);
@@ -142,11 +142,11 @@ test("credential reset rolls back credential, revision, and revocations when saf
 test("security command validation accepts only bounded, credential-safe inputs", () => {
   assert.deepEqual(validateRevokeAdminSession({ confirmOwner: true }), { confirmOwner: true });
   assert.deepEqual(validateResetAdminCredential({ expectedRevision: 2, temporaryPassword: "Replacement password 84!",
-    temporaryPasswordHours: 1, note: "Lost device" }), { expectedRevision: 2,
-    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 1, note: "Lost device" });
+    note: "Lost device" }), { expectedRevision: 2,
+    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 72, note: "Lost device" });
   assert.throws(() => validateRevokeAdminSession({ confirmOwner: "yes" }));
   assert.throws(() => validateResetAdminCredential({ expectedRevision: 0, temporaryPassword: "short",
-    temporaryPasswordHours: 169 }));
+    temporaryPasswordHours: 24 }));
   assert.throws(() => validateResetAdminCredential({ expectedRevision: 2, temporaryPassword: "Replacement password 84!",
     temporaryPasswordHours: 72, note: "Replacement password 84!" }));
 });

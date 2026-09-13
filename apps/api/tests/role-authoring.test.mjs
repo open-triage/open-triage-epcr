@@ -111,10 +111,10 @@ test("deactivation atomically closes every assignment and records only stable re
       { capability_key: "users:read", description: "View users", administrative: true, system_only: false }
     ];
     if (sql.includes("installation_owner")) return [{ owner: true }];
-    if (sql.includes("update app_identity.user_role_assignment")) return [
+    if (sql.includes("update app_identity.user_role_assignment")) return [[
       { id: "50000000-0000-4000-8000-000000000001", ended_at: endedAt }
-    ];
-    if (sql.includes("update app_identity.role set active")) return [{ id: roleId }];
+    ], 1];
+    if (sql.includes("update app_identity.role set active")) return [[{ id: roleId }], 1];
     return [];
   } };
   const service = new RoleAuthoringService({ transaction: async (isolation, work) => {

@@ -34,11 +34,12 @@
     "authentication": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength"],
+      "required": ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength", "temporaryPasswordHours"],
       "properties": {
         "sessionDurationMinutes": { "type": "integer", "minimum": 15 },
         "idleTimeoutMinutes": { "type": "integer", "minimum": 5 },
-        "minimumPasswordLength": { "type": "integer", "minimum": 8 }
+        "minimumPasswordLength": { "type": "integer", "minimum": 8 },
+        "temporaryPasswordHours": { "type": "integer", "minimum": 1 }
       }
     },
     "exports": {

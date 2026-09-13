@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import type { ProvisionAdminUserCommand } from "@open-triage/contracts";
 import { validatePassword } from "../identity/password.js";
+import { selectedInstallationSettings } from "../config/installation-settings.js";
 
 const USERNAME = /^[a-z0-9][a-z0-9._-]{2,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,10 +31,9 @@ export function validateProvisionAdminUser(input: unknown): ProvisionAdminUserCo
   } catch (error) {
     throw new BadRequestException(error instanceof Error ? error.message : "The temporary password is invalid");
   }
-  const temporaryPasswordHours = value.temporaryPasswordHours === undefined ? 72 : value.temporaryPasswordHours;
-  if (typeof temporaryPasswordHours !== "number" || !Number.isInteger(temporaryPasswordHours) ||
-      temporaryPasswordHours < 1 || temporaryPasswordHours > 168) {
-    throw new BadRequestException("Temporary password duration must be a whole number from 1 to 168 hours");
+  const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
+  if (value.temporaryPasswordHours !== undefined && value.temporaryPasswordHours !== temporaryPasswordHours) {
+    throw new BadRequestException(`Temporary password duration must match the configured ${temporaryPasswordHours} hours`);
   }
   if (!Array.isArray(value.roleIds) || value.roleIds.some((roleId) => typeof roleId !== "string" || !UUID.test(roleId))) {
     throw new BadRequestException("roleIds must be a complete array of role UUIDs");
