@@ -130,7 +130,7 @@ test("password replacement commits credential, revocation, audits, and its repla
     if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
     if (sql.startsWith("select s.id as session_id")) return [sessionRow];
     if (sql.startsWith("select c.password_verifier")) return [credentialRow];
-    if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
+    if (sql.startsWith("update app_identity.local_credential")) return [[{ credential_version: "2" }], 1];
     if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
     if (sql.startsWith("select distinct rvc.capability_key")) return [{ capability_key: "clinical:document" }];
     return [];
@@ -148,6 +148,7 @@ test("password replacement commits credential, revocation, audits, and its repla
   assert.deepEqual(new Set(events.map(({ connection }) => connection)), new Set(["transaction-connection"]));
   assert.ok(events.some(({ sql }) => sql.startsWith("update app_identity.local_credential")));
   assert.ok(events.some(({ sql }) => sql.includes("revocation_reason = 'password_change'")));
+  assert.equal(events.find(({ sql }) => sql.startsWith("insert into app_identity.app_session")).parameters[3], "2");
   assert.deepEqual(events.filter(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"))
     .map(({ parameters }) => parameters[2]), ["authentication.password_change", "authentication.sign_in"]);
 });
@@ -248,7 +249,7 @@ test("a late password replacement audit failure rolls back credentials, revocati
     if (sql.startsWith("select csrf_sha256")) return [{ csrf_sha256: digest(csrfToken) }];
     if (sql.startsWith("select s.id as session_id")) return [sessionRow];
     if (sql.startsWith("select c.password_verifier")) return [{ ...sessionRow, password_verifier: verifier }];
-    if (sql.startsWith("update app_identity.local_credential")) return [{ credential_version: "2" }];
+    if (sql.startsWith("update app_identity.local_credential")) return [[{ credential_version: "2" }], 1];
     if (sql.startsWith("insert into app_identity.app_session")) return [{ id: "replacement-session" }];
     if (sql.startsWith("insert into app_identity.authentication_event") && parameters[2] === "authentication.sign_in") throw failure;
     return [];
