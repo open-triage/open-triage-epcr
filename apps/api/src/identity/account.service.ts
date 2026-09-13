@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { createPasswordVerifier } from "./password.js";
 
 export const BUILT_IN_ROLES = {
@@ -151,13 +152,13 @@ export class AccountService {
   private async assignProtectedRoles(manager: EntityManager, organizationId: string, userId: string,
     roleKeys: readonly string[], note: string): Promise<void> {
     for (const systemKey of roleKeys) {
-      const assigned = await manager.query<Array<{ id: string }>>(
+      const assigned = mutationRows<{ id: string }>(await manager.query(
         `insert into app_identity.user_role_assignment
           (organization_id, user_id, role_id, assigned_by, note)
          select $1, $2, id, $2, $4 from app_identity.role
          where organization_id = $1 and system_key = $3 and protected and active and assignable
          returning id`, [organizationId, userId, systemKey, note]
-      );
+      ));
       if (!assigned[0]) throw new Error(`Protected role ${systemKey} is unavailable`);
     }
   }

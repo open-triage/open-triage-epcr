@@ -42,7 +42,7 @@ function managerFor({ existing = [], histories = [], capabilities = [], assignme
     if (sql.includes("count(distinct user_id)")) return assignments;
     if (sql.includes("lower(display_name)")) return [];
     if (sql.includes("select count(*) count from app_identity.role_version")) return [{ count: histories.length }];
-    if (sql.includes("update app_identity.role")) return [{ id: roleId }];
+    if (sql.includes("update app_identity.role")) return [[{ id: roleId }], 1];
     return [];
   } };
 }

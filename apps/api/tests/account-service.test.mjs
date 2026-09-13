@@ -7,7 +7,7 @@ import { verifyPassword } from "../dist/identity/password.js";
 const operator = { operatorId: "ops-ticket-42", osAccount: "deploy", host: "ops-01" };
 
 function instrumentedDataSource(respond = ({ sql }) =>
-  sql.startsWith("insert into app_identity.user_role_assignment") ? [{ id: "assignment-id" }] : []) {
+  sql.startsWith("insert into app_identity.user_role_assignment") ? [[{ id: "assignment-id" }], 1] : []) {
   const events = [];
   const manager = { query: async (sql, parameters = []) => {
     const statement = { connection: "transaction-connection", sql: sql.replace(/\s+/g, " ").trim(), parameters };
@@ -35,7 +35,7 @@ function instrumentedDataSource(respond = ({ sql }) =>
 
 function defaultResponse({ sql }) {
   if (sql.startsWith("select id from app_identity.organization")) return [{ id: "organization-id" }];
-  if (sql.startsWith("insert into app_identity.user_role_assignment")) return [{ id: "assignment-id" }];
+  if (sql.startsWith("insert into app_identity.user_role_assignment")) return [[{ id: "assignment-id" }], 1];
   return [];
 }
 

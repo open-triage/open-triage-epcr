@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -125,12 +126,6 @@ const TRUSTWORTHY_CLIENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEMO_GENERATOR = "stationary-populate-v1";
 const DEMO_GROUP_PREFIX = `demo:${DEMO_GENERATOR}:`;
-
-function affectedRowCount(result: unknown): number {
-  if (!Array.isArray(result)) return 0;
-  if (result.length === 2 && Array.isArray(result[0]) && typeof result[1] === "number") return result[1];
-  return result.length;
-}
 
 function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftValue {
   if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display, ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
@@ -796,9 +791,9 @@ export class DraftReportService {
         delete from clinical.call_assignment
         where report_id = $1 and organization_id = $2
       `, [reportId, session.organization.id]);
-      const deleted = await manager.query<Array<{ id: string }>>(`
+      const deleted = mutationRows<{ id: string }>(await manager.query(`
         delete from clinical.report where id = $1 and status = 'draft' and synthetic returning id
-      `, [reportId]);
+      `, [reportId]));
       if (!deleted[0]) throw new ConflictException("The synthetic draft could not be deleted");
       await manager.query(`
         delete from clinical.patient where id = $1
@@ -987,7 +982,7 @@ export class DraftReportService {
       for (const group of ready) pending.splice(pending.indexOf(group), 1);
     }
     for (const layer of ordered) {
-      const saved = await manager.query<Array<{ id: string }>>(`
+      const saved = mutationRows<{ id: string }>(await manager.query(`
         insert into clinical.group_instance
           (id, report_id, catalog_release_id, parent_group_instance_id, group_id, source_kind,
            custom_group_definition_id, ordinal, correlation_id, documented_time,
@@ -1021,20 +1016,20 @@ export class DraftReportService {
         correlation_id: group.correlationId ?? null,
         documented_time: group.documentedTime ?? null,
         documented_utc_offset_minutes: group.documentedUtcOffsetMinutes ?? null
-      }))) ]);
-      if (affectedRowCount(saved) !== layer.length) {
+      }))) ]));
+      if (saved.length !== layer.length) {
         throw new ConflictException("One or more group identities already belong to different data");
       }
     }
     const tombstones = mutations.filter((candidate) => candidate.tombstone);
     if (tombstones.length) {
-      const removed = await manager.query<Array<{ id: string }>>(`
+      const removed = mutationRows<{ id: string }>(await manager.query(`
         update clinical.group_instance saved set tombstoned_at = now()
         from jsonb_to_recordset($2::jsonb) as incoming(id uuid, group_id text)
         where saved.id = incoming.id and saved.report_id = $1 and saved.group_id = incoming.group_id
         returning saved.id
-      `, [report.id, JSON.stringify(tombstones.map((group) => ({ id: group.id, group_id: group.groupId })))]);
-      if (affectedRowCount(removed) !== tombstones.length) {
+      `, [report.id, JSON.stringify(tombstones.map((group) => ({ id: group.id, group_id: group.groupId })))]));
+      if (removed.length !== tombstones.length) {
         throw new ConflictException("One or more group identities do not belong to this report and group");
       }
     }
@@ -1061,7 +1056,7 @@ export class DraftReportService {
   ): Promise<void> {
     const tombstones = occurrences.filter((occurrence) => occurrence.tombstone);
     if (tombstones.length) {
-      const removed = await manager.query<Array<{ id: string }>>(`
+      const removed = mutationRows<{ id: string }>(await manager.query(`
         update clinical.element_occurrence saved
         set tombstoned_at = now(), updated_at = now(), author_id = $3,
             provenance_kind = 'clinician',
@@ -1072,8 +1067,8 @@ export class DraftReportService {
         returning saved.id
       `, [report.id, JSON.stringify(tombstones.map((occurrence) => ({
         id: occurrence.id, element_id: occurrence.elementId
-      }))), command.authorId]);
-      if (affectedRowCount(removed) !== tombstones.length) {
+      }))), command.authorId]));
+      if (removed.length !== tombstones.length) {
         throw new ConflictException("One or more occurrence identities do not belong to this report and element");
       }
     }
@@ -1124,7 +1119,7 @@ export class DraftReportService {
         documented_precision: occurrence.documentedPrecision ?? null
       };
     });
-    const saved = await manager.query<Array<{ id: string }>>(`
+    const saved = mutationRows<{ id: string }>(await manager.query(`
       insert into clinical.element_occurrence
         (id, report_id, catalog_release_id, group_instance_id, element_identity_id, element_id,
          form_field_id, ordinal, analytical_repeatable, identifying, value_kind,
@@ -1180,8 +1175,8 @@ export class DraftReportService {
         and clinical.element_occurrence.element_identity_id = excluded.element_identity_id
         and clinical.element_occurrence.element_id = excluded.element_id
       returning id
-    `, [report.id, report.catalog_release_id, command.authorId, JSON.stringify(rows)]);
-    if (affectedRowCount(saved) !== upserts.length) {
+    `, [report.id, report.catalog_release_id, command.authorId, JSON.stringify(rows)]));
+    if (saved.length !== upserts.length) {
       throw new ConflictException("One or more occurrence identities already belong to different data");
     }
   }

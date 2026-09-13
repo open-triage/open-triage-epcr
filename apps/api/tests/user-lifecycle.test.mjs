@@ -30,7 +30,8 @@ function setup({ target = {}, actor = {}, targetOnly = [], currentRoleIds = [rol
       active: true, protected: true, assignable: true }];
     if (normalized.startsWith("update app_identity.local_credential") && failCredential) throw failCredential;
     if (normalized.startsWith("update app_identity.app_session")) {
-      return Array.from({ length: sessionsRevoked }, (_, index) => ({ id: `session-${index}` }));
+      const rows = Array.from({ length: sessionsRevoked }, (_, index) => ({ id: `session-${index}` }));
+      return [rows, rows.length];
     }
     return [];
   } };

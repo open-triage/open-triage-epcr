@@ -10,6 +10,7 @@ import type {
 } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
@@ -439,10 +440,10 @@ export class AssignedCallsService {
       callNumber,
       dispatchedAt: input.now.toISOString()
     })]);
-    const inserted = await manager.query<Array<{
+    const inserted = mutationRows<{
       created_at: Date | string;
       expires_at: Date | string;
-    }>>(`
+    }>(await manager.query(`
       insert into clinical.call_assignment
         (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
          dispatch_reason, chief_complaint, dispatch_source_id, dispatch_source_record_id,
@@ -454,7 +455,7 @@ export class AssignedCallsService {
     `, [assignmentId, input.organizationId, input.unit.id, incidentId, callNumber,
       input.now.toISOString(), generatedDispatchReason, payload.sourceRecordId,
       scalarPayloadValue(payload, "eResponse.04"),
-      scalarPayloadValue(payload, "eResponse.13"), receiptId, input.userId]);
+      scalarPayloadValue(payload, "eResponse.13"), receiptId, input.userId]));
     if (!inserted[0]) throw new Error("Synthetic assignment lifecycle was not returned");
     return assignedCall({
       id: assignmentId,

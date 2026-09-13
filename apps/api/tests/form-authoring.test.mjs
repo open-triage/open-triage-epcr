@@ -249,7 +249,9 @@ test("activation pins one exact version and appends previous/new audit evidence"
     if (sql.includes("from forms.agency_stationary_default")) return [{
       form_version_id: sourceFormId, catalog_release_id: sourceCatalogId
     }];
-    if (sql.includes("insert into forms.agency_stationary_default")) return [{ activated_at: "2026-09-07T02:05:00.000Z" }];
+    if (sql.includes("insert into forms.agency_stationary_default")) {
+      return [[{ activated_at: "2026-09-07T02:05:00.000Z" }], 1];
+    }
     if (sql.includes("insert into app_identity.configuration_event")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };

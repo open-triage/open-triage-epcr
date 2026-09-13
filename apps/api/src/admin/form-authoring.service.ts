@@ -200,13 +200,13 @@ export class FormAuthoringService {
         from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
         where d.organization_id=$1 for update
       `, [session.organization.id]);
-      const activated = await manager.query<Array<{ activated_at: Date | string }>>(`
+      const activated = mutationRows<{ activated_at: Date | string }>(await manager.query(`
         insert into forms.agency_stationary_default (organization_id,form_version_id,activated_by)
         values ($1,$2,$3)
         on conflict (organization_id) do update set form_version_id=excluded.form_version_id,
           activated_by=excluded.activated_by,activated_at=now()
         returning activated_at
-      `, [session.organization.id, id, session.user.id]);
+      `, [session.organization.id, id, session.user.id]));
       await manager.query(`insert into app_identity.configuration_event
         (organization_id,actor_id,action,result,form_version_id,catalog_release_id,
          previous_form_version_id,previous_catalog_release_id,change_note,content_sha256)

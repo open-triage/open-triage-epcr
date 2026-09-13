@@ -3,6 +3,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { CancelOwnershipTransferCommand, InitiateOwnershipTransferCommand,
   OwnershipTransferState, OwnershipTransferSummary } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type OwnerRow = { user_id: string; display_name: string };
@@ -59,10 +60,10 @@ export class OwnershipTransferService {
         return { failure: "ineligible" };
       }
       const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1_000);
-      const inserted = await manager.query<Array<{ id: string }>>(`insert into app_identity.ownership_transfer
+      const inserted = mutationRows<{ id: string }>(await manager.query(`insert into app_identity.ownership_transfer
         (organization_id, nominated_by, nominee_user_id, initiated_at, expires_at, note)
         values ($1, $2, $3, $4, $5, $6) returning id`,
-      [actor.organization.id, actor.user.id, command.nomineeUserId, now, expiresAt, command.note ?? null]);
+      [actor.organization.id, actor.user.id, command.nomineeUserId, now, expiresAt, command.note ?? null]));
       await this.audit(manager, actor.organization.id, inserted[0]!.id, actor.user.id,
         "owner.transfer.initiate", "succeeded", { nomineeUserId: command.nomineeUserId, expiresAt: expiresAt.toISOString() }, command.note);
       return { value: await this.readState(manager, actor.organization.id, actor.user.id, now, false) };

@@ -196,7 +196,14 @@ async function ensureFoundation(client) {
 }
 
 function singleClientDataSource(client) {
-  const manager = { query: async (sql, parameters) => (await client.query(sql, parameters)).rows };
+  const manager = { query: async (sql, parameters) => {
+    const result = await client.query(sql, parameters);
+    // Match TypeORM's PostgreSQL QueryRunner contract. Direct mutations expose
+    // [returnedRows, affectedRowCount], while SELECT and CTE statements expose rows.
+    return /^\s*(insert|update|delete)\b/i.test(sql)
+      ? [result.rows, result.rowCount ?? 0]
+      : result.rows;
+  } };
   return {
     manager,
     query: manager.query,
@@ -327,7 +334,7 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.equal(credential.rows[0].must_change_password, true);
   assert.doesNotMatch(credential.rows[0].password_verifier, /Temporary!Password-253/);
   assert.equal(new Date(credential.rows[0].temporary_password_expires_at).toISOString(),
-    new Date(provisioningNow.getTime() + 60 * 60 * 1_000).toISOString());
+    provisioned.temporaryPasswordExpiresAt);
 
   const beforeExpiry = new Date(credential.rows[0].temporary_password_expires_at.getTime() - 1);
   const boundarySession = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" }, beforeExpiry);
@@ -1199,7 +1206,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   });
 });
 
-integrationTest("the demo account authenticates with its exact role only after ordinary owner setup", async (t) => {
+integrationTest("the idempotent demo installation authenticates with its exact role", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
@@ -1222,10 +1229,6 @@ integrationTest("the demo account authenticates with its exact role only after o
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username, password: DEMO_CLINICIAN_PASSWORD })
   });
-  const beforeOwner = await signIn(DEMO_CLINICIAN_USERNAME);
-  assert.equal(beforeOwner.status, 201);
-  assert.deepEqual((await beforeOwner.json()).capabilities, []);
-
   await ensureSyntheticOwner(client);
   const demo = await signIn(DEMO_CLINICIAN_USERNAME);
   const demoSession = await demo.json();

@@ -39,7 +39,7 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
   const manager = { query: async (sql, parameters) => {
     calls.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
     if (sql.includes("select r.patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
-    if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
+    if (sql.includes("delete from clinical.report")) return [[{ id: reportId }], 1];
     return [];
   } };
   const service = new DraftReportService(transactional(manager), sessions());

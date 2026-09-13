@@ -8,6 +8,7 @@ import {
   type EncounterValue,
 } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
+import { databaseInteger, databaseNumber } from "../database/mutation-result.js";
 import {
   scalarDatabaseMapping,
   scalarDatabaseValue,
@@ -279,11 +280,15 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const value = row.value_kind === "datetime" && row.value_datetime != null
     ? catalogDateTime(row.value_datetime, row.value_utc_offset_minutes, row.value_precision)
     : row.value_kind === "date" && row.value_date != null ? catalogDate(row.value_date)
-    : row.value_kind === "integer" ? Number(raw) : raw;
+    : row.value_kind === "integer" ? databaseInteger(raw as string | number, `${row.element_id} integer value`) : raw;
   return {
-    ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean,
+    ...common, kind: "scalar", value: row.value_kind === "numeric"
+      ? databaseNumber(value as string | number, `${row.element_id} numeric value`)
+      : value as string | number | boolean,
     ...(row.value_lexical != null ? { lexical: row.value_lexical } : {}),
-    ...(row.value_utc_offset_minutes != null ? { utcOffsetMinutes: Number(row.value_utc_offset_minutes) } : {}),
+    ...(row.value_utc_offset_minutes != null
+      ? { utcOffsetMinutes: databaseInteger(row.value_utc_offset_minutes, `${row.element_id} UTC offset`) }
+      : {}),
     ...(row.value_precision != null ? { precision: row.value_precision } : {}),
   } as EncounterValue;
 }

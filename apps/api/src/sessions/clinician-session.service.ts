@@ -163,11 +163,11 @@ export class ClinicianSessionService {
   async end(sessionToken: string, csrfToken?: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, csrfToken, manager);
-      const rows = await manager.query<Array<{ id: string; user_id: string; organization_id: string }>>(`
+      const rows = mutationRows<{ id: string; user_id: string; organization_id: string }>(await manager.query(`
         update app_identity.app_session s set revoked_at = now(), revocation_reason = 'logout'
         from app_identity.app_user u where s.user_id = u.id and s.token_sha256 = $1 and s.revoked_at is null
         returning s.id, s.user_id, u.organization_id
-      `, [digest(sessionToken)]);
+      `, [digest(sessionToken)]));
       const ended = rows[0];
       if (!ended) throw new UnauthorizedException("The clinician session has ended");
       await manager.query(`insert into app_identity.authentication_event

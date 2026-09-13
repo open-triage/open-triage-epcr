@@ -29,7 +29,7 @@ function setup({ actorId = ownerId, recent = true, pending = null } = {}) {
       activeTransfer = { id: transferId, status: "pending", initiated_at: parameters[3], expires_at: parameters[4],
         resolved_at: null, resolution_reason: null, nominated_by: ownerId, nominated_by_name: "Current Owner",
         nominee_user_id: nomineeId, nominee_name: "Nominee" };
-      return [{ id: transferId }];
+      return [[{ id: transferId }], 1];
     }
     if (normalized.startsWith("update app_identity.installation_owner")) { activeOwnerId = parameters[1]; return []; }
     if (normalized.includes("set status = 'accepted'")) { activeTransfer = { ...activeTransfer, status: "accepted",

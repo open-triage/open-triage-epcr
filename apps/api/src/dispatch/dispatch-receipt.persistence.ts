@@ -1,4 +1,5 @@
 import type { DispatchValidationFinding } from "./dispatch-assignment.validation.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -93,7 +94,7 @@ export async function persistDispatchReceipt(
 ): Promise<DispatchReceipt> {
   const payload = parseSource(input.sourceBytes);
   const identity = requiredIdentity(payload);
-  const rows = await writer.query<StoredReceipt[]>(`
+  const rows = mutationRows<StoredReceipt>(await writer.query(`
     insert into clinical.dispatch_receipt
       (organization_id, source_id, message_id, source_record_id, source_revision,
        source_bytes, source_payload, findings, status, result)
@@ -112,7 +113,7 @@ export async function persistDispatchReceipt(
     JSON.stringify(input.findings),
     input.status,
     JSON.stringify(input.result)
-  ]);
+  ]));
   const row = rows[0];
   if (!row) throw new Error("Dispatch receipt insert returned no row");
   return {

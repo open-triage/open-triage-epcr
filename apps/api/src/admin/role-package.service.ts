@@ -7,6 +7,7 @@ import type {
   ClinicianSession, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { normalizeRoleName } from "./role-authoring.service.js";
 
@@ -339,12 +340,12 @@ export class RolePackageService {
       [session.organization.id, version.id, role.id, version.capabilityKeys]);
     }
     if (existing && (existing.current_version_id !== current.id || !existing.active)) {
-      const updated = await manager.query<Array<{ id: string }>>(`update app_identity.role
+      const updated = mutationRows<{ id: string }>(await manager.query(`update app_identity.role
         set display_name = $3, description = $4, current_version_id = $5, active = true,
           assignable = true, note = 'Portable role import'
         where organization_id = $1 and id = $2 and current_version_id = $6 returning id`,
       [session.organization.id, role.id, current.displayName, current.description, current.id,
-        existing.current_version_id]);
+        existing.current_version_id]));
       if (!updated[0]) throw new ConflictException("The role changed during import");
     }
   }

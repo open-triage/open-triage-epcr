@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AdminRoleSummary, UpdatedAdminUser, UpdateAdminUserCommand } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
+import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type TargetRow = {
@@ -77,9 +78,9 @@ export class UserLifecycleService {
 
         let sessionsRevoked = 0;
         if (target.active && !command.active) {
-          const revoked = await manager.query<Array<{ id: string }>>(`update app_identity.app_session
+          const revoked = mutationRows<{ id: string }>(await manager.query(`update app_identity.app_session
             set revoked_at = $2, revocation_reason = 'account_disabled'
-            where user_id = $1 and revoked_at is null returning id`, [target.id, now]);
+            where user_id = $1 and revoked_at is null returning id`, [target.id, now]));
           sessionsRevoked = revoked.length;
         }
         const action = target.active && !command.active ? "account.disable"
