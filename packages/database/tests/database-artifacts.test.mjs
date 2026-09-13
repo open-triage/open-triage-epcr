@@ -211,6 +211,16 @@ test("installation ownership is singular, durable, least-privilege, and gates ro
     /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
 });
 
+test("current ownership grants intrinsic full authority without active role assignments", async () => {
+  const migration = await readFile(path.join(repoRoot,
+    "supabase/migrations/20260913143000_owner_intrinsic_authority.sql"), "utf8");
+  assert.match(migration, /drop trigger owner_administrator_assignment_protected/);
+  assert.match(migration, /update app_identity\.user_role_assignment[\s\S]*ended_at = now\(\)/);
+  assert.match(migration, /from app_identity\.capability capability/);
+  assert.match(migration, /app_identity\.installation_owner owner_record/);
+  assert.match(migration, /installation owner must be an active user in the organization/);
+});
+
 test("temporary credentials have a bounded expiry and credential-free audit storage", () => {
   assert.match(temporaryCredentialMigration, /temporary_password_expires_at timestamptz/);
   assert.match(temporaryCredentialMigration, /local_credential_temporary_expiry_check/);

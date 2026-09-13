@@ -586,6 +586,11 @@ integrationTest("concurrent owner bootstrap leaves exactly one fully privileged 
     [owner.user_id, organizationId])).rows[0].allowed, true);
   assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:document') allowed`,
     [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:demo') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select count(*)::integer count
+    from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
+    [organizationId, owner.user_id])).rows[0].count, 0);
   assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner
     where organization_id = $1`, [organizationId])).rows[0].count, 1);
   assert.deepEqual((await firstClient.query(`select result from app_identity.operator_identity_event
@@ -598,10 +603,6 @@ integrationTest("concurrent owner bootstrap leaves exactly one fully privileged 
     [owner.user_id]), /cannot be disabled/);
   await assert.rejects(firstClient.query("delete from app_identity.local_credential where user_id = $1",
     [owner.user_id]), /credential cannot be removed/);
-  await assert.rejects(firstClient.query(`update app_identity.user_role_assignment set ended_at = now(), ended_by = $1
-    where user_id = $1 and ended_at is null and role_id = (
-      select id from app_identity.role where organization_id = $2 and system_key = 'administrator'
-    )`, [owner.user_id, organizationId]), /Administrator and Clinician assignments cannot be removed/);
 });
 
 integrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
@@ -643,14 +644,11 @@ integrationTest("ownership moves only after an eligible nominee independently ac
   assert.equal(accepted.owner.id, nominee.userId);
   assert.equal((await client.query("select count(*)::integer count from app_identity.installation_owner where organization_id = $1",
     [organizationId])).rows[0].count, 1);
-  const administratorAssignments = await client.query(`select user_id from app_identity.user_role_assignment assignment
-    join app_identity.role role on role.organization_id = assignment.organization_id and role.id = assignment.role_id
-    where assignment.organization_id = $1 and assignment.ended_at is null and role.system_key = 'administrator'`, [organizationId]);
-  assert.deepEqual(new Set(administratorAssignments.rows.map(({ user_id }) => user_id)), new Set([owner.userId, nominee.userId]));
-  const clinicianAssignments = await client.query(`select user_id from app_identity.user_role_assignment assignment
-    join app_identity.role role on role.organization_id = assignment.organization_id and role.id = assignment.role_id
-    where assignment.organization_id = $1 and assignment.ended_at is null and role.system_key = 'clinician'`, [organizationId]);
-  assert.deepEqual(new Set(clinicianAssignments.rows.map(({ user_id }) => user_id)), new Set([owner.userId, nominee.userId]));
+  assert.equal((await client.query(`select count(*)::integer count
+    from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
+  [organizationId, nominee.userId])).rows[0].count, 0);
+  assert.equal((await client.query(`select app_identity.user_has_capability($1, $2, 'clinical:demo') allowed`,
+    [nominee.userId, organizationId])).rows[0].allowed, true);
 });
 
 integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {

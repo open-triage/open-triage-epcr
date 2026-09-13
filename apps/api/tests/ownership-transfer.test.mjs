@@ -75,8 +75,8 @@ test("owner nomination and independently reauthenticated acceptance move the sin
   const ownerUpdate = fixture.events.findIndex(({ sql }) => sql.startsWith("update app_identity.installation_owner"));
   const transferUpdate = fixture.events.findIndex(({ sql }) => sql.includes("set status = 'accepted'"));
   assert.ok(ownerUpdate > -1 && transferUpdate > ownerUpdate);
-  assert.equal(fixture.events.some(({ sql }) => sql.startsWith("update app_identity.user_role_assignment")), false,
-    "the former owner's Administrator assignment is retained");
+  const retiredRoles = fixture.events.find(({ sql }) => sql.startsWith("update app_identity.user_role_assignment"));
+  assert.equal(retiredRoles.parameters[1], nomineeId, "the new owner no longer relies on role assignments");
 });
 
 test("stale assurance is audited and committed before initiation is refused", async () => {

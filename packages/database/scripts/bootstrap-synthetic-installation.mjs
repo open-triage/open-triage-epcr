@@ -24,6 +24,7 @@ const accounts = Object.freeze([
 const baselineFormId = "33000000-0000-4000-8000-000000000001";
 const baselineFormVersionId = "34000000-0000-4000-8000-000000000001";
 const baselineDemographicId = "35000000-0000-4000-8000-000000000001";
+const baselineUnitId = "36000000-0000-4000-8000-000000000001";
 
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -142,6 +143,24 @@ async function ensureBaselineConfiguration(client, actorId) {
   return { created, formVersionId };
 }
 
+async function ensureDemoUnit(client, userId, formVersionId) {
+  const form = await client.query("select form_id from forms.form_version where id = $1", [formVersionId]);
+  if (!form.rows[0]) throw new Error("The active demonstration form is unavailable");
+  await client.query(`insert into app_identity.operational_unit
+    (id, organization_id, call_sign, name, default_form_id, active, synthetic)
+    values ($1, $2, 'DEMO-1', 'Demo Unit', $3, true, true)
+    on conflict (id) do nothing`,
+  [baselineUnitId, SYNTHETIC_DEMO_FIXTURE.organizationId, form.rows[0].form_id]);
+  const unit = await client.query(`select id from app_identity.operational_unit
+    where id = $1 and organization_id = $2 and active and synthetic`,
+  [baselineUnitId, SYNTHETIC_DEMO_FIXTURE.organizationId]);
+  if (!unit.rows[0]) throw new Error("The reserved demonstration unit exists but is not eligible");
+  await client.query(`insert into app_identity.unit_clinician (organization_id, unit_id, user_id)
+    values ($1, $2, $3) on conflict (unit_id, user_id) do nothing`,
+  [SYNTHETIC_DEMO_FIXTURE.organizationId, baselineUnitId, userId]);
+  return { unitId: baselineUnitId, callSign: "DEMO-1" };
+}
+
 async function ensureFoundation(client) {
   const migrations = await readMigrations(path.join(repoRoot, "supabase/migrations"));
   return (await applyMigrations(client, migrations, { info() {} })) > 0;
@@ -202,6 +221,8 @@ try {
     }
 
     const baselineConfiguration = await ensureBaselineConfiguration(client, SYNTHETIC_DEMO_FIXTURE.userId);
+    const demoUnit = await ensureDemoUnit(client, SYNTHETIC_DEMO_FIXTURE.userId,
+      baselineConfiguration.formVersionId);
 
     const owner = await client.query(
       "select exists (select 1 from app_identity.installation_owner where organization_id = $1) as configured",
@@ -216,6 +237,7 @@ try {
       organizationId: SYNTHETIC_DEMO_FIXTURE.organizationId,
       createdAccounts: created,
       baselineConfiguration,
+      demoUnit,
       ownerConfigured: Boolean(owner.rows[0]?.configured),
     }, null, 2));
   } catch (error) {

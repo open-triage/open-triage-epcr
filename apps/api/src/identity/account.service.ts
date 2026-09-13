@@ -70,8 +70,6 @@ export class AccountService {
             (user_id, username, password_verifier, must_change_password, temporary_password_expires_at)
            values ($1, $2, $3, true, now() + interval '72 hours')`, [userId, username, verifier]
         );
-        await this.assignProtectedRoles(manager, input.organizationId, userId,
-          ["administrator", "clinician"], "Owner bootstrap");
         await manager.query(
           `insert into app_identity.installation_owner
             (organization_id, user_id, established_by_operator_id)

@@ -235,23 +235,31 @@ export class ClinicianSessionService {
     startedAt: Date, expiresAt: Date, csrfToken?: string, manager = this.dataSource.manager
   ): Promise<ClinicianSession> {
     const resolvedCapabilities = (await manager.query<Array<{ capability_key: string }>>(`
-      select distinct rvc.capability_key
-      from app_identity.user_role_assignment assignment
-      join app_identity.role role
-        on role.organization_id = assignment.organization_id and role.id = assignment.role_id
-      join app_identity.role_version version
-        on version.organization_id = role.organization_id and version.role_id = role.id
-        and version.id = role.current_version_id
-      join app_identity.role_version_capability rvc
-        on rvc.organization_id = version.organization_id and rvc.role_id = version.role_id
-        and rvc.role_version_id = version.id
-      where assignment.user_id = $1 and assignment.organization_id = $2
-        and assignment.ended_at is null and role.active and role.assignable
-        and exists (
-          select 1 from app_identity.installation_owner owner_record
-          where owner_record.organization_id = assignment.organization_id
-        )
-      order by rvc.capability_key
+      select capability.key as capability_key
+      from app_identity.capability capability
+      where exists (
+        select 1 from app_identity.app_user owner_user
+        join app_identity.installation_owner owner_record
+          on owner_record.organization_id = owner_user.organization_id
+         and owner_record.user_id = owner_user.id
+        where owner_user.id = $1 and owner_user.organization_id = $2 and owner_user.active
+      ) or exists (
+        select 1
+        from app_identity.user_role_assignment assignment
+        join app_identity.role role
+          on role.organization_id = assignment.organization_id and role.id = assignment.role_id
+        join app_identity.role_version version
+          on version.organization_id = role.organization_id and version.role_id = role.id
+         and version.id = role.current_version_id
+        join app_identity.role_version_capability rvc
+          on rvc.organization_id = version.organization_id and rvc.role_id = version.role_id
+         and rvc.role_version_id = version.id and rvc.capability_key = capability.key
+        where assignment.user_id = $1 and assignment.organization_id = $2
+          and assignment.ended_at is null and role.active and role.assignable
+          and exists (select 1 from app_identity.installation_owner installation
+            where installation.organization_id = assignment.organization_id)
+      )
+      order by capability.key
     `, [account.user_id, account.organization_id])).map(({ capability_key }) => capability_key);
     return {
       ...(csrfToken ? { csrfToken } : {}),
