@@ -6,6 +6,7 @@ import pg from "pg";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { createPasswordVerifier } from "../../../apps/api/dist/identity/password.js";
 import { applyMigrations, readMigrations } from "./migrate.mjs";
+import { syntheticStationaryDefinition } from "./synthetic-stationary-definition.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -23,6 +24,8 @@ const accounts = Object.freeze([
 
 const baselineFormId = "33000000-0000-4000-8000-000000000001";
 const baselineFormVersionId = "34000000-0000-4000-8000-000000000001";
+const completeBaselineFormId = "33000000-0000-4000-8000-000000000002";
+const completeBaselineFormVersionId = "34000000-0000-4000-8000-000000000002";
 const baselineDemographicId = "35000000-0000-4000-8000-000000000001";
 const baselineUnitId = "36000000-0000-4000-8000-000000000001";
 
@@ -36,78 +39,83 @@ function sha256(value) {
   return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
 }
 
-async function baselineDefinition() {
-  const profile = JSON.parse(await readFile(path.join(repoRoot, "apps/web/app/data/standard-encounter-form.json"), "utf8"));
-  return {
-    schemaVersion: 1,
-    sections: profile.sections.filter((section) => section.visible).map((section) => ({
-      key: section.id,
-      presentation: { quickActionLabel: section.quickActionLabel },
-      fields: section.elements.map((elementId) => ({
-        key: elementId,
-        source: { kind: "nemsis", elementId },
-        configuration: {
-          ...(profile.labels[elementId] ? { label: profile.labels[elementId] } : {}),
-          ...(profile.helpText[elementId] ? { helpText: profile.helpText[elementId] } : {}),
-        },
-      })),
-    })),
-  };
-}
-
 async function ensureBaselineConfiguration(client, actorId) {
-  const active = await client.query(
-    "select form_version_id from forms.agency_stationary_default where organization_id = $1",
+  const definition = await syntheticStationaryDefinition();
+  const definitionSha256 = sha256(definition);
+  const active = await client.query(`select active.form_version_id, version.form_id, version.definition_sha256,
+      version.catalog_release_id
+    from forms.agency_stationary_default active
+    join forms.form_version version on version.id = active.form_version_id
+    where active.organization_id = $1`,
     [SYNTHETIC_DEMO_FIXTURE.organizationId],
   );
-  if (active.rows[0]) return { created: false, formVersionId: active.rows[0].form_version_id };
+  if (active.rows[0]?.definition_sha256 === definitionSha256) {
+    return { created: false, upgraded: false, formVersionId: active.rows[0].form_version_id };
+  }
+  if (active.rows[0] && active.rows[0].form_version_id !== baselineFormVersionId) {
+    return { created: false, upgraded: false, formVersionId: active.rows[0].form_version_id };
+  }
 
   const release = await client.query(`select id from catalog.release
     where standard = 'NEMSIS' and version = '3.5.1' and dataset = 'EMSDataSet' and sealed
     limit 1`);
   if (!release.rows[0]) throw new Error("Load the sealed NEMSIS 3.5.1 EMSDataSet catalog before bootstrapping the demo configuration");
   const catalogReleaseId = release.rows[0].id;
-  const existing = await client.query(`select fv.id
+  const existing = await client.query(`select fv.id, fv.definition_sha256
     from forms.form_version fv join forms.form f on f.id = fv.form_id
-    where f.organization_id = $1 and fv.status = 'published'
-    order by fv.published_at desc, fv.version desc limit 1`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    where f.organization_id = $1 and fv.status = 'published' and fv.definition_sha256 = $2
+    order by fv.published_at desc, fv.version desc limit 1`,
+  [SYNTHETIC_DEMO_FIXTURE.organizationId, definitionSha256]);
   let formVersionId = existing.rows[0]?.id;
   let created = false;
+  const upgraded = Boolean(active.rows[0]);
 
   if (!formVersionId) {
-    const definition = await baselineDefinition();
-    const definitionSha256 = sha256(definition);
+    const formId = upgraded ? completeBaselineFormId : baselineFormId;
+    formVersionId = upgraded ? completeBaselineFormVersionId : baselineFormVersionId;
     await client.query(`insert into forms.form (id, organization_id, slug, name)
-      values ($1, $2, 'stationary', 'Stationary') on conflict (id) do nothing`,
-    [baselineFormId, SYNTHETIC_DEMO_FIXTURE.organizationId]);
+      values ($1, $2, $3, 'Stationary') on conflict (id) do nothing`,
+    [formId, SYNTHETIC_DEMO_FIXTURE.organizationId, upgraded ? "stationary-complete" : "stationary"]);
     const inserted = await client.query(`insert into forms.form_version
       (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
        created_by, display_name)
       values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, 'Stationary')
       on conflict (id) do nothing returning id`,
-    [baselineFormVersionId, baselineFormId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId]);
-    formVersionId = inserted.rows[0]?.id ?? baselineFormVersionId;
-    for (const [sectionPosition, section] of definition.sections.entries()) {
-      const sectionId = randomUUID();
-      await client.query(`insert into forms.form_section
-        (id, form_version_id, stable_key, position, presentation) values ($1, $2, $3, $4, $5::jsonb)`,
-      [sectionId, formVersionId, section.key, sectionPosition, JSON.stringify(section.presentation)]);
-      for (const [fieldPosition, field] of section.fields.entries()) {
-        const metadata = await client.query(`select definition.element_identity_id,
-          mapping.analytical_location = 'repeatable' as analytical_repeatable
-          from catalog.element_definition definition
-          join catalog.analytics_element_mapping mapping
-            on mapping.release_id = definition.release_id and mapping.element_id = definition.element_id
-          where definition.release_id = $1 and definition.element_id = $2`,
-        [catalogReleaseId, field.source.elementId]);
-        if (!metadata.rows[0]) throw new Error(`The baseline form element ${field.source.elementId} is unavailable`);
-        await client.query(`insert into forms.form_field
-          (form_version_id, section_id, stable_key, position, source_kind,
-           catalog_element_identity_id, required, analytical_repeatable, configuration)
-          values ($1, $2, $3, $4, 'nemsis', $5, false, $6, $7::jsonb)`,
-        [formVersionId, sectionId, field.key, fieldPosition, metadata.rows[0].element_identity_id,
-          metadata.rows[0].analytical_repeatable, JSON.stringify(field.configuration)]);
-      }
+    [formVersionId, formId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId]);
+    if (!inserted.rows[0]) throw new Error("The reserved complete Stationary form version is unavailable");
+    const sectionRows = definition.sections.map((section, position) => ({
+      id: randomUUID(), stableKey: section.key, position, presentation: section.presentation,
+    }));
+    await client.query(`insert into forms.form_section
+      (id, form_version_id, stable_key, position, presentation)
+      select section.id, $1, section.stable_key, section.position, section.presentation
+      from jsonb_to_recordset($2::jsonb) as section(
+        id uuid, stable_key text, position integer, presentation jsonb)`,
+    [formVersionId, JSON.stringify(sectionRows.map((section) => ({
+      id: section.id, stable_key: section.stableKey, position: section.position, presentation: section.presentation,
+    })))]);
+    const fieldRows = definition.sections.flatMap((section, sectionPosition) => section.fields.map((field, position) => ({
+      sectionId: sectionRows[sectionPosition].id, stableKey: field.key, position,
+      elementId: field.source.elementId, configuration: field.configuration,
+    })));
+    const insertedFields = await client.query(`insert into forms.form_field
+      (form_version_id, section_id, stable_key, position, source_kind,
+       catalog_element_identity_id, required, analytical_repeatable, configuration)
+      select $1, field.section_id, field.stable_key, field.position, 'nemsis',
+        definition.element_identity_id, false,
+        coalesce(mapping.analytical_location = 'repeatable', false), field.configuration
+      from jsonb_to_recordset($3::jsonb) as field(
+        section_id uuid, stable_key text, position integer, element_id text, configuration jsonb)
+      join catalog.element_definition definition
+        on definition.release_id = $2 and definition.element_id = field.element_id
+      left join catalog.analytics_element_mapping mapping
+        on mapping.release_id = definition.release_id and mapping.element_id = definition.element_id
+      returning id`, [formVersionId, catalogReleaseId, JSON.stringify(fieldRows.map((field) => ({
+        section_id: field.sectionId, stable_key: field.stableKey, position: field.position,
+        element_id: field.elementId, configuration: field.configuration,
+      })))]);
+    if (insertedFields.rowCount !== fieldRows.length) {
+      throw new Error(`The complete Stationary form projected ${insertedFields.rowCount} of ${fieldRows.length} fields`);
     }
     await client.query(`update forms.form_version
       set status = 'published', change_note = 'Initial demonstration configuration',
@@ -123,8 +131,14 @@ async function ensureBaselineConfiguration(client, actorId) {
   }
 
   const version = await client.query("select catalog_release_id from forms.form_version where id = $1", [formVersionId]);
-  await client.query(`insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
-    values ($1, $2, $3)`, [SYNTHETIC_DEMO_FIXTURE.organizationId, formVersionId, actorId]);
+  if (active.rows[0]) {
+    await client.query(`update forms.agency_stationary_default
+      set form_version_id = $2, activated_by = $3, activated_at = now()
+      where organization_id = $1`, [SYNTHETIC_DEMO_FIXTURE.organizationId, formVersionId, actorId]);
+  } else {
+    await client.query(`insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
+      values ($1, $2, $3)`, [SYNTHETIC_DEMO_FIXTURE.organizationId, formVersionId, actorId]);
+  }
   await client.query(`insert into app_identity.configuration_event
     (organization_id, actor_id, action, result, form_version_id, catalog_release_id, change_note, details)
     values ($1, $2, 'form.activate', 'succeeded', $3, $4,
@@ -140,7 +154,7 @@ async function ensureBaselineConfiguration(client, actorId) {
     on conflict (id) do nothing`,
   [baselineDemographicId, SYNTHETIC_DEMO_FIXTURE.organizationId, version.rows[0].catalog_release_id,
     sha256(demographicDefinition), actorId]);
-  return { created, formVersionId };
+  return { created, upgraded, formVersionId };
 }
 
 async function ensureDemoUnit(client, userId, formVersionId) {

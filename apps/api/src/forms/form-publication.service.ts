@@ -34,7 +34,7 @@ type FormVersionRow = {
 type NemsisElementRow = {
   element_id: string;
   element_identity_id: string;
-  analytical_location: "wide" | "repeatable";
+  analytical_location: "wide" | "repeatable" | null;
   permitted_absence_states: string[];
 };
 
@@ -208,7 +208,7 @@ export class FormPublicationService {
                    where o.release_id = e.release_id and o.element_id = e.element_id
                      and o.source_kind in ('not-value', 'pertinent-negative')) as permitted_absence_states
       from catalog.element_definition e
-      join catalog.analytics_element_mapping m
+      left join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
       where e.release_id = $1 and e.element_id = any($2::text[])
     `, [version.catalog_release_id, nemsisIds]);
