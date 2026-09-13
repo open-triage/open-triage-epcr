@@ -22,6 +22,7 @@ import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
 import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
 import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
+import { UserRoleAssignmentService } from "../dist/admin/user-role-assignment.service.js";
 import { SessionAdministrationService } from "../dist/admin/session-administration.service.js";
 import { RolePackageService } from "../dist/admin/role-package.service.js";
 import { OwnershipTransferService } from "../dist/admin/ownership-transfer.service.js";
@@ -356,6 +357,21 @@ integrationTest("provisioned local accounts require password replacement and use
   await assert.rejects(sessions.get(limited.sessionToken), UnauthorizedException);
   assert.equal((await sessions.get(active.sessionToken)).organization.id, organizationId);
   assert.equal((await sessions.requireCapability(active.sessionToken, "admin-dashboard:read")).user.id, provisioned.userId);
+  const clinicianRole = await client.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
+  );
+  const clinician = await new UserProvisioningService(database, sessions).provision(active.sessionToken, {
+    username: `clinician.${randomUUID()}`, displayName: "Clinician Assigned During Creation",
+    roleIds: [clinicianRole.rows[0].id], temporaryPassword: "Temporary!Clinician-253"
+  });
+  assert.deepEqual(clinician.roleIds, [clinicianRole.rows[0].id]);
+  const unassigned = await new UserProvisioningService(database, sessions).provision(active.sessionToken, {
+    username: `unassigned.${randomUUID()}`, displayName: "Clinician Assigned Later",
+    roleIds: [], temporaryPassword: "Temporary!Unassigned-253"
+  });
+  const assigned = await new UserRoleAssignmentService(database, sessions).replace(active.sessionToken,
+    unassigned.userId, { expectedRevision: 1, roleIds: [clinicianRole.rows[0].id] });
+  assert.deepEqual(assigned.addedRoles.map(({ id }) => id), [clinicianRole.rows[0].id]);
   await assert.rejects(sessions.get(active.sessionToken, new Date(active.session.expiresAt)), UnauthorizedException);
   await assert.rejects(sessions.end(active.sessionToken, "forged-csrf"), /CSRF/);
   await sessions.end(active.sessionToken, active.session.csrfToken);

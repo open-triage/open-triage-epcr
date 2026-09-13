@@ -49,13 +49,13 @@ export class UserProvisioningService {
           select 1 from app_identity.installation_owner where organization_id = $1 and user_id = $2
         ) owner`, [actor.organization.id, actor.user.id]);
         const actorIsOwner = Boolean(ownerRows[0]?.owner);
-        const actorCapabilities = new Set(actor.capabilities ?? []);
-        if (!actorIsOwner && [...roles.values()].some((role) =>
-          role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
-          throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
-        }
         if ([...roles.values()].some((role) => role.systemKey === "administrator" || role.systemKey === "demo")) {
           if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Demo");
+        }
+        const actorCapabilities = new Set(actor.capabilities ?? []);
+        if (!actorIsOwner && [...roles.values()].some((role) => role.systemKey === null &&
+          role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
+          throw new ForbiddenException("Administrators may assign custom roles only when they possess every capability");
         }
         await manager.query(
           "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
