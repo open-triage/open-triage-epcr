@@ -3,8 +3,10 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /workspace
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION=false
+ARG OPEN_TRIAGE_BUILD_SHA=local
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION=${NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION}
+ENV OPEN_TRIAGE_BUILD_SHA=${OPEN_TRIAGE_BUILD_SHA}
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json

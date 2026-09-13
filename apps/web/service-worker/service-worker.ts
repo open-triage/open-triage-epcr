@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
 
 declare const self: ServiceWorkerGlobalScope;
+declare const __OPEN_TRIAGE_BUILD_SHA__: string;
 
-const cacheName = "open-triage-shell-v4";
+const cacheName = `open-triage-shell-v5-${__OPEN_TRIAGE_BUILD_SHA__}`;
 const appRoot = new URL("./", self.registration.scope).toString();
 const appShell = [
   appRoot,
