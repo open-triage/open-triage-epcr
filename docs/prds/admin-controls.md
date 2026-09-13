@@ -4,7 +4,7 @@
 
 OpenTriage installations need a secure, understandable way to administer the people, permissions, operational resources, clinical configuration, and installation settings that make the documentation workflow function. Today, important behavior is spread across seeded database records, committed configuration, hard-coded demo credentials, generated catalogs, and application constants. An agency cannot safely manage users, tailor its stationary documentation, inspect configuration history, or transfer reusable configuration without developer or database access.
 
-The first administration release must serve one agency per installation. It must support real, database-backed administration without prematurely implementing multi-agency control, reviewer workflow, external identity providers, localization authoring, or integration credential management. It must also preserve the database-backed demonstration instance as an inspectable test installation whose intentionally extreme behaviors are selected through explicit configuration rather than hidden, hard-coded properties.
+The first administration release must serve one agency per installation. It must support real, database-backed administration without prematurely implementing multi-agency control, reviewer workflow, external identity providers, localization authoring, or integration credential management. A demonstration installation uses the same runtime and ownership model as production; its only installation-specific additions are two synthetic fixture users with deliberately limited role assignments.
 
 ## Solution
 
@@ -16,7 +16,7 @@ Replace the current demonstration-only session mechanism with provider-neutral l
 
 Treat catalog validation as agency-authoritative. NEMSIS-derived rules and metadata are useful starting points and optional diagnostic inputs, not unchangeable US reporting requirements. Versioned catalogs may adapt recommended and third-party code lists, requirements, ordering, defaults, and validation to Swedish agency practice without changing immutable element identities or storage datatypes.
 
-Represent demonstration behavior as independent, visible configuration controls. The demo configuration package selects the 24-hour clinical-record purge, synthetic data, sample dispatch assignment, synthetic-data banner, read-only administration, lax authentication values, and download/export restrictions. A safe production baseline selects production-appropriate values. No behavior may depend on recognizing one hard-coded demo organization or installation identifier.
+Represent clinical demonstration behavior as a protected, assignable role rather than an installation mode. The Clinical Demo role exposes an authenticated clinical banner and explicit tools to generate a synthetic call, populate or clear an open synthetic draft, and delete that draft. Generated synthetic records carry their own 24-hour expiry. No runtime behavior depends on recognizing a hard-coded organization, installation, username, or deployment profile.
 
 ## User Stories
 
@@ -36,18 +36,18 @@ Represent demonstration behavior as independent, visible configuration controls.
 14. As an operator, I want web and CLI password resets to use the same service, so that all reset paths enforce identical expiry, revocation, and audit behavior.
 15. As an installation operator, I want to create the first owner through a one-time secure CLI, so that production never ships with default credentials.
 16. As an installation operator, I want an audited break-glass CLI reset for an existing owner or user, so that access can be recovered without creating an unaudited identity.
-17. As an administrator, I want usernames to be case-insensitively unique and renameable, so that sign-in identifiers can change without rewriting clinical authorship.
+17. As an administrator, I want usernames to be case-insensitively unique and renameable, with prior names permanently reserved, so that sign-in identifiers can change without rewriting clinical authorship or enabling ambiguous reuse.
 18. As an auditor, I want historical actions to reference immutable user identities, so that username and display-name changes do not obscure attribution.
 19. As an administrator, I want to disable and reactivate users rather than delete them, so that referenced clinical and audit history remains intact.
 20. As a security administrator, I want disabling a user to revoke their online sessions, so that removal of access takes effect immediately for connected devices.
 21. As an administrator, I want to inspect and revoke active sessions, so that lost or shared devices can be contained.
 22. As an administrator, I want to manage user-to-role assignments, so that access reflects current responsibilities.
-23. As an installation owner, I want protected Clinician and Administrator roles, so that every installation begins with understandable baseline roles.
+23. As an installation owner, I want protected Clinician, Administrator, Configuration Author, and Clinical Demo roles, so that every installation begins with understandable baseline roles.
 24. As an administrator, I want to create custom roles from a fixed capability registry, so that duties can be separated without inventing unsafe permissions.
 25. As an administrator, I want role definitions to be versioned and auditable, so that permission changes are explainable.
-26. As an administrator, I want used roles retired rather than deleted, so that historical authorization remains understandable.
-27. As a limited administrator, I want to grant only capabilities I possess, so that delegated administration cannot become self-escalation.
-28. As an installation owner, I want only an owner to grant the protected Administrator role or transfer ownership, so that the highest privileges remain controlled.
+26. As an administrator, I want roles deactivated rather than deleted and explicitly reactivated without restoring prior assignments, so that historical authorization remains understandable without silently reviving access.
+27. As a limited administrator, I want to add or remove only capabilities I possess, so that delegated administration cannot become either self-escalation or denial of higher-privileged access.
+28. As an installation owner, I want only an owner to grant or remove the protected Administrator and Clinical Demo roles or transfer ownership, so that the highest-risk privileges remain controlled.
 29. As an installation owner, I want the system to prevent disabling or stripping the last owner, so that the installation cannot lock itself out.
 30. As an administrator, I want self-disablement and self-service role modification prohibited, so that privilege changes remain deliberate and independently attributable.
 31. As a future product developer, I want a reserved Reviewer identity in the authorization model, so that reviewer workflow can be added later without exposing a nonfunctional role now.
@@ -86,14 +86,14 @@ Represent demonstration behavior as independent, visible configuration controls.
 64. As an administrator, I want published form versions to be immutable and permanently pinned to their creation catalog, so that deployed documentation never changes underneath users.
 65. As an administrator, I want to clone a published Stationary form into a new draft, so that changes produce a new version rather than mutate history.
 66. As an administrator, I want an interactive synthetic preview using the real Stationary controls, so that I can inspect a form before publication without creating a clinical report.
-67. As an administrator, I want structural validation, a change summary, and a required change note before publishing, so that form changes are deliberate and reviewable.
+67. As an administrator, I want structural validation and a change summary before publishing, with an optional note, so that form changes are deliberate and reviewable without mandatory free text.
 68. As an administrator, I want publication and activation to be separate, so that a valid form can exist without immediately affecting new reports.
 69. As an administrator, I want an agency default Stationary form with optional per-unit overrides, so that form selection follows an explicit hierarchy.
 70. As a clinician, I want a new report to pin the selected form version immediately, so that later default changes cannot alter my report.
 71. As an administrator, I want form retirement blocked while default assignments reference it, so that report creation never falls through to an arbitrary form.
 72. As a clinician, I want retired forms to continue rendering existing reports, so that retirement never damages clinical history.
 73. As a product owner, I want Mobile form configuration treated as legacy and excluded from v1 editing, so that Stationary administration does not entrench or destabilize code scheduled for redesign.
-74. As an administrator, I want general settings for agency name, time zone, session and idle limits, password policy, offline lifetime, bounded synchronization settings, report signing, retention, and selectable demo behaviors, so that operational policy is visible and controlled.
+74. As an administrator, I want general settings for agency name, time zone, session and idle limits, password policy, offline lifetime, bounded synchronization settings, report signing, and ordinary clinical retention, so that operational policy is visible and controlled.
 75. As a security owner, I want password hashing, token entropy, rate limiting, audit logging, and minimum production authentication bounds to be non-configurable safety floors, so that an administrator cannot disable foundational protections accidentally.
 76. As an administrator, I want infrastructure-derived database, deployment, build, and service details to be read-only, so that status is visible without exposing ordinary mutation paths.
 77. As an administrator, I want to set an agency-local accent palette, logo, display name, and browser colors with a live preview, so that the installation can be branded safely.
@@ -102,7 +102,7 @@ Represent demonstration behavior as independent, visible configuration controls.
 80. As an administrator, I want immutable, filterable audit history for authentication, identity, permission, configuration, import, and retention events, so that material actions are attributable.
 81. As an auditor, I want audit events to contain safe before/after hashes or diffs without passwords, tokens, secrets, or patient content, so that accountability does not create another sensitive-data store.
 82. As an auditor in a production installation, I want filtered administrative events exportable as JSON or CSV, so that approved external review is possible.
-83. As a configuration author, I want reusable configuration exported as a versioned JSON package, so that forms and catalogs can move between agencies.
+83. As a configuration author, I want reusable configuration exported as a versioned JSON package, so that forms, catalogs, and unassigned custom role definitions can move between agencies.
 84. As a privacy owner, I want users, assignments, units, vehicles, agency profiles, active branding, credentials, and integrations excluded from portable packages, so that transfer does not expose agency-specific data.
 85. As a configuration author, I want custom elements and groups to use stable publisher-qualified identities, so that imported packages do not collide silently.
 86. As an administrator, I want imported package dependencies and identities validated before activation, so that partial or ambiguous configuration cannot enter service.
@@ -110,17 +110,17 @@ Represent demonstration behavior as independent, visible configuration controls.
 88. As an administrator, I want imported configuration applied immediately after validation, so that import does not create an additional unpublished staging workflow.
 89. As an administrator, I want to roll back by importing a historical configuration snapshot, so that rollback follows the same validation and activation rules as any import.
 90. As an auditor, I want configuration history, package hashes, change notes, and safe diffs retained indefinitely, so that every active revision has durable provenance.
-91. As an administrator, I want catalog, form, validation, retention, security, role, import, and rollback changes to require a note, so that consequential configuration has human context.
-92. As a test-instance operator, I want demo behaviors represented as individually selectable settings, so that testing can combine them deliberately rather than rely on a hard-coded demo identity.
-93. As a test-instance operator, I want to select a 24-hour report purge independently, so that short retention can be tested without implicitly enabling every other demo behavior.
-94. As a test-instance operator, I want synthetic seeding and a sample dispatch assignment to be explicit controls, so that fixture creation is visible and repeatable.
-95. As a user, I want a synthetic-data banner controlled explicitly, so that simulated clinical content is unmistakable whenever that setting is enabled.
-96. As a test-instance operator, I want read-only Admin behavior, lax authentication values, and download/export restrictions selected explicitly, so that each safety or test characteristic can be inspected independently.
-97. As a demo administrator, I want every configured panel and value visible while mutations, imports, downloads, and exports are rejected server-side, so that the interface can be evaluated without changing the test instance.
-98. As a demo administrator, I want to sign in with `demo.clinician_admin` and `open-triage-demo_admin`, so that the administrative test account is predictable and distinct from the clinician account.
-99. As a privacy owner, I want signed and unsigned demo reports deleted when their server creation time is more than 24 hours old, so that the selected short-retention behavior is real.
-100. As an offline demo user, I want local copies to expire at the same deadline and be rejected permanently after server purge, so that delayed synchronization cannot resurrect deleted reports.
-101. As a production installation owner, I want a safe baseline with ten-year retention and automatic deletion disabled until explicitly enabled, so that demo settings cannot become accidental production defaults.
+91. As an administrator, I want consequential changes to accept an optional note without requiring one, so that administration is never blocked by mandatory free text while audit history remains structurally complete.
+92. As an installation owner, I want Clinical Demo access assigned through a protected role, so that synthetic clinical tools can be enabled per user without changing installation behavior.
+93. As a Clinical Demo user, I want an explicit banner button to generate one synthetic call for an assigned unit, so that calls are created deliberately rather than replenished automatically.
+94. As a Clinical Demo user, I want Populate, Clear, and Delete actions for my open synthetic draft, so that I can exercise and reset the clinical workflow without affecting ordinary reports.
+95. As a security owner, I want every demo-only mutation authorized server-side, so that hidden UI controls cannot be invoked without the Clinical Demo role.
+96. As a privacy owner, I want synthetic calls and reports to expire 24 hours after server creation, so that their deletion is independent of ordinary installation retention.
+97. As an offline user, I want expired local synthetic records removed and permanently rejected after server purge, so that delayed synchronization cannot resurrect deleted reports.
+98. As a demo administrator, I want the existing `demo.admin` / `open-triage-demo` fixture login to have only Configuration Author and Clinical Demo access, so that it reproduces the current authoring and clinical demo without full administration or publication rights.
+99. As a demo clinician, I want the existing `demo.clinician` / `open-triage-demo` fixture login to have only Clinical Demo access, so that the ordinary clinical journey remains distinct from administration.
+100. As an installation operator, I want demo installations to use the normal one-time owner bootstrap and production security policy, so that demonstration does not create a privileged runtime mode.
+101. As a production installation owner, I want a safe baseline with ten-year ordinary clinical retention and automatic deletion disabled until explicitly enabled, so that synthetic record handling cannot alter production retention policy.
 102. As an administrator, I want configuration lists to use indexed server-side search and cursor pagination, so that large agencies and catalogs remain responsive.
 103. As an administrator, I want Admin workflows usable with keyboard-only input at supported desktop and tablet sizes, so that administration meets accessibility requirements.
 
@@ -131,22 +131,37 @@ Represent demonstration behavior as independent, visible configuration controls.
 1. **Identity and Session Service**
    - Extend the provider-neutral application identity model with local credentials, password state, durable sessions, revocation, and authentication events.
    - Hash credentials with a current password-hashing algorithm and store only hashes. Online clients receive opaque rotating tokens through Secure, HttpOnly, SameSite cookies with CSRF protection.
+   - Require passwords to contain 12 to 1,024 Unicode characters. Do not impose composition rules or routine expiry; reject known-compromised values when an offline denylist is available and rate-limit authentication.
+   - Make newly issued temporary passwords expire after 72 hours, configurable between 1 and 168 hours. An expired temporary password requires another reset but does not disable the user.
    - Replace browser-local bearer sessions and in-memory server sessions for database-backed operation.
    - Issue separately scoped, time-limited offline grants for clinical work. Offline grants never contain administrative capabilities.
    - Provide one shared reset operation used by authorized Admin actions and operator CLI recovery. Resets mark the entered password temporary/expired and revoke sessions.
+   - Require immutable user IDs for general break-glass resets and provide an organization-scoped owner-reset command. Require a non-secret operator ID and record the OS account, hostname, command, target, and timestamp without recording the password.
+   - Make the one-time owner bootstrap create ownership plus Administrator by default and accept an explicit option to add Clinician. Permit no default production credential and keep application setup incomplete until exactly one owner exists.
    - Preserve external identity records so a future Swedish identity provider can attach to the same immutable application user.
 
 2. **Authorization Service**
-   - Maintain a fixed capability registry with separate read, write, publish, security, and ownership-sensitive actions.
-   - Ship protected Clinician and Administrator roles and reserve, but do not expose, the Reviewer system key.
-   - Permit versioned custom roles assembled from registered capabilities.
+   - Make roles the only assignable authorization source; do not support direct per-user capability grants.
+   - Maintain a fixed capability registry containing `clinical:document`, the system-only `clinical:demo`, `admin-dashboard:read`, `users:read`, `users:write`, `credentials:reset`, `sessions:read`, `sessions:revoke`, `roles:read`, `roles:write`, `roles:assign`, `catalog:read`, `catalog:write`, `catalog:publish`, `forms:read`, `forms:write`, and `forms:publish`.
+   - Enforce registry prerequisites: write requires the domain's read capability; publish requires read and write; credential reset and session read require user read; session revocation requires session and user read; and role assignment requires user and role read.
+   - Retire the legacy `installation:administer` and `reports:document` keys after replacing every authorization check with the granular registry and retaining `clinical:document` as the canonical clinical capability.
+   - Ship protected Clinician, Administrator, Configuration Author, and Clinical Demo roles and reserve, but do not expose, the Reviewer system key. Protected role definitions use explicit versioned capability sets rather than future-capability wildcards.
+   - Keep Clinician and Administrator orthogonal. Administrator explicitly contains every currently registered administrative capability, but registering a future capability does not add it automatically. Configuration Author contains Dashboard read, Users read, Roles read, Catalog read/write, and Forms read/write. Clinical Demo contains `clinical:document` and `clinical:demo`; only the owner may assign or remove it, and it is not available in the custom-role builder.
+   - Permit versioned custom roles assembled from registered capabilities. `clinical:document` may be used in custom roles.
+   - Require active custom roles to contain at least one capability. Never delete roles: deactivate them, remove all current assignments atomically, and permit reactivation through a new active version without restoring assignments.
+   - Apply a newly activated role version immediately to every assignee. Assign users to the stable role identity, retain immutable prior versions and assignment intervals, and resolve effective capabilities on every authorized request.
+   - Save and activate custom-role edits atomically with optimistic concurrency; do not introduce persistent role drafts. Role names are versioned, case-insensitively unique among active roles, and reusable after deactivation.
    - Show Admin mode when a user possesses at least one administrative capability, while authorizing every panel and action independently.
-   - Prevent users from modifying their own roles or active state. Prevent delegated administrators from granting capabilities they do not possess.
-   - Restrict protected Administrator assignment and ownership transfer to the current installation owner.
-   - Preserve at least one active owner and require acceptance by another eligible administrator before ownership transfer completes.
+   - Hide unauthorized Admin tabs and deny their direct routes and APIs. `roles:read` without `users:read` exposes aggregate assignee counts but not identities; `users:read` may expose assigned role identity/name/status without the detailed capability set.
+   - Prevent users from modifying their own roles or active state or editing a role assigned to themselves. Non-owner administrators may add or remove only capabilities they possess and may change roles only when they possess the union of the current and proposed capability sets.
+   - Allow the owner to define and assign roles from any registered capability without receiving runtime access to that capability. Restrict protected Administrator and Clinical Demo assignment/removal and ownership transfer to the owner with recent reauthentication.
+   - Model exactly one active owner per organization. Keep the current owner in control during a single pending transfer; require acceptance by an active Administrator within 72 hours, atomically transfer ownership, and allow either party to cancel. Disablement or loss of nominee eligibility cancels the transfer.
+   - Prevent delegated administrators from renaming, resetting, deactivating, or changing roles on the owner. They may inspect and revoke owner sessions. The owner may rename their own username and change their own password; owner recovery is CLI-only.
+   - Require non-owner credential resetters and user/role mutators to possess every effective capability held by the target. Session revocation is the incident-containment exception. The owner may manage any non-owner.
+   - Permit custom role definitions in portable configuration packages but never include assignments. Reject protected identities and unknown capabilities, preview affected assignee counts and capability changes, and apply the same non-escalation rules to import.
 
 3. **Configuration Registry and Package Service**
-   - Represent each configuration domain as schema-versioned canonical JSON with a stable identity, revision, status, content hash, author, timestamps, and change note where required.
+   - Represent each configuration domain as schema-versioned canonical JSON with a stable identity, revision, status, content hash, author, timestamps, and an optional change note.
    - Treat canonical JSON as authoritative. Maintain normalized relational projections for integrity, indexed lookup, joins, and runtime performance; projections must be verifiable and rebuildable.
    - Support editable optimistic-concurrency drafts and immutable published revisions. Permit one active editable draft per domain in v1.
    - Keep domains independently versioned so a theme or security change does not create a clinical form version.
@@ -159,7 +174,14 @@ Represent demonstration behavior as independent, visible configuration controls.
 
 4. **Agency Administration Service**
    - Support user creation, rename, display-name changes, deactivation/reactivation, role assignment, temporary password assignment, and session revocation.
-   - Use immutable internal user IDs for authorship. Enforce case-insensitive unique local usernames and a reuse cooling-off period.
+   - Use immutable internal user IDs for authorship. Enforce lowercase, case-insensitively unique local usernames matching `[a-z0-9][a-z0-9._-]{2,127}`. Renames take effect immediately, old names stop authenticating, and all historical names remain permanently reserved.
+   - Keep usernames installation-unique in the single-agency release. A future multi-agency release may scope uniqueness by organization and derive organization context from the login host rather than accepting it from the request body.
+   - Normalize display names to Unicode NFC, require 1 to 200 trimmed characters, reject control characters, and allow duplicates. Normalize custom role names similarly with a 100-character limit and optional descriptions up to 500 characters.
+   - Permit active users with no roles; after authentication they receive a clear no-workspace state. Permit role changes while a user is disabled, keep those roles ineffective, and show the resulting role set before reactivation.
+   - Retain assigned roles across user deactivation. Deactivation revokes every session immediately; reactivation requires a fresh login and does not implicitly reset the password.
+   - Apply user role-set replacements atomically after validating the complete desired set. Use an incrementing administrative user revision for stale-write detection on identity, credential, activation, and role mutations; session revocation remains idempotent.
+   - List active users by default with server-side search over username and display name, active/disabled and role filters, stable cursor pagination, and a default page size of 50.
+   - Show active-session start, last activity, expiry, coarse browser/OS label, and current-session status. Keep source IP in restricted security audit data rather than the ordinary Users panel and do not derive geolocation.
    - Support agency-local units/vehicles, call signs, active state, clinician assignments, and default Stationary form assignments.
    - Deactivation stops new assignments but does not cancel or rewrite existing assignments or reports.
    - Version agency profile and demographic data. Reports continue pinning the demographic version selected at creation.
@@ -167,6 +189,7 @@ Represent demonstration behavior as independent, visible configuration controls.
 
 5. **Catalog and Validation Service**
    - Clone an active catalog into a draft and publish an immutable version. Existing forms and reports remain pinned.
+   - Authorize catalog inspection with `catalog:read`, draft creation/editing/deletion with `catalog:write`, and both publication and activation with `catalog:publish`.
    - Permit new Stationary form drafts to select a non-retired catalog only at creation. Do not implement catalog upgrades for an existing form version.
    - Preserve stable element identity, base datatype, and storage semantics across configuration. Fundamentally different fields require new qualified custom elements.
    - Use publisher namespaces plus immutable element/group keys for portable custom identities. Reject divergent collisions.
@@ -185,9 +208,10 @@ Represent demonstration behavior as independent, visible configuration controls.
    - Allow a draft version to change until publication. Make published versions and their children immutable.
    - Pin the catalog version when the form draft is created and prohibit later catalog upgrades.
    - Support clone, validate, preview, publish, retire, and history operations.
-   - Require a valid structure, generated change summary, and administrator-entered change note before publication. A second administrator's approval is not required in v1.
+   - Require a valid structure and generated change summary before publication; accept but do not require an administrator note. A second administrator's approval is not required in v1.
    - Preview with synthetic, non-persisted data through actual Stationary controls at supported desktop and tablet widths.
    - Separate publication from activation. Resolve new-report form selection as unit override followed by agency default, and block creation when neither is valid.
+   - Authorize form inspection and preview with `forms:read`, draft creation/editing/deletion with `forms:write`, and both publication and activation with `forms:publish`.
    - Prevent retirement while a default assignment references the form. Retired forms continue rendering historical reports.
    - Do not expose or modify Mobile form configuration. Existing Mobile behavior remains legacy pending redesign.
 
@@ -196,7 +220,7 @@ Represent demonstration behavior as independent, visible configuration controls.
    - Default combined clinician-administrator users to clinical mode. Default admin-only users to Admin mode.
    - Require open clinical reports to be saved and closed before entering Admin.
    - Reuse the Stationary interface language and extract reusable tabs, collapsible sections, pickers, dialogs, validation summaries, and sticky actions where this reduces duplicated behavior.
-   - Provide Dashboard, Users, Roles, Units, Agency Profile, Data Catalog, Forms, Validation, Appearance, System Settings, Configuration History, Audit Log, and Integrations tabs.
+   - Provide capability-sensitive Dashboard, Users, Roles, Units, Agency Profile, Data Catalog, Forms, Validation, Appearance, System Settings, Configuration History, Audit Log, and Integrations tabs. Hide panels the current user cannot read.
    - Target desktop and tablet browsers. No explicit mobile-admin support is required.
    - Keep Admin out of the clinical service worker and offline caches. Draft recovery occurs through server-side state only.
    - Expose agency-local light/dark accent tokens, logo, display name, and browser/PWA colors with live preview and WCAG contrast validation. Keep clinical severity colors, layout, typography, and interaction behavior fixed.
@@ -206,21 +230,23 @@ Represent demonstration behavior as independent, visible configuration controls.
 
 8. **Administrative Audit Service**
    - Record authentication outcomes, password and session events, user lifecycle, role/capability changes, ownership transfer, configuration draft/publication/retirement, imports, rollbacks, and retention runs.
-   - Store immutable append-only events with actor, time, action, target, result, reason/change note, and safe before/after hashes or diffs.
+   - Store immutable append-only events with actor, time, action, target, result, optional note, and safe before/after hashes or diffs. Never require free text to complete an administrative action.
    - Never record passwords, reset values, session tokens, secrets, or unnecessary patient content.
    - Provide indexed server-side filtering and cursor pagination. Permit production JSON/CSV export of filtered events.
-   - Do not apply the demo clinical purge to audit or configuration history.
+   - Do not apply synthetic-record purge to audit or configuration history.
 
-9. **Selectable Demo Controls and Retention Service**
-   - Define independent configuration controls for synthetic data mode, synthetic-data banner, synthetic bootstrap records, sample dispatch assignment, short clinical retention, authentication-policy values, read-only Admin enforcement, and download/export restrictions.
-   - Do not infer any control from an organization name, ID, credential, deployment host, or monolithic hard-coded demo property.
-   - Ship a schema-validated demo configuration package that explicitly selects the agreed demo controls and a safe production package that selects production defaults.
-   - Expose the selected demo-related values in System Settings even when read-only enforcement prevents changing them in that instance.
-   - Enforce read-only Admin, import blocking, mutation blocking, and file-download/export blocking in the API as well as the UI when their controls are selected.
-   - Seed the demo administrator with username `demo.clinician_admin` and password `open-triage-demo_admin`. Demo credentials are an explicit synthetic bootstrap concern and are never production defaults.
-   - Apply the selected 24-hour purge to signed and unsigned clinical reports using server creation time. Delete dependent clinical records consistently and retain only non-PHI purge audit facts.
-   - Publish report expiry to clinical clients. Remove expired local records and prevent offline queues from recreating server-purged reports.
-   - Keep the browser-only static prototype clinician-only; it does not include Admin mode or the database-backed admin fixture.
+9. **Clinical Demo and Synthetic Retention Service**
+   - Make Clinical Demo a protected role available in every production or demonstration installation. Do not use an installation-level demo profile, synthetic fixture flag, banner flag, automatic replacement-call setting, lax authentication policy, read-only Admin mode, or username/host heuristic.
+   - Expose the demo banner only after authentication, only to `clinical:demo` users, and only in Mobile or Stationary mode. Do not expose the banner on the login page or in Admin mode and do not add further per-record badges.
+   - Make demo tools online-only. Exclude `clinical:demo` from offline grants and require a current server-authorized session for Generate, Populate, Clear, and Delete.
+   - Show Generate Call only when no report is open. Create at most one unopened synthetic assignment per user/unit; select the only eligible active assigned unit automatically or require a unit choice when several exist. If one already exists, refresh or focus it instead of creating another.
+   - Do not generate a replacement call when a synthetic assignment is opened. Populate and Clear apply only to an open synthetic draft. Delete applies to any open synthetic draft after confirmation, including before validation failure, and never to signed or ordinary clinical records.
+   - Enforce `clinical:demo` server-side for call generation, synthetic-draft deletion, and draft changes that add or remove demo-owned provenance.
+   - Give every generated synthetic call and resulting report immutable provenance and an expiry exactly 24 hours after server creation. Delete expired signed and unsigned synthetic records and dependencies consistently, retain only non-PHI purge audit facts, remove expired browser copies, and reject delayed queues permanently.
+   - Seed only the existing `demo.admin` and `demo.clinician` fixture accounts, both using `open-triage-demo`, with forced first-login password change disabled. Assign Configuration Author plus Clinical Demo to `demo.admin`, and Clinical Demo only to `demo.clinician`.
+   - Do not expose or prefill fixture credentials through installation configuration. Rerunning fixture bootstrap creates missing fixture users and initial assignments only; it never resets passwords, reactivates users, or restores removed assignments. Fixture evolution uses explicit migrations.
+   - Use normal owner bootstrap and production security policy for demonstration installations. Permit fixture seeding before or after owner creation, but keep application setup incomplete and block Admin and clinical work until a normal owner exists.
+   - Keep the browser-only static prototype clinician-only; it does not include Admin mode or database-backed fixture accounts.
 
 ### Interfaces and Data Boundaries
 
@@ -232,7 +258,7 @@ Represent demonstration behavior as independent, visible configuration controls.
 - Use timezone-aware timestamps and immutable stable IDs throughout versioning and audit records.
 - Apply optimistic concurrency to editable resources and return a safe conflict representation for stale writes. Never silently apply last-write-wins to admin configuration.
 - Apply form/catalog/validation changes only to newly created reports through their pinned versions. Apply theme and ordinary UI settings on refresh. Apply security-critical user changes immediately to connected sessions. Retention publication never performs deletion inline.
-- Require reauthentication for ownership transfer, protected Administrator assignment, configuration import/rollback, and other high-impact security actions.
+- Require current-password reauthentication for ownership transfer, protected Administrator or Clinical Demo assignment/removal, configuration import/rollback, and other high-impact security actions. Store elevated assurance only in the server session and expire it after five minutes.
 - Use stable message keys and locale-ready configuration shapes, while deferring translation administration and complete UI localization.
 
 ### Capacity and Performance
@@ -244,7 +270,7 @@ Represent demonstration behavior as independent, visible configuration controls.
 
 ## Testing Decisions
 
-Good tests verify externally observable behavior and durable safety properties rather than internal class structure, SQL formatting, or component implementation details. All nine modules require automated coverage.
+Good tests verify externally observable behavior and durable safety properties rather than internal class structure, SQL formatting, or component implementation details. Every module and the cross-cutting scale/security profile require automated coverage.
 
 1. **Identity and sessions**
    - Integration-test credential creation, constant-result invalid login behavior, forced password change, durable session rotation/revocation, logout, disablement, reset, expiry, owner recovery, and cookie/CSRF boundaries.
@@ -253,8 +279,8 @@ Good tests verify externally observable behavior and durable safety properties r
 
 2. **Authorization**
    - Exercise every protected API capability with allowed, denied, stale-session, disabled-user, and wrong-organization cases.
-   - Test owner-transfer invariants, last-owner protection, self-modification prohibitions, protected-role assignment, non-escalation, and hidden Reviewer behavior.
-   - For the current release, verify the eleven product-approved unavailable panels remain visible, select only their explicit non-interactive placeholder, and do not weaken denial of unsupported direct API calls.
+   - Test singular owner transfer, expiry/cancellation, last-owner protection, self-modification prohibitions, protected-role assignment, symmetric non-escalation, capability prerequisites, role-only resolution, and hidden Reviewer behavior.
+   - Verify unauthorized Admin panels are hidden and direct routes and APIs remain denied.
 
 3. **Configuration registry and packages**
    - Unit-test schema parsing, canonical hashing, qualified identity resolution, dependency validation, security floors, and safe diff generation.
@@ -263,7 +289,8 @@ Good tests verify externally observable behavior and durable safety properties r
    - Follow existing form-publication tests that validate canonical hashes, projections, and immutability.
 
 4. **Agency administration**
-   - Test user rename/deactivation/reactivation, username uniqueness and cooling-off, temporary-password assignment, role changes, session revocation, and historical authorship preservation.
+   - Test permanent username reservation, user deactivation/reactivation with retained roles, active zero-role users, temporary-password expiry, target privilege ceilings, atomic role-set changes, optimistic conflicts, session inspection/revocation, and historical authorship preservation.
+   - Test custom-role activation, immediate version effects, deactivation with assignment removal, reactivation without assignment restoration, protected-role immutability, and portable definitions without assignments.
    - Test unit/vehicle assignments, default forms, deactivation with active work, and versioned agency profiles without modifying pinned reports.
 
 5. **Catalog and validation**
@@ -272,7 +299,7 @@ Good tests verify externally observable behavior and durable safety properties r
    - Verify existing forms and reports remain pinned after later catalog publication.
 
 6. **Stationary form administration**
-   - Test draft edits and stale conflicts, fixed catalog selection, clone/publish/retire behavior, change-note requirements, structural diagnostics, preview isolation, publication versus activation, assignment precedence, and historical rendering.
+   - Test draft edits and stale conflicts, fixed catalog selection, clone/publish/retire behavior, optional notes, structural diagnostics, preview isolation, publication versus activation, assignment precedence, and historical rendering.
    - Confirm no Admin operation mutates Mobile form configuration or existing reports.
    - Extend existing form-publication, Stationary layout, validation, signing, navigation, and completion-journey test patterns.
 
@@ -286,12 +313,12 @@ Good tests verify externally observable behavior and durable safety properties r
    - Test event creation for each consequential action, immutability, redaction, pagination/filtering, production export authorization, and permanent retention.
    - Assert that passwords, tokens, secrets, and patient content never appear in audit payloads.
 
-9. **Selectable demo controls and retention**
-   - Test each demo-related control independently and in combinations to prove behavior is not keyed to one hard-coded installation identity.
-   - Verify the production baseline does not inherit demo selections.
-   - Exercise demo credentials, visible read-only panels, API mutation denial, import denial, and all download/export denial.
-   - Test 24-hour boundaries for signed and unsigned reports, dependent deletion, minimal audit facts, browser expiry, delayed offline queues, and permanent server rejection after purge.
-   - Verify the static prototype does not expose Admin mode or demo-admin fixtures.
+9. **Clinical Demo and synthetic retention**
+   - Test Clinical Demo assignment/removal, authenticated clinical-only banner visibility, exclusion from offline grants, and server denial of every demo-only mutation without the live capability.
+   - Test explicit call generation, unit choice, one-unopened-call idempotency, removal of automatic replacement generation, and Populate/Clear/Delete synthetic-draft boundaries.
+   - Exercise the unchanged `demo.admin`, `demo.clinician`, and `open-triage-demo` credentials and their exact protected-role assignments without exposing or prefilling credentials through installation configuration.
+   - Test 24-hour per-record boundaries for signed and unsigned synthetic reports and calls, dependent deletion, minimal audit facts, browser expiry, delayed offline queues, and permanent server rejection after purge.
+   - Verify fixture bootstrap does not overwrite administered fixture accounts, demonstration ownership follows the ordinary production flow, and the static prototype does not expose Admin mode or database-backed fixture accounts.
 
 10. **Scale and database security**
     - Add a bounded administrative scale profile covering search/pagination for users, units, catalog values, configuration history, and audit events, with production-profile follow-up for the agreed capacity targets.
@@ -313,7 +340,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Catalog upgrades for an existing form version.
 - Dispatch/integration endpoint configuration, credential provisioning, secret rotation, vendor mapping, quarantine reprocessing, or integration mutation.
 - Manual background-job execution or retry from Admin mode.
-- Clinical-record archival. The selected demo policy performs hard deletion; production archival and deletion require future work beyond configuration visibility.
+- Clinical-record archival. Per-record synthetic expiry performs hard deletion; production archival and deletion require future work beyond configuration visibility.
 - A general agency-data export or clone operation.
 - Admin mode in the browser-only static prototype.
 - Explicit phone/mobile support for Admin mode.
@@ -326,9 +353,11 @@ Good tests verify externally observable behavior and durable safety properties r
 - Existing reports already pin form, catalog, and agency-demographic versions. New configuration must preserve those reproducibility boundaries.
 - Supabase migrations remain the schema source of truth, but authentication and authorization remain provider-neutral in the Nest/Postgres application layer. Future external identity integration should attach to `app_user` rather than replace application authorization.
 - The installation remains organization-scoped throughout even though multi-agency UI is out of scope. Server-derived organization context and database defense in depth prevent accidental cross-organization access and preserve a safe future boundary.
-- Selectable demo controls must be explicit schema fields with safe defaults and visible effective values. The demo baseline is a convenient preset, not a privileged code path. Server enforcement remains mandatory for controls such as read-only administration and export denial.
-- Production security floors remain platform constraints even when authentication-policy values are configurable. A synthetic test configuration may select intentionally lax values only within the explicitly supported test-control model.
+- Clinical Demo is ordinary protected-role authorization, not an installation profile. Server enforcement is mandatory for all synthetic actions, and synthetic retention is carried by each generated record rather than an installation-wide policy switch.
+- Production security floors apply to every installation, including demonstrations. The minimum password length is always 12 characters.
 - The production retention default is ten years with automated deletion disabled until the installation owner explicitly enables it. This PRD does not implement production archival.
 - Configuration portability is judged by reuse value to another agency. When classification is uncertain, agency identity, personnel, operational resources, branding, integrations, and credentials remain local.
-- Meaningful remaining implementation risks are the breadth of the migration from the current demo session model, safely extracting reusable Stationary controls, modeling catalog-owned validation without breaking current signing, atomic configuration activation across domains, and coordinating the demo server purge with offline browser state.
-- Delivery should proceed as one epic through independently testable vertical slices: identity/session foundation; authorization and ownership; configuration registry/packages; agency administration; catalog/validation; Stationary forms; Admin workspace/settings; audit/history; and selectable demo controls/retention. Each slice must leave the branch working, and the epic is complete only after the integrated acceptance journeys pass.
+- Existing installations need not be migrated to this authorization model. They may be wiped and freshly bootstrapped; the implementation must not add legacy capability aliases or data-backfill complexity.
+- The Users and Roles vertical slice includes schema, API enforcement, Admin UI, ordinary owner bootstrap and transfer, password reset, session inspection/revocation, audit-event writes, Catalog/Form capability splitting, and the Clinical Demo refactor. The general Audit Log UI and unrelated Admin panels remain separate slices.
+- Meaningful remaining implementation risks are safely extracting reusable Stationary controls, modeling catalog-owned validation without breaking current signing, atomic configuration activation across domains, enforcing role changes across live sessions, and coordinating per-record synthetic purge with offline browser state.
+- Delivery should proceed as one epic through independently testable vertical slices: identity/session foundation; authorization and ownership; configuration registry/packages; agency administration; catalog/validation; Stationary forms; Admin workspace/settings; audit/history; and Clinical Demo/synthetic retention. Each slice must leave the branch working, and the epic is complete only after the integrated acceptance journeys pass.

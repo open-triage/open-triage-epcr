@@ -75,6 +75,7 @@ export function useReportWorkspace({
   const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [conflictRecoveryRequest, setConflictRecoveryRequest] = useState(0);
   const revision = useRef(report?.revision ?? 0);
   const csrfToken = sessionRequestToken(session);
   const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
@@ -152,6 +153,7 @@ export function useReportWorkspace({
       }
       setSyncStatus("Saving");
       markDraftChangeAttempted(window.localStorage, report.id, queued.command.commandId);
+      let requestConflictRecovery = false;
       const attempt = (async () => {
         try {
           const saved = await saveDraftReport(csrfToken, report.id, queued.command);
@@ -178,6 +180,9 @@ export function useReportWorkspace({
             recoverConflictingQueue.current = true;
             conflictRecoveryUsed.current = true;
             activeEtag.current = undefined;
+            setSyncStatus("Saving");
+            requestConflictRecovery = true;
+            return;
           }
           setSyncStatus(reason === "conflict" || reason === "invalid" ? "Conflict" : "Pending sync");
         }
@@ -185,6 +190,10 @@ export function useReportWorkspace({
       activeSave.current = attempt;
       await attempt;
       activeSave.current = null;
+      if (requestConflictRecovery) {
+        setConflictRecoveryRequest((request) => request + 1);
+        return;
+      }
       if (nextDraftChange(window.localStorage, report.id)?.command.commandId === queued.command.commandId) return;
     }
   }, [completeReport, csrfToken, onSessionEnded, report]);
@@ -273,6 +282,8 @@ export function useReportWorkspace({
           if (recoverConflictingQueue.current) {
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
             recoverConflictingQueue.current = false;
+            skipReconciledQueue.current = false;
+            skipInitialQueue.current = false;
             setSyncStatus("Saved");
           } else {
             rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
@@ -291,6 +302,7 @@ export function useReportWorkspace({
         if (!(error instanceof Error)) return;
         if (error.message === "session") onSessionEnded();
         else if (error.message === "completed") completeReport();
+        else if (recoverConflictingQueue.current) setSyncStatus("Conflict");
       }
     };
     const startOrPause = () => {
@@ -311,7 +323,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, dispatch, onSessionEnded, report, restored]);
+  }, [completeReport, conflictRecoveryRequest, dispatch, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;

@@ -167,6 +167,12 @@ test("stored scalar values rehydrate lexical, precision, offset, binary, and sou
     kind: "scalar", occurrenceId: common.id, value: 1.2, lexical: "001.20", attributes: { source: "monitor" },
   });
   assert.deepEqual(storedEncounterValue({
+    ...common, value_kind: "integer", value_datetime: null, value_integer: "118", value_lexical: "0118",
+    value_utc_offset_minutes: null, value_precision: null,
+  }), {
+    kind: "scalar", occurrenceId: common.id, value: 118, lexical: "0118", attributes: { source: "monitor" },
+  });
+  assert.deepEqual(storedEncounterValue({
     ...common, value_kind: "date", value_date: new Date("2000-01-01T00:00:00.000Z"), value_datetime: null,
     value_utc_offset_minutes: null, value_precision: "day",
   }), {

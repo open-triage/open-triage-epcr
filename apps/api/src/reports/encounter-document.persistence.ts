@@ -278,7 +278,8 @@ export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
   const raw = row.value_text ?? row.value_integer ?? row.value_numeric ?? row.value_boolean ?? row.value_date ?? row.value_datetime ?? row.value_time ?? row.value_duration ?? row.value_binary ?? "";
   const value = row.value_kind === "datetime" && row.value_datetime != null
     ? catalogDateTime(row.value_datetime, row.value_utc_offset_minutes, row.value_precision)
-    : row.value_kind === "date" && row.value_date != null ? catalogDate(row.value_date) : raw;
+    : row.value_kind === "date" && row.value_date != null ? catalogDate(row.value_date)
+    : row.value_kind === "integer" ? Number(raw) : raw;
   return {
     ...common, kind: "scalar", value: row.value_kind === "numeric" ? Number(value) : value as string | number | boolean,
     ...(row.value_lexical != null ? { lexical: row.value_lexical } : {}),
