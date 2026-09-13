@@ -1,15 +1,16 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
-  syntheticFixtures: { enabled: boolean };
-  sampleDispatchAssignment: { enabled: boolean };
-  syntheticDataBanner: { enabled: boolean; heading: string; message: string };
+  signIn: {
+    brandText: string;
+    helperText: string;
+  };
   clinicalRetention: { durationHours: number; automaticDeletionEnabled: boolean };
   authentication: {
     sessionDurationMinutes: number;
     idleTimeoutMinutes: number;
     minimumPasswordLength: number;
+    temporaryPasswordHours: number;
   };
-  administration: { readOnly: boolean };
   exports: {
     downloadsAllowed: boolean;
     auditExportsAllowed: boolean;
@@ -44,38 +45,31 @@ function integerAt(value: unknown, path: string, minimum: number): number {
   return value as number;
 }
 
-function stringAt(value: unknown, path: string): string {
-  if (typeof value !== "string" || value.length === 0) throw new TypeError(`${path} must be a non-empty string`);
+function stringAt(value: unknown, path: string, maximumLength: number): string {
+  if (typeof value !== "string" || value.length < 1 || value.length > maximumLength) {
+    throw new TypeError(`${path} must be a string between 1 and ${maximumLength} characters`);
+  }
   return value;
 }
 
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "syntheticFixtures", "sampleDispatchAssignment", "syntheticDataBanner", "clinicalRetention", "authentication", "administration", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
-  const fixtures = objectAt(root.syntheticFixtures, "syntheticFixtures");
-  const assignment = objectAt(root.sampleDispatchAssignment, "sampleDispatchAssignment");
-  const banner = objectAt(root.syntheticDataBanner, "syntheticDataBanner");
+  const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
   const authentication = objectAt(root.authentication, "authentication");
-  const administration = objectAt(root.administration, "administration");
   const exports = objectAt(root.exports, "exports");
-  exactKeys(fixtures, "syntheticFixtures", ["enabled"]);
-  exactKeys(assignment, "sampleDispatchAssignment", ["enabled"]);
-  exactKeys(banner, "syntheticDataBanner", ["enabled", "heading", "message"]);
+  exactKeys(signIn, "signIn", ["brandText", "helperText"]);
   exactKeys(retention, "clinicalRetention", ["durationHours", "automaticDeletionEnabled"]);
-  exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength"]);
-  exactKeys(administration, "administration", ["readOnly"]);
+  exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength", "temporaryPasswordHours"]);
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
-    syntheticFixtures: { enabled: booleanAt(fixtures.enabled, "syntheticFixtures.enabled") },
-    sampleDispatchAssignment: { enabled: booleanAt(assignment.enabled, "sampleDispatchAssignment.enabled") },
-    syntheticDataBanner: {
-      enabled: booleanAt(banner.enabled, "syntheticDataBanner.enabled"),
-      heading: stringAt(banner.heading, "syntheticDataBanner.heading"),
-      message: stringAt(banner.message, "syntheticDataBanner.message"),
+    signIn: {
+      brandText: stringAt(signIn.brandText, "signIn.brandText", 100),
+      helperText: stringAt(signIn.helperText, "signIn.helperText", 300),
     },
     clinicalRetention: {
       durationHours: integerAt(retention.durationHours, "clinicalRetention.durationHours", 1),
@@ -85,8 +79,8 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
       sessionDurationMinutes: integerAt(authentication.sessionDurationMinutes, "authentication.sessionDurationMinutes", 15),
       idleTimeoutMinutes: integerAt(authentication.idleTimeoutMinutes, "authentication.idleTimeoutMinutes", 5),
       minimumPasswordLength: integerAt(authentication.minimumPasswordLength, "authentication.minimumPasswordLength", 8),
+      temporaryPasswordHours: integerAt(authentication.temporaryPasswordHours, "authentication.temporaryPasswordHours", 1),
     },
-    administration: { readOnly: booleanAt(administration.readOnly, "administration.readOnly") },
     exports: {
       downloadsAllowed: booleanAt(exports.downloadsAllowed, "exports.downloadsAllowed"),
       auditExportsAllowed: booleanAt(exports.auditExportsAllowed, "exports.auditExportsAllowed"),

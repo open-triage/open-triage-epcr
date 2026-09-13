@@ -2,12 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
-import { configurationPublishingAllowed, READ_ONLY_ADMINISTRATION_MESSAGE } from "../config/installation-settings.js";
+import { mutationRows } from "../database/mutation-result.js";
 
 type DraftRow = {
   id: string; organization_id: string; source_release_id: string; revision: number;
@@ -65,6 +65,22 @@ export class CatalogAuthoringService {
       await this.upgradeDefinition(this.dataSource.manager, rows[0].source_release_id, rows[0].canonical_definition) });
   }
 
+  async inspectActive(sessionToken: string): Promise<CatalogDefinitionView | null> {
+    const session = await this.authorize(sessionToken, "catalog:read");
+    const rows = await this.dataSource.query<Array<{ id: string; display_name: string; version: string }>>(`
+      select cr.id, coalesce(cr.display_name, cr.standard || ' ' || cr.version) as display_name, cr.version
+      from forms.agency_stationary_default active
+      join forms.form_version fv on fv.id = active.form_version_id and fv.status = 'published'
+      join forms.form f on f.id = fv.form_id and f.organization_id = active.organization_id
+      join catalog.release cr on cr.id = fv.catalog_release_id and cr.sealed
+      where active.organization_id = $1 limit 1
+    `, [session.organization.id]);
+    const release = rows[0];
+    if (!release) return null;
+    return { id: release.id, displayName: release.display_name, version: release.version, status: "active",
+      definition: await this.cloneDefinition(this.dataSource.manager, release.id) };
+  }
+
   async cloneActive(sessionToken: string, input: unknown): Promise<CatalogDraft> {
     const session = await this.authorize(sessionToken, "catalog:write");
     const displayName = this.displayName(input);
@@ -86,11 +102,11 @@ export class CatalogAuthoringService {
       if (!releases[0]) throw new NotFoundException("No active catalog is available to clone");
       const definition = await this.cloneDefinition(manager, releases[0].id);
       const digest = catalogDefinitionSha256(definition);
-      const inserted = await manager.query<DraftRow[]>(`
+      const inserted = mutationRows<DraftRow>(await manager.query(`
         insert into catalog.authoring_draft
           (organization_id, source_release_id, canonical_definition, definition_sha256, created_by, display_name)
         values ($1, $2, $3::jsonb, $4, $5, $6) returning *
-      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id, displayName]);
+      `, [session.organization.id, releases[0].id, JSON.stringify(definition), digest, session.user.id, displayName]));
       return this.result(inserted[0]!);
     });
   }
@@ -137,7 +153,6 @@ export class CatalogAuthoringService {
 
   async publish(sessionToken: string, draftId: string, input: unknown): Promise<PublishedCatalog> {
     const session = await this.authorize(sessionToken, "catalog:publish");
-    if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     const body = this.publishBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       const rows = await manager.query<DraftRow[]>(`
@@ -239,7 +254,7 @@ export class CatalogAuthoringService {
 
   private async cloneAgencyDemographics(manager: Pick<EntityManager, "query">, organizationId: string,
     sourceReleaseId: string, targetReleaseId: string, createdBy: string): Promise<void> {
-    const cloned = await manager.query<Array<{ id: string }>>(`
+    const cloned = mutationRows<{ id: string }>(await manager.query(`
       insert into app_identity.agency_demographic_version
         (organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
          dagency_04_display,dagency_04_system,dagency_04_terminology_version,
@@ -253,7 +268,7 @@ export class CatalogAuthoringService {
       where source.organization_id=$1 and source.catalog_release_id=$2 and source.effective_from<=now()
       order by source.effective_from desc,source.version desc limit 1
       returning id
-    `, [organizationId, sourceReleaseId, targetReleaseId, createdBy]);
+    `, [organizationId, sourceReleaseId, targetReleaseId, createdBy]));
     if (!cloned[0]) {
       throw new UnprocessableEntityException("No effective agency demographics match the source catalog");
     }

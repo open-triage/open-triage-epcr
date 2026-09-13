@@ -83,6 +83,7 @@ export function documentTimeline(document: EncounterDocument, timeZone = DEFAULT
     if (!catalogElement) return [];
     return element.values.flatMap((value) => {
       if (value.kind !== "scalar" || typeof value.value !== "string") return [];
+      if (Number.isNaN(Date.parse(value.value))) return [];
       const presented = agencyDateTimeParts(value.value, timeZone);
       return [{
         id: `document-${value.occurrenceId}`,

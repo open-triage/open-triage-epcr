@@ -1,18 +1,15 @@
 /// <reference lib="webworker" />
 
 declare const self: ServiceWorkerGlobalScope;
-declare const SAMPLE_DISPATCH_ASSIGNMENT_ENABLED: boolean;
 
 const cacheName = "open-triage-shell-v4";
 const appRoot = new URL("./", self.registration.scope).toString();
 const appShell = [
   appRoot,
   new URL("manifest.webmanifest", appRoot).toString(),
-  ...(SAMPLE_DISPATCH_ASSIGNMENT_ENABLED ? [
-    new URL("demo-assigned-calls.json", appRoot).toString(),
-    new URL("demo-open-calls.json", appRoot).toString(),
-    new URL("demo-open-assignment.json", appRoot).toString(),
-  ] : []),
+  new URL("demo-assigned-calls.json", appRoot).toString(),
+  new URL("demo-open-calls.json", appRoot).toString(),
+  new URL("demo-open-assignment.json", appRoot).toString(),
 ];
 
 async function cacheStaticShell(): Promise<void> {

@@ -1,12 +1,8 @@
 {
   "id": "open-triage-synthetic-installation",
-  "revision": 2,
+  "revision": 4,
   "organizationId": "32000000-0000-4000-8000-000000000001",
-  "formId": "32000000-0000-4000-8000-000000000012",
-  "formVersionId": "32000000-0000-4000-8000-000000000011",
-  "expectedSectionCount": 25,
-  "expectedFieldCount": 441,
-  "administratorUsername": "demo.admin",
-  "clinicianUsername": "demo.clinician",
-  "password": "open-triage-demo"
+  "userId": "32000000-0000-4000-8000-000000000002",
+  "username": "demo",
+  "password": "opentriagedemo"
 }

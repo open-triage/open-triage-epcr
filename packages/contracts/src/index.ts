@@ -53,6 +53,8 @@ export interface DeleteDraftReportResponse {
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
+  /** Server-resolved current authority; Admin controls must not trust cached session claims. */
+  capabilities: string[];
   activeConfiguration: {
     catalog: {
       id: string;
@@ -67,6 +69,7 @@ export interface AdminContext {
       version: number;
     };
   } | null;
+  panels: AdminPanelKey[];
   dashboard: {
     availableCalls: number;
     ongoingReports: number;
@@ -79,7 +82,287 @@ export interface AdminContext {
     databaseConnections: number;
     maxDatabaseConnections: number;
     generatedAt: string;
-  };
+  } | null;
+}
+
+export type OwnershipTransferStatus = "pending" | "accepted" | "cancelled" | "expired" | "ineligible";
+
+export interface OwnershipTransferSummary {
+  id: string;
+  status: OwnershipTransferStatus;
+  initiatedAt: string;
+  expiresAt: string;
+  resolvedAt: string | null;
+  resolutionReason: string | null;
+  nominatedBy: ClinicianSession["user"];
+  nominee: ClinicianSession["user"];
+}
+
+export interface OwnershipTransferState {
+  owner: ClinicianSession["user"];
+  currentUserIsOwner: boolean;
+  currentUserIsNominee: boolean;
+  transfer: OwnershipTransferSummary | null;
+  eligibleNominees: ClinicianSession["user"][];
+}
+
+export interface InitiateOwnershipTransferCommand {
+  nomineeUserId: string;
+  note?: string;
+}
+
+export interface CancelOwnershipTransferCommand {
+  note?: string;
+}
+
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms";
+
+export interface AdminRoleSummary {
+  id: string;
+  displayName: string;
+  active: boolean;
+  protected: boolean;
+}
+
+export interface AdminAssignableRoleSummary extends AdminRoleSummary {
+  /** Administrator and Demo assignments are reserved to the installation owner. */
+  assignmentRestricted: boolean;
+  /** Whether the current actor may add or remove this role. */
+  assignmentMutable: boolean;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  displayName: string;
+  username: string;
+  active: boolean;
+  revision: number;
+  /** True only for the installation's current accountable owner. */
+  owner?: boolean;
+  roles: AdminRoleSummary[];
+}
+
+export interface AdminUserPage {
+  items: AdminUserSummary[];
+  nextCursor: string | null;
+  pageSize: number;
+}
+
+export interface ProvisionAdminUserCommand {
+  username: string;
+  displayName: string;
+  temporaryPassword: string;
+  /** Optional compatibility assertion; the server always applies the installation setting. */
+  temporaryPasswordHours?: number;
+  /** The complete initial role set; an empty set intentionally creates a no-workspace user. */
+  roleIds: string[];
+  note?: string;
+}
+
+export interface ProvisionedAdminUser {
+  userId: string;
+  username: string;
+  displayName: string;
+  roleIds: string[];
+  temporaryPasswordExpiresAt: string;
+}
+
+export interface UpdateAdminUserCommand {
+  expectedRevision: number;
+  username: string;
+  displayName: string;
+  active: boolean;
+  note?: string;
+}
+
+export interface UpdatedAdminUser extends AdminUserSummary {
+  /** Populated on reactivation so the caller can explicitly confirm restored access. */
+  restoredRoles: AdminRoleSummary[];
+  sessionsRevoked: number;
+  freshLoginRequired: boolean;
+}
+
+export interface AdminSessionSummary {
+  id: string;
+  startedAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+  deviceLabel: string;
+  current: boolean;
+  owner: boolean;
+}
+
+export interface AdminSessionList {
+  userId: string;
+  items: AdminSessionSummary[];
+}
+
+export interface RevokeAdminSessionCommand {
+  /** Required only when the selected session belongs to the installation owner. */
+  confirmOwner?: boolean;
+}
+
+export interface RevokedAdminSession {
+  sessionId: string;
+  revoked: true;
+  alreadyRevoked: boolean;
+  currentSessionRevoked: boolean;
+}
+
+export interface ResetAdminCredentialCommand {
+  expectedRevision: number;
+  temporaryPassword: string;
+  /** Optional compatibility assertion; the server always applies the installation setting. */
+  temporaryPasswordHours?: number;
+  note?: string;
+}
+
+export interface ResetAdminCredentialResult {
+  userId: string;
+  revision: number;
+  active: boolean;
+  temporaryPasswordExpiresAt: string;
+  sessionsRevoked: number;
+}
+
+export interface AdminCapabilityDefinition {
+  key: string;
+  description: string;
+  administrative: boolean;
+  systemOnly: boolean;
+}
+
+export interface AdminRole extends AdminRoleSummary {
+  description: string | null;
+  version: number;
+  assigneeCount: number;
+  capabilities: AdminCapabilityDefinition[];
+}
+
+export interface AdminRoleList {
+  items: AdminRole[];
+}
+
+export interface AdminCapabilityOption extends AdminCapabilityDefinition {
+  prerequisites: string[];
+  /** Whether the current actor may add or remove this capability. */
+  mutable: boolean;
+}
+
+export interface AdminCapabilityCatalog {
+  items: AdminCapabilityOption[];
+}
+
+export interface SaveAdminRoleCommand {
+  displayName: string;
+  description: string | null;
+  capabilityKeys: string[];
+  note?: string | null;
+  /** Required when replacing an existing role's active immutable version. */
+  expectedVersion?: number;
+}
+
+export interface ChangeAdminRoleStateCommand {
+  expectedVersion: number;
+  note?: string | null;
+}
+
+export interface AdminRoleHistory {
+  roleId: string;
+  versions: Array<{
+    id: string;
+    version: number;
+    displayName: string;
+    description: string | null;
+    createdAt: string;
+    createdBy: string | null;
+    note: string | null;
+    capabilityKeys: string[];
+  }>;
+  assignments: Array<{
+    id: string;
+    userId: string;
+    assignedAt: string;
+    assignedBy: string | null;
+    endedAt: string | null;
+    endedBy: string | null;
+    note: string | null;
+  }>;
+  events: Array<{
+    id: string;
+    action: "role.version_activate" | "role.deactivate" | "role.reactivate";
+    occurredAt: string;
+    note: string | null;
+    details: {
+      roleId: string;
+      version?: number;
+      priorVersionId?: string | null;
+      endedAssignmentCount?: number;
+      endedAt?: string;
+    };
+  }>;
+}
+
+/** A credential- and personnel-free package of immutable custom-role definitions. */
+export interface PortableCustomRolePackage {
+  schema: "open-triage.custom-roles";
+  schemaVersion: "1.0.0";
+  roles: Array<{
+    /** Stable role identity, preserved between installations. */
+    id: string;
+    currentVersionId: string;
+    versions: Array<{
+      /** Stable immutable-version identity, preserved between installations. */
+      id: string;
+      version: number;
+      displayName: string;
+      description: string | null;
+      capabilityKeys: string[];
+    }>;
+  }>;
+}
+
+export interface PortableRoleImportPreview {
+  schemaVersion: PortableCustomRolePackage["schemaVersion"];
+  roleCount: number;
+  createdRoleCount: number;
+  updatedRoleCount: number;
+  unchangedRoleCount: number;
+  affectedAssigneeCount: number;
+  capabilityChanges: Array<{
+    roleId: string;
+    added: string[];
+    removed: string[];
+    affectedAssigneeCount: number;
+  }>;
+}
+
+export interface PortableRoleImportResult extends PortableRoleImportPreview {
+  importedAt: string;
+}
+
+export interface AdminRoleSummaryList {
+  items: AdminAssignableRoleSummary[];
+}
+
+export interface ReplaceAdminUserRolesCommand {
+  expectedRevision: number;
+  /** The complete desired role set. An empty set removes every retained role. */
+  roleIds: string[];
+  note?: string;
+}
+
+export interface UpdatedAdminUserRoles extends AdminUserSummary {
+  addedRoles: AdminRoleSummary[];
+  removedRoles: AdminRoleSummary[];
+}
+
+export interface ReauthenticateCommand {
+  currentPassword: string;
+}
+
+export interface ReauthenticationResult {
+  reauthenticatedUntil: string;
 }
 
 export interface CatalogDraftElement {
@@ -138,6 +421,14 @@ export interface CatalogDraft {
   definitionSha256: string;
   definition: CatalogDraftDefinition;
   updatedAt: string;
+}
+
+export interface CatalogDefinitionView {
+  id: string;
+  displayName: string;
+  version: string;
+  status: "active";
+  definition: CatalogDraftDefinition;
 }
 
 export interface CatalogValidationResult {
@@ -274,6 +565,8 @@ export interface AssignedCall {
   chiefComplaint: string | null;
   /** IANA zone used for operational-time presentation. */
   agencyTimeZone?: string;
+  /** Immutable server deadline for generated synthetic calls. */
+  expiresAt?: string;
   status: AssignmentStatus;
 }
 
@@ -281,6 +574,26 @@ export interface AssignedCallsResponse {
   assignedCalls: AssignedCall[];
   canceledAssignmentIds: string[];
   refreshedAt: string;
+}
+
+export interface ClinicalDemoUnit {
+  id: string;
+  callSign: string;
+  name: string;
+}
+
+export interface SyntheticCallGenerationContext {
+  eligibleUnits: ClinicalDemoUnit[];
+  hasUnopenedCall: boolean;
+}
+
+export interface GenerateSyntheticCallCommand {
+  unitId: string;
+}
+
+export interface GenerateSyntheticCallResponse {
+  assignment: AssignedCall;
+  reused: boolean;
 }
 
 export interface OpenAssignmentResponse {
@@ -294,6 +607,10 @@ export interface OpenAssignmentResponse {
     clinicalForm?: ClinicalFormConfiguration;
     revision: number;
     status: "draft";
+    /** Server-qualified boundary for Clinical Demo mutations; never inferred by the browser. */
+    demoMutable?: boolean;
+    /** Immutable server deadline for a generated synthetic report. */
+    expiresAt?: string;
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
     /** IANA zone used for operational-time presentation. */
@@ -347,6 +664,8 @@ export interface OpenCall {
   revision: number;
   formVersionId: string;
   catalogReleaseId: string;
+  demoMutable?: boolean;
+  expiresAt?: string;
 }
 
 export interface OpenCallsResponse {

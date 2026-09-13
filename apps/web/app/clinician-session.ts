@@ -1,9 +1,10 @@
-import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand,
+  type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
 import { selectedInstallationSettings } from "./installation-settings";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
-export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.clinicianUsername;
+export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 export const CLINICIAN_SESSION_STORAGE_KEY = "open-triage.clinician-session.v1";
 
@@ -57,11 +58,8 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     return response.json() as Promise<ClinicianSession>;
   }
 
-  if (!selectedInstallationSettings().syntheticFixtures.enabled) {
-    throw new Error("Local sign-in is disabled unless synthetic fixtures are selected.");
-  }
-  // The explicitly selected static synthetic build has no server. It mirrors the seeded demo
-  // organization so the published, non-clinical artifact remains usable.
+  // The clinician-only static prototype has no database-backed accounts. Its local
+  // credential check is intentionally separate from installation configuration.
   if (command.username !== DEMO_CLINICIAN_USERNAME || command.password !== DEMO_CLINICIAN_PASSWORD) {
     throw new Error("The username or password is incorrect.");
   }
@@ -69,7 +67,9 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
     accessToken: crypto.randomUUID(),
     ...localDemoIdentity,
     startedAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + selectedInstallationSettings().authentication.sessionDurationMinutes * 60 * 1_000).toISOString()
+    expiresAt: new Date(now.getTime() + selectedInstallationSettings().authentication.sessionDurationMinutes * 60 * 1_000).toISOString(),
+    capabilities: ["clinical:demo", "clinical:document"],
+    workspaceAvailable: true,
   };
 }
 
@@ -92,4 +92,18 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
   }));
   if (!response.ok) throw new Error(response.status === 401 ? "The current password is incorrect." : "The password could not be changed.");
   return response.json() as Promise<ClinicianSession>;
+}
+
+export async function reauthenticateClinicianSession(currentPassword: string,
+  csrfToken: string): Promise<ReauthenticationResult> {
+  const url = apiRequestUrl("/api/sessions/reauthenticate");
+  if (!url) throw new Error("Reauthentication is unavailable in the static demonstration.");
+  const response = await fetch(url, browserRequestInit({
+    method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+    body: JSON.stringify({ currentPassword })
+  }));
+  if (!response.ok) throw new Error(response.status === 401
+    ? "The current password is incorrect." : "Reauthentication failed.");
+  return response.json() as Promise<ReauthenticationResult>;
 }

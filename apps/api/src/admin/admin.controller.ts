@@ -1,16 +1,36 @@
-import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
-import type { AdminContext, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, PublishedCatalog, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
-import { sessionToken } from "../sessions/clinician-session.controller.js";
+import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
+import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
+import { RoleAuthoringService } from "./role-authoring.service.js";
+import { RolePackageService } from "./role-package.service.js";
+import { UserRoleReadService } from "./user-role-read.service.js";
+import { UserProvisioningService } from "./user-provisioning.service.js";
+import { validateProvisionAdminUser } from "./user-provisioning.validation.js";
+import { UserLifecycleService } from "./user-lifecycle.service.js";
+import { validateUpdateAdminUser } from "./user-lifecycle.validation.js";
+import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
+import { validateReplaceAdminUserRoles } from "./user-role-assignment.validation.js";
+import { SessionAdministrationService } from "./session-administration.service.js";
+import { validateResetAdminCredential, validateRevokeAdminSession } from "./session-administration.validation.js";
+import { OwnershipTransferService } from "./ownership-transfer.service.js";
+import { validateCancelOwnershipTransfer, validateInitiateOwnershipTransfer } from "./ownership-transfer.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
+type ResponseLike = { clearCookie(name: string, options: Record<string, unknown>): void };
 
 @Controller("admin")
 export class AdminController {
   constructor(private readonly admin: AdminService, private readonly catalogs: CatalogAuthoringService,
-    private readonly forms: FormAuthoringService) {}
+    private readonly forms: FormAuthoringService, private readonly directory: UserRoleReadService,
+    private readonly provisioning: UserProvisioningService,
+    private readonly roleAuthoring: RoleAuthoringService, private readonly lifecycle: UserLifecycleService,
+    private readonly roleAssignments: UserRoleAssignmentService,
+    private readonly sessionAdministration: SessionAdministrationService,
+    private readonly rolePackages: RolePackageService,
+    private readonly ownershipTransfer: OwnershipTransferService) {}
 
   @Get("context")
   context(
@@ -20,9 +40,153 @@ export class AdminController {
     return this.admin.context(sessionToken(request, authorization));
   }
 
+  @Get("users")
+  users(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminUserPage> {
+    return this.directory.users(sessionToken(request, authorization), query);
+  }
+
+  @Get("ownership-transfer")
+  ownershipTransferState(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.state(sessionToken(request, authorization));
+  }
+
+  @Post("ownership-transfer")
+  initiateOwnershipTransfer(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.initiate(sessionToken(request, authorization), validateInitiateOwnershipTransfer(body));
+  }
+
+  @Post("ownership-transfer/accept")
+  acceptOwnershipTransfer(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.accept(sessionToken(request, authorization));
+  }
+
+  @Delete("ownership-transfer")
+  cancelOwnershipTransfer(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<OwnershipTransferState> {
+    return this.ownershipTransfer.cancel(sessionToken(request, authorization), validateCancelOwnershipTransfer(body));
+  }
+
+  @Post("users")
+  provisionUser(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ProvisionedAdminUser> {
+    return this.provisioning.provision(sessionToken(request, authorization), validateProvisionAdminUser(body));
+  }
+
+  @Put("users/:id")
+  updateUser(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<UpdatedAdminUser> {
+    return this.lifecycle.update(sessionToken(request, authorization), id, validateUpdateAdminUser(body));
+  }
+
+  @Put("users/:id/roles")
+  replaceUserRoles(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<UpdatedAdminUserRoles> {
+    return this.roleAssignments.replace(sessionToken(request, authorization), id, validateReplaceAdminUserRoles(body));
+  }
+
+  @Get("users/:id/sessions")
+  userSessions(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminSessionList> {
+    return this.sessionAdministration.list(sessionToken(request, authorization), id);
+  }
+
+  @Delete("users/:userId/sessions/:sessionId")
+  async revokeUserSession(@Param("userId", new ParseUUIDPipe()) userId: string,
+    @Param("sessionId", new ParseUUIDPipe()) sessionId: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Res({ passthrough: true }) response: ResponseLike,
+    @Headers("authorization") authorization?: string): Promise<RevokedAdminSession> {
+    const revoked = await this.sessionAdministration.revoke(sessionToken(request, authorization), userId, sessionId,
+      validateRevokeAdminSession(body));
+    if (revoked.currentSessionRevoked) clearSessionCookie(response);
+    return revoked;
+  }
+
+  @Post("users/:id/credentials/reset")
+  resetUserCredential(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<ResetAdminCredentialResult> {
+    return this.sessionAdministration.resetCredential(sessionToken(request, authorization), id,
+      validateResetAdminCredential(body));
+  }
+
+  @Get("user-role-options")
+  userRoleOptions(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleSummaryList> {
+    return this.directory.userRoleOptions(sessionToken(request, authorization));
+  }
+
+  @Get("roles")
+  roles(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleList> {
+    return this.directory.roles(sessionToken(request, authorization), query);
+  }
+
+  @Get("role-capabilities")
+  roleCapabilities(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminCapabilityCatalog> {
+    return this.roleAuthoring.capabilities(sessionToken(request, authorization));
+  }
+
+  @Post("roles")
+  createRole(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.create(sessionToken(request, authorization), body);
+  }
+
+  @Put("roles/:id")
+  updateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.update(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("roles/:id/deactivate")
+  deactivateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.deactivate(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("roles/:id/reactivate")
+  reactivateRole(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<AdminRole> {
+    return this.roleAuthoring.reactivate(sessionToken(request, authorization), id, body);
+  }
+
+  @Get("roles/:id/history")
+  roleHistory(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AdminRoleHistory> {
+    return this.roleAuthoring.history(sessionToken(request, authorization), id);
+  }
+
+  @Get("role-packages/export")
+  exportRolePackage(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableCustomRolePackage> {
+    return this.rolePackages.export(sessionToken(request, authorization));
+  }
+
+  @Post("role-packages/preview")
+  previewRolePackage(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableRoleImportPreview> {
+    return this.rolePackages.preview(sessionToken(request, authorization), body);
+  }
+
+  @Post("role-packages/import")
+  importRolePackage(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PortableRoleImportResult> {
+    return this.rolePackages.import(sessionToken(request, authorization), body);
+  }
+
   @Get("catalog-draft")
   catalogDraft(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogDraft | null> {
     return this.catalogs.current(sessionToken(request, authorization));
+  }
+
+  @Get("catalog-definition")
+  catalogDefinition(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<CatalogDefinitionView | null> {
+    return this.catalogs.inspectActive(sessionToken(request, authorization));
   }
 
   @Post("catalog-drafts")
@@ -70,6 +234,12 @@ export class AdminController {
   saveForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormDraft> {
     return this.forms.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Delete("form-drafts/:id")
+  deleteForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<void> {
+    return this.forms.delete(sessionToken(request, authorization), id, body);
   }
 
   @Post("form-drafts/:id/publish")

@@ -20,7 +20,8 @@ const definition = { schemaVersion: 1, sourceReleaseId: "release-1", elements: [
 const session = { user: { id: "owner-1" }, organization: { id: "org-1" } };
 
 function serviceWith(manager, sessions = { requireCapability: async () => session }) {
-  return new CatalogAuthoringService({ transaction: async (_level, work) => work(manager), manager }, sessions);
+  return new CatalogAuthoringService({ transaction: async (_level, work) => work(manager), manager,
+    query: (...parameters) => manager.query(...parameters) }, sessions);
 }
 
 test("catalog hashes are stable across object key ordering", () => {
@@ -82,21 +83,6 @@ test("publication requires a human change note before database access", async ()
   }), UnprocessableEntityException);
 });
 
-test("synthetic demo catalog drafts remain editable but cannot be published", async () => {
-  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  let queried = false;
-  const manager = { query: async () => { queried = true; return []; } };
-  try {
-    await assert.rejects(serviceWith(manager).publish("session", "draft-1", {}),
-      (error) => error instanceof ForbiddenException && /Drafts can still be/.test(error.message));
-    assert.equal(queried, false);
-  } finally {
-    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
-  }
-});
-
 test("catalog publication carries forward one effective agency demographic version", async () => {
   const calls = [];
   const manager = { query: async (sql, parameters) => {
@@ -127,6 +113,87 @@ test("catalog reads require their granular capability", async () => {
     }
   });
   await assert.rejects(service.current("clinician-session"), UnauthorizedException);
+});
+
+test("Catalog API enforces read, write, and publish authority independently before data access", async () => {
+  const attempts = [
+    { name: "reader save", capabilities: ["catalog:read"], invoke: (service) =>
+      service.save("session", "draft-1", {}), required: "catalog:write" },
+    { name: "reader clone", capabilities: ["catalog:read"], invoke: (service) =>
+      service.cloneActive("session", {}), required: "catalog:write" },
+    { name: "writer publish", capabilities: ["catalog:read", "catalog:write"], invoke: (service) =>
+      service.publish("session", "draft-1", {}), required: "catalog:publish" },
+    { name: "write without read", capabilities: ["catalog:write"], invoke: (service) =>
+      service.save("session", "draft-1", {}), required: "catalog:write" },
+    { name: "publish without prerequisites", capabilities: ["catalog:publish"], invoke: (service) =>
+      service.publish("session", "draft-1", {}), required: "catalog:publish" }
+  ];
+  for (const attempt of attempts) {
+    let queried = false;
+    const service = serviceWith({ query: async () => { queried = true; return []; } }, {
+      requireCapability: async (_token, capability) => {
+        assert.equal(capability, attempt.required, attempt.name);
+        if (!attempt.capabilities.includes(capability) ||
+            (capability === "catalog:write" && !attempt.capabilities.includes("catalog:read")) ||
+            (capability === "catalog:publish" &&
+              !(attempt.capabilities.includes("catalog:read") && attempt.capabilities.includes("catalog:write")))) {
+          throw new ForbiddenException("The requested capability and its prerequisites are required");
+        }
+        return session;
+      }
+    });
+    await assert.rejects(attempt.invoke(service), ForbiddenException, attempt.name);
+    assert.equal(queried, false, `${attempt.name} reached the database`);
+  }
+});
+
+test("Catalog readers may inspect and validate definitions without mutation authority", async () => {
+  const requested = [];
+  const manager = { query: async () => [] };
+  const service = serviceWith(manager, { requireCapability: async (_token, capability) => {
+    requested.push(capability);
+    if (capability !== "catalog:read") throw new ForbiddenException();
+    return session;
+  } });
+  assert.equal(await service.current("session"), null);
+  await assert.rejects(service.validate("session", "11111111-1111-4111-8111-111111111111"), /was not found/);
+  assert.deepEqual(requested, ["catalog:read", "catalog:read"]);
+});
+
+test("Catalog readers inspect the active sealed definition when no authoring draft exists", async () => {
+  const manager = { query: async (sql) => {
+    if (sql.includes("from forms.agency_stationary_default active")) return [{
+      id: "release-1", display_name: "NEMSIS 3.5.1", version: "3.5.1"
+    }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const viewed = await serviceWith(manager).inspectActive("reader-session");
+  assert.equal(viewed.status, "active");
+  assert.equal(viewed.displayName, "NEMSIS 3.5.1");
+  assert.deepEqual(viewed.definition.elements, [element]);
+});
+
+test("cloning the active catalog unwraps PostgreSQL mutation tuples into a usable draft", async () => {
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select * from catalog.authoring_draft")) return [];
+    if (sql.includes("select fv.catalog_release_id as id")) return [{ id: "release-1" }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("insert into catalog.authoring_draft")) return [[{
+      id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 1,
+      display_name: parameters[5], canonical_definition: JSON.parse(parameters[2]),
+      definition_sha256: parameters[3], updated_at: "2026-09-13T10:00:00.000Z", published_release_id: null
+    }], 1];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const cloned = await serviceWith(manager).cloneActive("owner-session", { displayName: "Night catalog" });
+  assert.equal(cloned.id, "draft-1");
+  assert.equal(cloned.displayName, "Night catalog");
+  assert.equal(cloned.updatedAt, "2026-09-13T10:00:00.000Z");
+  assert.deepEqual(cloned.definition.elements, [element]);
 });
 
 const sourceCodeList = { list_id: "patient-activity", name: "Patient Activity", classification: "suggested",

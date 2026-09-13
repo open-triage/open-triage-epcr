@@ -27,7 +27,6 @@ Build the web image with the public API hostname embedded at build time:
 ```sh
 docker build -f deploy/docker/web.Dockerfile \
   --build-arg NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org \
-  --build-arg NEXT_PUBLIC_INSTALLATION_SETTINGS_BASELINE=synthetic-demo \
   -t ghcr.io/open-triage/open-triage-web:demo .
 docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .
@@ -68,11 +67,11 @@ committed in its own transaction. A failed migration is rolled back and stops
 the release; a successful migration remains committed if a later application
 rollout fails.
 
-The migration Job defaults to schema migrations only. The public synthetic demo
-values set `migration.bootstrapSynthetic=true`, which runs the idempotent
-synthetic bootstrap before every rollout so the fictional users, credentials,
-agency configuration, catalog, and initial assignment remain available. For a
-one-time manual demo bootstrap, run:
+The migration Job defaults to schema migrations only. The public demonstration
+values set `migration.bootstrapSynthetic=true`, which runs the idempotent,
+insert-only fixture bootstrap before every rollout. The target organization must
+already exist; this creates only missing `demo.admin` and `demo.clinician`
+accounts and never changes an existing account. For a one-time manual bootstrap, run:
 
 ```sh
 npm run bootstrap:synthetic -w @open-triage/database

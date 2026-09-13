@@ -25,10 +25,9 @@ test("admin context is resolved from the authorized session organization", async
       }];
     }
   }, {
-    requireCapability: async (token, capability) => {
+    get: async (token) => {
       assert.equal(token, "opaque-session");
-      assert.equal(capability, "admin-dashboard:read");
-      return session;
+      return { ...session, capabilities: ["admin-dashboard:read"] };
     }
   });
 
@@ -37,6 +36,8 @@ test("admin context is resolved from the authorized session organization", async
   assert.deepEqual({ ...context, dashboard: { ...context.dashboard, generatedAt: "measured" } }, {
     owner: session.user,
     organization: session.organization,
+    capabilities: ["admin-dashboard:read"],
+    panels: ["dashboard"],
     activeConfiguration: {
       catalog: { id: "catalog-id", name: "Agency Catalog", standard: "NEMSIS", version: "3.5.1" },
       stationaryForm: { id: "form-version-id", formId: "form-id", name: "Stationary", version: 4 }
@@ -56,7 +57,7 @@ test("admin context is resolved from the authorized session organization", async
 test("direct admin access fails before configuration is queried without the capability", async () => {
   let queried = false;
   const service = new AdminService({ query: async () => { queried = true; return []; } }, {
-    requireCapability: async () => { throw new UnauthorizedException("The requested capability is required"); }
+    get: async () => ({ ...session, capabilities: ["clinical:document"] })
   });
   const controller = new AdminController(service, {});
 
@@ -64,5 +65,17 @@ test("direct admin access fails before configuration is queried without the capa
     controller.context({ headers: {} }, "Bearer clinician-session"),
     UnauthorizedException
   );
+  assert.equal(queried, false);
+});
+
+test("limited administrators receive only their authorized navigation without dashboard queries", async () => {
+  let queried = false;
+  const service = new AdminService({ query: async () => { queried = true; return []; } }, {
+    get: async () => ({ ...session, capabilities: ["users:read"] })
+  });
+  const context = await service.context("opaque-session");
+  assert.deepEqual(context.panels, ["users"]);
+  assert.equal(context.dashboard, null);
+  assert.equal(context.activeConfiguration, null);
   assert.equal(queried, false);
 });

@@ -20,8 +20,14 @@ body { margin: 0; min-width: 320px; }
 button { min-height: 44px; font: inherit; touch-action: manipulation; }
 input, select, textarea { touch-action: manipulation; }
 .session-loading { min-height: 100dvh; }
-.login-shell, .authenticated-shell { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--paper); box-shadow: 0 0 36px rgb(20 39 27 / 12%); }
-.login-card { display: grid; gap: 16px; margin: 0 20px; padding: 48px 0; }
+.login-shell { display: grid; min-height: 100dvh; place-items: center; padding: clamp(16px, 5vw, 72px); background: radial-gradient(circle at top left, #edf5ef 0, #dfe5df 55%, #d5ddd6 100%); }
+.authenticated-shell { min-height: 100dvh; max-width: 480px; margin: 0 auto; background: var(--paper); box-shadow: 0 0 36px rgb(20 39 27 / 12%); }
+.login-card { display: grid; width: min(100%, 480px); gap: 16px; margin: 0; padding: clamp(28px, 5vw, 48px); border: 1px solid rgb(20 39 27 / 12%); border-radius: 14px; background: var(--paper); box-shadow: 0 18px 60px rgb(20 39 27 / 14%); }
+.login-sign-in { width: min(100%, 880px); }
+.login-intro, .login-fields { display: grid; align-content: center; gap: 16px; min-width: 0; }
+.login-intro > p:last-child { margin: 0; color: var(--muted); line-height: 1.55; }
+.login-intro > p:last-child strong { color: #343733; }
+.login-fields .login-message { margin: 0; }
 .login-card h1 { margin: 0; font-size: var(--text-heading); line-height: 1.08; }
 .login-card > p:not(.eyebrow, .login-message) { margin: -6px 0 8px; color: var(--muted); line-height: 1.45; }
 .login-card label { display: grid; gap: 7px; color: #454944; font-size: var(--text-caption); font-weight: 750; }
@@ -29,6 +35,14 @@ input, select, textarea { touch-action: manipulation; }
 .login-card button { min-height: 52px; margin-top: 6px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 800; cursor: pointer; }
 .login-card button:disabled { opacity: .65; cursor: wait; }
 .login-message { margin: 0; padding: 10px 12px; border-left: 3px solid #b27a12; color: #604b10; background: #fff8dd; font-size: var(--text-caption); }
+@media (min-width: 720px) {
+  .login-sign-in { grid-template-columns: minmax(0, .9fr) minmax(280px, 1.1fr); gap: clamp(40px, 7vw, 80px); }
+  .login-sign-in h1 { font-size: clamp(36px, 5vw, 56px); }
+}
+@media (max-width: 480px) {
+  .login-shell { place-items: stretch; padding: 0; background: var(--paper); }
+  .login-card { width: 100%; min-height: 100dvh; justify-content: stretch; align-content: center; border: 0; border-radius: 0; box-shadow: none; }
+}
 .session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: var(--text-caption); }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
 .session-bar button:disabled { border-color: rgb(255 255 255 / 30%); color: rgb(255 255 255 / 45%); cursor: not-allowed; }
@@ -88,6 +102,77 @@ input, select, textarea { touch-action: manipulation; }
 .admin-placeholder { padding: 6px 2px; color: #454944; }
 .admin-placeholder h2 { margin: 0 0 10px; font-size: var(--text-heading); }
 .admin-placeholder p { margin: 0; color: var(--muted); font-size: var(--text-body); line-height: 1.45; }
+.admin-directory { padding-bottom: 18px; }
+.admin-directory .section-heading > button, .admin-user-create button { min-height: 40px; padding: 7px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-user-create { padding: 18px; border-bottom: 1px solid var(--line); background: #f7faf7; }
+.admin-user-create > fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 16px; border: 1px solid #b7c6b9; border-radius: 8px; }
+.admin-user-create > fieldset > legend, .admin-role-selection > legend { font-weight: 800; }
+.admin-user-create label { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
+.admin-user-create input, .admin-user-create textarea { min-height: 42px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
+.admin-role-selection { display: flex; flex-wrap: wrap; gap: 10px 16px; grid-column: 1 / -1; padding: 12px; border: 1px solid var(--line); }
+.admin-role-selection label { display: flex; align-items: center; gap: 7px; }
+.admin-role-selection input { min-height: 0; }
+.admin-user-note { grid-column: 1 / -1; }
+.admin-user-note textarea { min-height: 72px; resize: vertical; }
+.admin-user-create button { justify-self: start; }
+.admin-user-security { margin: 0 18px 18px; border: 1px solid #b7c6b9; border-radius: 8px; background: #f7faf7; }
+.admin-user-security h4 { margin: 16px 16px 6px; }
+.admin-user-security .admin-muted { margin: 0 16px 12px; }
+.admin-session-list { display: grid; gap: 10px; margin: 0; padding: 0 16px 16px; list-style: none; }
+.admin-session-list > li { padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+.admin-session-list > li > div { display: flex; justify-content: space-between; gap: 12px; }
+.admin-session-list > li > div span { color: var(--green); font-weight: 800; }
+.admin-session-list dl { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px 0; }
+.admin-session-list button, .admin-credential-reset button { min-height: 40px; padding: 7px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-credential-reset { padding: 0 16px 16px; }
+.admin-credential-reset fieldset { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); }
+.admin-credential-reset label { display: grid; gap: 6px; font-weight: 750; }
+.admin-credential-reset input, .admin-credential-reset textarea { min-height: 42px; padding: 8px 10px; border: 1px solid #87928a; border-radius: 6px; font: inherit; }
+.admin-directory-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(2, minmax(130px, 1fr)) auto; gap: 12px; align-items: end; padding: 18px; }
+.admin-directory-filters label, .admin-role-state { display: grid; gap: 6px; color: var(--muted); font-size: var(--text-caption); font-weight: 800; }
+.admin-directory-filters input, .admin-directory-filters select, .admin-role-state select { min-height: 42px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; color: var(--ink); background: #fff; font: inherit; }
+.admin-directory > button, .admin-directory-filters button { min-height: 42px; padding: 8px 14px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; }
+.admin-directory > button { margin: 14px 18px 0; }
+.admin-table-scroll { overflow-x: auto; padding: 0 18px; }
+.admin-directory table { width: 100%; border-collapse: collapse; background: #fff; }
+.admin-directory th, .admin-directory td { padding: 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.admin-directory thead th { background: #edf3ee; }
+.admin-role-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.admin-role-badges li { padding: 3px 7px; border-radius: 999px; background: #e8f3ee; font-size: var(--text-caption); }
+.admin-muted { color: var(--muted); }
+.admin-role-state { max-width: 220px; margin: 18px; }
+.admin-role-matrix-scroll { margin: 0 18px 18px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.admin-role-matrix { min-width: max-content; }
+.admin-role-matrix caption { padding: 12px; color: var(--muted); text-align: left; font-size: var(--text-caption); font-weight: 750; }
+.admin-role-matrix th, .admin-role-matrix td { padding: 6px 8px; }
+.admin-role-matrix th:first-child { position: sticky; z-index: 1; left: 0; min-width: 190px; max-width: 230px; background: #f8faf8; }
+.admin-role-matrix thead th:first-child { z-index: 2; background: #edf3ee; }
+.admin-role-matrix thead th:not(:first-child) { min-width: 104px; max-width: 132px; }
+.admin-role-column-heading { display: block; cursor: help; }
+.admin-role-column-heading strong { color: var(--ink); font-size: var(--text-body); }
+.admin-role-matrix tbody th { cursor: help; }
+.admin-role-matrix tbody th code { display: block; overflow-wrap: anywhere; }
+.admin-role-matrix tbody td { text-align: center; vertical-align: middle; }
+.admin-role-matrix .capability-included { background: #eef8f1; }
+.admin-capability-mark { display: inline-grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; color: #68716b; font-size: 17px; font-weight: 900; }
+.admin-role-matrix .capability-included .admin-capability-mark { color: #fff; background: var(--green); }
+.admin-role-matrix-actions { display: grid; gap: 7px; }
+.admin-role-matrix-actions button, .admin-role-editor-actions button, .section-heading > button { min-height: 42px; padding: 8px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; cursor: pointer; }
+.admin-role-matrix-actions button { min-height: 36px; padding: 6px 9px; }
+.admin-role-editor { margin: 0 18px 18px; padding: 16px; border: 1px solid var(--green); border-radius: 8px; background: #f8fbf8; }
+.admin-role-editor > fieldset { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; }
+.admin-role-editor > fieldset > legend { padding: 0; font-size: var(--text-heading); font-weight: 800; }
+.admin-role-editor label { display: grid; gap: 6px; font-weight: 750; }
+.admin-role-editor input:not([type="checkbox"]), .admin-role-editor textarea { min-height: 42px; padding: 8px 10px; border: 1px solid #aeb9b0; border-radius: 6px; font: inherit; }
+.admin-role-editor textarea { min-height: 76px; resize: vertical; }
+.admin-capability-options { display: grid; gap: 8px; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.admin-capability-options > label { grid-template-columns: auto minmax(0, 1fr); align-items: start; min-height: 44px; padding: 5px 0; }
+.admin-capability-options input { width: 20px; height: 20px; margin-top: 2px; }
+.admin-capability-options small { display: block; margin-top: 3px; color: var(--muted); font-weight: 500; }
+.admin-role-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-role-editor-actions button[type="button"] { border-color: #aeb9b0; color: var(--ink); background: #fff; }
+.admin-role-editor-actions button:disabled { cursor: not-allowed; opacity: .65; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .catalog-empty, .catalog-editor { display: grid; gap: 12px; padding: 18px; }
 .form-empty, .form-editor { display: grid; gap: 12px; padding: 18px; }
 .form-sections { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
@@ -161,6 +246,8 @@ input, select, textarea { touch-action: manipulation; }
   .admin-tabs { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-tabs button { border-right: 1px solid var(--line); }
   .admin-configuration dl { grid-template-columns: 1fr; }
+  .admin-directory-filters { grid-template-columns: 1fr; }
+  .admin-user-create > fieldset { grid-template-columns: 1fr; }
 }
 .admin-preview-window { min-height: 100vh; padding: 18px; background: var(--paper); }
 .admin-preview-error { max-width: 720px; margin: 48px auto; padding: 20px; }
@@ -179,6 +266,10 @@ input, select, textarea { touch-action: manipulation; }
 .safety-notice .demo-data-controls button { min-height: 28px; padding: 2px 9px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-size: var(--text-caption); font-weight: 750; cursor: pointer; }
 .safety-notice .demo-data-controls .delete-record-action { border-color: #ffb4ac; background: #9f241d; }
 .safety-notice .demo-data-controls .delete-record-action:disabled { opacity: .7; cursor: wait; }
+.clinical-demo-banner button { min-height: 28px; padding: 2px 9px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-size: var(--text-caption); font-weight: 750; cursor: pointer; }
+.clinical-demo-banner button:disabled { opacity: .65; cursor: wait; }
+.clinical-demo-unit { display: inline-flex; align-items: center; gap: 5px; color: #fff; font-weight: 700; }
+.clinical-demo-unit select { min-height: 28px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #182019; background: #fff; }
 .encounter-header { padding: 18px 20px 16px; background: #fff; border-bottom: 1px solid var(--line); }
 .stationary-presentation { --stationary-top-bars: 86px; --stationary-call-header-height: 88px; }
 .stationary-presentation .encounter-header { position: sticky; z-index: 19; top: var(--stationary-top-bars); display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: var(--stationary-call-header-height); padding: 10px 18px; }

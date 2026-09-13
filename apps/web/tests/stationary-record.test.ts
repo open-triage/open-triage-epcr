@@ -74,6 +74,30 @@ test("a pinned form controls Stationary section and element order", () => {
   assert.doesNotMatch(html, /data-element-id="eVitals\.06"/);
 });
 
+test("a pinned form never exposes agency demographics or NEMSIS custom configuration", () => {
+  const formDefinition = { schemaVersion: 1 as const, sections: [{
+    key: "demographics", presentation: { title: "Agency demographics" }, fields: [
+      { key: "agency-number", source: { kind: "nemsis" as const, elementId: "dAgency.01" } },
+    ],
+  }, {
+    key: "custom-configuration", presentation: { title: "Custom configuration" }, fields: [
+      { key: "custom-title", source: { kind: "nemsis" as const, elementId: "eCustomConfiguration.01" } },
+    ],
+  }, {
+    key: "clinical", presentation: { title: "Patient" }, fields: [
+      { key: "patient-name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
+    ],
+  }] };
+
+  const html = renderToStaticMarkup(createElement(StationaryRecord, {
+    document, formDefinition, onDocumentChange() {},
+  }));
+
+  assert.doesNotMatch(html, /Agency demographics|Custom configuration/);
+  assert.doesNotMatch(html, /data-element-id="(?:dAgency|eCustomConfiguration)\./);
+  assert.match(html, /data-element-id="ePatient\.02"/);
+});
+
 test("every compiled group and catalog element has exactly one renderer presentation route", () => {
   const coverage = stationaryPresentationCoverage();
   assert.equal(coverage.groups.size, COMPILED_STATIONARY_LAYOUT.groups.length);

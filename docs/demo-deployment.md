@@ -117,15 +117,16 @@ kubeconfigs, or Secret contents into tickets or chat.
 This deployment is a public, synthetic-data-only demonstration. It is not a
 production environment, is not approved for clinical use, and must never
 receive protected health information or other real patient, clinician, agency,
-or dispatch data. The migration hook deliberately does not seed data. Provision
-the fictional installation once with the explicit `bootstrap:synthetic` command
-in the [chart instructions](../deploy/helm/open-triage/README.md).
+or dispatch data. Create its ordinary organization and owner through the same
+operator-controlled process as production, then run the explicit
+`bootstrap:synthetic` command in the
+[chart instructions](../deploy/helm/open-triage/README.md). That command adds only
+missing fixture accounts and never repairs or overwrites later administration.
 
-The demo's hard-coded credentials, in-memory sessions, and incomplete endpoint
-authorization are tracked in
-[#190, Harden API authentication and authorization for production](https://github.com/open-triage/open-triage-epcr/issues/190).
-Until that work and a separate production security review are complete, this
-workflow and chart must not be repurposed for real clinical data.
+The fixture credentials are supplied to smoke validation as protected workflow
+secrets; the public installation endpoint and login form never expose them. This
+public environment still requires a separate production security review before
+it may be repurposed for real clinical data.
 
 ## Deferred production and zero-downtime work
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
+import { ConflictException, NotFoundException } from "@nestjs/common";
 import {
   canonicalDefinitionSha256,
   FormPublicationValidationError,
@@ -14,21 +14,6 @@ const validPublishInput = {
   changeNote: "Initial release",
   definitionSha256: "a".repeat(64)
 };
-
-test("synthetic demo blocks direct form publication before database access", async () => {
-  const original = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  let queried = false;
-  const service = new FormPublicationService({ transaction: async () => { queried = true; } });
-  try {
-    await assert.rejects(service.publish("50000000-0000-4000-8000-000000000001", {}),
-      (error) => error instanceof ForbiddenException && /Drafts can still be/.test(error.message));
-    assert.equal(queried, false);
-  } finally {
-    if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
-  }
-});
 
 test("canonical form hashes do not depend on object key order", () => {
   const left = { schemaVersion: 1, sections: [{ key: "one", presentation: { title: "One", order: 1 }, fields: [] }] };
@@ -77,4 +62,45 @@ test("a not-found error during publish keeps its original status instead of beco
     service.publish(formVersionId, validPublishInput),
     (error) => error instanceof NotFoundException && error.getStatus() === 404
   );
+});
+
+test("publishing a complete Stationary form retains read-only NEMSIS metadata without analytics mappings", async () => {
+  const definition = { schemaVersion: 1, sections: [{ key: "DemographicGroup", fields: [{
+    key: "dAgency.01", source: { kind: "nemsis", elementId: "dAgency.01" },
+  }] }] };
+  const digest = canonicalDefinitionSha256(definition);
+  const fieldWrites = [];
+  const manager = { query: async (sql, parameters = []) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from forms.form_version fv") && normalized.includes("for update")) return [{
+      id: formVersionId, display_name: "Complete Stationary", status: "draft",
+      canonical_definition: definition, definition_sha256: digest, published_at: null,
+      organization_id: "32000000-0000-4000-8000-000000000001", catalog_release_id: "catalog-release",
+    }];
+    if (normalized.includes("from app_identity.app_user")) return [{ id: validPublishInput.publishedBy }];
+    if (normalized.includes("from catalog.element_definition e")) {
+      assert.match(normalized, /left join catalog\.analytics_element_mapping/);
+      return [{ element_id: "dAgency.01", element_identity_id: "agency-identity",
+        analytical_location: null, permitted_absence_states: [] }];
+    }
+    if (normalized.startsWith("delete from")) return [];
+    if (normalized.includes("insert into forms.form_section")) return [];
+    if (normalized.includes("insert into forms.form_field")) { fieldWrites.push(parameters); return []; }
+    if (normalized.includes("with updated as")) return [{ published_at: "2026-09-13T10:00:00.000Z" }];
+    if (normalized.includes("insert into app_identity.configuration_event")) return [];
+    if (normalized.includes("from forms.form_section where form_version_id")) {
+      return [{ sections: 1, fields: 1, rules: 0, locales: 0 }];
+    }
+    if (normalized.includes("select display_name from forms.form_version")) return [{ display_name: "Complete Stationary" }];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new FormPublicationService({ transaction: async (_isolation, work) => work(manager) });
+
+  const published = await service.publish(formVersionId, {
+    ...validPublishInput, definitionSha256: digest,
+  });
+
+  assert.equal(published.status, "published");
+  assert.equal(fieldWrites.length, 1);
+  assert.equal(fieldWrites[0][10], false);
 });

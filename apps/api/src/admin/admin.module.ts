@@ -5,10 +5,20 @@ import { AdminController } from "./admin.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
 import { FormAuthoringService } from "./form-authoring.service.js";
+import { RoleAuthoringService } from "./role-authoring.service.js";
+import { RolePackageService } from "./role-package.service.js";
+import { UserRoleReadService } from "./user-role-read.service.js";
+import { UserProvisioningService } from "./user-provisioning.service.js";
+import { UserLifecycleService } from "./user-lifecycle.service.js";
+import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
+import { SessionAdministrationService } from "./session-administration.service.js";
+import { OwnershipTransferService } from "./ownership-transfer.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
   controllers: [AdminController],
-  providers: [AdminService, CatalogAuthoringService, FormAuthoringService]
+  providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
+    UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
+    SessionAdministrationService, RolePackageService, OwnershipTransferService]
 })
 export class AdminModule {}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, GoneException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { DraftReportController } from "../dist/reports/draft-report.controller.js";
 import { DraftReportService } from "../dist/reports/draft-report.service.js";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
@@ -16,6 +16,11 @@ const ownerSession = {
 function sessions() {
   return { get(token) {
     if (token !== ownerSession.accessToken) throw new UnauthorizedException();
+    return ownerSession;
+  }, assertCsrf(token, csrf) {
+    if (token !== ownerSession.accessToken || csrf !== "csrf-proof") throw new UnauthorizedException();
+  }, requireCapability(token, capability) {
+    if (token !== ownerSession.accessToken || capability !== "clinical:demo") throw new UnauthorizedException();
     return ownerSession;
   } };
 }
@@ -33,34 +38,49 @@ test("prototype deletion atomically removes a clinician-owned synthetic draft wi
   const calls = [];
   const manager = { query: async (sql, parameters) => {
     calls.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
-    if (sql.includes("select patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
+    if (sql.includes("select r.patient_id from clinical.report")) return [{ patient_id: "patient-1" }];
     if (sql.includes("delete from clinical.report")) return [{ id: reportId }];
     return [];
   } };
   const service = new DraftReportService(transactional(manager), sessions());
 
-  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId), { deleted: true, reportId });
-  assert.match(calls[0].sql, /status = 'draft' and synthetic/);
+  assert.deepEqual(await service.deleteSyntheticDraft(ownerSession.accessToken, reportId, "csrf-proof"), { deleted: true, reportId });
+  assert.match(calls[0].sql, /r\.status = 'draft' and r\.synthetic and ca\.synthetic/);
   assert.deepEqual(calls[0].parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
   assert.ok(calls.find(({ sql }) => /set_config\('open_triage\.prototype_delete_report'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.call_assignment where report_id/.test(sql)));
   assert.ok(!calls.find(({ sql }) => /update clinical\.call_assignment set status = 'assigned'/.test(sql)));
   assert.ok(calls.find(({ sql }) => /delete from clinical\.patient/.test(sql)));
+  const audit = calls.find(({ sql }) => /insert into clinical_audit\.synthetic_draft_mutation_event/.test(sql));
+  assert.deepEqual(audit.parameters, [ownerSession.organization.id, ownerSession.user.id, reportId,
+    null, "synthetic_draft.delete", 0, null]);
+  assert.doesNotMatch(JSON.stringify(audit), /patient-1|CALL|clinicalValue/i);
 });
 
 test("prototype deletion refuses reports outside the owned synthetic-draft boundary", async () => {
   const manager = { query: async () => [] };
   const service = new DraftReportService(transactional(manager), sessions());
   await assert.rejects(
-    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"),
+    service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010", "csrf-proof"),
     ConflictException,
   );
+});
+
+test("demo deletion independently rejects missing CSRF proof or current Clinical Demo authority", async () => {
+  const service = new DraftReportService(transactional({ query: async () => [] }), {
+    get: () => ownerSession,
+    assertCsrf: (_token, csrf) => { if (csrf !== "csrf-proof") throw new UnauthorizedException(); },
+    requireCapability: () => { throw new UnauthorizedException("role removed"); },
+  });
+  await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"), UnauthorizedException);
+  await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010", "csrf-proof"), UnauthorizedException);
 });
 
 test("open calls list only creator-owned drafts in newest-activity order with workflow details", async () => {
   const queries = [];
   const dataSource = { query: async (sql, parameters) => {
     queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
+    if (sql.includes("purge_expired_synthetic_records")) return [];
     return [
       {
         report_id: "42000000-0000-4000-8000-000000000002", call_number: "CALL-NEW",
@@ -101,11 +121,11 @@ test("open calls list only creator-owned drafts in newest-activity order with wo
     revision: 4, formVersionId: "52000000-0000-4000-8000-000000000002",
     catalogReleaseId: "62000000-0000-4000-8000-000000000002"
   });
-  assert.deepEqual(queries[0].parameters, [ownerSession.organization.id, ownerSession.user.id]);
+  assert.deepEqual(queries[1].parameters, [ownerSession.organization.id, ownerSession.user.id]);
   assert.deepEqual(result.completedReportIds, []);
-  assert.match(queries[0].sql, /r\.documenting_user_id = \$2 and r\.status in \('draft', 'signed'\)/);
-  assert.match(queries[0].sql, /order by r\.updated_at desc/);
-  assert.match(queries[0].sql, /vf\.severity = 'error' and vf\.revision = r\.revision/);
+  assert.match(queries[1].sql, /r\.documenting_user_id = \$2 and r\.status in \('draft', 'signed'\)/);
+  assert.match(queries[1].sql, /order by r\.updated_at desc/);
+  assert.match(queries[1].sql, /vf\.severity = 'error' and vf\.revision = r\.revision/);
 });
 
 test("stationary-completed reports are returned as reconciliation identities, not open calls", async () => {
@@ -336,6 +356,8 @@ test("another clinician cannot read, write, reopen, or replay a queued draft com
     const normalized = sql.replace(/\s+/g, " ");
     queried.push(normalized);
     if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("synthetic_purge_tombstone")) return [{ exists: false }];
+    if (normalized.includes("purge_expired_synthetic_records")) return [];
     if (normalized.includes("from clinical.report")) return [];
     throw new Error(`Ownership must be checked before queued command lookup: ${normalized}`);
   } };
@@ -354,6 +376,30 @@ test("another clinician cannot read, write, reopen, or replay a queued draft com
   await assert.rejects(service.get(ownerSession.accessToken, reportId), NotFoundException);
   await assert.rejects(service.reopen(ownerSession.accessToken, reportId), NotFoundException);
   await assert.rejects(service.save(ownerSession.accessToken, reportId, save), NotFoundException);
+  assert.ok(!queried.some((sql) => sql.includes("clinical.command_receipt")));
+});
+
+test("delayed draft synchronization is permanently rejected after a purge tombstone", async () => {
+  const reportId = "42000000-0000-4000-8000-000000000099";
+  const queried = [];
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    queried.push(normalized);
+    if (normalized.includes("purge_expired_synthetic_records")) return [];
+    if (normalized.includes("pg_advisory_xact_lock")) return [];
+    if (normalized.includes("from clinical.report")) return [];
+    if (normalized.includes("synthetic_purge_tombstone")) return [{ exists: true }];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new DraftReportService(transactional(manager), sessions());
+  await assert.rejects(service.save(ownerSession.accessToken, reportId, {
+    commandId: "72000000-0000-4000-8000-000000000099", expectedRevision: 0,
+    authorId: ownerSession.user.id, deviceId: "offline-device", occurrences: [{
+      id: "72000000-0000-4000-8000-000000000098",
+      elementId: "eScene.01",
+      value: { kind: "text", value: "delayed update" },
+    }],
+  }), GoneException);
   assert.ok(!queried.some((sql) => sql.includes("clinical.command_receipt")));
 });
 

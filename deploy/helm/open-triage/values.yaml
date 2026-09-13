@@ -11,7 +11,6 @@ web:
     limits: { cpu: 250m, memory: 128Mi }
 
 api:
-  installationSettingsBaseline: synthetic-demo
   strategy: Recreate
   image:
     repository: ghcr.io/open-triage/open-triage-api
@@ -42,6 +41,13 @@ analytics:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
   healthResources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 100m, memory: 128Mi }
+
+syntheticExpiry:
+  enabled: true
+  schedule: "* * * * *"
+  resources:
     requests: { cpu: 25m, memory: 64Mi }
     limits: { cpu: 100m, memory: 128Mi }
 

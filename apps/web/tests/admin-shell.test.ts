@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { parseInstallationSettings, type ClinicianSession } from "@open-triage/contracts";
-import production from "@open-triage/contracts/config/installation.production.json";
-import { activateStationaryForm, loadAdminContext, loadCatalogDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { type ClinicianSession } from "@open-triage/contracts";
+import { acceptOwnershipTransfer, activateStationaryForm, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
-import { CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
+import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
+import { catalogAuthority, CatalogCodeListEditor, moveCodeValue } from "../components/catalog-authoring";
 import { addFormElement, FormElementPicker, FormSectionElements, moveFormElement, removeFormElement } from "../components/form-authoring";
-import { affectedFieldNames, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
+import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSection, removeFormSection, StationaryFormAuthoring } from "../components/stationary-form-authoring";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
@@ -19,23 +20,241 @@ const session: ClinicianSession = {
   organization: { id: "organization-id", name: "Example EMS" },
   startedAt: "2026-09-06T12:00:00.000Z",
   expiresAt: "2026-09-06T20:00:00.000Z",
-  capabilities: ["admin-dashboard:read", "clinical:document"]
+  capabilities: ["admin-dashboard:read", "catalog:read", "catalog:write", "catalog:publish",
+    "forms:read", "forms:write", "forms:publish", "clinical:document"]
 };
-const productionSettings = parseInstallationSettings(production);
-const unavailablePanels = [
-  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
-  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
-] as const;
-
-test("Admin panels use one persistent side-tab navigator", () => {
-  const markup = renderToStaticMarkup(createElement(AdminShell, { session, installationSettings: productionSettings }));
+test("Admin navigation waits for server-authorized panels", () => {
+  const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
-  assert.match(markup, />Element catalog<\/button>/);
-  assert.match(markup, />Stationary form<\/button>/);
-  for (const panel of unavailablePanels) assert.match(markup, new RegExp(`>${panel}<\\/button>`));
-  assert.equal((markup.match(/<button type="button"/g) ?? []).length, 14);
-  assert.doesNotMatch(markup, /admin-placeholder-grid/);
+  assert.match(markup, /Loading active configuration/);
+  assert.doesNotMatch(markup, />Users<\/button>|>Roles<\/button>|>Element catalog<\/button>/);
+});
+
+test("read-only directory panels expose accessible discovery controls without mutation actions", () => {
+  const users = renderToStaticMarkup(createElement(UsersPanel));
+  assert.match(users, /role="search"/);
+  assert.match(users, /type="search"/);
+  assert.match(users, />Status<select/);
+  assert.match(users, />Role<select/);
+  assert.doesNotMatch(users, /<button[^>]*>(Create|Edit|Disable|Assign)/);
+  const roles = renderToStaticMarkup(createElement(RolesPanel));
+  assert.match(roles, /id="roles-heading"/);
+  assert.match(roles, />Deactivated<\/option>/);
+  assert.doesNotMatch(roles, /<button[^>]*>(Create|Edit|Delete)/);
+});
+
+test("user writers receive an accessible provisioning form with bounded temporary expiry and complete roles", () => {
+  const users = renderToStaticMarkup(createElement(UsersPanel, { canCreate: true, csrfToken: "csrf" }));
+  assert.match(users, />Create user<\/button>/);
+  assert.match(users, /aria-controls="create-user-form"/);
+  assert.doesNotMatch(users, /name="temporaryPassword"/, "closed form does not expose or retain a password input");
+});
+
+test("provisioning sends the complete credential command with CSRF and consumes a secret-free result", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "POST");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      username: "medic.one", displayName: "Medic One", temporaryPassword: "Temporary password 42!",
+      temporaryPasswordHours: 72, roleIds: ["role-id"], note: "New starter"
+    });
+    return Response.json({ userId: "user-id", username: "medic.one", displayName: "Medic One",
+      roleIds: ["role-id"], temporaryPasswordExpiresAt: "2026-09-14T10:00:00.000Z" });
+  };
+  const created = await provisionAdminUser("csrf-proof", { username: "medic.one", displayName: "Medic One",
+    temporaryPassword: "Temporary password 42!", temporaryPasswordHours: 72,
+    roleIds: ["role-id"], note: "New starter" });
+  assert.equal(created.userId, "user-id");
+  assert.equal("temporaryPassword" in created, false);
+});
+
+test("directory requests encode server-side filters and pagination", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    return Response.json(requests.length === 1 ? { items: [], nextCursor: null, pageSize: 50 } : { items: [] });
+  };
+  await loadAdminUsers({ search: "Alex Smith", state: "disabled", roleId: "role-id", cursor: "opaque", limit: 50 });
+  await loadAdminRoles("all");
+  assert.match(requests[0]!, /users\?search=Alex\+Smith&state=disabled&roleId=role-id&cursor=opaque&limit=50$/);
+  assert.match(requests[1]!, /roles\?state=all$/);
+});
+
+test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
+  const options = [
+    { key: "users:read", description: "View users", administrative: true, systemOnly: false,
+      prerequisites: [], mutable: false },
+    { key: "users:write", description: "Change users", administrative: true, systemOnly: false,
+      prerequisites: ["users:read"], mutable: true }
+  ];
+  assert.deepEqual(roleDraftFindings({ displayName: "Dispatch", description: "", note: "",
+    capabilityKeys: ["users:write"] }, options), ["users:write requires users:read."]);
+  const markup = renderToStaticMarkup(createElement(RolesPanel,
+    { csrfToken: "csrf", capabilities: ["roles:read", "roles:write"] }));
+  assert.match(markup, /Create custom role/);
+});
+
+test("role capabilities render as rows with roles as columns", () => {
+  const roles = [{ id: "clinician", displayName: "Clinician", description: "Documents care", active: true,
+    protected: true, version: 1, assigneeCount: 4,
+    capabilities: [{ key: "clinical:document", description: "Document patient care", administrative: false,
+      systemOnly: false }] },
+  { id: "administrator", displayName: "Administrator", description: null, active: true,
+    protected: true, version: 2, assigneeCount: 1,
+    capabilities: [{ key: "users:read", description: "View users", administrative: true, systemOnly: false }] }];
+  const options = [
+    { key: "clinical:document", description: "Document patient care", administrative: false, systemOnly: false,
+      prerequisites: [], mutable: true },
+    { key: "users:read", description: "View users", administrative: true, systemOnly: false,
+      prerequisites: [], mutable: true }
+  ];
+  const markup = renderToStaticMarkup(createElement(RoleCapabilityMatrix, { roles, capabilityOptions: options,
+    canWrite: false, onHistory: () => undefined, onEdit: () => undefined, onDeactivate: () => undefined,
+    onReactivate: () => undefined }));
+  assert.match(markup, /<caption>Capabilities assigned to each role<\/caption>/);
+  assert.match(markup, /<th scope="col">Capability<\/th><th scope="col"><span class="admin-role-column-heading"[^>]*><strong>Clinician/);
+  assert.match(markup, /<th scope="row"[^>]*><code>clinical:document<\/code>/);
+  assert.match(markup, /title="Document patient care"/);
+  assert.doesNotMatch(markup, /<small>Document patient care<\/small>/);
+  assert.match(markup, /capability-included[^>]*><span class="admin-capability-mark" aria-hidden="true">✓<\/span>/);
+  assert.match(markup, /capability-not-included[^>]*><span class="admin-capability-mark" aria-hidden="true">—<\/span>/);
+  assert.doesNotMatch(markup, />Edit<\/button>|>Deactivate<\/button>/);
+});
+
+test("role mutations send CSRF proof and optimistic version without mutable audit details", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return Response.json({ id: "role-id", displayName: "Dispatch", description: null, active: true,
+      protected: false, version: requests.length, assigneeCount: 0, capabilities: [] });
+  };
+  const definition = { displayName: "Dispatch", description: null, capabilityKeys: ["roles:read"], note: "Reviewed" };
+  await createAdminRole("csrf-proof", definition);
+  await updateAdminRole("csrf-proof", "role-id", { ...definition, expectedVersion: 1 });
+  assert.equal(requests[0]!.init?.method, "POST");
+  assert.equal((requests[0]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.equal(requests[1]!.init?.method, "PUT");
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { ...definition, expectedVersion: 1 });
+  assert.doesNotMatch(String(requests[1]!.init?.body), /password|token|secret/i);
+});
+
+test("user lifecycle updates send the expected revision without accepting a partial role update", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input, init) => {
+    assert.match(String(input), /\/api\/admin\/users\/user-id$/);
+    assert.equal(init?.method, "PUT");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7, username: "renamed.user",
+      displayName: "Renamed User", active: false, note: "Leave" });
+    return Response.json({ id: "user-id", username: "renamed.user", displayName: "Renamed User", active: false,
+      revision: 8, roles: [], restoredRoles: [], sessionsRevoked: 3, freshLoginRequired: true });
+  };
+  const updated = await updateAdminUser("csrf-proof", "user-id", { expectedRevision: 7,
+    username: "renamed.user", displayName: "Renamed User", active: false, note: "Leave" });
+  assert.equal(updated.sessionsRevoked, 3);
+});
+
+test("role lifecycle requests carry version preconditions and read redacted history separately", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    if (String(input).endsWith("/history")) return Response.json({ roleId: "role-id", versions: [], assignments: [], events: [] });
+    return Response.json({ id: "role-id", displayName: "Dispatch", description: null,
+      active: requests.length > 1, protected: false, version: requests.length > 1 ? 4 : 3,
+      assigneeCount: 0, capabilities: [] });
+  };
+  await deactivateAdminRole("csrf-proof", "role-id", 3, "Duty retired");
+  await reactivateAdminRole("csrf-proof", "role-id", { displayName: "Dispatch", description: null,
+    capabilityKeys: ["roles:read"], expectedVersion: 3, note: null });
+  await loadAdminRoleHistory("role-id");
+  assert.match(requests[0]!.input, /roles\/role-id\/deactivate$/);
+  assert.deepEqual(JSON.parse(String(requests[0]!.init?.body)), { expectedVersion: 3, note: "Duty retired" });
+  assert.match(requests[1]!.input, /roles\/role-id\/reactivate$/);
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.equal(requests[2]!.init?.method, undefined);
+});
+
+test("role replacement and protected-action reauthentication use separate revisioned requests", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return requests.length === 1
+      ? Response.json({ reauthenticatedUntil: "2026-09-11T12:05:00.000Z" })
+      : Response.json({ id: "user-id", username: "user", displayName: "User", active: false,
+        revision: 9, roles: [], addedRoles: [], removedRoles: [] });
+  };
+  const assurance = await reauthenticateClinicianSession("current password", "csrf-proof");
+  await replaceAdminUserRoles("csrf-proof", "user-id", { expectedRevision: 8, roleIds: [], note: "Prepare" });
+  assert.equal(assurance.reauthenticatedUntil, "2026-09-11T12:05:00.000Z");
+  assert.match(requests[0]!.input, /\/api\/sessions\/reauthenticate$/);
+  assert.deepEqual(JSON.parse(String(requests[0]!.init?.body)), { currentPassword: "current password" });
+  assert.match(requests[1]!.input, /\/api\/admin\/users\/user-id\/roles$/);
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)),
+    { expectedRevision: 8, roleIds: [], note: "Prepare" });
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+});
+
+test("ownership transfer requests expose pending state and preserve CSRF on every command", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  const state = { owner: { id: "owner-id", displayName: "Owner" }, currentUserIsOwner: true,
+    currentUserIsNominee: false, transfer: null, eligibleNominees: [{ id: "nominee-id", displayName: "Nominee" }] };
+  globalThis.fetch = async (input, init) => { requests.push({ input: String(input), init }); return Response.json(state); };
+  await loadOwnershipTransfer();
+  await initiateOwnershipTransfer("csrf-proof", { nomineeUserId: "nominee-id", note: "Succession" });
+  await acceptOwnershipTransfer("csrf-proof");
+  await cancelOwnershipTransfer("csrf-proof", { note: "Changed plan" });
+  assert.match(requests[0]!.input, /ownership-transfer$/);
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { nomineeUserId: "nominee-id", note: "Succession" });
+  assert.match(requests[2]!.input, /ownership-transfer\/accept$/);
+  assert.equal(requests[3]!.init?.method, "DELETE");
+  for (const request of requests.slice(1)) {
+    assert.equal((request.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  }
+});
+
+test("session and reset requests preserve CSRF, owner confirmation, revision, and secret-free responses", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    if (requests.length === 1) return Response.json({ userId: "user-id", items: [{ id: "session-id",
+      startedAt: "2026-09-11T08:00:00.000Z", lastActivityAt: "2026-09-11T09:00:00.000Z",
+      expiresAt: "2026-09-11T20:00:00.000Z", deviceLabel: "Firefox on Linux", current: true, owner: true }] });
+    if (requests.length === 2) return Response.json({ sessionId: "session-id", revoked: true,
+      alreadyRevoked: false, currentSessionRevoked: true });
+    return Response.json({ userId: "user-id", revision: 8, active: false,
+      temporaryPasswordExpiresAt: "2026-09-12T12:00:00.000Z", sessionsRevoked: 2 });
+  };
+  const viewed = await loadAdminUserSessions("user-id");
+  assert.deepEqual(viewed.items[0], { id: "session-id", startedAt: "2026-09-11T08:00:00.000Z",
+    lastActivityAt: "2026-09-11T09:00:00.000Z", expiresAt: "2026-09-11T20:00:00.000Z",
+    deviceLabel: "Firefox on Linux", current: true, owner: true });
+  assert.doesNotMatch(JSON.stringify(viewed), /source.?ip|geolocation/i);
+  await revokeAdminUserSession("csrf-proof", "user-id", "session-id", true);
+  const reset = await resetAdminUserCredential("csrf-proof", "user-id", { expectedRevision: 7,
+    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 24, note: "Lost device" });
+  assert.equal(requests[1]!.init?.method, "DELETE");
+  assert.deepEqual(JSON.parse(String(requests[1]!.init?.body)), { confirmOwner: true });
+  assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+  assert.deepEqual(JSON.parse(String(requests[2]!.init?.body)), { expectedRevision: 7,
+    temporaryPassword: "Replacement password 84!", temporaryPasswordHours: 24, note: "Lost device" });
+  assert.equal(reset.active, false, "credential reset remains separate from account reactivation");
+  assert.equal("temporaryPassword" in reset, false);
 });
 
 test("Admin context reports direct authorization failures without trusting client claims", async (t) => {
@@ -50,6 +269,7 @@ test("nullable admin draft endpoints accept an empty successful response", async
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response(null, { status: 200 });
   assert.equal(await loadCatalogDraft(), null);
+  assert.equal(await loadActiveCatalogDefinition(), null);
   assert.equal(await loadStationaryFormDraft(), null);
 });
 
@@ -89,6 +309,23 @@ test("accessible move controls reorder values without changing code identity", (
   assert.equal(moveCodeValue(codeList, 0, -1), codeList);
 });
 
+test("Catalog authority requires the complete read-write-publish prerequisite chain", () => {
+  assert.deepEqual(catalogAuthority(["catalog:read"]), { canRead: true, canWrite: false, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:read", "catalog:write"]),
+    { canRead: true, canWrite: true, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:read", "catalog:write", "catalog:publish"]),
+    { canRead: true, canWrite: true, canPublish: true });
+  assert.deepEqual(catalogAuthority(["catalog:write"]), { canRead: false, canWrite: false, canPublish: false });
+  assert.deepEqual(catalogAuthority(["catalog:publish"]), { canRead: false, canWrite: false, canPublish: false });
+});
+
+test("read-only code-list inspection exposes definitions without mutable controls", () => {
+  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
+    { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 9);
+  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
+});
+
 const formDefinition = { schemaVersion: 1 as const, sections: [
   { key: "patient", fields: [
     { key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
@@ -111,7 +348,7 @@ test("section operations preserve canonical content while changing only section 
 
 test("live form section controls expose named keyboard-operable move and removal actions", () => {
   const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
-    csrfToken: "csrf", catalogReleaseId: "catalog-id", installationSettings: productionSettings,
+    csrfToken: "csrf", capabilities: session.capabilities ?? [], catalogReleaseId: "catalog-id",
   }));
   assert.match(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,
@@ -120,6 +357,16 @@ test("live form section controls expose named keyboard-operable move and removal
   assert.match(controls, /aria-label="Move assessment up"/);
   assert.match(controls, /aria-label="Remove patient"/);
   assert.match(controls, /aria-label="Remove assessment"/);
+});
+
+test("Forms authority requires the complete read-write-publish prerequisite chain", () => {
+  assert.deepEqual(formAuthority(["forms:read"]), { canRead: true, canWrite: false, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:read", "forms:write"]),
+    { canRead: true, canWrite: true, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:read", "forms:write", "forms:publish"]),
+    { canRead: true, canWrite: true, canPublish: true });
+  assert.deepEqual(formAuthority(["forms:write"]), { canRead: false, canWrite: false, canPublish: false });
+  assert.deepEqual(formAuthority(["forms:publish"]), { canRead: false, canWrite: false, canPublish: false });
 });
 
 test("draft preview projects only configured sections and fields through Stationary groups", () => {
@@ -183,6 +430,21 @@ test("form saves send section order with the current revision and CSRF proof", a
   assert.equal((await saveStationaryFormDraft("csrf-proof", draft)).revision, 5);
 });
 
+test("form deletion sends the current revision and CSRF proof", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", displayName: "Night Shift Form", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
+    revision: 4, definitionSha256: "a".repeat(64), definition: formDefinition, diagnostics: [],
+    updatedAt: "2026-09-07T01:00:00.000Z" };
+  globalThis.fetch = async (_input, init) => {
+    assert.equal(init?.method, "DELETE");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4 });
+    return new Response(null, { status: 200 });
+  };
+  await deleteStationaryFormDraft("csrf-proof", draft);
+});
+
 test("form review summarizes structure and publication stays separate from activation", async (t) => {
   assert.equal(formStructuralSummary(formDefinition), "2 sections and 3 elements");
   const originalFetch = globalThis.fetch;
@@ -237,6 +499,14 @@ test("form element rows provide keyboard-operable move and confirmed remove cont
   assert.match(markup, /aria-label="Remove ePatient.02"/);
   assert.match(markup, /aria-expanded="true"/);
   assert.match(markup, /<small>Last Name<\/small>/);
+});
+
+test("read-only form inspection exposes the definition without mutation controls", () => {
+  const markup = renderToStaticMarkup(createElement(FormSectionElements,
+    { definition: formDefinition, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
+  assert.match(markup, /ePatient\.02/);
+  assert.doesNotMatch(markup, /Actions for ePatient\.02/);
+  assert.doesNotMatch(markup, /Remove ePatient\.02/);
 });
 
 test("form search sends the searchable query without pagination", async (t) => {

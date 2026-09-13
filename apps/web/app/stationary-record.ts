@@ -45,6 +45,7 @@ export type ConfiguredStationarySection = {
 
 const EMPTY_STATUS: StationarySectionStatus = { errors: 0, warnings: 0, incomplete: 0 };
 const HIDDEN_STATIONARY_SECTION_IDS = new Set(["DemographicGroup", "eCustomConfigurationSection"]);
+const HIDDEN_STATIONARY_ELEMENT_PREFIXES = ["dAgency.", "eCustomConfiguration."] as const;
 const layoutGroups = new Map<string, CompiledStationaryGroup>();
 
 function indexGroup(group: CompiledStationaryGroup): void {
@@ -94,9 +95,15 @@ function presentationText(value: Record<string, unknown> | undefined, key: strin
 
 /** Projects an unsaved form draft onto the same group contracts used by Stationary. */
 export function configuredStationaryPreviewSections(definition: FormDraftDefinition): ReadonlyArray<ConfiguredStationarySection> {
-  return definition.sections.map((section, sectionIndex) => {
+  return definition.sections.flatMap((section, sectionIndex) => {
+    const fields = section.fields.filter((field) => {
+      if (field.source.kind !== "nemsis") return true;
+      const elementId = field.source.elementId;
+      return !HIDDEN_STATIONARY_ELEMENT_PREFIXES.some((prefix) => elementId.startsWith(prefix));
+    });
+    if (!fields.length) return [];
     const pending: Array<{ kind: "inline" | "table"; group: CompiledStationaryGroup; elementIds: string[] }> = [];
-    for (const field of section.fields) {
+    for (const field of fields) {
       if (field.source.kind !== "nemsis") continue;
       const groupId = elementGroups.get(field.source.elementId);
       const root = groupId ? configuredRoot(groupId) : undefined;
@@ -115,14 +122,14 @@ export function configuredStationaryPreviewSections(definition: FormDraftDefinit
       visit(group);
       return ids;
     }));
-    return {
+    return [{
       id: `draft-${sectionIndex}-${section.key}`,
       hash: `stationary-preview-section-${sectionIndex}-${section.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`,
       label: presentationText(section.presentation, "title") ?? section.key,
       blocks,
-      fields: section.fields,
+      fields,
       groupIds,
-    };
+    }];
   });
 }
 

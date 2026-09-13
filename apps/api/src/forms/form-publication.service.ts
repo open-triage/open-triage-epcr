@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException
@@ -20,7 +19,6 @@ import {
   validateCanonicalFormDefinition,
   validatePublishCommand
 } from "./form-publication.validation.js";
-import { configurationPublishingAllowed, READ_ONLY_ADMINISTRATION_MESSAGE } from "../config/installation-settings.js";
 
 type FormVersionRow = {
   id: string;
@@ -36,7 +34,7 @@ type FormVersionRow = {
 type NemsisElementRow = {
   element_id: string;
   element_identity_id: string;
-  analytical_location: "wide" | "repeatable";
+  analytical_location: "wide" | "repeatable" | null;
   permitted_absence_states: string[];
 };
 
@@ -59,7 +57,6 @@ export class FormPublicationService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async publish(formVersionId: string, input: unknown, organizationId?: string): Promise<PublishedFormVersion> {
-    if (!configurationPublishingAllowed()) throw new ForbiddenException(READ_ONLY_ADMINISTRATION_MESSAGE);
     let command: PublishFormVersionCommand;
     try {
       command = validatePublishCommand(input);
@@ -211,7 +208,7 @@ export class FormPublicationService {
                    where o.release_id = e.release_id and o.element_id = e.element_id
                      and o.source_kind in ('not-value', 'pertinent-negative')) as permitted_absence_states
       from catalog.element_definition e
-      join catalog.analytics_element_mapping m
+      left join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
       where e.release_id = $1 and e.element_id = any($2::text[])
     `, [version.catalog_release_id, nemsisIds]);

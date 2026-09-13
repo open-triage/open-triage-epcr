@@ -16,6 +16,7 @@ import {
   nextDraftChange,
   OFFLINE_REPORTS_STORAGE_KEY,
   purgeCompletedOfflineReports,
+  purgeExpiredOfflineReports,
   queueDraftChange,
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
@@ -196,6 +197,31 @@ test("completion purges accepted offline metadata but preserves pending commands
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
   purgeCompletedOfflineReports(storage, [opened.report.id]);
   assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-1");
+});
+
+test("generated report expiry removes its local document and queued work exactly at the boundary", () => {
+  const storage = memoryStorage();
+  const expiring = {
+    ...opened,
+    report: { ...opened.report, expiresAt: "2026-09-04T12:00:00.000Z" },
+  };
+  cacheOpenedReport(storage, session, expiring, "DEMO-51");
+  queueDraftChange(storage, expiring.report.id, command("command-1", 4));
+
+  assert.deepEqual(purgeExpiredOfflineReports(storage, new Date("2026-09-04T11:59:59.999Z")), []);
+  assert.equal(nextDraftChange(storage, expiring.report.id)?.command.commandId, "command-1");
+  assert.deepEqual(purgeExpiredOfflineReports(storage, new Date("2026-09-04T12:00:00.000Z")), [expiring.report.id]);
+  assert.equal(nextDraftChange(storage, expiring.report.id), null);
+  assert.equal(cachedReopenResponse(storage, session.user.id, expiring.report.id), null);
+});
+
+test("expiry cleanup leaves ordinary reports and their offline queues untouched", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-ordinary", 4));
+
+  assert.deepEqual(purgeExpiredOfflineReports(storage, new Date("2099-01-01T00:00:00.000Z")), []);
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-ordinary");
 });
 
 test("the current draft validation count survives open-call server refreshes", () => {

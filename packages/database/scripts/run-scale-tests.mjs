@@ -77,10 +77,52 @@ async function bootstrapProductionDatabase() {
     PATIENT_KEY_VERSION: process.env.PATIENT_KEY_VERSION ?? "1",
     PATIENT_KEY_SECRET_BASE64: process.env.PATIENT_KEY_SECRET_BASE64 ?? Buffer.alloc(32, 0x39).toString("base64")
   };
-  const result = await execFileAsync("npm", ["run", "bootstrap:synthetic", "-w", "@open-triage/database"], {
+  await execFileAsync("npm", ["run", "migrate", "-w", "@open-triage/database"], {
     cwd: repoRoot, env: environment, maxBuffer: 20 * 1024 * 1024
   });
-  return JSON.parse(result.stdout.slice(result.stdout.indexOf("{")));
+  await execFileAsync("npm", ["run", "load:catalog", "-w", "@open-triage/database"], {
+    cwd: repoRoot, env: environment, maxBuffer: 20 * 1024 * 1024
+  });
+  return { status: "ready" };
+}
+
+async function createScaleFixture() {
+  const release = (await client.query(
+    "select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
+  )).rows[0];
+  if (!release) throw new Error("production catalog is unavailable for the scale fixture");
+  const ids = {
+    organization: "39000000-0000-4000-8000-000000000010",
+    user: "39000000-0000-4000-8000-000000000011",
+    agency: "39000000-0000-4000-8000-000000000012",
+    form: "39000000-0000-4000-8000-000000000013",
+    formVersion: "39000000-0000-4000-8000-000000000014",
+    incident: "39000000-0000-4000-8000-000000000015",
+    patient: "39000000-0000-4000-8000-000000000016",
+    report: "39000000-0000-4000-8000-000000000017",
+  };
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Scale fixture', 'UTC')", [ids.organization]);
+  await client.query("insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Scale author')", [ids.user, ids.organization]);
+  await client.query(`insert into app_identity.agency_demographic_version
+    (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
+     definition_sha256, effective_from, created_by)
+    values ($1, $2, $3, 1, 'SCALE', 'SCALE', '00', repeat('a',64), now(), $4)`,
+  [ids.agency, ids.organization, release.id, ids.user]);
+  await client.query("insert into forms.form (id, organization_id, slug, name) values ($1, $2, 'scale', 'Scale form')",
+    [ids.form, ids.organization]);
+  await client.query(`insert into forms.form_version
+    (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+     change_note, created_by, published_by, published_at)
+    values ($1, $2, $3, 1, 'published', '{"schemaVersion":1,"sections":[]}', repeat('b',64),
+      'Scale fixture', $4, $4, now())`, [ids.formVersion, ids.form, release.id, ids.user]);
+  await client.query("insert into clinical.incident (id, organization_id) values ($1, $2)", [ids.incident, ids.organization]);
+  await client.query(`insert into clinical.patient (id, organization_id, identity_state, pseudonymous_key)
+    values ($1, $2, 'unknown', repeat('c',64))`, [ids.patient, ids.organization]);
+  await client.query(`insert into clinical.report
+    (id, organization_id, incident_id, patient_id, agency_demographic_version_id, form_version_id,
+     catalog_release_id, documenting_user_id, synthetic, baseline)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,true,true)`,
+  [ids.report, ids.organization, ids.incident, ids.patient, ids.agency, ids.formVersion, release.id, ids.user]);
 }
 
 async function removeScratchDatabase() {
@@ -229,6 +271,7 @@ try {
   const bootstrap = await elapsed(bootstrapProductionDatabase);
   client = new pg.Client({ connectionString: scratchDatabaseUrl, application_name: "open-triage-scale-validation" });
   await client.connect();
+  await createScaleFixture();
   const environment = (await client.query(`select version() as postgres_version,
     current_setting('server_version') as server_version, current_setting('shared_buffers') as shared_buffers,
     current_setting('work_mem') as work_mem, current_setting('max_connections') as max_connections`)).rows[0];

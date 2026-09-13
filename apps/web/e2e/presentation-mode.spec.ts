@@ -16,6 +16,8 @@ async function signIn(page: Page) {
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
@@ -42,6 +44,8 @@ test("explicit workflow mode survives reload and viewport changes without changi
   await expect(stationary).toHaveAttribute("aria-pressed", "true");
   await expect(visibleCall).toBeVisible();
   await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(stationary).toHaveAttribute("aria-pressed", "true");
 });

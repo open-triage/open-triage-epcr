@@ -68,9 +68,10 @@ export function FormElementPicker({ definition, results, query, targetSection, o
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, busy = false, onChange, onMoveSection, onRequestRemoveSection }: {
+export function FormSectionElements({ definition, busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
   readonly definition: FormDraftDefinition;
   readonly busy?: boolean;
+  readonly readOnly?: boolean;
   readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
   readonly onMoveSection?: (from: number, to: number) => void;
   readonly onRequestRemoveSection?: (index: number) => void;
@@ -100,7 +101,7 @@ export function FormSectionElements({ definition, busy = false, onChange, onMove
           const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : "Custom element";
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? "Unknown catalog element"}</small></span>
-            <div className="form-field-actions" aria-label={`Actions for ${label}`}>
+            {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
               <button type="button" disabled={index === 0} aria-label={`Move ${label} up`} onClick={() =>
                 onChange(moveFormElement(definition, section.key, index, index - 1), `Moved ${label} up.`)}>Move up</button>
               <button type="button" disabled={index === section.fields.length - 1} aria-label={`Move ${label} down`} onClick={() =>
@@ -109,7 +110,7 @@ export function FormSectionElements({ definition, busy = false, onChange, onMove
                 if (window.confirm(`Remove ${label} from ${section.key}?`))
                   onChange(removeFormElement(definition, section.key, field.key), `Removed ${label}.`);
               }}>Remove</button>
-            </div>
+            </div>}
           </li>;
         })}
       </ol>}

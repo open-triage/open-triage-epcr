@@ -46,6 +46,7 @@ type FieldRow = {
   id: string;
   stable_key: string;
   required: boolean;
+  clinically_stored: boolean;
   catalog_element_identity_id: string | null;
   custom_element_definition_id: string | null;
   min_occurs: number | null;
@@ -270,12 +271,15 @@ export class SignReportService {
       return findings;
     }
     const fields = await manager.query<FieldRow[]>(`select ff.id, ff.stable_key, ff.required,
+      (ff.custom_element_definition_id is not null or m.element_id is not null) as clinically_stored,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
       case when e.agency_required is true then 0 else e.min_occurs end as min_occurs,
       e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
         and e.element_identity_id = ff.catalog_element_identity_id
+      left join catalog.analytics_element_mapping m on m.release_id = e.release_id
+        and m.element_id = e.element_id
       where ff.form_version_id = $1 order by ff.stable_key`, [report.form_version_id, report.catalog_release_id]);
     const rules = await manager.query<RuleRow[]>(`select r.target_field_id, f.stable_key as target_key,
       r.rule_kind, r.expression
@@ -301,6 +305,10 @@ export class SignReportService {
         (!item.form_field_id && item.element_identity_id === (field.catalog_element_identity_id ?? field.custom_element_definition_id)))]));
     for (const field of fields) {
       const values = byField.get(field.stable_key)!;
+      // NEMSIS agency/configuration metadata can appear in a complete form for
+      // reference, but it is supplied by the pinned configuration rather than
+      // stored as clinician-authored element occurrences on the report.
+      if (!field.clinically_stored) continue;
       if (field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));

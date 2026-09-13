@@ -28,7 +28,11 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   operationsPolicyConfig, operationsRunbook, recoveryVerifier, replicaVerifier, catalogAuthoringMigration,
   codeListAuthoringMigration, formAuthoringMigration, formActivationMigration,
   reportConfigurationPinMigration, prototypeDeletionMigration, versionDisplayNameMigration,
-  roleAuthorizationMigration] = await Promise.all([
+  roleAuthorizationMigration, installationOwnerMigration, formDraftAuditMigration,
+  temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
+  roleRetirementMigration, sessionAdministrationMigration,
+  portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration,
+  syntheticExpiryMigration, protectedRoleSimplificationMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -54,8 +58,54 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260907030000_preserve_report_configuration_pins.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908141346_prototype_synthetic_draft_deletion.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260908144514_version_display_names.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911213000_form_draft_audit.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260911270000_expire_synthetic_records.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260912120000_simplify_protected_demo_role.sql"), "utf8")
 ]);
+
+test("synthetic expiry is immutable, indexed, concurrency-safe, and retains only anti-replay facts", () => {
+  assert.match(syntheticExpiryMigration, /expires_at = created_at \+ interval '24 hours'/);
+  assert.match(syntheticExpiryMigration, /synthetic assignment provenance and expiry are immutable/);
+  assert.match(syntheticExpiryMigration, /synthetic report provenance and expiry are immutable/);
+  assert.match(syntheticExpiryMigration, /report_synthetic_expiry_idx/);
+  assert.match(syntheticExpiryMigration, /call_assignment_synthetic_expiry_idx/);
+  assert.match(syntheticExpiryMigration, /for update skip locked/);
+  assert.match(syntheticExpiryMigration, /purged report % can never be recreated/);
+  assert.match(syntheticExpiryMigration, /clinical_audit\.synthetic_purge_tombstone/);
+  const tombstone = syntheticExpiryMigration.match(/create table clinical_audit\.synthetic_purge_tombstone \(([\s\S]*?)\n\);/)?.[1] ?? "";
+  assert.doesNotMatch(tombstone, /patient|payload|value|document|name|address|actor/i);
+});
+
+test("synthetic generation has a per-user/unit unopened invariant and append-only safe audit facts", () => {
+  assert.match(syntheticGenerationMigration, /synthetic_generated_by uuid/);
+  assert.match(syntheticGenerationMigration,
+    /unique index call_assignment_one_generated_unopened_per_user_unit_idx[\s\S]*status = 'assigned'/);
+  assert.match(syntheticGenerationMigration, /synthetic_generated_by is null or synthetic/);
+  assert.match(syntheticGenerationMigration, /call_assignment_synthetic_generator_immutable/);
+  assert.match(syntheticGenerationMigration, /create table clinical_audit\.synthetic_generation_event/);
+  assert.match(syntheticGenerationMigration, /synthetic_generation_event_append_only/);
+  assert.doesNotMatch(syntheticGenerationMigration, /patient|source_payload|password|token|csrf/i);
+  assert.match(syntheticGenerationMigration, /revoke all on clinical_audit\.synthetic_generation_event from public/);
+});
+
+test("synthetic draft actions retain append-only redacted audit after report deletion", () => {
+  assert.match(syntheticDraftMutationMigration, /create table clinical_audit\.synthetic_draft_mutation_event/);
+  assert.match(syntheticDraftMutationMigration, /report_id uuid not null/);
+  assert.doesNotMatch(syntheticDraftMutationMigration, /report_id uuid[^;]*references clinical\.report/);
+  assert.match(syntheticDraftMutationMigration, /synthetic_draft_mutation_event_append_only/);
+  assert.match(syntheticDraftMutationMigration, /revoke all on clinical_audit\.synthetic_draft_mutation_event from public/);
+  assert.doesNotMatch(syntheticDraftMutationMigration, /patient_id|source_payload|clinical_value|details jsonb/i);
+});
 
 test("authorization uses a fixed capability registry and current immutable role versions", () => {
   for (const capability of [
@@ -72,16 +122,23 @@ test("authorization uses a fixed capability registry and current immutable role 
   assert.match(roleAuthorizationMigration, /capability_fixed_registry/);
 });
 
-test("protected roles are explicit, immutable, and keep Reviewer hidden and unassignable", () => {
-  for (const role of ["clinician", "administrator", "configuration-author", "clinical-demo", "reviewer"]) {
-    assert.ok(roleAuthorizationMigration.includes(`'${role}'`), `missing protected role ${role}`);
+test("the three protected roles are explicit and immutable", () => {
+  for (const role of ["clinician", "administrator", "demo"]) {
+    assert.ok(protectedRoleSimplificationMigration.includes(`'${role}'`), `missing protected role ${role}`);
   }
-  assert.match(roleAuthorizationMigration, /'reviewer', 'Reviewer', true, false, array\[\]::text\[\]/);
+  assert.match(protectedRoleSimplificationMigration,
+    /system_key in \('configuration-author', 'reviewer'\)/);
+  const demoDefinition = protectedRoleSimplificationMigration.match(
+    /'demo', 'Demo', false, true, array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
+  for (const capability of ["catalog:write", "clinical:demo", "clinical:document", "forms:write"]) {
+    assert.ok(demoDefinition.includes(`'${capability}'`), `Demo is missing ${capability}`);
+  }
   assert.match(roleAuthorizationMigration, /protected_role_immutable/);
   assert.match(roleAuthorizationMigration, /user_role_assignment_valid/);
   assert.match(roleAuthorizationMigration, /protected role % requires its exact capability set/);
-  assert.doesNotMatch(roleAuthorizationMigration,
-    /'administrator'[\s\S]{0,500}'clinical:document'/,
+  const administratorDefinition = protectedRoleSimplificationMigration.match(
+    /when 'administrator' then array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
+  assert.doesNotMatch(administratorDefinition, /clinical:document/,
     "Administrator must not silently inherit clinical access");
 });
 
@@ -94,6 +151,103 @@ test("role constraints cover organizations, prerequisites, audit redaction, and 
   assert.match(roleAuthorizationMigration, /authorization_event_append_only/);
   assert.match(roleAuthorizationMigration, /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
   assert.match(roleAuthorizationMigration, /role\.version_activate/);
+});
+
+test("ownership transfers are unique, expiring, eligibility-bound, and append-only", async () => {
+  const migration = await readFile(path.join(repoRoot,
+    "supabase/migrations/20260911260000_ownership_transfer_nominations.sql"), "utf8");
+  assert.match(migration, /ownership_transfer_one_pending_idx[\s\S]*where status = 'pending'/);
+  assert.match(migration, /expires_at = initiated_at \+ interval '72 hours'/);
+  assert.match(migration, /ownership_transfer_user_eligibility/);
+  assert.match(migration, /ownership_transfer_administrator_eligibility/);
+  assert.match(migration, /ownership_transfer_event_append_only/);
+  for (const action of ["initiate", "accept", "cancel", "expire", "ineligible", "stale_assurance", "conflict"]) {
+    assert.match(migration, new RegExp(`owner\\.transfer\\.${action}`));
+  }
+});
+
+test("custom role authoring normalizes identities and audits the first immutable activation", () => {
+  assert.match(customRoleAuthoringMigration, /role_display_name_normalized/);
+  assert.match(customRoleAuthoringMigration, /normalize\(btrim\(display_name\), NFC\)/);
+  assert.match(customRoleAuthoringMigration, /protected_role_identity_not_shadowed/);
+  assert.match(customRoleAuthoringMigration,
+    /role_initial_version_activation_audit[\s\S]*deferrable initially deferred/);
+  assert.match(customRoleAuthoringMigration,
+    /jsonb_build_object\('roleId', new\.id, 'priorVersionId', null,[\s\S]*'version', selected_version\.version\)/);
+  assert.doesNotMatch(customRoleAuthoringMigration, /jsonb_build_object\([^)]*(display_name|description)/);
+});
+
+test("role retirement retains immutable definitions and assignment intervals with redacted lifecycle audit", () => {
+  assert.match(roleRetirementMigration, /add column display_name text[\s\S]*role_version_display_name_normalized/);
+  assert.match(roleRetirementMigration, /role_assignment_interval_immutable/);
+  assert.match(roleRetirementMigration, /role_retirement_closes_assignments[\s\S]*deferrable initially deferred/);
+  assert.match(roleRetirementMigration, /custom_role_active_assignable/);
+  assert.match(roleRetirementMigration, /'role\.deactivate', 'role\.reactivate'/);
+  assert.doesNotMatch(roleRetirementMigration, /password|password_verifier|token|csrf|secret|recovery_value/i);
+});
+
+test("portable role-package operations have redacted authorization audit actions", () => {
+  assert.match(portableRolePackageMigration, /role\.package_export/);
+  assert.match(portableRolePackageMigration, /role\.package_preview/);
+  assert.match(portableRolePackageMigration, /role\.package_import/);
+  assert.match(portableRolePackageMigration, /target_type in \([^)]*'role_package'/s);
+  assert.doesNotMatch(portableRolePackageMigration,
+    /display_name|description|capability_key|user_id|assignment_id|password|credential|session|token|secret/i);
+});
+
+test("installation ownership is singular, durable, least-privilege, and gates role authority", () => {
+  assert.match(installationOwnerMigration,
+    /create table app_identity\.installation_owner[\s\S]*organization_id uuid primary key/);
+  assert.match(installationOwnerMigration, /installation_owner_not_deleted/);
+  assert.match(installationOwnerMigration, /active_owner_user_protected/);
+  assert.match(installationOwnerMigration, /owner_local_credential_protected/);
+  assert.match(installationOwnerMigration, /owner_administrator_assignment_protected/);
+  assert.match(installationOwnerMigration,
+    /create or replace function app_identity\.user_has_capability[\s\S]*app_identity\.installation_owner/);
+  assert.match(installationOwnerMigration,
+    /create table app_identity\.operator_identity_event[\s\S]*operator_id text not null[\s\S]*os_account text not null[\s\S]*host text not null/);
+  assert.match(installationOwnerMigration, /operator_identity_event_append_only/);
+  assert.match(installationOwnerMigration,
+    /password\|password_verifier\|token\|csrf\|secret\|recovery_value/);
+});
+
+test("current ownership grants intrinsic full authority without active role assignments", async () => {
+  const migration = await readFile(path.join(repoRoot,
+    "supabase/migrations/20260913143000_owner_intrinsic_authority.sql"), "utf8");
+  assert.match(migration, /drop trigger owner_administrator_assignment_protected/);
+  assert.match(migration, /update app_identity\.user_role_assignment[\s\S]*ended_at = now\(\)/);
+  assert.match(migration, /from app_identity\.capability capability/);
+  assert.match(migration, /app_identity\.installation_owner owner_record/);
+  assert.match(migration, /installation owner must be an active user in the organization/);
+});
+
+test("temporary credentials have a bounded expiry and credential-free audit storage", () => {
+  assert.match(temporaryCredentialMigration, /temporary_password_expires_at timestamptz/);
+  assert.match(temporaryCredentialMigration, /local_credential_temporary_expiry_check/);
+  assert.match(temporaryCredentialMigration, /must_change_password and temporary_password_expires_at is not null/);
+  assert.match(temporaryCredentialMigration, /add column note text/);
+  assert.doesNotMatch(temporaryCredentialMigration, /password_verifier[),]/,
+    "the provisioning migration must not copy password verifiers into audit storage");
+});
+
+test("user lifecycle revisions reserve historical usernames and extend append-only safe audit actions", () => {
+  assert.match(userLifecycleMigration, /add column revision bigint not null default 1/);
+  assert.match(userLifecycleMigration, /create table app_identity\.username_reservation/);
+  assert.match(userLifecycleMigration, /insert into app_identity\.username_reservation[\s\S]*app_identity\.local_credential/);
+  assert.match(userLifecycleMigration, /local_credential_reserved_username_fkey[\s\S]*deferrable initially deferred/);
+  assert.match(userLifecycleMigration, /local_credential_username_reserved/);
+  assert.match(userLifecycleMigration, /username_reservation_append_only/);
+  assert.match(userLifecycleMigration, /'account\.disable', 'account\.reactivate', 'account\.roles_change'/);
+  assert.match(userLifecycleMigration, /revoke all on app_identity\.username_reservation from public/);
+});
+
+test("session administration stores only bounded activity and coarse-device metadata", () => {
+  assert.match(sessionAdministrationMigration, /last_activity_at timestamptz/);
+  assert.match(sessionAdministrationMigration, /device_label text not null/);
+  assert.match(sessionAdministrationMigration, /app_session_active_user_activity_idx/);
+  assert.match(sessionAdministrationMigration, /authentication\.session_revoke/);
+  assert.match(sessionAdministrationMigration, /authentication\.reauthenticate/);
+  assert.doesNotMatch(sessionAdministrationMigration, /add column (source_ip|geolocation|user_agent)/i);
 });
 
 test("catalog authoring separates optimistic drafts from sealed immutable projections", () => {
@@ -129,6 +283,12 @@ test("form publication and agency activation are separate, pinned, and append-on
   assert.match(formActivationMigration, /'form\.publish', 'form\.activate'/);
   assert.match(formActivationMigration, /previous_form_version_id/);
   assert.match(formActivationMigration, /configuration_event_append_only/);
+});
+
+test("form draft mutations remain audited after the draft is deleted", () => {
+  assert.match(formDraftAuditMigration, /'form\.draft_create', 'form\.draft_save', 'form\.draft_delete'/);
+  assert.match(formDraftAuditMigration, /alter column form_version_id drop not null/);
+  assert.doesNotMatch(formDraftAuditMigration, /on delete set null/);
 });
 
 test("reports retain immutable, tenant-matched published configuration pins", () => {

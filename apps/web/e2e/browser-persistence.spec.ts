@@ -77,6 +77,8 @@ test("a persistent browser profile recovers only its clinician's open work after
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());
     await page.reload();
+    await page.getByLabel("Username").fill("demo");
+    await page.getByLabel("Password").fill("opentriagedemo");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.getByRole("button", { name: "Open call", exact: true }).click();
     await expect(page.locator(".sync-status")).toHaveText("Saving");
@@ -124,7 +126,7 @@ test("a persistent browser profile recovers only its clinician's open work after
     await expect(recoveredCard).toContainText("Pending sync");
 
     await page.getByRole("button", { name: "Log out" }).click();
-    await expect(page.getByRole("heading", { name: "Sign in for your shift" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
     const retainedAfterLogout = await page.evaluate(({ metadataKey, expectedReportId }) => ({
@@ -151,6 +153,8 @@ test("a persistent browser profile recovers only its clinician's open work after
     await expect(page.getByRole("button", { name: "Reopen call" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Log out" }).click();
+    await page.getByLabel("Username").fill("demo");
+    await page.getByLabel("Password").fill("opentriagedemo");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(recoveredCard).toContainText(assignedCall.callNumber);
     await recoveredCard.getByRole("button", { name: "Reopen call" }).click();

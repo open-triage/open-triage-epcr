@@ -1,4 +1,4 @@
-import type { ChangePasswordCommand, CreateClinicianSessionCommand } from "@open-triage/contracts";
+import type { ChangePasswordCommand, CreateClinicianSessionCommand, ReauthenticateCommand } from "@open-triage/contracts";
 import { BadRequestException } from "@nestjs/common";
 
 export function validateCreateClinicianSession(input: unknown): CreateClinicianSessionCommand {
@@ -12,6 +12,18 @@ export function validateCreateClinicianSession(input: unknown): CreateClinicianS
   }
 
   return { username: username.trim(), password };
+}
+
+export function validateReauthenticate(input: unknown): ReauthenticateCommand {
+  if (!input || typeof input !== "object" || Array.isArray(input) ||
+      Object.keys(input).some((key) => key !== "currentPassword")) {
+    throw new BadRequestException("The current password is required");
+  }
+  const { currentPassword } = input as Record<string, unknown>;
+  if (typeof currentPassword !== "string" || !currentPassword || currentPassword.length > 1024) {
+    throw new BadRequestException("The current password is required");
+  }
+  return { currentPassword };
 }
 
 export function validateChangePassword(input: unknown): ChangePasswordCommand {

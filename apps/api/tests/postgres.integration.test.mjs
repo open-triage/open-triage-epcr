@@ -7,7 +7,8 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
-import { UnauthorizedException } from "@nestjs/common";
+import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -19,6 +20,11 @@ import {
 } from "../dist/sessions/clinician-session.service.js";
 import { AccountService } from "../dist/identity/account.service.js";
 import { AdminService } from "../dist/admin/admin.service.js";
+import { UserProvisioningService } from "../dist/admin/user-provisioning.service.js";
+import { UserLifecycleService } from "../dist/admin/user-lifecycle.service.js";
+import { SessionAdministrationService } from "../dist/admin/session-administration.service.js";
+import { RolePackageService } from "../dist/admin/role-package.service.js";
+import { OwnershipTransferService } from "../dist/admin/ownership-transfer.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
@@ -94,6 +100,93 @@ async function ensureFoundation(client) {
     );
     await client.query(migration);
   }
+  const roleAuthorization = await client.query("select to_regclass('app_identity.role') as role");
+  if (!roleAuthorization.rows[0].role) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911164417_role_resolved_authorization.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const installationOwner = await client.query("select to_regclass('app_identity.installation_owner') as owner");
+  if (!installationOwner.rows[0].owner) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911171505_single_installation_owner.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const temporaryCredentialExpiry = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='local_credential'
+      and column_name='temporary_password_expires_at'`);
+  if (!temporaryCredentialExpiry.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911180000_expiring_temporary_credentials.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const userLifecycleRevision = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_user' and column_name='revision'`);
+  if (!userLifecycleRevision.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911220000_safe_user_lifecycle.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const customRoleAuthoring = await client.query(
+    "select to_regprocedure('app_identity.prevent_protected_role_shadow()') as validator"
+  );
+  if (!customRoleAuthoring.rows[0].validator) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911200000_custom_role_authoring.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const roleVersionPresentation = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='role_version' and column_name='display_name'`);
+  if (!roleVersionPresentation.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911230000_role_retirement_history.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const recentReauthentication = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_session' and column_name='reauthenticated_at'`);
+  if (!recentReauthentication.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911231000_role_assignment_reauthentication.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const sessionActivity = await client.query(`select 1 from information_schema.columns
+    where table_schema='app_identity' and table_name='app_session' and column_name='last_activity_at'`);
+  if (!sessionActivity.rows[0]) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911240000_session_administration.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const portableRoleActions = await client.query(`select pg_get_constraintdef(oid) definition
+    from pg_constraint where conname = 'authorization_event_action_check'
+      and conrelid = 'app_identity.authorization_event'::regclass`);
+  if (!portableRoleActions.rows[0]?.definition.includes("role.package_import")) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911250000_portable_role_packages.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  const ownershipTransfer = await client.query("select to_regclass('app_identity.ownership_transfer') as transfer");
+  if (!ownershipTransfer.rows[0].transfer) {
+    const migration = await readFile(
+      path.join(repoRoot, "supabase/migrations/20260911260000_ownership_transfer_nominations.sql"), "utf8"
+    );
+    await client.query(migration);
+  }
+  await client.query(`alter table app_identity.authentication_event drop constraint authentication_event_action_check,
+    add constraint authentication_event_action_check check (action in (
+      'account.provision', 'account.reset_password', 'account.identity_change', 'account.disable',
+      'account.reactivate', 'account.roles_change', 'authentication.sign_in',
+      'authentication.password_change', 'authentication.reauthenticate', 'authentication.sign_out',
+      'authentication.session_revoke'
+    ))`);
   const release = await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
   if (!release.rows[0]) {
     await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/load-nemsis-catalog.mjs")], {
@@ -107,7 +200,8 @@ function singleClientDataSource(client) {
   return {
     manager,
     query: manager.query,
-    transaction: async (work) => {
+    transaction: async (isolationOrWork, optionalWork) => {
+      const work = optionalWork ?? isolationOrWork;
       await client.query("begin");
       try {
         const result = await work(manager);
@@ -121,6 +215,79 @@ function singleClientDataSource(client) {
   };
 }
 
+async function ensureSyntheticOwner(client) {
+  const existing = await client.query(
+    "select user_id from app_identity.installation_owner where organization_id = $1",
+    [SYNTHETIC_DEMO_FIXTURE.organizationId]
+  );
+  if (existing.rows[0]) return existing.rows[0].user_id;
+  const owner = await new AccountService(singleClientDataSource(client)).bootstrapOwner({
+    organizationId: SYNTHETIC_DEMO_FIXTURE.organizationId,
+    username: `integration.synthetic.owner.${randomUUID()}`,
+    displayName: "Synthetic integration owner",
+    temporaryPassword: "Temporary!Synthetic-Owner-253",
+    clinician: false,
+    operator: { operatorId: "integration-synthetic-setup", osAccount: "test", host: "localhost" }
+  });
+  return owner.userId;
+}
+
+integrationTest("portable role packages round-trip atomically with immediate authority and preserved assignments", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Portable roles', 'UTC')",
+    [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `portable.owner.${randomUUID()}`,
+    displayName: "Portable Owner", clinician: false, temporaryPassword: "Temporary!Portable-Owner-253",
+    operator: { operatorId: "integration-portable-owner", osAccount: "test", host: "localhost" } });
+  const temporary = await sessions.create({ username: owner.username, password: "Temporary!Portable-Owner-253" });
+  const active = await sessions.changePassword(temporary.sessionToken, {
+    currentPassword: "Temporary!Portable-Owner-253", newPassword: "Permanent!Portable-Owner-253",
+    csrfToken: temporary.session.csrfToken
+  });
+  await sessions.reauthenticate(active.sessionToken, active.session.csrfToken, "Permanent!Portable-Owner-253");
+  const packages = new RolePackageService(database, sessions);
+  const roleId = randomUUID();
+  const firstVersionId = randomUUID();
+  const secondVersionId = randomUUID();
+  const firstPackage = { schema: "open-triage.custom-roles", schemaVersion: "1.0.0", roles: [{
+    id: roleId, currentVersionId: firstVersionId, versions: [{ id: firstVersionId, version: 1,
+      displayName: "Portable Dispatch", description: null, capabilityKeys: ["users:read"] }] }] };
+  assert.equal((await packages.import(active.sessionToken, firstPackage)).createdRoleCount, 1);
+  const assigneeId = randomUUID();
+  await client.query(`insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, 'Portable assignee')`,
+    [assigneeId, organizationId]);
+  await client.query(`insert into app_identity.user_role_assignment
+    (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $4)`,
+  [organizationId, assigneeId, roleId, owner.userId]);
+  const secondPackage = { ...firstPackage, roles: [{ ...firstPackage.roles[0], currentVersionId: secondVersionId,
+    versions: [...firstPackage.roles[0].versions, { id: secondVersionId, version: 2,
+      displayName: "Portable Dispatch", description: "Portable update",
+      capabilityKeys: ["users:read", "users:write"] }] }] };
+  const preview = await packages.preview(active.sessionToken, secondPackage);
+  assert.deepEqual(preview.capabilityChanges, [{ roleId, added: ["users:write"], removed: [], affectedAssigneeCount: 1 }]);
+  await packages.import(active.sessionToken, secondPackage);
+  assert.equal((await client.query(`select count(*)::integer count from app_identity.user_role_assignment
+    where organization_id = $1 and user_id = $2 and role_id = $3 and ended_at is null`,
+  [organizationId, assigneeId, roleId])).rows[0].count, 1);
+  assert.equal((await client.query(
+    "select app_identity.user_has_capability($1, $2, 'users:write') allowed", [assigneeId, organizationId]
+  )).rows[0].allowed, true);
+  const exported = await packages.export(active.sessionToken);
+  assert.deepEqual(exported.roles.find(({ id }) => id === roleId), secondPackage.roles[0]);
+  assert.equal((await packages.preview(active.sessionToken, exported)).unchangedRoleCount, exported.roles.length);
+  const audits = await client.query(`select action, details from app_identity.authorization_event
+    where organization_id = $1 and action like 'role.package_%' order by id`, [organizationId]);
+  assert.ok(audits.rows.some(({ action }) => action === "role.package_import"));
+  assert.doesNotMatch(JSON.stringify(audits.rows), /Portable Dispatch|Portable update|users:write|assigneeId/i);
+});
+
 integrationTest("provisioned local accounts require password replacement and use durable revocable sessions", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
@@ -132,16 +299,41 @@ integrationTest("provisioned local accounts require password replacement and use
   const organizationId = randomUUID();
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Local identity', 'UTC')", [organizationId]);
 
-  const provisioned = await accounts.provision({
+  const installationOwner = await accounts.bootstrapOwner({
     organizationId, username: `owner.${randomUUID()}`, displayName: "Installation Owner",
-    role: "owner", temporaryPassword: "Temporary!Password-253"
+    clinician: false, temporaryPassword: "Temporary!Password-253",
+    operator: { operatorId: "integration-owner-bootstrap", osAccount: "test", host: "localhost" }
   });
+  const ownerTemporary = await sessions.create({ username: installationOwner.username, password: "Temporary!Password-253" });
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Password-253", newPassword: "Permanent!Owner-Password-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  });
+  const administratorRole = await client.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'administrator'", [organizationId]
+  );
+  const provisioningNow = new Date();
+  await sessions.reauthenticate(ownerSession.sessionToken, ownerSession.session.csrfToken,
+    "Permanent!Owner-Password-253", provisioningNow);
+  const provisioned = await new UserProvisioningService(database, sessions).provision(ownerSession.sessionToken, {
+    username: `admin.${randomUUID()}`, displayName: "Recoverable Administrator",
+    roleIds: [administratorRole.rows[0].id], temporaryPassword: "Temporary!Password-253",
+    temporaryPasswordHours: 1, note: "Integration provisioning"
+  }, provisioningNow);
   const credential = await client.query(
-    "select username, password_verifier, must_change_password from app_identity.local_credential where user_id = $1",
+    "select username, password_verifier, must_change_password, temporary_password_expires_at from app_identity.local_credential where user_id = $1",
     [provisioned.userId]
   );
   assert.equal(credential.rows[0].must_change_password, true);
   assert.doesNotMatch(credential.rows[0].password_verifier, /Temporary!Password-253/);
+  assert.equal(new Date(credential.rows[0].temporary_password_expires_at).toISOString(),
+    new Date(provisioningNow.getTime() + 60 * 60 * 1_000).toISOString());
+
+  const beforeExpiry = new Date(credential.rows[0].temporary_password_expires_at.getTime() - 1);
+  const boundarySession = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" }, beforeExpiry);
+  assert.equal(boundarySession.session.expiresAt, credential.rows[0].temporary_password_expires_at.toISOString());
+  await assert.rejects(sessions.create({ username: provisioned.username, password: "Temporary!Password-253" },
+    credential.rows[0].temporary_password_expires_at), UnauthorizedException);
 
   const limited = await sessions.create({ username: provisioned.username, password: "Temporary!Password-253" });
   assert.equal(limited.session.passwordChangeRequired, true);
@@ -164,10 +356,14 @@ integrationTest("provisioned local accounts require password replacement and use
 
   const beforeReset = await sessions.create({ username: provisioned.username, password: "Permanent!Password-253" });
   await assert.rejects(sessions.create({ username: provisioned.username, password: "wrong password value" }), UnauthorizedException);
-  await accounts.resetPassword(provisioned.username, "Reset!Temporary-Password-253");
+  await accounts.resetUserPassword(provisioned.userId, "Reset!Temporary-Password-253",
+    { operatorId: "integration-user-recovery", osAccount: "test", host: "localhost" });
   await assert.rejects(sessions.get(beforeReset.sessionToken), UnauthorizedException);
   const reset = await sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" });
   assert.equal(reset.session.passwordChangeRequired, true);
+  assert.deepEqual(await accounts.resetOwnerPassword(organizationId, "Reset!Owner-Password-253",
+    { operatorId: "integration-owner-recovery", osAccount: "test", host: "localhost" }),
+  { organizationId, userId: installationOwner.userId });
   await client.query("update app_identity.app_user set active = false, deactivated_at = now() where id = $1", [provisioned.userId]);
   await assert.rejects(sessions.get(reset.sessionToken, new Date(), true), UnauthorizedException);
   await assert.rejects(sessions.create({ username: provisioned.username, password: "Reset!Temporary-Password-253" }), UnauthorizedException);
@@ -179,7 +375,280 @@ integrationTest("provisioned local accounts require password replacement and use
   assert.ok(audit.rows.some(({ action, result }) => action === "authentication.password_change" && result === "succeeded"));
   assert.ok(audit.rows.some(({ action }) => action === "account.reset_password"));
   assert.ok(audit.rows.every(({ details }) => !/Password-253|token|csrf/i.test(details)));
+  const operatorAudit = await client.query(`select command,target_organization_id,target_user_id,
+    operator_id,os_account,host,result from app_identity.operator_identity_event
+    where target_organization_id = $1 order by id`, [organizationId]);
+  assert.ok(operatorAudit.rows.some((event) => event.command === "user.reset_password"
+    && event.target_user_id === provisioned.userId && event.operator_id === "integration-user-recovery"
+    && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
+  assert.ok(operatorAudit.rows.some((event) => event.command === "owner.reset_password"
+    && event.target_user_id === installationOwner.userId && event.operator_id === "integration-owner-recovery"
+    && event.os_account === "test" && event.host === "localhost" && event.result === "succeeded"));
+  assert.doesNotMatch(JSON.stringify(operatorAudit.rows), /Reset!|password_verifier|token|csrf|secret/i);
   await assert.rejects(client.query("update app_identity.authentication_event set result = 'failed' where target_user_id = $1", [provisioned.userId]));
+});
+
+integrationTest("session administration identifies current devices, contains individual sessions, and resets stale access", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const administration = new SessionAdministrationService(database, sessions);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Session administration', 'UTC')", [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
+    displayName: "Session Owner", clinician: false, temporaryPassword: "Temporary!Owner-Password-253",
+    operator: { operatorId: "session-integration", osAccount: "test", host: "localhost" } });
+  const ownerTemporary = await sessions.create({ username: owner.username, password: "Temporary!Owner-Password-253" },
+    new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Password-253", newPassword: "Permanent!Owner-Password-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  }, new Date(), "Mozilla/5.0 (Windows NT 10.0) Chrome/142.0.1.9");
+  const ownerView = await administration.list(ownerSession.sessionToken, owner.userId);
+  assert.equal(ownerView.items.length, 1);
+  assert.equal(ownerView.items[0].current, true);
+  assert.equal(ownerView.items[0].deviceLabel, "Chrome on Windows");
+  assert.equal("sourceIp" in ownerView.items[0] || "geolocation" in ownerView.items[0], false);
+  await assert.rejects(administration.revoke(ownerSession.sessionToken, owner.userId, ownerView.items[0].id, {}),
+    ConflictException);
+
+  const clinicianRole = await client.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
+  );
+  const target = await new UserProvisioningService(database, sessions).provision(ownerSession.sessionToken, {
+    username: `medic.${randomUUID()}`, displayName: "Session Medic", roleIds: [clinicianRole.rows[0].id],
+    temporaryPassword: "Temporary!Medic-Password-253", temporaryPasswordHours: 72
+  });
+  const targetTemporary = await sessions.create({ username: target.username, password: "Temporary!Medic-Password-253" },
+    new Date(), "Mozilla/5.0 (X11; Linux x86_64) Firefox/145.0");
+  const firstTargetSession = await sessions.changePassword(targetTemporary.sessionToken, {
+    currentPassword: "Temporary!Medic-Password-253", newPassword: "Permanent!Medic-Password-253",
+    csrfToken: targetTemporary.session.csrfToken
+  }, new Date(), "Mozilla/5.0 (X11; Linux x86_64) Firefox/145.0");
+  const secondTargetSession = await sessions.create({ username: target.username, password: "Permanent!Medic-Password-253" },
+    new Date(), "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1) AppleWebKit Safari/604.1");
+  const targetView = await administration.list(ownerSession.sessionToken, target.userId);
+  assert.equal(targetView.items.length, 2);
+  assert.ok(targetView.items.every(({ current }) => !current));
+  assert.deepEqual(new Set(targetView.items.map(({ deviceLabel }) => deviceLabel)),
+    new Set(["Firefox on Linux", "Safari on iOS"]));
+
+  const contained = await administration.revoke(ownerSession.sessionToken, target.userId, targetView.items[0].id, {});
+  assert.equal(contained.alreadyRevoked, false);
+  assert.equal((await administration.revoke(ownerSession.sessionToken, target.userId, targetView.items[0].id, {})).alreadyRevoked, true);
+  const reset = await administration.resetCredential(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 1, temporaryPassword: "Reset!Medic-Password-253", temporaryPasswordHours: 24
+  });
+  assert.equal(reset.revision, 2);
+  assert.equal(reset.active, true);
+  assert.equal(reset.sessionsRevoked, 1);
+  await assert.rejects(sessions.get(firstTargetSession.sessionToken), UnauthorizedException);
+  await assert.rejects(sessions.get(secondTargetSession.sessionToken), UnauthorizedException);
+  assert.equal((await sessions.create({ username: target.username,
+    password: "Reset!Medic-Password-253" })).session.passwordChangeRequired, true);
+
+  const audits = await client.query(`select action, details::text from app_identity.authentication_event
+    where target_user_id = $1 and action in ('authentication.session_revoke', 'account.reset_password') order by id`,
+  [target.userId]);
+  assert.deepEqual(audits.rows.map(({ action }) => action), ["authentication.session_revoke", "account.reset_password"]);
+  assert.doesNotMatch(JSON.stringify(audits.rows), /password_verifier|token_sha256|csrf_sha256|source.?ip|geolocation|patient|Reset!Medic/i);
+});
+
+integrationTest("user lifecycle is atomic, permanently reserves names, revokes sessions, preserves credentials, and rejects stale concurrent writes", async (t) => {
+  const firstClient = new pg.Client({ connectionString: databaseUrl });
+  const secondClient = new pg.Client({ connectionString: databaseUrl });
+  await Promise.all([firstClient.connect(), secondClient.connect()]);
+  t.after(() => Promise.all([firstClient.end(), secondClient.end()]));
+  await ensureFoundation(firstClient);
+  const firstDatabase = singleClientDataSource(firstClient);
+  const secondDatabase = singleClientDataSource(secondClient);
+  const accounts = new AccountService(firstDatabase);
+  const ownerSessions = new ClinicianSessionService(firstDatabase);
+  const organizationId = randomUUID();
+  await firstClient.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Lifecycle', 'UTC')", [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `lifecycle.owner.${randomUUID()}`,
+    displayName: "Lifecycle Owner", clinician: false, temporaryPassword: "Temporary!Owner-Lifecycle-253",
+    operator: { operatorId: "integration-lifecycle-owner", osAccount: "test", host: "localhost" } });
+  const ownerTemporary = await ownerSessions.create({ username: owner.username, password: "Temporary!Owner-Lifecycle-253" });
+  const ownerSession = await ownerSessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Lifecycle-253", newPassword: "Permanent!Owner-Lifecycle-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  });
+  const clinicianRole = (await firstClient.query(
+    "select id from app_identity.role where organization_id = $1 and system_key = 'clinician'", [organizationId]
+  )).rows[0].id;
+  const originalUsername = `lifecycle.user.${randomUUID()}`;
+  const renamedUsername = `lifecycle.renamed.${randomUUID()}`;
+  const target = await new UserProvisioningService(firstDatabase, ownerSessions).provision(ownerSession.sessionToken, {
+    username: originalUsername, displayName: "Lifecycle User", roleIds: [clinicianRole],
+    temporaryPassword: "Temporary!Lifecycle-User-253", temporaryPasswordHours: 2, note: "Lifecycle integration"
+  });
+  const targetSessions = new ClinicianSessionService(firstDatabase);
+  const targetTemporary = await targetSessions.create({ username: originalUsername, password: "Temporary!Lifecycle-User-253" });
+  const targetActive = await targetSessions.changePassword(targetTemporary.sessionToken, {
+    currentPassword: "Temporary!Lifecycle-User-253", newPassword: "Permanent!Lifecycle-User-253",
+    csrfToken: targetTemporary.session.csrfToken
+  });
+  const verifierBefore = (await firstClient.query(
+    "select password_verifier, credential_version from app_identity.local_credential where user_id = $1", [target.userId]
+  )).rows[0];
+
+  const lifecycle = new UserLifecycleService(firstDatabase, ownerSessions);
+  const disabled = await lifecycle.update(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 1, username: renamedUsername, displayName: "Lifecycle Renamed", roleIds: [clinicianRole],
+    active: false, note: "Planned leave"
+  });
+  assert.equal(disabled.sessionsRevoked, 1);
+  assert.equal(disabled.revision, 2);
+  await assert.rejects(targetSessions.get(targetActive.sessionToken), UnauthorizedException);
+  await assert.rejects(targetSessions.create({ username: originalUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  await assert.rejects(targetSessions.create({ username: renamedUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  const retained = await firstClient.query(`select role_id from app_identity.user_role_assignment
+    where user_id = $1 and ended_at is null`, [target.userId]);
+  assert.deepEqual(retained.rows.map(({ role_id }) => role_id), [clinicianRole]);
+
+  const reactivated = await lifecycle.update(ownerSession.sessionToken, target.userId, {
+    expectedRevision: 2, username: renamedUsername, displayName: "Lifecycle Renamed", roleIds: [clinicianRole],
+    active: true, note: "Return to duty"
+  });
+  assert.deepEqual(reactivated.restoredRoles.map(({ id }) => id), [clinicianRole]);
+  assert.equal(reactivated.freshLoginRequired, true);
+  const verifierAfter = (await firstClient.query(
+    "select password_verifier, credential_version from app_identity.local_credential where user_id = $1", [target.userId]
+  )).rows[0];
+  assert.deepEqual(verifierAfter, verifierBefore);
+  assert.equal((await targetSessions.create({ username: renamedUsername, password: "Permanent!Lifecycle-User-253" })).session.user.id,
+    target.userId);
+  await assert.rejects(targetSessions.create({ username: originalUsername, password: "Permanent!Lifecycle-User-253" }), UnauthorizedException);
+  await assert.rejects(new UserProvisioningService(firstDatabase, ownerSessions).provision(ownerSession.sessionToken, {
+    username: originalUsername, displayName: "Username Reuse", roleIds: [],
+    temporaryPassword: "Temporary!Username-Reuse-253", temporaryPasswordHours: 1
+  }), /reserved/i);
+
+  const update = (database, displayName) => new UserLifecycleService(database,
+    new ClinicianSessionService(database)).update(ownerSession.sessionToken, target.userId, {
+      expectedRevision: 3, username: renamedUsername, displayName, roleIds: [clinicianRole], active: true,
+      note: "Concurrent edit"
+    });
+  const concurrent = await Promise.allSettled([
+    update(firstDatabase, "Concurrent One"), update(secondDatabase, "Concurrent Two")
+  ]);
+  assert.equal(concurrent.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(concurrent.filter(({ status }) => status === "rejected").length, 1);
+  assert.match(String(concurrent.find(({ status }) => status === "rejected").reason), /changed after it was loaded/);
+  assert.equal((await firstClient.query("select revision from app_identity.app_user where id = $1", [target.userId])).rows[0].revision, "4");
+  const audit = await firstClient.query(`select action, note, details from app_identity.authentication_event
+    where target_user_id = $1 and action in ('account.disable', 'account.reactivate', 'account.identity_change') order by id`,
+  [target.userId]);
+  assert.deepEqual(audit.rows.map(({ action }) => action), ["account.disable", "account.reactivate", "account.identity_change"]);
+  assert.doesNotMatch(JSON.stringify(audit.rows), /password|verifier|token|csrf|secret/i);
+});
+
+integrationTest("concurrent owner bootstrap leaves exactly one fully privileged protected owner", async (t) => {
+  const firstClient = new pg.Client({ connectionString: databaseUrl });
+  const secondClient = new pg.Client({ connectionString: databaseUrl });
+  await Promise.all([firstClient.connect(), secondClient.connect()]);
+  t.after(() => Promise.all([firstClient.end(), secondClient.end()]));
+  await ensureFoundation(firstClient);
+  const organizationId = randomUUID();
+  await firstClient.query(`insert into app_identity.organization (id, name, deployment_timezone)
+    values ($1, 'Concurrent owner bootstrap', 'UTC')`, [organizationId]);
+  const preSetupAdmin = await new AccountService(singleClientDataSource(firstClient)).provision({
+    organizationId, username: `pre.setup.${randomUUID()}`, displayName: "Pre-setup administrator",
+    role: "administrator", temporaryPassword: "Temporary!Password-pre-setup"
+  });
+  assert.equal((await firstClient.query(
+    "select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed",
+    [preSetupAdmin.userId, organizationId])).rows[0].allowed, false);
+  assert.equal((await firstClient.query(
+    "select app_identity.user_has_capability($1, $2, 'clinical:document') allowed",
+    [preSetupAdmin.userId, organizationId])).rows[0].allowed, false);
+  const input = (suffix) => ({
+    organizationId, username: `owner.${suffix}.${randomUUID()}`, displayName: `Owner ${suffix}`,
+    temporaryPassword: `Temporary!Password-${suffix}-253`, clinician: false,
+    operator: { operatorId: `integration-${suffix}`, osAccount: "test", host: "localhost" }
+  });
+  const attempts = await Promise.allSettled([
+    new AccountService(singleClientDataSource(firstClient)).bootstrapOwner(input("one")),
+    new AccountService(singleClientDataSource(secondClient)).bootstrapOwner(input("two"))
+  ]);
+  assert.equal(attempts.filter(({ status }) => status === "fulfilled").length, 1);
+  assert.equal(attempts.filter(({ status }) => status === "rejected").length, 1);
+
+  const owner = (await firstClient.query(`select owner_record.user_id
+    from app_identity.installation_owner owner_record where organization_id = $1`, [organizationId])).rows[0];
+  assert.ok(owner.user_id);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'admin-dashboard:read') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:document') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select app_identity.user_has_capability($1, $2, 'clinical:demo') allowed`,
+    [owner.user_id, organizationId])).rows[0].allowed, true);
+  assert.equal((await firstClient.query(`select count(*)::integer count
+    from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
+    [organizationId, owner.user_id])).rows[0].count, 0);
+  assert.equal((await firstClient.query(`select count(*)::integer count from app_identity.installation_owner
+    where organization_id = $1`, [organizationId])).rows[0].count, 1);
+  assert.deepEqual((await firstClient.query(`select result from app_identity.operator_identity_event
+    where target_organization_id = $1 order by id`, [organizationId])).rows.map(({ result }) => result).sort(),
+  ["failed", "succeeded"]);
+
+  await assert.rejects(firstClient.query("delete from app_identity.installation_owner where organization_id = $1",
+    [organizationId]), /cannot be removed/);
+  await assert.rejects(firstClient.query("update app_identity.app_user set active = false where id = $1",
+    [owner.user_id]), /cannot be disabled/);
+  await assert.rejects(firstClient.query("delete from app_identity.local_credential where user_id = $1",
+    [owner.user_id]), /credential cannot be removed/);
+});
+
+integrationTest("ownership moves only after an eligible nominee independently accepts", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const accounts = new AccountService(database);
+  const sessions = new ClinicianSessionService(database);
+  const transfers = new OwnershipTransferService(database, sessions);
+  const organizationId = randomUUID();
+  await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Transfer test', 'UTC')",
+    [organizationId]);
+  const owner = await accounts.bootstrapOwner({ organizationId, username: `owner.${randomUUID()}`,
+    displayName: "Transfer Owner", temporaryPassword: "Temporary!Owner-Transfer-253", clinician: false,
+    operator: { operatorId: "integration-owner-transfer", osAccount: "test", host: "localhost" } });
+  const nominee = await accounts.provision({ organizationId, username: `nominee.${randomUUID()}`,
+    displayName: "Transfer Nominee", role: "administrator", temporaryPassword: "Temporary!Nominee-Transfer-253" });
+  const ownerTemporary = await sessions.create({ username: owner.username, password: "Temporary!Owner-Transfer-253" });
+  const ownerSession = await sessions.changePassword(ownerTemporary.sessionToken, {
+    currentPassword: "Temporary!Owner-Transfer-253", newPassword: "Permanent!Owner-Transfer-253",
+    csrfToken: ownerTemporary.session.csrfToken
+  });
+  const nomineeTemporary = await sessions.create({ username: nominee.username, password: "Temporary!Nominee-Transfer-253" });
+  const nomineeSession = await sessions.changePassword(nomineeTemporary.sessionToken, {
+    currentPassword: "Temporary!Nominee-Transfer-253", newPassword: "Permanent!Nominee-Transfer-253",
+    csrfToken: nomineeTemporary.session.csrfToken
+  });
+  await sessions.reauthenticate(ownerSession.sessionToken, ownerSession.session.csrfToken,
+    "Permanent!Owner-Transfer-253");
+  const pending = await transfers.initiate(ownerSession.sessionToken, { nomineeUserId: nominee.userId });
+  assert.equal(pending.transfer.status, "pending");
+  assert.equal((await client.query("select user_id from app_identity.installation_owner where organization_id = $1",
+    [organizationId])).rows[0].user_id, owner.userId);
+  await sessions.reauthenticate(nomineeSession.sessionToken, nomineeSession.session.csrfToken,
+    "Permanent!Nominee-Transfer-253");
+  const accepted = await transfers.accept(nomineeSession.sessionToken);
+  assert.equal(accepted.owner.id, nominee.userId);
+  assert.equal((await client.query("select count(*)::integer count from app_identity.installation_owner where organization_id = $1",
+    [organizationId])).rows[0].count, 1);
+  assert.equal((await client.query(`select count(*)::integer count
+    from app_identity.user_role_assignment where organization_id = $1 and user_id = $2 and ended_at is null`,
+  [organizationId, nominee.userId])).rows[0].count, 0);
+  assert.equal((await client.query(`select app_identity.user_has_capability($1, $2, 'clinical:demo') allowed`,
+    [nominee.userId, organizationId])).rows[0].allowed, true);
 });
 
 integrationTest("authorized Admin context resolves only the session organization's active configuration", async (t) => {
@@ -196,9 +665,10 @@ integrationTest("authorized Admin context resolves only the session organization
   const formVersionId = randomUUID();
   const unitId = randomUUID();
   await client.query("insert into app_identity.organization (id, name, deployment_timezone) values ($1, 'Admin shell', 'UTC')", [organizationId]);
-  const owner = await accounts.provision({
+  const owner = await accounts.bootstrapOwner({
     organizationId, username: `admin.${randomUUID()}`, displayName: "Installation Owner",
-    role: "owner", temporaryPassword: "Temporary!Password-254"
+    clinician: false, temporaryPassword: "Temporary!Password-254",
+    operator: { operatorId: "integration-owner-bootstrap", osAccount: "test", host: "localhost" }
   });
   const temporary = await sessions.create({ username: owner.username, password: "Temporary!Password-254" });
   const active = await sessions.changePassword(temporary.sessionToken, {
@@ -260,6 +730,27 @@ integrationTest("authorized Admin context resolves only the session organization
     content_sha256: activeFormDigest });
   await assert.rejects(client.query("update app_identity.configuration_event set change_note='changed' where organization_id=$1",
     [organizationId]));
+  const auditedFormDraft = await activationForms.clone(active.sessionToken, {
+    catalogReleaseId: release.rows[0].id, displayName: "Integration form draft"
+  });
+  const savedAuditedFormDraft = await activationForms.save(active.sessionToken, auditedFormDraft.id, {
+    expectedRevision: auditedFormDraft.revision, displayName: "Integration form draft", definition: auditedFormDraft.definition
+  });
+  await assert.rejects(activationForms.delete(active.sessionToken, auditedFormDraft.id, {
+    expectedRevision: auditedFormDraft.revision
+  }), /revision is stale/i);
+  await activationForms.delete(active.sessionToken, auditedFormDraft.id, { expectedRevision: savedAuditedFormDraft.revision });
+  const formDraftAudit = await client.query(`select action,form_version_id,details
+    from app_identity.configuration_event
+    where organization_id=$1 and action like 'form.draft_%' order by id`, [organizationId]);
+  assert.deepEqual(formDraftAudit.rows.map(({ action, form_version_id, details }) => ({
+    action, form_version_id, revision: details.revision,
+    deletedFormVersionId: details.deletedFormVersionId ?? null
+  })), [
+    { action: "form.draft_create", form_version_id: null, revision: 1, deletedFormVersionId: null },
+    { action: "form.draft_save", form_version_id: null, revision: 2, deletedFormVersionId: null },
+    { action: "form.draft_delete", form_version_id: null, revision: 2, deletedFormVersionId: auditedFormDraft.id }
+  ]);
   const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
   const draft = await authoring.cloneActive(active.sessionToken, { displayName: "Integration catalog" });
   assert.equal(draft.revision, 1);
@@ -708,12 +1199,14 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   });
 });
 
-integrationTest("the seeded clinician retrieves the server-authoritative demo unit assignment", async (t) => {
+integrationTest("the demo account authenticates with its exact role only after ordinary owner setup", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   t.after(() => client.end());
   await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
+  await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+    values ($1, 'Demonstration EMS', 'UTC') on conflict (id) do nothing`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs")], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
 
@@ -724,211 +1217,29 @@ integrationTest("the seeded clinician retrieves the server-authoritative demo un
   const address = app.getHttpServer().address();
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
 
-  const signIn = await fetch(`${baseUrl}/sessions`, {
+  const signIn = (username) => fetch(`${baseUrl}/sessions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
+    body: JSON.stringify({ username, password: DEMO_CLINICIAN_PASSWORD })
   });
-  assert.equal(signIn.status, 201);
-  const session = await signIn.json();
-  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
-  assert.match(signIn.headers.get("set-cookie") ?? "", /HttpOnly.*Secure.*SameSite=Strict/i);
-  assert.equal(session.accessToken, undefined);
-  const response = await fetch(`${baseUrl}/calls/assigned`, {
-    headers: { cookie: sessionCookie }
-  });
-  assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.equal(payload.assignedCalls.length, 1);
-  assert.match(payload.assignedCalls[0].id, /^[0-9a-f-]{36}$/);
-  assert.deepEqual({ ...payload.assignedCalls[0], id: undefined }, {
-    id: undefined,
-    callNumber: "SYN-20260903-001",
-    unit: { id: "32000000-0000-4000-8000-000000000010", callSign: "SYNTHETIC-MEDIC-7" },
-    dispatchedAt: "2026-08-15T13:14:00.000Z",
-    dispatchReason: "Chest Pain (Non-Traumatic)",
-    dispatchPriority: { code: "2305003", display: "Emergent" },
-    chiefComplaint: null,
-    agencyTimeZone: "UTC",
-    status: "assigned"
-  });
-  assert.deepEqual(payload.canceledAssignmentIds, []);
+  const beforeOwner = await signIn(DEMO_CLINICIAN_USERNAME);
+  assert.equal(beforeOwner.status, 201);
+  assert.deepEqual((await beforeOwner.json()).capabilities, []);
 
-  try {
-    await client.query("update clinical.call_assignment set status = 'canceled' where id = $1", [payload.assignedCalls[0].id]);
-    const canceled = await fetch(`${baseUrl}/calls/assigned`, {
-      headers: { cookie: sessionCookie }
-    });
-    const canceledPayload = await canceled.json();
-    assert.deepEqual(canceledPayload.assignedCalls, []);
-    assert.deepEqual(canceledPayload.canceledAssignmentIds, [payload.assignedCalls[0].id]);
-  } finally {
-    await client.query("update clinical.call_assignment set status = 'assigned' where id = $1", [payload.assignedCalls[0].id]);
-  }
+  await ensureSyntheticOwner(client);
+  const demo = await signIn(DEMO_CLINICIAN_USERNAME);
+  const demoSession = await demo.json();
+  assert.equal(demo.status, 201);
+  assert.deepEqual(demoSession.capabilities, [
+    "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
+    "forms:read", "forms:write", "roles:read", "users:read",
+  ]);
+  assert.equal(demoSession.passwordChangeRequired, false);
+  assert.equal(demoSession.capabilities.includes("catalog:publish"), false);
+  assert.equal(demoSession.capabilities.includes("forms:publish"), false);
+  assert.equal(demoSession.capabilities.includes("roles:assign"), false);
 });
 
-integrationTest("assignment opening is idempotent, creator-owned, form-pinned, and advances the demo", async (t) => {
-  const originalInstallationSettings = process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-  process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = "synthetic-demo";
-  t.after(() => {
-    if (originalInstallationSettings === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
-    else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = originalInstallationSettings;
-  });
-  const client = new pg.Client({ connectionString: databaseUrl });
-  await client.connect();
-  t.after(() => client.end());
-  await ensureFoundation(client);
-  await execFileAsync(process.execPath, [path.join(repoRoot, "packages/database/scripts/bootstrap-synthetic-installation.mjs"), "--settings", path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json")], {
-    env: { ...process.env, DATABASE_URL: databaseUrl }
-  });
-
-  const app = await NestFactory.create(AppModule, { logger: false });
-  app.setGlobalPrefix("api");
-  await app.listen(0, "127.0.0.1");
-  t.after(() => app.close());
-  const address = app.getHttpServer().address();
-  const baseUrl = `http://127.0.0.1:${address.port}/api`;
-  const signIn = await fetch(`${baseUrl}/sessions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: DEMO_CLINICIAN_USERNAME, password: DEMO_CLINICIAN_PASSWORD })
-  });
-  const session = await signIn.json();
-  const sessionCookie = signIn.headers.get("set-cookie")?.split(";", 1)[0];
-  const assignmentId = (await client.query(`
-    select id from clinical.call_assignment
-    where organization_id = '32000000-0000-4000-8000-000000000001'
-      and dispatch_source_id = 'synthetic-bootstrap'
-      and status = 'assigned'
-  `)).rows[0].id;
-  const latestBeforeOpen = (await client.query(`
-    select fv.id from forms.form_version fv
-    join app_identity.operational_unit ou on ou.default_form_id = fv.form_id
-    where ou.id = '32000000-0000-4000-8000-000000000010' and fv.status = 'published'
-    order by fv.version desc limit 1
-  `)).rows[0].id;
-  let opened;
-  try {
-    const requestOpen = async () => {
-      const response = await fetch(`${baseUrl}/calls/${assignmentId}/open`, {
-        method: "POST",
-        headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-      });
-      const payload = await response.json();
-      assert.equal(response.status, 200, JSON.stringify(payload));
-      return payload;
-    };
-    opened = await requestOpen();
-    const retry = await requestOpen();
-    assert.equal(retry.report.id, opened.report.id);
-    assert.deepEqual(retry.report.document, opened.report.document);
-    assert.equal(retry.replacementAssignment, null);
-    assert.equal(opened.report.documentingUserId, session.user.id);
-    assert.equal(opened.report.formVersionId, latestBeforeOpen);
-    assert.equal(opened.report.document.modelVersion, "1.1.0");
-    assert.equal(opened.report.document.encounter.id, opened.report.id);
-    assert.equal(opened.report.document.groups.find(({ id }) => id === "eRecordSection")
-      .instances[0].elements.find(({ id }) => id === "eRecord.01").values[0].value,
-      `PCR-${opened.report.id}`);
-    assert.equal(opened.replacementAssignment.callNumber, "SYN-20260903-002");
-    assert.equal(opened.replacementAssignment.dispatchedAt, "2026-08-15T13:29:00.000Z");
-    const generatedDispatch = (await client.query(`
-      select ca.response_number, ca.dispatch_source_record_id, dr.source_payload
-      from clinical.call_assignment ca
-      join clinical.dispatch_receipt dr on dr.id = ca.dispatch_receipt_id
-      where ca.id = $1
-    `, [opened.replacementAssignment.id])).rows[0];
-    const generatedElement = (id) => generatedDispatch.source_payload.groups.flatMap((group) => group.instances)
-      .flatMap((instance) => instance.elements).find((element) => element.id === id).values[0].value;
-    assert.equal(generatedDispatch.response_number, "SYN-20260903-002-1");
-    assert.equal(generatedDispatch.dispatch_source_record_id, "SYNTHETIC-SOURCE-RECORD-0002");
-    assert.equal(generatedElement("eResponse.03"), "SYN-20260903-002");
-    assert.equal(generatedElement("eResponse.04"), "SYN-20260903-002-1");
-    assert.equal(generatedElement("eTimes.02"), "2026-08-15T09:28:52-04:00");
-    assert.equal(generatedElement("eTimes.03"), "2026-08-15T09:29:00-04:00");
-
-    const state = (await client.query(`
-      select ca.status, ca.report_id, r.documenting_user_id, r.form_version_id,
-        (select count(*)::integer from clinical.report where incident_id = ca.incident_id) as reports,
-        (select count(*)::integer from clinical.patient where id = r.patient_id) as patients,
-        (select count(*)::integer from clinical.element_occurrence
-         where report_id = r.id and element_id = 'eRecord.01') as pcr_numbers
-      from clinical.call_assignment ca join clinical.report r on r.id = ca.report_id
-      where ca.id = $1
-    `, [assignmentId])).rows[0];
-    assert.deepEqual(state, {
-      status: "opened", report_id: opened.report.id, documenting_user_id: session.user.id,
-      form_version_id: latestBeforeOpen, reports: 1, patients: 1, pcr_numbers: 1
-    });
-
-    const reopenedResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-    });
-    assert.equal(reopenedResponse.status, 200);
-    const reopened = await reopenedResponse.json();
-    assert.deepEqual(reopened.report.document, opened.report.document);
-    assert.deepEqual(reopened.dispatchPriority, { code: "2305003", display: "Emergent" });
-
-    const openCallsResponse = await fetch(`${baseUrl}/reports/open`, {
-      headers: { cookie: sessionCookie }
-    });
-    assert.equal(openCallsResponse.status, 200);
-    const openCalls = await openCallsResponse.json();
-    assert.deepEqual(openCalls.openCalls.find(({ reportId }) => reportId === opened.report.id)?.dispatchPriority,
-      { code: "2305003", display: "Emergent" });
-
-    const laterVersionId = randomUUID();
-    const laterDefinition = { schemaVersion: 1, sections: [{
-      key: "replacement", presentation: { title: "Replacement configuration" }, fields: []
-    }] };
-    await client.query(`
-      insert into forms.form_version
-        (id, form_id, catalog_release_id, version, status, canonical_definition,
-         definition_sha256, change_note, created_by, published_by, published_at,
-         publication_acknowledgements)
-      select $1, fv.form_id, fv.catalog_release_id,
-             (select max(version) + 1 from forms.form_version where form_id = fv.form_id),
-             'published', $3::jsonb, repeat('f', 64),
-             'Published after assignment opening', fv.created_by, fv.created_by, now(), '{}'
-      from forms.form_version fv where fv.id = $2
-    `, [laterVersionId, latestBeforeOpen, JSON.stringify(laterDefinition)]);
-    await client.query(`update forms.agency_stationary_default
-      set form_version_id = $2, activated_by = $3, activated_at = now()
-      where organization_id = $1`, [session.organization.id, laterVersionId, session.user.id]);
-
-    const reopenedAfterActivationResponse = await fetch(`${baseUrl}/reports/${opened.report.id}/reopen`, {
-      method: "POST", headers: { cookie: sessionCookie, "x-csrf-token": session.csrfToken }
-    });
-    assert.equal(reopenedAfterActivationResponse.status, 200);
-    const reopenedAfterActivation = await reopenedAfterActivationResponse.json();
-    assert.equal(reopenedAfterActivation.report.formVersionId, latestBeforeOpen);
-    assert.equal(reopenedAfterActivation.report.catalogReleaseId, opened.report.catalogReleaseId);
-    assert.deepEqual(reopenedAfterActivation.report.clinicalForm, opened.report.clinicalForm);
-    assert.deepEqual(reopenedAfterActivation.report.document, opened.report.document);
-    await assert.rejects(client.query("update clinical.report set form_version_id = $2 where id = $1",
-      [opened.report.id, laterVersionId]), /identity and pinned configuration are immutable/);
-  } finally {
-    await client.query(`update forms.agency_stationary_default
-      set form_version_id = $2, activated_by = $3, activated_at = now()
-      where organization_id = $1`, [session.organization.id, latestBeforeOpen, session.user.id]);
-    if (opened?.replacementAssignment) {
-      await client.query("begin");
-      try {
-        const replacement = await client.query("select incident_id from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
-        await client.query("update clinical.call_assignment set status = 'assigned', report_id = null where id = $1", [assignmentId]);
-        await client.query("delete from clinical.call_assignment where id = $1", [opened.replacementAssignment.id]);
-        const patient = await client.query("select patient_id from clinical.report where id = $1", [opened.report.id]);
-        await client.query("delete from clinical.report where id = $1", [opened.report.id]);
-        if (patient.rows[0]) await client.query("delete from clinical.patient where id = $1", [patient.rows[0].patient_id]);
-        if (replacement.rows[0]) await client.query("delete from clinical.incident where id = $1", [replacement.rows[0].incident_id]);
-        await client.query("commit");
-      } catch (error) {
-        await client.query("rollback");
-        throw error;
-      }
-    }
-  }
-});
 
 integrationTest("draft report commands save, replay, and reconcile concurrent target edits with audit lineage", async (t) => {
   const client = new pg.Client({ connectionString: databaseUrl });

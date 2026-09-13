@@ -1,17 +1,17 @@
 "use client";
 
-import type { AdminContext, ClinicianSession, InstallationSettings } from "@open-triage/contracts";
+import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
 import React, { useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
 import { CatalogAuthoring } from "./catalog-authoring";
 import { StationaryFormAuthoring } from "./stationary-form-authoring";
+import { RolesPanel, UsersPanel } from "./admin-directory";
 
-const deferredPanels = [
-  "Users", "Roles", "Units", "Agency Profile", "Validation", "Appearance",
-  "System Settings", "Configuration History", "Audit Log", "Integrations", "Advanced Dashboard"
-] as const;
-type AdminPanel = "Dashboard" | "Element catalog" | "Stationary form" | typeof deferredPanels[number];
-const adminPanels: readonly AdminPanel[] = ["Dashboard", "Element catalog", "Stationary form", ...deferredPanels];
+type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form";
+const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
+  ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
+  ["catalog", "Element catalog"], ["forms", "Stationary form"]
+];
 
 function formattedBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -25,14 +25,13 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session, installationSettings }: {
+export function AdminShell({ session }: {
   readonly session: ClinicianSession;
-  readonly installationSettings: InstallationSettings;
 }) {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
-  const [activePanel, setActivePanel] = useState<AdminPanel>("Dashboard");
+  const [activePanel, setActivePanel] = useState<AdminPanel | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -51,7 +50,11 @@ export function AdminShell({ session, installationSettings }: {
       window.removeEventListener("offline", wentOffline);
     };
     loadAdminContext().then((loaded) => {
-      if (current) setContext(loaded);
+      if (current) {
+        setContext(loaded);
+        const authorized = panelDefinition.filter(([key]) => loaded.panels.includes(key)).map(([, panel]) => panel);
+        setActivePanel((selected) => selected && authorized.includes(selected) ? selected : authorized[0] ?? null);
+      }
     }).catch((reason: unknown) => {
       if (current) setError(reason instanceof Error ? reason.message : "Administration configuration is unavailable.");
     });
@@ -59,26 +62,27 @@ export function AdminShell({ session, installationSettings }: {
       current = false;
       window.removeEventListener("offline", wentOffline);
     };
-  }, []);
+  }, [session]);
 
   const organization = context?.organization ?? session.organization;
+  const panels = context ? panelDefinition.filter(([key]) => context.panels.includes(key)).map(([, panel]) => panel) : [];
 
   return <main className="admin-shell" aria-labelledby="admin-heading">
     <header className="admin-heading">
-      <h1 id="admin-heading">Dashboard</h1>
+      <h1 id="admin-heading">Administration</h1>
       <p>{organization.name}</p>
     </header>
 
     <div className="admin-workspace">
       <nav className="admin-tabs" aria-label="Administration panels">
-        {adminPanels.map((panel) => <button type="button" key={panel}
+        {panels.map((panel) => <button type="button" key={panel}
           className={panel === activePanel ? "active" : ""} aria-current={panel === activePanel ? "page" : undefined}
           onClick={() => setActivePanel(panel)}>{panel}</button>)}
       </nav>
       <div className="admin-panel" aria-live="polite">
     {error && <p className="admin-error" role="alert">{error}</p>}
     {!context && !error && <p className="admin-loading" role="status">Loading active configuration…</p>}
-    {context && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
+    {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
         <h2 id="active-configuration-heading">Active configuration</h2>
       </div>
@@ -105,24 +109,35 @@ export function AdminShell({ session, installationSettings }: {
       </dl>
     </section>}
 
+    {context && activePanel === "Users" && <UsersPanel
+      canCreate={context.capabilities?.includes("users:write") ?? false}
+      canManage={context.capabilities?.includes("users:write") ?? false}
+      canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
+      canViewSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read")) ?? false}
+      canRevokeSessions={(context.capabilities?.includes("users:read") && context.capabilities.includes("sessions:read") &&
+        context.capabilities.includes("sessions:revoke")) ?? false}
+      canResetCredentials={(context.capabilities?.includes("users:read") && context.capabilities.includes("credentials:reset")) ?? false}
+      currentUserId={session.user.id}
+      csrfToken={session.csrfToken ?? session.accessToken ?? ""} />}
+    {context && activePanel === "Roles" && <RolesPanel csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      capabilities={context.capabilities} />}
+
     {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading">Element catalog</h2></div>
-      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} installationSettings={installationSettings} onPublished={setFormCatalogReleaseId} />
+      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
+        onPublished={setFormCatalogReleaseId} />
     </section>}
 
-    {context?.activeConfiguration && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
+    {context && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
-      <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
-        installationSettings={installationSettings}
+      {context.activeConfiguration ? <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        capabilities={context.capabilities}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
+        : <p role="status">No active Stationary configuration is available to clone. Publish and activate a form configuration first.</p>}
     </section>}
 
-    {deferredPanels.includes(activePanel as typeof deferredPanels[number]) && <div className="admin-placeholder">
-      <h2>{activePanel}</h2>
-      <p>Unavailable in this release. This panel is a placeholder for the planned administration tools.</p>
-    </div>}
       </div>
     </div>
   </main>;

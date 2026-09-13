@@ -74,13 +74,15 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     const organizationId = randomUUID();
     const otherOrganizationId = randomUUID();
     const userId = randomUUID();
+    const ownerUserId = randomUUID();
     await client.query("begin");
     try {
       await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
         values ($1, 'Authorization test', 'UTC'), ($2, 'Other authorization test', 'UTC')`,
       [organizationId, otherOrganizationId]);
       await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
-        values ($1, $2, 'Authorization user')`, [userId, organizationId]);
+        values ($1, $3, 'Authorization user'), ($2, $3, 'Authorization owner')`,
+      [userId, ownerUserId, organizationId]);
 
       const protectedRoles = await client.query(`
         select r.system_key, r.hidden, r.assignable,
@@ -91,20 +93,23 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         left join app_identity.role_version_capability rvc on rvc.role_version_id = rv.id
         where r.organization_id = $1 and r.protected
         group by r.id order by r.system_key`, [organizationId]);
-      assert.equal(protectedRoles.rows.length, 5);
-      const reviewer = protectedRoles.rows.find(({ system_key }) => system_key === "reviewer");
-      assert.deepEqual(reviewer, { system_key: "reviewer", hidden: true, assignable: false, capabilities: [] });
+      assert.equal(protectedRoles.rows.length, 3);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), false);
       assert.equal(administrator.capabilities.length, 15);
-      const reviewerRoleId = protectedRoles.rows.find(({ system_key }) => system_key === "reviewer");
-      const reviewerId = (await client.query(`select id from app_identity.role
-        where organization_id = $1 and system_key = 'reviewer'`, [organizationId])).rows[0].id;
-      assert.ok(reviewerRoleId);
-      await rejectsSql(client, `insert into app_identity.user_role_assignment
-        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
-      [organizationId, userId, reviewerId], "P0001");
-
+      const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
+      assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
+        "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
+        "forms:read", "forms:write", "roles:read", "users:read"
+      ] });
+      await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note)
+        select $1, $2, id, $2, 'Authorization test owner'
+        from app_identity.role where organization_id = $1 and system_key = 'administrator'`,
+      [organizationId, ownerUserId]);
+      await client.query(`insert into app_identity.installation_owner
+        (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
+      [organizationId, ownerUserId]);
       const immutableVersionId = (await client.query(`select current_version_id from app_identity.role
         where organization_id = $1 and system_key = 'clinician'`, [organizationId])).rows[0].current_version_id;
       await rejectsSql(client, "update app_identity.role_version set note = 'changed' where id = $1",
@@ -116,7 +121,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         where organization_id = $1 and system_key = 'clinician'`, [otherOrganizationId])).rows[0].id;
       await rejectsSql(client, `insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $2)`,
-      [organizationId, userId, foreignRoleId], "23503");
+      // The assignment validator rejects the tenant mismatch before the
+      // redundant composite foreign key is evaluated.
+      [organizationId, userId, foreignRoleId], "P0001");
 
       const roleId = randomUUID();
       const versionOneId = randomUUID();
@@ -142,6 +149,30 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'forms:read') allowed",
         [userId, organizationId])).rows[0].allowed, true);
 
+      // Force the deferred creation audit after the first immutable version and
+      // its capabilities exist, then return subsequent checks to deferred mode.
+      await client.query("set constraints all immediate");
+      const initialActivation = await client.query(`
+        select note, details from app_identity.authorization_event
+        where organization_id = $1 and action = 'role.version_activate'
+          and target_key = $2
+      `, [organizationId, versionOneId]);
+      assert.equal(initialActivation.rows.length, 1);
+      assert.deepEqual(initialActivation.rows[0].details, {
+        roleId, priorVersionId: null, version: 1
+      });
+      assert.equal(JSON.stringify(initialActivation.rows[0].details).includes("Immediate role"), false);
+      await rejectsSql(client, "update app_identity.authorization_event set note = 'rewritten' where target_key = $1",
+        [versionOneId], "P0001");
+      await client.query("set constraints all deferred");
+
+      await rejectsSql(client, `insert into app_identity.role
+        (id, organization_id, display_name, current_version_id)
+        values ($1, $2, ' Bad  role ', $3)`, [randomUUID(), organizationId, randomUUID()], "23514");
+      await rejectsSql(client, `insert into app_identity.role
+        (id, organization_id, display_name, current_version_id)
+        values ($1, $2, 'Administrator', $3)`, [randomUUID(), organizationId, randomUUID()], "P0001");
+
       await client.query("savepoint invalid_prerequisite");
       const invalidRoleId = randomUUID();
       const invalidVersionId = randomUUID();
@@ -155,6 +186,110 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         values ($1, $2, $3, 'users:write')`, [organizationId, invalidVersionId, invalidRoleId]);
       await assert.rejects(client.query("set constraints all immediate"), (error) => error.code === "P0001");
       await client.query("rollback to savepoint invalid_prerequisite");
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
+  await t.test("retires roles atomically and reconstructs reactivation without restoring assignments", async () => {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    const assigneeId = randomUUID();
+    const roleId = randomUUID();
+    const versionOneId = randomUUID();
+    const versionTwoId = randomUUID();
+    const replacementRoleId = randomUUID();
+    const replacementVersionId = randomUUID();
+    await client.query("begin");
+    try {
+      await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+        values ($1, 'Role lifecycle test', 'UTC')`, [organizationId]);
+      await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+        values ($1, $3, 'Role author'), ($2, $3, 'Role assignee')`, [actorId, assigneeId, organizationId]);
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, description, current_version_id, created_by, note)
+        values ($1, $2, 'Dispatch Lead', 'Original duty', $3, $4, 'Created')`,
+      [roleId, organizationId, versionOneId, actorId]);
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, description, created_by, note)
+        values ($1, $2, $3, 1, 'Dispatch Lead', 'Original duty', $4, 'Created')`,
+      [versionOneId, organizationId, roleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'roles:read')`,
+      [organizationId, versionOneId, roleId]);
+      const assignmentId = (await client.query(`insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by, note) values ($1, $2, $3, $4, 'Initial duty') returning id`,
+      [organizationId, assigneeId, roleId, actorId])).rows[0].id;
+      await client.query("set constraints all immediate");
+      await client.query("set constraints all deferred");
+
+      const closed = await client.query(`update app_identity.user_role_assignment
+        set ended_at = now(), ended_by = $3 where organization_id = $1 and role_id = $2 and ended_at is null
+        returning ended_at`, [organizationId, roleId, actorId]);
+      await client.query(`update app_identity.role set active = false, assignable = false, note = 'Retired'
+        where organization_id = $1 and id = $2`, [organizationId, roleId]);
+      await client.query(`insert into app_identity.authorization_event
+        (organization_id, actor_id, action, target_type, target_key, note, details)
+        values ($1, $2, 'role.deactivate', 'role', $3, 'Retired',
+          jsonb_build_object('roleId', $3::text, 'version', 1, 'endedAssignmentCount', 1))`,
+      [organizationId, actorId, roleId]);
+      await client.query("set constraints all immediate");
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'roles:read') allowed",
+        [assigneeId, organizationId])).rows[0].allowed, false);
+      await rejectsSql(client, `insert into app_identity.user_role_assignment
+        (organization_id, user_id, role_id, assigned_by) values ($1, $2, $3, $4)`,
+      [organizationId, assigneeId, roleId, actorId], "P0001");
+
+      await client.query("set constraints all deferred");
+      await client.query(`insert into app_identity.role
+        (id, organization_id, display_name, current_version_id, created_by) values ($1, $2, 'Dispatch Lead', $3, $4)`,
+      [replacementRoleId, organizationId, replacementVersionId, actorId]);
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, created_by)
+        values ($1, $2, $3, 1, 'Dispatch Lead', $4)`, [replacementVersionId, organizationId, replacementRoleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'roles:read')`,
+      [organizationId, replacementVersionId, replacementRoleId]);
+
+      await client.query(`insert into app_identity.role_version
+        (id, organization_id, role_id, version, display_name, description, created_by, note)
+        values ($1, $2, $3, 2, 'Dispatch Legacy', 'Redefined duty', $4, 'Reactivated')`,
+      [versionTwoId, organizationId, roleId, actorId]);
+      await client.query(`insert into app_identity.role_version_capability
+        (organization_id, role_version_id, role_id, capability_key) values ($1, $2, $3, 'users:read')`,
+      [organizationId, versionTwoId, roleId]);
+      await client.query(`update app_identity.role set display_name = 'Dispatch Legacy', description = 'Redefined duty',
+        current_version_id = $3, active = true, assignable = true, note = 'Reactivated'
+        where organization_id = $1 and id = $2`, [organizationId, roleId, versionTwoId]);
+      await client.query(`insert into app_identity.authorization_event
+        (organization_id, actor_id, action, target_type, target_key, note, details)
+        values ($1, $2, 'role.reactivate', 'role', $3, 'Reactivated',
+          jsonb_build_object('roleId', $3::text, 'priorVersionId', $4::text, 'version', 2))`,
+      [organizationId, actorId, roleId, versionOneId]);
+      await client.query("set constraints all immediate");
+
+      const history = await client.query(`select version, display_name, description, note
+        from app_identity.role_version where role_id = $1 order by version`, [roleId]);
+      assert.deepEqual(history.rows, [
+        { version: 1, display_name: "Dispatch Lead", description: "Original duty", note: "Created" },
+        { version: 2, display_name: "Dispatch Legacy", description: "Redefined duty", note: "Reactivated" }
+      ]);
+      const intervals = await client.query(`select id, assigned_at, ended_at, assigned_by, ended_by, note
+        from app_identity.user_role_assignment where role_id = $1`, [roleId]);
+      assert.equal(intervals.rows.length, 1);
+      assert.equal(intervals.rows[0].id, assignmentId);
+      assert.equal(intervals.rows[0].ended_at.getTime(), closed.rows[0].ended_at.getTime());
+      assert.equal(intervals.rows[0].ended_by, actorId);
+      assert.equal((await client.query(`select count(*)::integer count from app_identity.user_role_assignment
+        where role_id = $1 and ended_at is null`, [roleId])).rows[0].count, 0);
+      await rejectsSql(client, "update app_identity.user_role_assignment set note = 'rewritten' where id = $1",
+        [assignmentId], "P0001");
+      await rejectsSql(client, "delete from app_identity.user_role_assignment where id = $1", [assignmentId], "P0001");
+      const events = await client.query(`select action, note, details from app_identity.authorization_event
+        where organization_id = $1 and details ->> 'roleId' = $2 order by occurred_at, id`, [organizationId, roleId]);
+      assert.deepEqual(events.rows.map(({ action }) => action), ["role.version_activate", "role.deactivate",
+        "role.version_activate", "role.reactivate"]);
+      assert.equal(JSON.stringify(events.rows).includes("Role assignee"), false);
     } finally {
       await client.query("rollback");
     }
@@ -426,86 +561,110 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
   });
 
-  await t.test("bootstraps and safely replays a complete synthetic installation", async () => {
+  await t.test("bootstraps only production-equivalent demonstration accounts and preserves later administration", async () => {
     const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
-    const environment = { ...process.env, ...patientKeyEnvironment, DATABASE_URL: databaseUrl };
-    const settings = path.join(repoRoot, "packages/contracts/config/installation.synthetic-demo.json");
-    const first = await execFileAsync(process.execPath, [bootstrap, "--settings", settings], { env: environment });
-    const second = await execFileAsync(process.execPath, [bootstrap, "--settings", settings], { env: environment });
-    assert.equal(JSON.parse(first.stdout).status, "ready");
-    assert.equal(JSON.parse(second.stdout).status, "ready");
-
-    const fixture = await client.query(`
-      select
-        r.organization_id,
-        r.agency_demographic_version_id,
-        r.form_version_id,
-        r.catalog_release_id,
-        r.synthetic as report_synthetic,
-        r.baseline as report_baseline,
-        i.synthetic as incident_synthetic,
-        i.baseline as incident_baseline,
-        p.identity_state,
-        fv.status as form_status,
-        count(distinct u.id)::integer as users,
-        count(distinct uc.capability_key)::integer as capabilities
-      from clinical.report r
-      join clinical.incident i on i.id = r.incident_id
-      join clinical.patient p on p.id = r.patient_id
-      join forms.form_version fv on fv.id = r.form_version_id
-      join app_identity.app_user u on u.organization_id = r.organization_id and u.synthetic
-      join app_identity.user_role_assignment ura
-        on ura.user_id = u.id and ura.organization_id = u.organization_id and ura.ended_at is null
-      join app_identity.role ar on ar.id = ura.role_id and ar.organization_id = ura.organization_id and ar.active
-      join app_identity.role_version rv on rv.id = ar.current_version_id and rv.role_id = ar.id
-      join app_identity.role_version_capability uc on uc.role_version_id = rv.id
-      where r.id = '32000000-0000-4000-8000-00000000000e'
-      group by r.id, i.id, p.id, fv.id
+    const environment = { ...process.env, DATABASE_URL: databaseUrl };
+    await client.query(`insert into app_identity.organization
+      (id, name, shift_session_duration_hours, deployment_timezone)
+      values ($1, 'Demonstration EMS', 14, 'UTC') on conflict (id) do nothing`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    const first = JSON.parse((await execFileAsync(process.execPath, [bootstrap], { env: environment })).stdout);
+    assert.deepEqual(first.createdAccounts, ["demo"]);
+    assert.equal(first.ownerConfigured, false);
+    const initial = await client.query(`
+      select u.id, u.active, u.synthetic, c.username, c.must_change_password,
+        c.temporary_password_expires_at, c.password_verifier,
+        array_agg(r.system_key order by r.system_key) filter (where a.ended_at is null) roles
+      from app_identity.app_user u
+      join app_identity.local_credential c on c.user_id = u.id
+      join app_identity.user_role_assignment a on a.user_id = u.id
+      join app_identity.role r on r.id = a.role_id
+      where c.username = 'demo' group by u.id, c.user_id order by c.username
     `);
-    assert.deepEqual(fixture.rows[0], {
-      organization_id: "32000000-0000-4000-8000-000000000001",
-      agency_demographic_version_id: "32000000-0000-4000-8000-000000000006",
-      form_version_id: SYNTHETIC_DEMO_FIXTURE.formVersionId,
-      catalog_release_id: fixture.rows[0].catalog_release_id,
-      report_synthetic: true,
-      report_baseline: true,
-      incident_synthetic: true,
-      incident_baseline: true,
-      identity_state: "unknown",
-      form_status: "published",
-      users: 2,
-      capabilities: 17
+    assert.deepEqual(initial.rows.map(({ username, active, synthetic, must_change_password,
+      temporary_password_expires_at, roles }) => ({ username, active, synthetic, must_change_password,
+      temporary_password_expires_at, roles })), [
+      { username: "demo", active: true, synthetic: false, must_change_password: false,
+        temporary_password_expires_at: null, roles: ["demo"] },
+    ]);
+
+    await client.query("update app_identity.local_credential set password_verifier = 'scrypt$administered-verifier' where username = 'demo'");
+    await client.query("update app_identity.app_user set active = false where id = $1",
+      [SYNTHETIC_DEMO_FIXTURE.userId]);
+    await client.query(`update app_identity.user_role_assignment a set ended_at = now(), ended_by = a.user_id
+      from app_identity.role r where r.id = a.role_id and a.user_id = $1
+        and a.ended_at is null and r.system_key = 'demo'`,
+    [SYNTHETIC_DEMO_FIXTURE.userId]);
+    const replay = JSON.parse((await execFileAsync(process.execPath, [bootstrap], { env: environment })).stdout);
+    assert.deepEqual(replay.createdAccounts, []);
+    const administered = await client.query(`select
+      (select password_verifier from app_identity.local_credential where username = 'demo') verifier,
+      (select active from app_identity.app_user where id = $1) user_active,
+      (select count(*)::integer from app_identity.user_role_assignment a join app_identity.role r on r.id = a.role_id
+        where a.user_id = $1 and a.ended_at is null and r.system_key = 'demo') demo_roles`,
+    [SYNTHETIC_DEMO_FIXTURE.userId]);
+    assert.deepEqual(administered.rows[0], {
+      verifier: "scrypt$administered-verifier", user_active: false, demo_roles: 0,
     });
 
-    const stableCounts = await client.query(`
-      select
-        (select count(*)::integer from app_identity.organization
-          where id = '32000000-0000-4000-8000-000000000001') as organizations,
-        (select count(*)::integer from app_identity.agency_demographic_version
-          where organization_id = '32000000-0000-4000-8000-000000000001') as agency_versions,
-        (select count(*)::integer from forms.form_version
-          where form_id = $1) as form_versions,
-        (select count(*)::integer from clinical.report
-          where organization_id = '32000000-0000-4000-8000-000000000001') as reports
-    `, [SYNTHETIC_DEMO_FIXTURE.formId]);
-    assert.deepEqual(stableCounts.rows[0], {
-      organizations: 1,
-      agency_versions: 1,
-      form_versions: 1,
-      reports: 1
-    });
+    // Restore explicitly for downstream database fixtures, then establish a normal owner.
+    await client.query("update app_identity.local_credential set password_verifier = $1 where username = 'demo'",
+      [initial.rows[0].password_verifier]);
+    await client.query("update app_identity.app_user set active = true where id = $1",
+      [SYNTHETIC_DEMO_FIXTURE.userId]);
+    await client.query(`insert into app_identity.user_role_assignment
+      (organization_id, user_id, role_id, assigned_by, note)
+      select $1, $2, role.id, $2, 'Downstream integration setup'
+      from app_identity.role role where role.organization_id = $1 and role.system_key = 'demo'
+      on conflict (user_id, role_id) where ended_at is null do nothing`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, SYNTHETIC_DEMO_FIXTURE.userId]);
+    const syntheticOwnerId = "32000000-0000-4000-8000-000000000099";
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Synthetic integration owner')`,
+    [syntheticOwnerId, SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    await client.query(`insert into app_identity.user_role_assignment
+      (organization_id, user_id, role_id, assigned_by, note)
+      select $1, $2, id, $2, 'Integration owner setup' from app_identity.role
+      where organization_id = $1 and system_key = 'administrator'`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
+    await client.query(`insert into app_identity.installation_owner
+      (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, syntheticOwnerId]);
 
-    await client.query("begin");
-    try {
-      await rejectsSql(client,
-        "update app_identity.agency_demographic_version set dagency_02 = 'changed' where id = $1",
-        [fixture.rows[0].agency_demographic_version_id], "P0001");
-      await rejectsSql(client,
-        "update forms.form_version set change_note = 'changed' where id = $1",
-        [fixture.rows[0].form_version_id], "P0001");
-    } finally {
-      await client.query("rollback");
-    }
+    const afterOwner = JSON.parse((await execFileAsync(process.execPath, [bootstrap], { env: environment })).stdout);
+    assert.equal(afterOwner.ownerConfigured, true);
+
+    const releaseId = (await client.query("select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'")).rows[0].id;
+    await client.query(`insert into app_identity.agency_demographic_version
+      (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
+       definition_sha256, effective_from, created_by)
+      values ('32000000-0000-4000-8000-000000000006', $1, $2, 1, 'demo', 'demo', '00', repeat('a',64), now(), $3)`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
+    await client.query(`insert into forms.form (id, organization_id, slug, name)
+      values ('32000000-0000-4000-8000-000000000012', $1, 'integration-form', 'Integration form')`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    await client.query(`insert into forms.form_version
+      (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
+       change_note, created_by, published_by, published_at)
+      values ('32000000-0000-4000-8000-000000000011', '32000000-0000-4000-8000-000000000012', $1,
+       1, 'published', '{"schemaVersion":1,"sections":[]}', repeat('b',64), 'Integration fixture', $2, $2, now())`,
+    [releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
+    await client.query(`insert into forms.agency_stationary_default (organization_id, form_version_id, activated_by)
+      values ($1, '32000000-0000-4000-8000-000000000011', $2)`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, SYNTHETIC_DEMO_FIXTURE.userId]);
+    await client.query(`insert into clinical.incident (id, organization_id)
+      values ('32000000-0000-4000-8000-00000000000c', $1)`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    await client.query(`insert into clinical.patient
+      (id, organization_id, identity_state, pseudonymous_key) values
+      ('32000000-0000-4000-8000-00000000000d', $1, 'unknown', repeat('c',64))`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    await client.query(`insert into clinical.report
+      (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+       form_version_id, catalog_release_id, documenting_user_id)
+      values ('32000000-0000-4000-8000-00000000000e', $1,
+       '32000000-0000-4000-8000-00000000000c', '32000000-0000-4000-8000-00000000000d',
+       '32000000-0000-4000-8000-000000000006', '32000000-0000-4000-8000-000000000011', $2, $3)`,
+    [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
   });
 
   await t.test("activation cannot rewrite an older report's configuration pins", async () => {
@@ -553,7 +712,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   await t.test("isolates live unsigned work and immutable report history by role", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";
     const incidentId = "32000000-0000-4000-8000-00000000000c";
-    const clinicianId = "32000000-0000-4000-8000-000000000003";
+    const clinicianId = SYNTHETIC_DEMO_FIXTURE.userId;
     await client.query("update clinical.incident set operational_state = 'cleared' where id = $1", [incidentId]);
     await client.query(`insert into clinical.report_change
       (report_id, revision, idempotency_key, author_id, device_id, client_time,
@@ -651,9 +810,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
     const administratorId = "32000000-0000-4000-8000-000000000002";
-    const clinicianId = "32000000-0000-4000-8000-000000000003";
+    const clinicianId = SYNTHETIC_DEMO_FIXTURE.userId;
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
-    const formVersionId = SYNTHETIC_DEMO_FIXTURE.formVersionId;
+    const formVersionId = "32000000-0000-4000-8000-000000000011";
     const release = await client.query(
       "select id, version from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
     );

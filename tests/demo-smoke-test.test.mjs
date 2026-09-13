@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { verifyPublicDemo } from "../scripts/demo-smoke-test.mjs";
-import fixture from "../packages/contracts/src/synthetic-demo-fixture.json" with { type: "json" };
+import productionSettings from "../packages/contracts/config/installation.production.json" with { type: "json" };
 
 const sessionCookie = "open_triage_session=sensitive-session-token";
 const sensitiveCallNumber = "PRIVATE-CALL-123";
@@ -22,13 +22,7 @@ test("verifies HTTPS routing, health, login, and an authenticated read", async (
     const path = new URL(url).pathname;
     if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
-    if (path === "/api/installation") return jsonResponse({
-      profile: "synthetic-demo", settings: { syntheticFixtures: { enabled: true } },
-      demoLogin: { username: fixture.administratorUsername, password: fixture.password },
-      fixture: { id: fixture.id, revision: fixture.revision, activeFormVersionId: fixture.formVersionId,
-        activeFormVersion: 2, activeFormDefinitionSha256: "a".repeat(64),
-        sectionCount: fixture.expectedSectionCount, fieldCount: fixture.expectedFieldCount },
-    });
+    if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
     if (path === "/api/sessions") return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
       "set-cookie": `${sessionCookie}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
     });
@@ -79,13 +73,7 @@ test("fails on an unsuccessful authenticated read without logging its body", asy
     const path = new URL(url).pathname;
     if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
-    if (path === "/api/installation") return jsonResponse({
-      profile: "synthetic-demo", settings: { syntheticFixtures: { enabled: true } },
-      demoLogin: { username: fixture.administratorUsername, password: fixture.password },
-      fixture: { id: fixture.id, revision: fixture.revision, activeFormVersionId: fixture.formVersionId,
-        activeFormVersion: 2, activeFormDefinitionSha256: "a".repeat(64),
-        sectionCount: fixture.expectedSectionCount, fieldCount: fixture.expectedFieldCount },
-    });
+    if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
     if (path === "/api/sessions") return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
       "set-cookie": `${sessionCookie}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
     });

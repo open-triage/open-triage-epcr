@@ -3,10 +3,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DispatchValidationCatalog } from "../../api/src/dispatch/dispatch-assignment.validation.js";
 import { buildDemoFixtures } from "./demo-fixture-core.js";
-import { selectedInstallationSettings } from "../app/installation-settings.js";
 
 async function main(): Promise<void> {
-  if (!selectedInstallationSettings().sampleDispatchAssignment.enabled) return;
   const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const repositoryRoot = resolve(webRoot, "../..");
   const sourcePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json");
