@@ -584,7 +584,7 @@ export interface ClinicalDemoUnit {
 
 export interface SyntheticCallGenerationContext {
   eligibleUnits: ClinicalDemoUnit[];
-  hasOpenReport: boolean;
+  hasUnopenedCall: boolean;
 }
 
 export interface GenerateSyntheticCallCommand {

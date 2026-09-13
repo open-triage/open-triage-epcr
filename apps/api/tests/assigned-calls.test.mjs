@@ -164,7 +164,7 @@ test("the assigned-call endpoint requires a current clinician session", async ()
   assert.throws(() => controller.list(), (error) => error instanceof UnauthorizedException);
 });
 
-test("generation context returns every eligible active assigned unit and the open-report state", async () => {
+test("generation context returns every eligible active unit and only counts unopened synthetic calls", async () => {
   const queries = [];
   const service = new AssignedCallsService({ query: async (sql, parameters) => {
     queries.push({ sql: sql.replace(/\s+/g, " "), parameters });
@@ -188,10 +188,14 @@ test("generation context returns every eligible active assigned unit and the ope
       { id: "unit-1", callSign: "Medic 1", name: "First" },
       { id: "unit-2", callSign: "Medic 2", name: "Second" }
     ],
-    hasOpenReport: true
+    hasUnopenedCall: true
   });
   assert.match(queries[0].sql, /uc\.user_id = \$1.*ou\.active/);
   assert.deepEqual(queries[0].parameters, [session.user.id, session.organization.id]);
+  assert.match(queries[1].sql, /from clinical\.call_assignment/);
+  assert.match(queries[1].sql, /synthetic_generated_by = \$2/);
+  assert.match(queries[1].sql, /status = 'assigned'/);
+  assert.doesNotMatch(queries[1].sql, /from clinical\.report/);
 });
 
 test("opening and retrying one assignment creates one draft without an automatic replacement", async () => {
@@ -316,7 +320,6 @@ test("Clinical Demo generation ignores ordinary calls, creates once, reuses per 
     if (normalized.includes("from app_identity.unit_clinician") && normalized.includes("ou.id = $3")) return [{
       id: unitId, call_sign: "Medic 32", name: "Medic 32", agency_time_zone: "America/New_York"
     }];
-    if (normalized.includes("select exists") && normalized.includes("from clinical.report")) return [{ exists: false }];
     if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) {
       assert.match(normalized, /ca\.synthetic and ca\.status = 'assigned'/);
       return generated ? [generated] : [];
@@ -385,15 +388,28 @@ test("generation rejects missing current Clinical Demo authority before any data
   assert.equal(queried, false);
 });
 
-test("generation refuses while the clinician has an open report", async () => {
-  const manager = { query: async (sql) => {
+test("generation creates an unopened call even when the clinician has another draft report", async () => {
+  let generated;
+  const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("pg_advisory_xact_lock")) return [];
     if (normalized.includes("from app_identity.unit_clinician")) return [{
       id: "32000000-0000-4000-8000-000000000010", call_sign: "Medic 32", name: "Medic 32",
       agency_time_zone: "America/New_York"
     }];
-    if (normalized.includes("from clinical.report")) return [{ exists: true }];
+    if (normalized.includes("from clinical.call_assignment ca") && normalized.includes("synthetic_generated_by")) return [];
+    if (normalized.includes("insert into clinical.dispatch_receipt")) return [];
+    if (normalized.includes("insert into clinical.incident")) return [];
+    if (normalized.includes("insert into clinical.call_assignment")) {
+      generated = {
+        id: parameters[0], call_number: parameters[4], unit_id: parameters[2], call_sign: "Medic 32",
+        dispatched_at: parameters[5], dispatch_reason: parameters[6], dispatch_priority_code: "2305003",
+        dispatch_priority_display: "Emergent", chief_complaint: null, agency_time_zone: "America/New_York",
+        expires_at: new Date(Date.parse(parameters[5]) + 86_400_000).toISOString(), status: "assigned"
+      };
+      return [{ created_at: parameters[5], expires_at: generated.expires_at }];
+    }
+    if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new AssignedCallsService(transactional(manager), {
@@ -401,10 +417,15 @@ test("generation refuses while the clinician has an open report", async () => {
     requireCapability: async () => session
   });
 
-  await assert.rejects(
-    service.generateSynthetic(session.accessToken, "csrf-token", "32000000-0000-4000-8000-000000000010"),
-    (error) => error instanceof ConflictException
+  const created = await service.generateSynthetic(
+    session.accessToken,
+    "csrf-token",
+    "32000000-0000-4000-8000-000000000010",
+    new Date("2026-09-13T08:30:00.000Z")
   );
+
+  assert.equal(created.reused, false);
+  assert.equal(created.assignment.id, generated.id);
 });
 
 test("a serialization failure while opening an assignment surfaces as a retriable conflict, not a raw 500", async () => {

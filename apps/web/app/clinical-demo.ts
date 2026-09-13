@@ -24,9 +24,9 @@ export function selectedClinicalDemoUnit(
 
 export function canGenerateSyntheticCall(
   activeReport: boolean,
-  context: Pick<SyntheticCallGenerationContext, "hasOpenReport">,
+  context: Pick<SyntheticCallGenerationContext, "hasUnopenedCall">,
 ): boolean {
-  return !activeReport && !context.hasOpenReport;
+  return !activeReport && !context.hasUnopenedCall;
 }
 
 /** Uses only the server-qualified record boundary; no document content can opt in. */

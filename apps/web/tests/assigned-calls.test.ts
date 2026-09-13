@@ -38,7 +38,7 @@ test("synthetic generation context and selected unit use only the live authentic
   globalThis.fetch = async (input, init) => {
     requests.push({ url: String(input), init });
     if (init?.method === "POST") return Response.json({ assignment: call("generated", "DEMO-1"), reused: false });
-    return Response.json({ eligibleUnits: [{ id: "unit-id", callSign: "Medic 32", name: "Medic 32" }], hasOpenReport: false });
+    return Response.json({ eligibleUnits: [{ id: "unit-id", callSign: "Medic 32", name: "Medic 32" }], hasUnopenedCall: false });
   };
   try {
     const context = await fetchSyntheticCallGenerationContext();
@@ -68,6 +68,23 @@ test("synthetic call generation is unavailable to static and disconnected client
     delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     globalThis.fetch = async () => { throw new TypeError("offline"); };
     await assert.rejects(generateSyntheticCall("csrf-token", "unit-id"), /live connection/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
+});
+
+test("a generation race reports an assignment conflict rather than blaming an open report", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  globalThis.fetch = async () => Response.json({ message: "conflict" }, { status: 409 });
+  try {
+    await assert.rejects(
+      generateSyntheticCall("csrf-token", "unit-id"),
+      /current assignments/i
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;

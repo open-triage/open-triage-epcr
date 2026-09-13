@@ -44,7 +44,7 @@ export async function generateSyntheticCall(csrfToken: string, unitId: string): 
   if (!response.ok) {
     if (response.status === 401) throw new Error("Clinical Demo authorization is no longer available.");
     if (response.status === 404) throw new Error("The selected unit is no longer eligible.");
-    if (response.status === 409) throw new Error("Close the open report before generating a call.");
+    if (response.status === 409) throw new Error("Call generation conflicted with the current assignments. Refresh and try again.");
     throw new Error("The synthetic call could not be generated.");
   }
   return response.json() as Promise<GenerateSyntheticCallResponse>;

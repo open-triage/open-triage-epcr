@@ -219,7 +219,7 @@ export class AssignedCallsService {
 
   async syntheticGenerationContext(accessToken: string): Promise<SyntheticCallGenerationContext> {
     const session = await this.sessions.requireCapability(accessToken, "clinical:demo");
-    const [units, openReports] = await Promise.all([
+    const [units, unopenedCalls] = await Promise.all([
       this.dataSource.query<EligibleUnitRow[]>(`
         select ou.id, ou.call_sign, ou.name, organization.deployment_timezone as agency_time_zone
         from app_identity.unit_clinician uc
@@ -230,13 +230,15 @@ export class AssignedCallsService {
         order by ou.call_sign, ou.id
       `, [session.user.id, session.organization.id]),
       this.dataSource.query<Array<{ exists: boolean }>>(`select exists (
-        select 1 from clinical.report
-        where organization_id = $1 and documenting_user_id = $2 and status = 'draft'
+        select 1 from clinical.call_assignment
+        where organization_id = $1 and synthetic_generated_by = $2
+          and synthetic and status = 'assigned'
+          and (expires_at is null or expires_at > clock_timestamp())
       )`, [session.organization.id, session.user.id]),
     ]);
     return {
       eligibleUnits: units.map((unit) => ({ id: unit.id, callSign: unit.call_sign, name: unit.name })),
-      hasOpenReport: openReports[0]?.exists ?? false,
+      hasUnopenedCall: unopenedCalls[0]?.exists ?? false,
     };
   }
 
@@ -259,12 +261,6 @@ export class AssignedCallsService {
         `, [session.user.id, session.organization.id, unitId]);
         const unit = units[0];
         if (!unit) throw new NotFoundException("The selected unit is not eligible for synthetic calls");
-        const openReports = await manager.query<Array<{ exists: boolean }>>(`select exists (
-          select 1 from clinical.report
-          where organization_id = $1 and documenting_user_id = $2 and status = 'draft'
-        )`, [session.organization.id, session.user.id]);
-        if (openReports[0]?.exists) throw new ConflictException("Close the open report before generating a call");
-
         const existing = await manager.query<AssignedCallRow[]>(`
           select ca.id, ca.call_number, ca.unit_id, ou.call_sign, ca.dispatched_at,
                  ca.dispatch_reason, ca.chief_complaint, ca.status,
