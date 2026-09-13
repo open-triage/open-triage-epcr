@@ -137,6 +137,8 @@ export interface AdminUserSummary {
   username: string;
   active: boolean;
   revision: number;
+  /** True only for the installation's current accountable owner. */
+  owner?: boolean;
   roles: AdminRoleSummary[];
 }
 

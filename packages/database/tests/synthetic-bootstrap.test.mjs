@@ -17,6 +17,7 @@ const [databasePackage, bootstrap, apiMain, apiModule, initialMigration] = await
 test("exposes fixture accounts only through an explicit insert-only command", () => {
   assert.equal(databasePackage.scripts["bootstrap:synthetic:runtime"],
     "node scripts/bootstrap-synthetic-installation.mjs");
+  assert.match(databasePackage.scripts["bootstrap:synthetic"], /migrate.*load:catalog.*bootstrap:synthetic:runtime/);
   for (const productionEntryPoint of [apiMain, apiModule, initialMigration]) {
     assert.ok(!productionEntryPoint.includes("bootstrap-synthetic-installation"));
   }
@@ -34,7 +35,11 @@ test("creates only one ordinary demo account with its exact initial role", () =>
   assert.doesNotMatch(bootstrap, /roles: \[[^\]]*"administrator"/);
   assert.doesNotMatch(bootstrap, /roles: \[[^\]]*"clinician"/);
   assert.match(bootstrap, /must_change_password,[\s\S]*values \(\$1, \$2, \$3, false, null, now\(\)\)/);
-  assert.doesNotMatch(bootstrap, /insert into (?:clinical|forms|catalog)\./);
+  assert.match(bootstrap, /insert into forms\.form/);
+  assert.match(bootstrap, /insert into forms\.form_version/);
+  assert.match(bootstrap, /insert into forms\.agency_stationary_default/);
+  assert.match(bootstrap, /insert into app_identity\.agency_demographic_version/);
+  assert.doesNotMatch(bootstrap, /insert into (?:clinical|catalog)\./);
   assert.doesNotMatch(bootstrap, /insert into app_identity\.(?:organization|operational_unit|unit_clinician|external_identity)/);
   assert.doesNotMatch(bootstrap, /synthetic\)\s*values/i);
 });

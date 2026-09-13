@@ -254,7 +254,6 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
       {createOpen ? "Cancel creation" : "Create user"}</button>}</div>
-    <OwnershipTransferPanel csrfToken={csrfToken} />
     {canCreate && createOpen && <form id="create-user-form" className="admin-user-create" onSubmit={createUser}>
       <fieldset disabled={creating}><legend>New local user</legend>
         <label>Display name<input name="displayName" maxLength={200} required autoComplete="off" /></label>
@@ -314,9 +313,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <button type="button" onClick={() => setEditing(null)}>Cancel</button></div>
       </fieldset>
     </form>}
-    {editing && (canViewSessions || canResetCredentials) && <section className="admin-user-security" aria-labelledby="user-security-heading">
-      <div className="section-heading"><h3 id="user-security-heading">Security for {editing.displayName}</h3>
+    {editing && (canViewSessions || canResetCredentials || editing.owner) && <section className="admin-user-security" aria-labelledby="user-security-heading">
+      <div className="section-heading"><h3 id="user-security-heading">Manage {editing.displayName}</h3>
         <button type="button" onClick={() => setEditing(null)}>Close</button></div>
+      {editing.owner && <OwnershipTransferPanel csrfToken={csrfToken} />}
       {canViewSessions && <div><h4>Active sessions</h4>
         <p className="admin-muted">Device labels are coarse. Source IP and geolocation are not shown.</p>
         {securityLoading && !userSessions.length && <p role="status">Loading sessions…</p>}
@@ -362,8 +362,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
         <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active} /></td>
-        {hasActions && <td>{user.id === currentUserId && !canViewSessions ? "Current account"
-          : <button type="button" onClick={() => beginEdit(user)}>{user.id === currentUserId ? "View sessions" : "Manage"}</button>}</td>}
+        {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? "Current account"
+          : <button type="button" onClick={() => beginEdit(user)}>Manage</button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     {nextCursor && <button type="button" disabled={loading} onClick={() => void load({ ...query, cursor: nextCursor }, true)}>
@@ -430,7 +430,7 @@ export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHis
       </tr>)}</tbody>
       <tfoot><tr><th scope="row">Role actions</th>{roles.map((role) => <td key={role.id}>
         <div className="admin-role-matrix-actions">
-          <button type="button" onClick={() => onHistory(role.id)}>View history</button>
+          <button type="button" onClick={() => onHistory(role.id)}>History</button>
           {canWrite && !role.protected && role.active && <>
             <button type="button" onClick={() => onEdit(role)}>Edit</button>
             <button type="button" onClick={() => onDeactivate(role)}>Deactivate</button>

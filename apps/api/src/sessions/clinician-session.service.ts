@@ -130,7 +130,7 @@ export class ClinicianSessionService {
         await this.audit(manager, account, "authentication.password_change", "failed");
         return undefined;
       }
-      const [credentials] = await manager.query<[Array<{ credential_version: string }>, number]>(`update app_identity.local_credential set password_verifier = $2,
+      const credentials = await manager.query<Array<{ credential_version: string }>>(`update app_identity.local_credential set password_verifier = $2,
         must_change_password = false, temporary_password_expires_at = null,
         credential_version = credential_version + 1,
         password_changed_at = $3, updated_at = $3 where user_id = $1
