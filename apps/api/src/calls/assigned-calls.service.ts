@@ -116,7 +116,8 @@ function shiftedTimestamp(value: string, milliseconds: number): string {
   if (!offset) return new Date(instant + milliseconds).toISOString();
   const offsetMinutes = (offset[1] === "-" ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]));
   const shifted = new Date(instant + milliseconds + offsetMinutes * 60_000).toISOString();
-  const local = value.includes(".") ? shifted.replace(/Z$/, "") : shifted.replace(/\.000Z$/, "");
+  let local = shifted.replace(/Z$/, "");
+  if (!value.includes(".")) local = local.replace(/\.000$/, "");
   return `${local}${offset[1]}${offset[2]}:${offset[3]}`;
 }
 

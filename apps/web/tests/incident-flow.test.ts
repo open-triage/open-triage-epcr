@@ -83,6 +83,20 @@ test("operational timeline uses agency time and retains original offset lexicals
   assert.equal(timeline.every(({ detail }) => detail === ""), true);
 });
 
+test("an invalid operational timestamp cannot crash the encounter workspace", () => {
+  const document = { ...INITIAL_SHELL_STATE.encounter.document, groups: INITIAL_SHELL_STATE.encounter.document.groups.map((group) =>
+    group.id !== "eTimesSection" ? group : { ...group, instances: group.instances.map((instance) => ({
+      ...instance, elements: instance.elements.map((element) => element.id !== "eTimes.02" ? element : {
+        ...element, values: [{
+          kind: "scalar" as const, occurrenceId: "malformed-generated-time", value: "2026-09-13T03:52:33.520Z-04:00",
+        }],
+      }),
+    })) }) };
+
+  assert.doesNotThrow(() => documentTimeline(document));
+  assert.equal(documentTimeline(document).some(({ dateTime }) => dateTime?.includes("Z-04:00")), false);
+});
+
 test("retained patient data, refresh recovery, and reset keep incident display on the canonical document", () => {
   const baselineDocument = INITIAL_SHELL_STATE.encounter.document;
   const before = { incident: incidentSummary(baselineDocument), timeline: documentTimeline(baselineDocument) };
