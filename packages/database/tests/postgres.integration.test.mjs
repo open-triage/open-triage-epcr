@@ -811,7 +811,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       waveformGroup: "36000000-0000-4000-8000-00000000000a"
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
-    const administratorId = "32000000-0000-4000-8000-000000000002";
+    const administratorId = "32000000-0000-4000-8000-000000000099";
     const clinicianId = SYNTHETIC_DEMO_FIXTURE.userId;
     const agencyVersionId = "32000000-0000-4000-8000-000000000006";
     const formVersionId = "32000000-0000-4000-8000-000000000011";
