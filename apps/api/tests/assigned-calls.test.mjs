@@ -6,6 +6,7 @@ import { ConflictException, NotFoundException, UnauthorizedException } from "@ne
 import { AssignedCallsController } from "../dist/calls/assigned-calls.controller.js";
 import { AssignedCallsService, syntheticReplacementPayload } from "../dist/calls/assigned-calls.service.js";
 import { randomSyntheticDispatchPayload, SYNTHETIC_DISPATCH_PAYLOAD_COUNT, syntheticDispatchPayloads } from "../dist/calls/synthetic-dispatch-payloads.js";
+import { validateDispatchAssignment } from "../dist/dispatch/dispatch-assignment.validation.js";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 
 process.env.PATIENT_KEY_INSTALLATION_ID ??= "91000000-0000-4000-8000-000000000001";
@@ -13,6 +14,7 @@ process.env.PATIENT_KEY_VERSION ??= "1";
 process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 const dispatchSample = JSON.parse(readFileSync(new URL("../../../packages/contracts/examples/dispatch/synthetic-assignment-01.json", import.meta.url), "utf8"));
+const dispatchCatalog = JSON.parse(readFileSync(new URL("../../web/app/data/nemsis-data-model-3.5.1.json", import.meta.url), "utf8"));
 
 const session = {
   accessToken: "authenticated-demo-token",
@@ -61,6 +63,28 @@ test("a generated assignment carries forward the complete dispatch payload with 
   assert.equal(dispatchSample.groups.flatMap((group) => group.instances)
     .flatMap((instance) => instance.elements).find((candidate) => candidate.id === "eResponse.03").values[0].value,
   "SYN-20260903-001");
+});
+
+test("a generated assignment keeps fractional operational times offset-aware and browser-parseable", () => {
+  const replacement = syntheticReplacementPayload(
+    dispatchSample,
+    "SYN-20260913-001",
+    new Date("2026-09-13T07:52:33.520Z"),
+    "52000000-0000-4000-8000-000000000100",
+  );
+  const timestamps = [replacement.sentAt, ...replacement.groups.flatMap((group) => group.instances)
+    .flatMap((instance) => instance.elements)
+    .filter(({ id }) => id.startsWith("eTimes."))
+    .flatMap(({ values }) => values)
+    .flatMap(({ value }) => typeof value === "string" ? [value] : [])];
+
+  assert.ok(timestamps.length > 1);
+  assert.equal(timestamps.find((value) => value.includes("Z-04:00")), undefined);
+  assert.equal(timestamps.find((value) => Number.isNaN(Date.parse(value))), undefined);
+  assert.equal(timestamps.find((value) => value.endsWith(".520-04:00")) !== undefined, true);
+  assert.deepEqual(validateDispatchAssignment(replacement, dispatchCatalog), {
+    status: "applied", canonical: replacement, findings: [],
+  });
 });
 
 test("the random fixture pool contains ten distinct dispatch payloads", () => {
