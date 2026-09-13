@@ -264,19 +264,38 @@ test("Sign record requires acknowledged validation and removes the report from O
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
 });
 
-test("draft synchronization automatically retries a transient outage with one command identity", async ({ page }) => {
+test("draft synchronization immediately rebases a rejected retry without showing a persistent conflict", async ({ page }) => {
   const commandIds: string[] = [];
+  const expectedRevisions: number[] = [];
   let requests = 0;
+  let activeRequests = 0;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     requests += 1;
     const command = route.request().postDataJSON() as { commandId: string; expectedRevision: number };
     commandIds.push(command.commandId);
+    expectedRevisions.push(command.expectedRevision);
     if (requests === 1) return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: openedAssignment.report.id, status: "draft", revision: 1 }) });
     if (requests === 2) return route.abort("internetdisconnected");
-    return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "Draft revision is stale" }) });
+    if (requests === 3) return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ message: "Draft revision is stale" }) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1,
+    }) });
   });
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => {
+    activeRequests += 1;
+    return route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      reportId: openedAssignment.report.id,
+      reportRevision: 6,
+      dispatchRevision: 1,
+      document: openedAssignment.report.document,
+      dispatchConflicts: [],
+      dispatchCancellation: null,
+    }),
+  }); });
   await signIn(page);
   await page.getByRole("button", { name: "Open call" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saving");
@@ -286,8 +305,17 @@ test("draft synchronization automatically retries a transient outage with one co
   await page.getByLabel("Note summary").fill("Offline draft");
   await page.getByRole("button", { name: "Add to timeline" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
-  await expect(page.locator(".sync-status")).toHaveText("Conflict", { timeout: 5_000 });
+  await expect.poll(async () => ({ requests, activeRequests, cache: await page.evaluate(() => {
+    const cached = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0];
+    return { revision: cached.report.revision, syncStatus: cached.syncStatus,
+      queued: cached.queuedChanges.map(({ attempted, command }: { attempted: boolean; command: { commandId: string; expectedRevision: number } }) =>
+        ({ attempted, commandId: command.commandId, expectedRevision: command.expectedRevision })) };
+  }) })).toEqual({ requests: 4, activeRequests: 2, cache: { revision: 7, syncStatus: "saved", queued: [] } });
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  await expect(page.getByText("Offline draft", { exact: true })).toBeVisible();
   expect(commandIds[1]).toBe(commandIds[2]);
+  expect(commandIds[3]).not.toBe(commandIds[2]);
+  expect(expectedRevisions[3]).toBe(6);
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);

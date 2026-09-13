@@ -273,8 +273,9 @@ export async function fetchActiveReport(
   reportId: string,
   etag?: string,
 ): Promise<{ readonly etag: string; readonly resource: ActiveReportResource } | null> {
-  const url = apiRequestUrl(`/api/reports/${reportId}/active`);
-  if (!url) return null;
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) return null;
+  const url = browserRouteUrl(`/api/reports/${reportId}/active`, configuration);
   let response: Response;
   try {
     response = await fetch(url, browserRequestInit({
