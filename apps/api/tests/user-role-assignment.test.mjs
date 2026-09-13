@@ -83,19 +83,20 @@ test("a disabled user's complete role set is replaced atomically with one indepe
 test("non-owners need every capability affected by additions and removals", async () => {
   const removing = setup({ actorCapabilities: ["roles:assign"] });
   await assert.rejects(removing.service.replace("opaque-session", targetId,
-    { expectedRevision: 7, roleIds: [roleB] }), /custom roles only/);
+    { expectedRevision: 7, roleIds: [roleB] }), /add or remove only roles/);
   assert.equal(removing.events.at(-1).sql, "rollback");
   assert.equal(removing.events.some(({ sql }) => sql.startsWith("update app_identity.app_user")), false);
 
   const adding = setup({ currentRoleIds: [], actorCapabilities: ["roles:assign"] });
   await assert.rejects(adding.service.replace("opaque-session", targetId,
-    { expectedRevision: 7, roleIds: [roleA] }), /custom roles only/);
+    { expectedRevision: 7, roleIds: [roleA] }), /add or remove only roles/);
 });
 
-test("an administrator may add the built-in Clinician role without clinical permissions", async () => {
+test("an administrator may add Clinician when Administrator includes clinical permissions", async () => {
   const clinician = { id: roleA, display_name: "Clinician", active: true, protected: true,
     assignable: true, system_key: "clinician", capability_key: "clinical:document" };
-  const fixture = setup({ currentRoleIds: [], roleRows: [clinician], actorCapabilities: ["roles:assign"] });
+  const fixture = setup({ currentRoleIds: [], roleRows: [clinician],
+    actorCapabilities: ["roles:assign", "clinical:document"] });
   const result = await fixture.service.replace("opaque-session", targetId,
     { expectedRevision: 7, roleIds: [roleA] });
   assert.deepEqual(result.addedRoles.map(({ id }) => id), [roleA]);

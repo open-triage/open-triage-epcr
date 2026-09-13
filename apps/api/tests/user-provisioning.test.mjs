@@ -9,7 +9,7 @@ const roleId = "10000000-0000-4000-8000-000000000001";
 const actor = {
   user: { id: "actor-id", displayName: "Administrator" },
   organization: { id: "organization-id", name: "Example EMS" },
-  capabilities: ["users:read", "users:write", "roles:read", "roles:assign"]
+  capabilities: ["clinical:document", "users:read", "users:write", "roles:read", "roles:assign"]
 };
 
 function setup({ availableRoles = [roleId], capabilities = actor.capabilities, owner = false,
@@ -74,7 +74,7 @@ test("the owner may assign Administrator during creation without recent reauthen
   assert.equal(reauthentications, 0);
 });
 
-test("an administrator may assign the built-in Clinician role without clinical permissions", async () => {
+test("an administrator may assign Clinician because Administrator includes clinical permissions", async () => {
   const { service } = setup({ systemKey: "clinician", roleCapability: "clinical:document" });
   const result = await service.provision("session-token", validateProvisionAdminUser({
     username: "new.clinician", displayName: "New Clinician", temporaryPassword: "Temporary password 42!",
@@ -84,11 +84,12 @@ test("an administrator may assign the built-in Clinician role without clinical p
 });
 
 test("an administrator cannot use a custom role to exceed their capability ceiling", async () => {
-  const { service } = setup({ roleCapability: "clinical:document" });
+  const { service } = setup({ roleCapability: "clinical:document",
+    capabilities: ["users:read", "users:write", "roles:read", "roles:assign"] });
   await assert.rejects(service.provision("session-token", validateProvisionAdminUser({
     username: "custom.user", displayName: "Custom User", temporaryPassword: "Temporary password 42!",
     roleIds: [roleId]
-  })), /custom roles only/);
+  })), /only roles whose capabilities/);
 });
 
 test("authorized creation validates roles and persists identity, complete roles, credential, and safe audit atomically", async () => {

@@ -95,8 +95,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         group by r.id order by r.system_key`, [organizationId]);
       assert.equal(protectedRoles.rows.length, 3);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
-      assert.equal(administrator.capabilities.includes("clinical:document"), false);
-      assert.equal(administrator.capabilities.length, 15);
+      assert.equal(administrator.capabilities.includes("clinical:document"), true);
+      assert.equal(administrator.capabilities.length, 16);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
       assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
         "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",

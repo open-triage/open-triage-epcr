@@ -32,7 +32,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   temporaryCredentialMigration, customRoleAuthoringMigration, userLifecycleMigration,
   roleRetirementMigration, sessionAdministrationMigration,
   portableRolePackageMigration, syntheticGenerationMigration, syntheticDraftMutationMigration,
-  syntheticExpiryMigration, protectedRoleSimplificationMigration] = await Promise.all([
+  syntheticExpiryMigration, protectedRoleSimplificationMigration, administratorClinicalMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
   readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
@@ -70,7 +70,8 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   readFile(path.join(repoRoot, "supabase/migrations/20260911184803_authorized_synthetic_call_generation.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911191329_audit_authorized_synthetic_draft_mutations.sql"), "utf8"),
   readFile(path.join(repoRoot, "supabase/migrations/20260911270000_expire_synthetic_records.sql"), "utf8"),
-  readFile(path.join(repoRoot, "supabase/migrations/20260912120000_simplify_protected_demo_role.sql"), "utf8")
+  readFile(path.join(repoRoot, "supabase/migrations/20260912120000_simplify_protected_demo_role.sql"), "utf8"),
+  readFile(path.join(repoRoot, "supabase/migrations/20260913150000_administrator_clinical_document.sql"), "utf8")
 ]);
 
 test("synthetic expiry is immutable, indexed, concurrency-safe, and retains only anti-replay facts", () => {
@@ -139,7 +140,11 @@ test("the three protected roles are explicit and immutable", () => {
   const administratorDefinition = protectedRoleSimplificationMigration.match(
     /when 'administrator' then array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
   assert.doesNotMatch(administratorDefinition, /clinical:document/,
-    "Administrator must not silently inherit clinical access");
+    "the historical protected-role migration must remain immutable");
+  assert.match(administratorClinicalMigration,
+    /when 'administrator' then array\[[\s\S]*?'clinical:document'/);
+  assert.match(administratorClinicalMigration,
+    /where role\.system_key = 'administrator'[\s\S]*?select 'clinical:document'/);
 });
 
 test("role constraints cover organizations, prerequisites, audit redaction, and append-only history", () => {

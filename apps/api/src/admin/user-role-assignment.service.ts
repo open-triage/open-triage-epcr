@@ -88,9 +88,9 @@ export class UserRoleAssignmentService {
       const actorIsOwner = Boolean(ownerRows[0]?.owner);
       if (!actorIsOwner) {
         const actorCapabilities = new Set(actor.capabilities ?? []);
-        if (changed.some((role) => role.systemKey === null &&
+        if (changed.some((role) =>
           role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
-          throw new ForbiddenException("Administrators may add or remove custom roles only when they possess every capability");
+          throw new ForbiddenException("Administrators may add or remove only roles whose capabilities they possess");
         }
       }
       if (changed.some((role) => role.systemKey && OWNER_ONLY_ROLE_KEYS.has(role.systemKey))) {

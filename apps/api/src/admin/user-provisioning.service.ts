@@ -53,9 +53,9 @@ export class UserProvisioningService {
           if (!actorIsOwner) throw new ForbiddenException("Only the installation owner may assign Administrator or Demo");
         }
         const actorCapabilities = new Set(actor.capabilities ?? []);
-        if (!actorIsOwner && [...roles.values()].some((role) => role.systemKey === null &&
+        if (!actorIsOwner && [...roles.values()].some((role) =>
           role.capabilities.some((capability) => !actorCapabilities.has(capability)))) {
-          throw new ForbiddenException("Administrators may assign custom roles only when they possess every capability");
+          throw new ForbiddenException("Administrators may assign only roles whose capabilities they possess");
         }
         await manager.query(
           "insert into app_identity.app_user (id, organization_id, display_name) values ($1, $2, $3)",
