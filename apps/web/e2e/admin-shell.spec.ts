@@ -240,20 +240,24 @@ test("Users and Roles preserve asymmetric visibility and read-only accessible na
 test("an authorized administrator provisions a user with initial roles and bounded temporary expiry", async ({ page }) => {
   let submitted: Record<string, unknown> | undefined;
   const users: Array<{ id: string; displayName: string; username: string; active: boolean;
-    roles: Array<{ id: string; displayName: string; active: boolean; protected: boolean }> }> = [
-    { id: "owner-id", displayName: "Installation Owner", username: "owner", active: true, roles: [] }
+    owner: boolean; roles: Array<{ id: string; displayName: string; active: boolean; protected: boolean }> }> = [
+    { id: "owner-id", displayName: "Installation Owner", username: "owner", active: true, owner: true, roles: [] }
   ];
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ settings: productionSettings }) }));
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" },
-    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"], activeConfiguration: null, dashboard: null
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"],
+    capabilities: ["users:read", "users:write", "roles:read", "roles:assign"], activeConfiguration: null, dashboard: null
   }) }));
   await page.route("**/api/admin/user-role-options", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [
-    { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true }
+    { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true,
+      assignmentRestricted: false, assignmentMutable: true }
   ] }) }));
   await page.route("**/api/admin/users**", async (route) => {
     if (route.request().method() === "POST") {
       submitted = route.request().postDataJSON() as Record<string, unknown>;
-      users.push({ id: "new-user", displayName: "Åke Medic", username: "ake.medic", active: true,
+      users.push({ id: "new-user", displayName: "Åke Medic", username: "ake.medic", active: true, owner: false,
         roles: [{ id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true }] });
       return route.fulfill({ contentType: "application/json", body: JSON.stringify({ userId: "new-user",
         username: "ake.medic", displayName: "Åke Medic", roleIds: ["10000000-0000-4000-8000-000000000001"],
@@ -262,6 +266,8 @@ test("an authorized administrator provisions a user with initial roles and bound
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: users, nextCursor: null, pageSize: 50 }) });
   });
   await signInAsCombinedOwner(page, ["users:read", "users:write", "roles:read", "roles:assign"]);
+  await expect(page.getByRole("row", { name: /Installation Owner/ })
+    .getByRole("list", { name: "Assigned roles" })).toContainText("Owner");
   await page.getByRole("button", { name: "Create user", exact: true }).click();
   const form = page.getByRole("group", { name: "New local user" });
   await form.getByLabel("Display name").fill("Åke Medic");
@@ -279,10 +285,13 @@ test("an authorized administrator provisions a user with initial roles and bound
 });
 
 test("an administrator reviews retained roles while disabling and reactivating a durable identity", async ({ page }) => {
-  const role = { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true };
+  const role = { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true, protected: true,
+    assignmentRestricted: false, assignmentMutable: true };
   let user = { id: "20000000-0000-4000-8000-000000000001", displayName: "Alex Medic",
     username: "alex.medic", active: true, revision: 4, roles: [role] };
   const commands: Array<Record<string, unknown>> = [];
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ settings: productionSettings }) }));
   await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     owner: { id: "owner-id", displayName: "Installation Owner" },
     organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"], capabilities: ["users:read", "users:write", "roles:read", "roles:assign"],
@@ -306,7 +315,7 @@ test("an administrator reviews retained roles while disabling and reactivating a
   await signInAsCombinedOwner(page, ["users:read", "users:write", "roles:read", "roles:assign"]);
 
   await page.getByRole("button", { name: "Manage" }).click();
-  const manage = page.getByRole("group", { name: "Manage Alex Medic" });
+  const manage = page.getByRole("region", { name: "Manage Alex Medic" });
   await manage.getByLabel("Display name").fill("Alex Renamed");
   await manage.getByLabel("Username").fill("alex.renamed");
   await manage.getByLabel("Status").selectOption("false");
@@ -314,17 +323,61 @@ test("an administrator reviews retained roles while disabling and reactivating a
   await manage.getByRole("button", { name: "Save user" }).click();
   await expect(page.getByRole("status")).toContainText("2 active sessions were revoked");
   expect(commands[0]).toMatchObject({ expectedRevision: 4, username: "alex.renamed", displayName: "Alex Renamed",
-    roleIds: [role.id], active: false });
+    active: false });
+  expect(commands[0]).not.toHaveProperty("roleIds");
 
   await page.getByRole("button", { name: "Manage" }).click();
-  const reactivate = page.getByRole("group", { name: "Manage Alex Renamed" });
+  const reactivate = page.getByRole("region", { name: "Manage Alex Renamed" });
   await reactivate.getByLabel("Status").selectOption("true");
   await expect(reactivate.getByText("Roles restored on reactivation")).toBeVisible();
   await expect(reactivate.getByRole("list", { name: "Assigned roles" })).toContainText("Clinician");
   await expect(reactivate.getByText(/credential will not be reset/i)).toBeVisible();
   await reactivate.getByRole("button", { name: "Reactivate user" }).click();
   await expect(page.getByRole("status")).toContainText("A fresh login is required; the credential was not reset");
-  expect(commands[1]).toMatchObject({ expectedRevision: 5, roleIds: [role.id], active: true });
+  expect(commands[1]).toMatchObject({ expectedRevision: 5, active: true });
+  expect(commands[1]).not.toHaveProperty("roleIds");
+});
+
+test("user management remains one pane and refreshes identity fields when switching users", async ({ page }) => {
+  const role = { id: "10000000-0000-4000-8000-000000000001", displayName: "Clinician", active: true,
+    protected: true, assignmentRestricted: false, assignmentMutable: true };
+  const users = [
+    { id: "20000000-0000-4000-8000-000000000001", displayName: "Alex Medic", username: "alex.medic",
+      active: true, revision: 1, owner: false, roles: [role] },
+    { id: "20000000-0000-4000-8000-000000000002", displayName: "Blake Medic", username: "blake.medic",
+      active: true, revision: 1, owner: false, roles: [role] }
+  ];
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ settings: productionSettings }) }));
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["users"],
+    capabilities: ["users:read", "users:write", "roles:read", "roles:assign", "sessions:read"],
+    activeConfiguration: null, dashboard: null
+  }) }));
+  await page.route("**/api/admin/user-role-options", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: [role] }) }));
+  await page.route("**/api/admin/users/*/sessions", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: [] }) }));
+  await page.route("**/api/admin/users**", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ items: users, nextCursor: null, pageSize: 50 }) }));
+  await signInAsCombinedOwner(page,
+    ["users:read", "users:write", "roles:read", "roles:assign", "sessions:read"]);
+
+  const alexRow = page.getByRole("row", { name: /Alex Medic/ });
+  await alexRow.getByRole("button", { name: "Manage" }).click();
+  const alexPane = page.getByRole("region", { name: "Manage Alex Medic" });
+  await expect(alexPane.getByLabel("Display name")).toHaveValue("Alex Medic");
+  await expect(alexPane.getByLabel("Username")).toHaveValue("alex.medic");
+  await expect(alexPane.getByRole("heading", { name: "Active sessions" })).toBeVisible();
+  await expect(page.locator(".admin-user-management")).toHaveCount(1);
+
+  const blakeRow = page.getByRole("row", { name: /Blake Medic/ });
+  await blakeRow.getByRole("button", { name: "Manage" }).click();
+  const blakePane = page.getByRole("region", { name: "Manage Blake Medic" });
+  await expect(blakePane.getByLabel("Display name")).toHaveValue("Blake Medic");
+  await expect(blakePane.getByLabel("Username")).toHaveValue("blake.medic");
+  await expect(page.locator(".admin-user-management")).toHaveCount(1);
 });
 
 test("a temporary credential opens only mandatory password replacement", async ({ page }) => {
@@ -427,7 +480,7 @@ test("a role author deactivates, inspects redacted history, and reactivates with
       retired || new URL(url).searchParams.get("state") !== "active" ? [{ ...role, active: false, assigneeCount: 0 }] : [role] }) });
   });
   await signInAsCombinedOwner(page, ["roles:read", "roles:write"]);
-  await page.getByRole("button", { name: "Deactivate custom role" }).click();
+  await page.getByRole("button", { name: "Deactivate", exact: true }).click();
   await expect(page.getByText("immediately ends 1 current assignment")).toBeVisible();
   await page.getByLabel(/Retirement note/).fill("Duty retired");
   await page.getByRole("button", { name: "Confirm deactivation" }).click();
@@ -441,7 +494,7 @@ test("a role author deactivates, inspects redacted history, and reactivates with
   await expect(page.getByText(/Note: Duty retired/)).toBeVisible();
   await page.getByRole("button", { name: "Close history" }).click();
 
-  await page.getByRole("button", { name: "Reactivate custom role" }).click();
+  await page.getByRole("button", { name: "Reactivate", exact: true }).click();
   await expect(page.getByText("restores no former assignments")).toBeVisible();
   await page.getByLabel("Role name").fill("Dispatch Legacy");
   await page.getByRole("button", { name: "Create version and reactivate" }).click();

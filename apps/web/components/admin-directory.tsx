@@ -13,9 +13,12 @@ import { OwnershipTransferPanel } from "./ownership-transfer";
 type StateFilter = "active" | "disabled" | "all";
 const temporaryPasswordHours = selectedInstallationSettings().authentication.temporaryPasswordHours;
 
-function RoleBadges({ roles, effective = true }: { readonly roles: AdminRoleSummary[]; readonly effective?: boolean }) {
-  if (!roles.length) return <span className="admin-muted">No roles</span>;
+function RoleBadges({ roles, effective = true, owner = false }: {
+  readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean;
+}) {
+  if (!roles.length && !owner) return <span className="admin-muted">No roles</span>;
   return <ul className="admin-role-badges" aria-label="Assigned roles">
+    {owner && <li className="admin-owner-role">Owner</li>}
     {roles.map((role) => <li key={role.id}>{role.displayName}{!role.active
       ? " (deactivated)" : !effective ? " (retained, ineffective while disabled)" : ""}</li>)}
   </ul>;
@@ -275,8 +278,12 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       </fieldset>
     </form>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
-    {editing && canManage && editing.id !== currentUserId && <form className="admin-user-create" onSubmit={saveUser}>
-      <fieldset disabled={saving}><legend>Manage {editing.displayName}</legend>
+    {editing && <section key={editing.id} className="admin-user-management"
+      aria-labelledby={`manage-user-${editing.id}`}>
+      <div className="section-heading"><h3 id={`manage-user-${editing.id}`}>Manage {editing.displayName}</h3>
+        <button type="button" onClick={() => setEditing(null)}>Close</button></div>
+    {canManage && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onSubmit={saveUser}>
+      <fieldset disabled={saving}><legend>Identity and access</legend>
         <label>Display name<input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
         <label>Username<input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
           pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
@@ -313,9 +320,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <button type="button" onClick={() => setEditing(null)}>Cancel</button></div>
       </fieldset>
     </form>}
-    {editing && (canViewSessions || canResetCredentials || editing.owner) && <section className="admin-user-security" aria-labelledby="user-security-heading">
-      <div className="section-heading"><h3 id="user-security-heading">Manage {editing.displayName}</h3>
-        <button type="button" onClick={() => setEditing(null)}>Close</button></div>
+    {(canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
       {editing.owner && <OwnershipTransferPanel csrfToken={csrfToken} />}
       {canViewSessions && <div><h4>Active sessions</h4>
         <p className="admin-muted">Device labels are coarse. Source IP and geolocation are not shown.</p>
@@ -340,6 +345,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           <button type="submit">{resetting ? "Resetting…" : "Reset credential and revoke sessions"}</button>
         </fieldset>
       </form>}
+    </div>}
     </section>}
     <form className="admin-directory-filters" role="search" aria-label="Find users" onSubmit={submit}>
       <label>Search<input type="search" name="search" maxLength={100} placeholder="Display name or username" /></label>
@@ -361,7 +367,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         {hasActions && <th scope="col">Actions</th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
-        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active} /></td>
+        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active}
+          owner={user.owner} /></td>
         {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? "Current account"
           : <button type="button" onClick={() => beginEdit(user)}>Manage</button>}</td>}
       </tr>)}</tbody>

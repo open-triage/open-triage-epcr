@@ -115,7 +115,10 @@ input, select, textarea { touch-action: manipulation; }
 .admin-user-note { grid-column: 1 / -1; }
 .admin-user-note textarea { min-height: 72px; resize: vertical; }
 .admin-user-create button { justify-self: start; }
-.admin-user-security { margin: 0 18px 18px; border: 1px solid #b7c6b9; border-radius: 8px; background: #f7faf7; }
+.admin-user-management { margin: 0 18px 18px; border: 1px solid #b7c6b9; border-radius: 8px; overflow: hidden; background: #f7faf7; }
+.admin-user-management > .section-heading { border-radius: 0; }
+.admin-user-management-form { border-bottom: 0; background: transparent; }
+.admin-user-security { border-top: 1px solid #b7c6b9; background: transparent; }
 .admin-user-security h4 { margin: 16px 16px 6px; }
 .admin-user-security .admin-muted { margin: 0 16px 12px; }
 .admin-session-list { display: grid; gap: 10px; margin: 0; padding: 0 16px 16px; list-style: none; }
@@ -139,6 +142,7 @@ input, select, textarea { touch-action: manipulation; }
 .admin-directory thead th { background: #edf3ee; }
 .admin-role-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .admin-role-badges li { padding: 3px 7px; border-radius: 999px; background: #e8f3ee; font-size: var(--text-caption); }
+.admin-role-badges .admin-owner-role { color: #fff; background: var(--green); font-weight: 800; }
 .admin-muted { color: var(--muted); }
 .admin-role-state { max-width: 220px; margin: 18px; }
 .admin-role-matrix-scroll { margin: 0 18px 18px; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
@@ -147,7 +151,7 @@ input, select, textarea { touch-action: manipulation; }
 .admin-role-matrix th, .admin-role-matrix td { padding: 6px 8px; }
 .admin-role-matrix th:first-child { position: sticky; z-index: 1; left: 0; min-width: 190px; max-width: 230px; background: #f8faf8; }
 .admin-role-matrix thead th:first-child { z-index: 2; background: #edf3ee; }
-.admin-role-matrix thead th:not(:first-child) { min-width: 104px; max-width: 132px; }
+.admin-role-matrix thead th:not(:first-child) { width: 92px; min-width: 84px; max-width: 104px; overflow-wrap: anywhere; }
 .admin-role-column-heading { display: block; cursor: help; }
 .admin-role-column-heading strong { color: var(--ink); font-size: var(--text-body); }
 .admin-role-matrix tbody th { cursor: help; }
@@ -158,7 +162,7 @@ input, select, textarea { touch-action: manipulation; }
 .admin-role-matrix .capability-included .admin-capability-mark { color: #fff; background: var(--green); }
 .admin-role-matrix-actions { display: grid; gap: 7px; }
 .admin-role-matrix-actions button, .admin-role-editor-actions button, .section-heading > button { min-height: 42px; padding: 8px 13px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font: inherit; font-weight: 750; cursor: pointer; }
-.admin-role-matrix-actions button { min-height: 36px; padding: 6px 9px; }
+.admin-role-matrix-actions button { min-height: 34px; padding: 5px 6px; font-size: var(--text-caption); }
 .admin-role-editor { margin: 0 18px 18px; padding: 16px; border: 1px solid var(--green); border-radius: 8px; background: #f8fbf8; }
 .admin-role-editor > fieldset { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; }
 .admin-role-editor > fieldset > legend { padding: 0; font-size: var(--text-heading); font-weight: 800; }
