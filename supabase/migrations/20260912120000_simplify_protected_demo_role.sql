@@ -131,6 +131,12 @@ begin
 end;
 $$;
 
+-- The role/version foreign keys and validation triggers are deferred. Flush
+-- their queued checks before issuing another ALTER TABLE against role; a
+-- populated installation otherwise fails with SQLSTATE 55006 even though a
+-- clean installation has no role rows to expose the conflict.
+set constraints all immediate;
+
 alter table app_identity.role enable trigger protected_role_immutable;
 
 alter table app_identity.role

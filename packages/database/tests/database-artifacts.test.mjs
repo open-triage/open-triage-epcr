@@ -129,6 +129,9 @@ test("the three protected roles are explicit and immutable", () => {
   }
   assert.match(protectedRoleSimplificationMigration,
     /system_key in \('configuration-author', 'reviewer'\)/);
+  assert.match(protectedRoleSimplificationMigration,
+    /set constraints all immediate;\s*alter table app_identity\.role enable trigger protected_role_immutable/,
+    "populated upgrades must flush deferred role checks before altering role again");
   const demoDefinition = protectedRoleSimplificationMigration.match(
     /'demo', 'Demo', false, true, array\[([\s\S]*?)\]::text\[\]/)?.[1] ?? "";
   for (const capability of ["catalog:write", "clinical:demo", "clinical:document", "forms:write"]) {
