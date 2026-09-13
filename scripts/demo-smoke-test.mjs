@@ -4,6 +4,7 @@ import productionSettings from "../packages/contracts/config/installation.produc
 
 const DEFAULT_USERNAME = fixture.username;
 const DEFAULT_PASSWORD = fixture.password;
+const LEGACY_DEMO_CREDENTIAL = { username: "demo.admin", password: "open-triage-demo" };
 
 function httpsUrl(label, value) {
   let url;
@@ -62,8 +63,8 @@ export async function verifyPublicDemo(
   {
     frontendUrl,
     apiUrl,
-    username = DEFAULT_USERNAME,
-    password = DEFAULT_PASSWORD,
+    username,
+    password,
     readinessAttempts = 12,
     readinessDelayMilliseconds = 10_000,
   },
@@ -71,7 +72,13 @@ export async function verifyPublicDemo(
 ) {
   const frontend = httpsUrl("DEMO_WEB_URL", frontendUrl);
   const api = httpsUrl("DEMO_API_URL", apiUrl);
-  if (!username || !password) throw new Error("Synthetic login credentials are required");
+  const explicitlyConfigured = username !== undefined || password !== undefined;
+  if (explicitlyConfigured && (!username || !password)) {
+    throw new Error("Synthetic login credentials are required");
+  }
+  const credentialCandidates = explicitlyConfigured
+    ? [{ username, password }]
+    : [{ username: DEFAULT_USERNAME, password: DEFAULT_PASSWORD }, LEGACY_DEMO_CREDENTIAL];
 
   await retry(async () => {
     const response = await request(fetchImpl, "Frontend HTTPS", frontend);
@@ -99,11 +106,22 @@ export async function verifyPublicDemo(
   }
   log("PASS production-equivalent installation policy");
 
-  const loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", api), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
+  let loginResponse;
+  for (const [index, candidate] of credentialCandidates.entries()) {
+    try {
+      loginResponse = await request(fetchImpl, "Synthetic login", new URL("/api/sessions", api), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(candidate),
+      });
+      break;
+    } catch (error) {
+      if (index === credentialCandidates.length - 1 || error.message !== "Synthetic login returned HTTP 401") {
+        throw error;
+      }
+    }
+  }
+  if (!loginResponse) throw new Error("Synthetic login did not return a response");
   await responseJson(loginResponse, "Synthetic login");
   const sessionCookie = loginResponse.headers.get("set-cookie")?.split(";", 1)[0];
   if (!sessionCookie?.startsWith("open_triage_session="))
@@ -121,11 +139,12 @@ export async function verifyPublicDemo(
 }
 
 async function main() {
+  const username = process.env.DEMO_SMOKE_USERNAME;
+  const password = process.env.DEMO_SMOKE_PASSWORD;
   await verifyPublicDemo({
     frontendUrl: process.env.DEMO_WEB_URL,
     apiUrl: process.env.DEMO_API_URL,
-    username: process.env.DEMO_SMOKE_USERNAME || DEFAULT_USERNAME,
-    password: process.env.DEMO_SMOKE_PASSWORD || DEFAULT_PASSWORD,
+    ...(username !== undefined || password !== undefined ? { username, password } : {}),
   });
 }
 

@@ -67,6 +67,37 @@ test("requires HTTPS before sending credentials", async () => {
   assert.equal(calls, 0);
 });
 
+test("supports an upgraded demo whose administered legacy fixture identity is preserved", async () => {
+  const attemptedCredentials = [];
+  const fetchImpl = async (url, init = {}) => {
+    const path = new URL(url).pathname;
+    if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
+    if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
+    if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
+    if (path === "/api/sessions") {
+      const candidate = JSON.parse(init.body);
+      attemptedCredentials.push(candidate);
+      if (candidate.username === "demo") return jsonResponse({}, 401);
+      return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
+        "set-cookie": `${sessionCookie}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
+      });
+    }
+    if (path === "/api/calls/assigned") {
+      return jsonResponse({ assignedCalls: [], canceledAssignmentIds: [] });
+    }
+    return new Response(null, { status: 404 });
+  };
+
+  await verifyPublicDemo({
+    frontendUrl: "https://demo.opentriage.org",
+    apiUrl: "https://api.demo.opentriage.org",
+    readinessAttempts: 1,
+    readinessDelayMilliseconds: 0,
+  }, { fetchImpl, log() {} });
+
+  assert.deepEqual(attemptedCredentials.map(({ username }) => username), ["demo", "demo.admin"]);
+});
+
 test("fails on an unsuccessful authenticated read without logging its body", async () => {
   const output = [];
   const fetchImpl = async (url) => {
