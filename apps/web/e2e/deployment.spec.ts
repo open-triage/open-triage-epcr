@@ -25,7 +25,7 @@ test("the built static export starts and is served from the domain root", async 
   await page.goto("/");
   await installationRequest;
   await expect(page).toHaveTitle("OpenTriage synthetic encounter");
-  await expect(page.getByRole("note", { name: "Prototype safety notice" })).toContainText("Synthetic data only");
+  await expect(page.getByText(productionSettings.signIn.brandText, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   await expect(page.getByLabel("Username")).toHaveValue("");

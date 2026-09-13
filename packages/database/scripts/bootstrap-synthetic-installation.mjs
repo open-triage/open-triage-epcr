@@ -146,14 +146,21 @@ async function ensureBaselineConfiguration(client, actorId) {
   [SYNTHETIC_DEMO_FIXTURE.organizationId, actorId, formVersionId, version.rows[0].catalog_release_id]);
 
   const demographicDefinition = { source: "demonstration-fixture", agency: "Demonstration EMS" };
-  await client.query(`insert into app_identity.agency_demographic_version
-    (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
-     dagency_04_display, definition_sha256, effective_from, created_by)
-    values ($1, $2, $3, 1, 'DEMO-EMS', 'Demonstration EMS', '9920003',
-      'Emergency Medical Services', $4, now(), $5)
-    on conflict (id) do nothing`,
-  [baselineDemographicId, SYNTHETIC_DEMO_FIXTURE.organizationId, version.rows[0].catalog_release_id,
-    sha256(demographicDefinition), actorId]);
+  const demographics = await client.query(`select id from app_identity.agency_demographic_version
+    where organization_id = $1 order by version desc limit 1`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+  if (!demographics.rows[0]) {
+    await client.query(`insert into app_identity.agency_demographic_version
+      (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
+       dagency_04_display, definition_sha256, effective_from, created_by)
+      values ($1, $2, $3, 1, 'DEMO-EMS', 'Demonstration EMS', '9920003',
+        'Emergency Medical Services', $4, now(), $5)
+      on conflict do nothing`,
+    [baselineDemographicId, SYNTHETIC_DEMO_FIXTURE.organizationId, version.rows[0].catalog_release_id,
+      sha256(demographicDefinition), actorId]);
+    const createdDemographic = await client.query(`select id from app_identity.agency_demographic_version
+      where organization_id = $1 limit 1`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
+    if (!createdDemographic.rows[0]) throw new Error("The demonstration agency demographic is unavailable");
+  }
   return { created, upgraded, formVersionId };
 }
 

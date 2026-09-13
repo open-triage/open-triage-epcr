@@ -165,12 +165,13 @@ jobs:
               test ! -e "/workspace/node_modules/$package"
             done
             test ! -e /workspace/apps/api/src
-            for script in migrate bootstrap-synthetic-installation retention verify-recovery verify-reporting-replica; do
+            for script in migrate bootstrap-synthetic-installation synthetic-stationary-definition retention verify-recovery verify-reporting-replica; do
               test -f "/workspace/packages/database/scripts/$script.mjs"
               node --check "/workspace/packages/database/scripts/$script.mjs"
             done
             test -f /workspace/supabase/migrations/202608300001_initial.sql
             test -f /workspace/apps/web/app/data/nemsis-data-model-3.5.1.json
+            test -f /workspace/apps/web/app/data/standard-encounter-form.json
             test -f /workspace/packages/database/config/database-operations-policy.json
           '
       - name: Stop the runtime API

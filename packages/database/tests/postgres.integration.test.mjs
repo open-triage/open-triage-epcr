@@ -638,7 +638,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     await client.query(`insert into app_identity.agency_demographic_version
       (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
        definition_sha256, effective_from, created_by)
-      values ('32000000-0000-4000-8000-000000000006', $1, $2, 1, 'demo', 'demo', '00', repeat('a',64), now(), $3)`,
+      values ('32000000-0000-4000-8000-000000000006', $1, $2, 2, 'demo', 'demo', '00', repeat('a',64), now(), $3)`,
     [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
     await client.query(`insert into forms.form (id, organization_id, slug, name)
       values ('32000000-0000-4000-8000-000000000012', $1, 'integration-form', 'Integration form')`,
