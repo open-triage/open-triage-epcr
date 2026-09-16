@@ -7,9 +7,10 @@ import { SessionsModule } from "./sessions/sessions.module.js";
 import { CallsModule } from "./calls/calls.module.js";
 import { AdminModule } from "./admin/admin.module.js";
 import { InstallationController } from "./config/installation.controller.js";
+import { FeedbackModule } from "./feedback/feedback.module.js";
 
 @Module({
-  imports: [DatabaseModule, FormsModule, ReportsModule, SessionsModule, CallsModule, AdminModule],
+  imports: [DatabaseModule, FormsModule, ReportsModule, SessionsModule, CallsModule, AdminModule, FeedbackModule],
   controllers: [HealthController, InstallationController]
 })
 export class AppModule {}

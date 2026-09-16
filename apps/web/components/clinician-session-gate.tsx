@@ -27,6 +27,7 @@ import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
+import { FeedbackControl } from "./feedback-control";
 
 function emphasizedText(value: string): ReactNode[] {
   return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
@@ -245,6 +246,8 @@ export function ClinicianSessionGate({ children }: {
   return (
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
+        {presentationMode === "mobile" && browserRequestConfiguration().mode === "server" &&
+          <FeedbackControl csrfToken={sessionRequestToken(session)} />}
         {presentationMode !== "admin"
           ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
           : <span className="call-list-refresh session-bar-placeholder" aria-hidden="true" />}
