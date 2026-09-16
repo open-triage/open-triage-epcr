@@ -3,6 +3,18 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export type FeedbackSubmissionType = "bug" | "feature";
+
+export interface CreateFeedbackCommand {
+  type: FeedbackSubmissionType;
+  description: string;
+}
+
+export interface CreateFeedbackResponse {
+  accepted: true;
+  referenceCode: string;
+}
+
 export { parseInstallationSettings, type InstallationSettings } from "./installation-settings.js";
 export {
   SYNTHETIC_DEMO_FIXTURE,
