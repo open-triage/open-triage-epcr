@@ -31,6 +31,40 @@ export FEEDBACK_REVIEW_DATABASE_URL='postgresql://open_triage_feedback_review_lo
 The CLI starts a read-only transaction and assumes the non-login reviewer role.
 It accepts only the documented commands and options; there is no SQL option.
 
+### Local and public-demo context wrapper
+
+The repository wrapper can resolve the selected installation without placing a
+connection URI on the command line. For `local`, it prefers an already supplied
+`FEEDBACK_REVIEW_DATABASE_URL` and otherwise reads `DATABASE_URL` from the root
+`.env.local`. For `public-demo`, it first requires the exact Kubernetes context
+`do-ams3-k8s-open-triage-demo`, then reads only
+`FEEDBACK_REVIEW_DATABASE_URL` from the cluster-owned
+`open-triage-feedback-reviewer` Secret in the `open-triage` namespace.
+
+Provision the public-demo login using the SQL above, then create the dedicated
+Secret outside Helm. Do not reuse or add this key to `open-triage-database`:
+
+```sh
+kubectl create secret generic open-triage-feedback-reviewer \
+  --namespace open-triage \
+  --from-literal=FEEDBACK_REVIEW_DATABASE_URL='<dedicated-reviewer-uri>'
+```
+
+The wrapper passes the URI only in the child process environment and supports
+the complete guarded CLI workflow:
+
+```sh
+npm run feedback:review:context -w @open-triage/database -- \
+  --instance public-demo list --status new --limit 100
+npm run feedback:review:context -w @open-triage/database -- \
+  --instance public-demo show --reference J7M4Q2K6X5PN
+```
+
+The same wrapper supports `propose`, `dry-run`, `apply`, `bulk-dry-run`, and
+confirmed `bulk-apply`. Their human approval, expected-version, provenance, and
+bulk-confirmation requirements remain unchanged. The wrapper does not weaken or
+bypass validation performed by the underlying CLI.
+
 ## List the queue safely
 
 The default page contains at most 25 records. Pages are ordered by creation time

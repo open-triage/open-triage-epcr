@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Feedback"
+  short_description: "Review and triage installation feedback"
+  default_prompt: "Use $review-feedback to review open feedback for the specified installation and recommend next actions."
