@@ -160,6 +160,30 @@ export function cachedOpenReports(storage: StoragePort, ownerUserId: string): Ca
     .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt));
 }
 
+/**
+ * Removes saved browser summaries that an authoritative server refresh no
+ * longer returns. Pending offline work remains available for synchronization
+ * (or an explicit server rejection) instead of being discarded here.
+ */
+export function reconcileServerOpenReports(
+  storage: StoragePort,
+  ownerUserId: string,
+  serverReportIds: ReadonlyArray<string>,
+): string[] {
+  const serverIds = new Set(serverReportIds);
+  const reports = read(storage);
+  const removed = reports.filter((candidate) => candidate.ownerUserId === ownerUserId
+    && candidate.report.documentingUserId === ownerUserId
+    && candidate.workflowState === "open"
+    && candidate.queuedChanges.length === 0
+    && !serverIds.has(candidate.report.id));
+  if (removed.length) {
+    const removedIds = new Set(removed.map(({ report }) => report.id));
+    write(storage, reports.filter((candidate) => !removedIds.has(candidate.report.id)));
+  }
+  return removed.map(({ report }) => report.id);
+}
+
 /** Removes generated synthetic reports, including queued work, at the published server deadline. */
 export function purgeExpiredOfflineReports(storage: StoragePort, now = new Date()): string[] {
   const deadline = now.getTime();

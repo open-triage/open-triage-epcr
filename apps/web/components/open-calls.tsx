@@ -4,6 +4,7 @@ import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-t
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
+import { browserRequestConfiguration } from "../app/browser-api";
 import { saveDraftReport } from "../app/draft-report";
 import { clearShellState, purgeCompletedReportCaches } from "../app/local-persistence";
 import {
@@ -17,6 +18,7 @@ import {
   nextDraftChange,
   purgeCompletedOfflineReports,
   purgeExpiredOfflineReports,
+  reconcileServerOpenReports,
   removeSignedOfflineReport,
 } from "../app/offline-reports";
 
@@ -99,6 +101,13 @@ export function OpenCalls({
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       response.openCalls.forEach((call) => cacheOpenCallSummary(window.localStorage, session, call));
+      if (browserRequestConfiguration().mode === "server") {
+        reconcileServerOpenReports(
+          window.localStorage,
+          session.user.id,
+          response.openCalls.map(({ reportId }) => reportId),
+        ).forEach((reportId) => clearShellState(window.localStorage, reportId));
+      }
       const visible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
       callsRef.current = visible;
       setCalls(visible);

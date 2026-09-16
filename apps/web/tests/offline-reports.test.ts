@@ -20,6 +20,7 @@ import {
   queueDraftChange,
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
+  reconcileServerOpenReports,
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
@@ -222,6 +223,21 @@ test("expiry cleanup leaves ordinary reports and their offline queues untouched"
 
   assert.deepEqual(purgeExpiredOfflineReports(storage, new Date("2099-01-01T00:00:00.000Z")), []);
   assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-ordinary");
+});
+
+test("an authoritative open-call refresh removes stale saved summaries but preserves pending work", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  const pending = {
+    ...opened,
+    report: { ...opened.report, id: "report-2" },
+  };
+  cacheOpenedReport(storage, session, pending, "CALL-52");
+  queueDraftChange(storage, pending.report.id, command("command-pending", 4));
+
+  assert.deepEqual(reconcileServerOpenReports(storage, session.user.id, []), [opened.report.id]);
+  assert.deepEqual(cachedOpenCalls(storage, session.user.id).map(({ reportId }) => reportId), [pending.report.id]);
+  assert.equal(nextDraftChange(storage, pending.report.id)?.command.commandId, "command-pending");
 });
 
 test("the current draft validation count survives open-call server refreshes", () => {
