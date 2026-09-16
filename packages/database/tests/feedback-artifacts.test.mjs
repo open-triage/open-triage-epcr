@@ -8,6 +8,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const sql = await readFile(path.join(repoRoot, "supabase/migrations/20260916120000_accept_authenticated_feedback.sql"), "utf8");
 const diagnosticsSql = await readFile(path.join(repoRoot, "supabase/migrations/20260916140000_attach_feedback_diagnostics.sql"), "utf8");
 const deliverySql = await readFile(path.join(repoRoot, "supabase/migrations/20260916130000_feedback_delivery_safety.sql"), "utf8");
+const retentionSql = await readFile(path.join(repoRoot, "supabase/migrations/20260916190000_expire_terminal_feedback_diagnostics.sql"), "utf8");
+const retentionRunbook = await readFile(path.join(repoRoot, "docs/runbooks/feedback-diagnostic-retention.md"), "utf8");
 
 test("feedback storage is private, append-only, attributed, and narrowly writable", () => {
   assert.match(sql, /create schema feedback/);
@@ -41,4 +43,19 @@ test("feedback content and opaque references are constrained in PostgreSQL", () 
   assert.match(sql, /char_length\(original_description\) between 1 and 4000/);
   assert.match(sql, /original_description = btrim\(original_description\)/);
   assert.match(sql, /reference_code ~ '\^\[A-Z2-7\]\{12\}\$'/);
+});
+
+test("diagnostic expiry is fixed, bounded, indexed, least-privilege, and documented", () => {
+  assert.match(retentionSql, /review_status in \('resolved', 'declined', 'duplicate'\)/);
+  assert.match(retentionSql, /review_updated_at <= clock_timestamp\(\) - interval '30 days'/);
+  assert.match(retentionSql, /for update of d skip locked/);
+  assert.match(retentionSql, /limit p_batch_size/);
+  assert.match(retentionSql, /delete from feedback\.diagnostic/);
+  assert.match(retentionSql, /feedback_submission_terminal_diagnostic_expiry_idx/);
+  assert.doesNotMatch(retentionSql, /payload\s*(?:->|#>|@>|\?|=)/);
+  assert.match(retentionSql, /revoke all on table feedback\.diagnostic from open_triage_feedback_retention/);
+  assert.match(retentionSql, /grant execute on function feedback\.expire_terminal_diagnostics/);
+  assert.match(retentionRunbook, /Each batch is its own transaction/);
+  assert.match(retentionRunbook, /interrupted or failed batch rolls back completely/);
+  assert.match(retentionRunbook, /Deleting diagnostics is irreversible/);
 });
