@@ -71,8 +71,52 @@ restored by this workflow. A missing reference returns only
 `Feedback submission not found`, and operational database errors are reduced to
 `Feedback review command failed` so database internals are not exposed.
 
+## Propose, verify, and approve triage
+
+`propose` packages a suggested decision without recording it. It reads the
+latest item and includes its `expectedVersion`; it does not invoke an AI model.
+AI-assisted proposals identify the model and the human-started review run, but
+must never include prompts or hidden reasoning:
+
+```sh
+npm run feedback:review -w @open-triage/database -- propose \
+  --reference J7M4Q2K6X5PN --status triaged --priority high \
+  --summary 'Refresh fails after reconnect' \
+  --note 'Reproduced from the sanitized request-failure trail.' \
+  --reviewer-type ai-assisted --model gpt-5 --review-run review-20260916-01
+```
+
+The human reviewer accepts, rejects, or edits that proposal. Before recording,
+`dry-run` validates every explicit decision input and confirms that the version
+has not changed. Its transaction is database-enforced read-only:
+
+```sh
+npm run feedback:review -w @open-triage/database -- dry-run \
+  --reference J7M4Q2K6X5PN --expected-version 0 \
+  --status triaged --priority high --summary 'Refresh fails after reconnect' \
+  --note 'Approved after inspecting sanitized evidence.' \
+  --reviewer-type ai-assisted --model gpt-5 --review-run review-20260916-01 \
+  --human-reviewer maintainer@example.invalid
+```
+
+Only `apply` records the already approved decision; it uses the same explicit
+arguments as `dry-run`. PostgreSQL locks the submission, rejects a stale
+`expectedVersion`, appends exactly one immutable event, and updates the current
+projection atomically. A human-authored correction uses `--reviewer-type human`
+and omits `--model` and `--review-run`.
+
+```sh
+npm run feedback:review -w @open-triage/database -- apply \
+  --reference J7M4Q2K6X5PN --expected-version 0 \
+  --status triaged --priority high --summary 'Refresh fails after reconnect' \
+  --note 'Approved after inspecting sanitized evidence.' \
+  --reviewer-type ai-assisted --model gpt-5 --review-run review-20260916-01 \
+  --human-reviewer maintainer@example.invalid
+```
+
 JSON is the default output for later AI-assisted sessions. `--format text`
-pretty-prints the same bounded data. Neither command mutates feedback, invokes an
-AI model, creates external work, or gives ordinary application sessions a read
-route. Clear the environment variable after the review session and follow the
+pretty-prints the same bounded data. List, show, proposal, and dry-run commands
+make no database changes. No review command invokes a model, creates GitHub
+issues, branches, pull requests, code changes, or any other external action.
+Clear the environment variable after the review session and follow the
 installation's normal credential-rotation process if it was exposed.

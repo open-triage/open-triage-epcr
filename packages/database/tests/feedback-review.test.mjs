@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  UsageError, decodeCursor, encodeCursor, listFeedback, parseArguments, run, showFeedback
+  StaleDecisionError, UsageError, decodeCursor, dryRunDecision, encodeCursor,
+  listFeedback, parseArguments, proposeFeedback, recordDecision, run, showFeedback
 } from "../scripts/feedback-review.mjs";
 
 test("list arguments are bounded and support every approved filter", () => {
@@ -74,4 +75,113 @@ test("run always assumes the non-login reviewer role in a read-only transaction"
   assert.equal(calls.at(-2), "commit");
   assert.equal(calls.at(-1), "end");
   assert.equal(output, '{"items":[],"nextCursor":null}\n');
+});
+
+test("decision commands require explicit valid inputs and AI provenance", () => {
+  const arguments_ = [
+    "apply", "--reference", "J7M4Q2K6X5PN", "--expected-version", "2",
+    "--status", "planned", "--priority", "high", "--summary", "Approved summary",
+    "--note", "Human-approved triage note", "--reviewer-type", "ai-assisted",
+    "--model", "gpt-5", "--review-run", "review-run-42", "--human-reviewer", "maintainer-1"
+  ];
+  const parsed = parseArguments(arguments_);
+  assert.equal(parsed.expectedVersion, 2);
+  assert.equal(parsed.reviewerType, "ai-assisted");
+  assert.equal(parsed.humanReviewer, "maintainer-1");
+  const without = (name) => {
+    const index = arguments_.indexOf(name);
+    return arguments_.filter((_value, candidate) => candidate !== index && candidate !== index + 1);
+  };
+  for (const required of ["--expected-version", "--status", "--priority", "--note", "--human-reviewer"]) {
+    assert.throws(() => parseArguments(without(required)), UsageError);
+  }
+  assert.throws(() => parseArguments(without("--model")), UsageError);
+  assert.throws(() => parseArguments(without("--review-run")), UsageError);
+  assert.throws(() => parseArguments([...arguments_, "--sql", "update feedback.submission"]), /Unsupported argument/);
+});
+
+test("proposal and dry run inspect current state without writing", async () => {
+  const calls = [];
+  const client = { query: async (sql) => {
+    calls.push(sql);
+    return { rowCount: 1, rows: [{ submission: { reviewVersion: 3 }, diagnostics: null, review_history: [] }] };
+  } };
+  const common = {
+    reference: "J7M4Q2K6X5PN", status: "triaged", priority: "normal", note: "Approved note",
+    summary: "Summary", reviewerType: "human", humanReviewer: "maintainer-1"
+  };
+  const proposal = await proposeFeedback(client, common);
+  assert.equal(proposal.proposal.expectedVersion, 3);
+  const dryRun = await dryRunDecision(client, { ...common, expectedVersion: 3 });
+  assert.equal(dryRun.dryRun, true);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((sql) => sql === "select * from feedback.review_detail($1::text)"));
+  await assert.rejects(dryRunDecision(client, { ...common, expectedVersion: 2 }), StaleDecisionError);
+});
+
+test("apply uses only the fixed atomic decision function", async () => {
+  const calls = [];
+  const options = {
+    reference: "J7M4Q2K6X5PN", expectedVersion: 0, status: "triaged", priority: "high",
+    summary: "Summary", note: "Approved note", reviewerType: "ai-assisted",
+    humanReviewer: "maintainer-1", model: "gpt-5", reviewRun: "run-1"
+  };
+  const result = await recordDecision({ query: async (sql, values) => {
+    calls.push({ sql, values });
+    return { rows: [{ reference_code: options.reference, review_version: "1" }] };
+  } }, options);
+  assert.equal(result.applied, true);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /^select \* from feedback\.record_review_decision/);
+  assert.equal(calls[0].values[6], "ai_assisted");
+});
+
+test("apply is the only command that opens a write-capable transaction", async () => {
+  const calls = [];
+  class Client {
+    async connect() { calls.push("connect"); }
+    async query(sql) {
+      calls.push(sql);
+      if (sql.startsWith("select * from feedback.record_review_decision")) return { rows: [{}] };
+      return { rows: [] };
+    }
+    async end() { calls.push("end"); }
+  }
+  await run([
+    "apply", "--reference", "J7M4Q2K6X5PN", "--expected-version", "0",
+    "--status", "triaged", "--priority", "normal", "--note", "Approved note",
+    "--human-reviewer", "maintainer-1"
+  ], {
+    Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" },
+    stdout: { write() {} }
+  });
+  assert.deepEqual(calls.slice(0, 3), ["connect", "begin", "set local role open_triage_feedback_reviewer"]);
+});
+
+test("proposal and dry-run commands use database-enforced read-only transactions", async () => {
+  for (const command of ["propose", "dry-run"]) {
+    const calls = [];
+    class Client {
+      async connect() { calls.push("connect"); }
+      async query(sql) {
+        calls.push(sql);
+        if (sql === "select * from feedback.review_detail($1::text)") {
+          return { rowCount: 1, rows: [{ submission: { reviewVersion: 0 } }] };
+        }
+        return { rows: [] };
+      }
+      async end() { calls.push("end"); }
+    }
+    const arguments_ = [
+      command, "--reference", "J7M4Q2K6X5PN", "--status", "triaged",
+      "--priority", "normal", "--note", "Suggested note"
+    ];
+    if (command === "dry-run") arguments_.push("--expected-version", "0", "--human-reviewer", "maintainer-1");
+    await run(arguments_, {
+      Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" },
+      stdout: { write() {} }
+    });
+    assert.deepEqual(calls.slice(0, 3), ["connect", "begin read only", "set local role open_triage_feedback_reviewer"]);
+    assert.equal(calls.some((sql) => typeof sql === "string" && sql.includes("record_review_decision")), false);
+  }
 });

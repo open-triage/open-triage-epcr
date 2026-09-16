@@ -4,6 +4,8 @@ import pg from "pg";
 const STATUSES = new Set(["new", "triaged", "planned", "in_progress", "resolved", "declined", "duplicate"]);
 const TYPES = new Set(["bug", "feature"]);
 const PRIORITIES = new Set(["low", "normal", "high", "urgent", "unassigned"]);
+const DECISION_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
+const REVIEWER_TYPES = new Set(["human", "ai-assisted"]);
 const REFERENCE_PATTERN = /^[A-Z2-7]{12}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RFC3339_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -36,6 +38,63 @@ function onlyKnownOptions(arguments_, allowed) {
     }
     index += 1;
   }
+}
+
+function boundedText(value, name, maximum, required = false) {
+  if (value === undefined && !required) return undefined;
+  if (!value || value !== value.trim() || value.length > maximum) {
+    throw new UsageError(`--${name} must be ${required ? "a non-empty" : "an optional"} trimmed value of at most ${maximum} characters`);
+  }
+  return value;
+}
+
+function decisionArguments(command, rest) {
+  onlyKnownOptions(rest, new Set([
+    "reference", "expected-version", "status", "priority", "summary", "note",
+    "reviewer-type", "human-reviewer", "model", "review-run", "format"
+  ]));
+  const reference = option(rest, "reference");
+  if (!reference || !REFERENCE_PATTERN.test(reference)) {
+    throw new UsageError("--reference must be a 12-character uppercase base32 feedback reference");
+  }
+  const status = option(rest, "status");
+  if (!status || !STATUSES.has(status)) throw new UsageError("--status is required and must be supported");
+  const priority = option(rest, "priority");
+  if (!priority || !DECISION_PRIORITIES.has(priority)) {
+    throw new UsageError("--priority is required and must be low, normal, high, or urgent");
+  }
+  const note = boundedText(option(rest, "note"), "note", 4000, true);
+  const summary = boundedText(option(rest, "summary"), "summary", 1000);
+  const reviewerType = option(rest, "reviewer-type") ?? "human";
+  if (!REVIEWER_TYPES.has(reviewerType)) throw new UsageError("--reviewer-type must be human or ai-assisted");
+  const model = boundedText(option(rest, "model"), "model", 200);
+  const reviewRun = boundedText(option(rest, "review-run"), "review-run", 200);
+  if (reviewerType === "ai-assisted" && (!model || !reviewRun)) {
+    throw new UsageError("AI-assisted decisions require --model and --review-run");
+  }
+  if (reviewerType === "human" && (model || reviewRun)) {
+    throw new UsageError("Human decisions cannot include --model or --review-run");
+  }
+  const format = option(rest, "format") ?? "json";
+  if (format !== "json" && format !== "text") throw new UsageError("--format must be json or text");
+
+  let expectedVersion;
+  let humanReviewer;
+  if (command !== "propose") {
+    const rawVersion = option(rest, "expected-version");
+    if (rawVersion === undefined || !/^\d+$/.test(rawVersion)) {
+      throw new UsageError("--expected-version is required and must be a non-negative integer");
+    }
+    expectedVersion = Number(rawVersion);
+    if (!Number.isSafeInteger(expectedVersion)) throw new UsageError("--expected-version is too large");
+    humanReviewer = boundedText(option(rest, "human-reviewer"), "human-reviewer", 200, true);
+  } else if (option(rest, "expected-version") !== undefined || option(rest, "human-reviewer") !== undefined) {
+    throw new UsageError("Proposals do not accept approval or concurrency arguments");
+  }
+  return {
+    command, reference, expectedVersion, status, priority, summary, note,
+    reviewerType, humanReviewer, model, reviewRun, format
+  };
 }
 
 export function parseArguments(arguments_) {
@@ -74,7 +133,8 @@ export function parseArguments(arguments_) {
     if (format !== "json" && format !== "text") throw new UsageError("--format must be json or text");
     return { command, reference, format };
   }
-  throw new UsageError("usage: feedback-review.mjs <list|show> [supported options]");
+  if (["propose", "dry-run", "apply"].includes(command)) return decisionArguments(command, rest);
+  throw new UsageError("usage: feedback-review.mjs <list|show|propose|dry-run|apply> [supported options]");
 }
 
 export function encodeCursor(createdAt, id) {
@@ -121,6 +181,53 @@ export async function showFeedback(client, options) {
   return result.rows[0];
 }
 
+function decisionOutput(options, expectedVersion) {
+  return {
+    referenceCode: options.reference,
+    expectedVersion,
+    status: options.status,
+    priority: options.priority,
+    approvedSummary: options.summary ?? null,
+    reviewNote: options.note,
+    reviewerType: options.reviewerType,
+    humanReviewerId: options.humanReviewer ?? null,
+    modelIdentifier: options.model ?? null,
+    reviewRunId: options.reviewRun ?? null
+  };
+}
+
+export async function proposeFeedback(client, options) {
+  const detail = await showFeedback(client, options);
+  return { proposal: decisionOutput(options, detail.submission.reviewVersion) };
+}
+
+export async function dryRunDecision(client, options) {
+  const detail = await showFeedback(client, options);
+  if (detail.submission.reviewVersion !== options.expectedVersion) {
+    throw new StaleDecisionError("Review decision is stale; inspect the submission again");
+  }
+  return { dryRun: true, decision: decisionOutput(options, options.expectedVersion) };
+}
+
+export class StaleDecisionError extends Error {}
+
+export async function recordDecision(client, options) {
+  try {
+    const result = await client.query(`select * from feedback.record_review_decision(
+      $1::text, $2::bigint, $3::text, $4::text, $5::text, $6::text,
+      $7::text, $8::text, $9::text, $10::text)`, [
+      options.reference, options.expectedVersion, options.status, options.priority,
+      options.summary ?? null, options.note, options.reviewerType.replace("-", "_"),
+      options.humanReviewer, options.model ?? null, options.reviewRun ?? null
+    ]);
+    return { applied: true, decision: result.rows[0] };
+  } catch (error) {
+    if (error?.code === "PT001") throw new NotFoundError("Feedback submission not found");
+    if (error?.code === "PT002") throw new StaleDecisionError("Review decision is stale; inspect the submission again");
+    throw error;
+  }
+}
+
 function renderText(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -132,11 +239,14 @@ export async function run(arguments_, { Client = pg.Client, env = process.env, s
   const client = new Client({ connectionString: databaseUrl, application_name: "open-triage-feedback-review" });
   await client.connect();
   try {
-    await client.query("begin read only");
+    await client.query(options.command === "apply" ? "begin" : "begin read only");
     await client.query("set local role open_triage_feedback_reviewer");
-    const value = options.command === "list"
-      ? await listFeedback(client, options)
-      : await showFeedback(client, options);
+    let value;
+    if (options.command === "list") value = await listFeedback(client, options);
+    if (options.command === "show") value = await showFeedback(client, options);
+    if (options.command === "propose") value = await proposeFeedback(client, options);
+    if (options.command === "dry-run") value = await dryRunDecision(client, options);
+    if (options.command === "apply") value = await recordDecision(client, options);
     await client.query("commit");
     stdout.write(options.format === "text" ? renderText(value) : `${JSON.stringify(value)}\n`);
     return value;
@@ -152,9 +262,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     await run(process.argv.slice(2));
   } catch (error) {
-    if (error instanceof UsageError || error instanceof NotFoundError) {
+    if (error instanceof UsageError || error instanceof NotFoundError || error instanceof StaleDecisionError) {
       process.stderr.write(`${error.message}\n`);
-      process.exitCode = error instanceof NotFoundError ? 3 : 2;
+      process.exitCode = error instanceof NotFoundError ? 3 : error instanceof StaleDecisionError ? 4 : 2;
     } else {
       process.stderr.write("Feedback review command failed\n");
       process.exitCode = 1;
