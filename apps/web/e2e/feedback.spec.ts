@@ -67,11 +67,26 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("status").filter({ hasText: "Reference J7M4Q2K8X5PN" })).toBeVisible();
   await expect(trigger).toBeFocused();
-  expect(submitted).toEqual(expect.objectContaining({ type: "feature", description: "Filter calls by unit" }));
+  expect(submitted).toMatchObject({ type: "feature", description: "Filter calls by unit" });
+  expect((submitted as { idempotencyKey: string }).idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   const diagnostics = (submitted as any).diagnostics;
   expect(diagnostics.status).toBe("available");
   expect(diagnostics.payload).toEqual(expect.objectContaining({
     schemaVersion: 1, mode: "mobile", screen: "calls", connectivity: "online"
   }));
   expect(diagnostics.payload).not.toHaveProperty("structure");
+});
+
+test("feedback remains first in each authenticated mode and is unavailable offline", async ({ page, context }) => {
+  await openAuthenticatedMobile(page);
+  const bar = page.locator(".session-bar");
+  await expect(bar.locator("button").first()).toHaveAccessibleName("Send feedback");
+  await page.getByRole("group", { name: "Documentation presentation" })
+    .getByRole("button", { name: "Stationary" }).click();
+  await expect(bar.locator("button").first()).toHaveAccessibleName("Send feedback");
+
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(bar.locator("button").first()).toBeDisabled();
+  await expect(bar.locator("button").first()).toHaveAccessibleName("Send feedback unavailable while offline");
 });

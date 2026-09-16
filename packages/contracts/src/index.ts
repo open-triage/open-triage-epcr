@@ -35,6 +35,7 @@ export type FeedbackDiagnostics =
   | { status: "unavailable"; schemaVersion: 1; reason: "capture-failed" | "serialization-failed" };
 
 export interface CreateFeedbackCommand {
+  idempotencyKey: string;
   type: FeedbackSubmissionType;
   description: string;
   diagnostics: FeedbackDiagnostics;

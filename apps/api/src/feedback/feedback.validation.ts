@@ -3,7 +3,8 @@ import type { CreateFeedbackCommand, FeedbackDiagnosticPayload, FeedbackDiagnost
 
 const DIAGNOSTIC_MAX_BYTES = 16_384;
 const STRUCTURE_MAX_NODES = 200;
-const allowedFields = new Set(["type", "description", "diagnostics"]);
+const allowedFields = new Set(["idempotencyKey", "type", "description", "diagnostics"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const modes = new Set(["mobile", "stationary", "admin"]);
 const screens = new Set(["calls", "encounter", "admin"]);
 const browsers = new Set(["chromium", "firefox", "safari", "other"]);
@@ -98,7 +99,6 @@ function validateDiagnostics(value: unknown, type: "bug" | "feature"): FeedbackD
   }
   throw new BadRequestException("Invalid diagnostic status");
 }
-
 export function validateCreateFeedback(input: unknown): CreateFeedbackCommand {
   const feedback = record(input, "Feedback must be an object");
   exact(feedback, allowedFields, "feedback");
@@ -107,5 +107,13 @@ export function validateCreateFeedback(input: unknown): CreateFeedbackCommand {
   const description = feedback.description.trim();
   if (!description) throw new BadRequestException("Feedback description is required");
   if (description.length > 4000) throw new BadRequestException("Feedback description must be 4,000 characters or fewer");
-  return { type: feedback.type, description, diagnostics: validateDiagnostics(feedback.diagnostics, feedback.type) };
+  if (typeof feedback.idempotencyKey !== "string" || !UUID_PATTERN.test(feedback.idempotencyKey)) {
+    throw new BadRequestException("Feedback idempotency key must be a UUID");
+  }
+  return {
+    idempotencyKey: feedback.idempotencyKey.toLowerCase(),
+    type: feedback.type,
+    description,
+    diagnostics: validateDiagnostics(feedback.diagnostics, feedback.type)
+  };
 }

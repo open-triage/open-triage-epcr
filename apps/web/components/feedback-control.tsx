@@ -5,8 +5,9 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { feedbackDescriptionError, feedbackPrompt, FEEDBACK_DESCRIPTION_MAX_LENGTH, submitFeedback } from "../app/feedback";
 import { captureFeedbackDiagnostics, diagnosticsForType } from "../app/feedback-diagnostics";
 
-export function FeedbackControl({ csrfToken, mode, screen }: {
+export function FeedbackControl({ csrfToken, online, mode, screen }: {
   readonly csrfToken: string;
+  readonly online: boolean;
   readonly mode: FeedbackDiagnosticMode;
   readonly screen: FeedbackDiagnosticScreen;
 }) {
@@ -14,6 +15,7 @@ export function FeedbackControl({ csrfToken, mode, screen }: {
   const dialog = useRef<HTMLElement>(null);
   const headingId = useId();
   const descriptionId = useId();
+  const idempotencyKey = useRef<string | null>(null);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackSubmissionType | null>(null);
   const [description, setDescription] = useState("");
@@ -34,6 +36,7 @@ export function FeedbackControl({ csrfToken, mode, screen }: {
     setDescription("");
     setError(null);
     diagnostics.current = null;
+    idempotencyKey.current = null;
     window.requestAnimationFrame(() => trigger.current?.focus());
   }
 
@@ -61,13 +64,16 @@ export function FeedbackControl({ csrfToken, mode, screen }: {
     setError(null);
     try {
       const captured = diagnostics.current ?? { status: "unavailable", schemaVersion: 1, reason: "capture-failed" };
+      const draftKey = idempotencyKey.current ?? crypto.randomUUID();
+      idempotencyKey.current = draftKey;
       const result = await submitFeedback(csrfToken, {
-        type, description: description.trim(), diagnostics: diagnosticsForType(captured, type)
+        idempotencyKey: draftKey, type, description: description.trim(), diagnostics: diagnosticsForType(captured, type)
       });
       setOpen(false);
       setType(null);
       setDescription("");
       diagnostics.current = null;
+      idempotencyKey.current = null;
       setNotice(`Feedback received. Reference ${result.referenceCode}.`);
       window.requestAnimationFrame(() => trigger.current?.focus());
     } catch (reason) {
@@ -78,9 +84,12 @@ export function FeedbackControl({ csrfToken, mode, screen }: {
   }
 
   return <>
-    <button ref={trigger} className="feedback-trigger" type="button" aria-label="Send feedback" title="Send feedback"
+    <button ref={trigger} className="feedback-trigger" type="button"
+      aria-label={online ? "Send feedback" : "Send feedback unavailable while offline"}
+      title={online ? "Send feedback" : "Feedback is unavailable while offline"} disabled={!online}
       onClick={() => {
         setNotice(null);
+        idempotencyKey.current = crypto.randomUUID();
         diagnostics.current = captureFeedbackDiagnostics(window, mode, screen);
         setOpen(true);
       }}>
