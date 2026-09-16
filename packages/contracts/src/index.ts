@@ -5,9 +5,39 @@ export interface HealthResponse {
 
 export type FeedbackSubmissionType = "bug" | "feature";
 
+export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin";
+export type FeedbackDiagnosticScreen = "calls" | "encounter" | "admin";
+export type FeedbackBrowserFamily = "chromium" | "firefox" | "safari" | "other";
+export type FeedbackStructuralKind =
+  | "main" | "header" | "footer" | "nav" | "section" | "article" | "aside"
+  | "form" | "fieldset" | "table" | "list" | "button" | "dialog" | "alert" | "status";
+
+export interface FeedbackDiagnosticContext {
+  schemaVersion: 1;
+  appVersion: string;
+  buildVersion: string;
+  mode: FeedbackDiagnosticMode;
+  screen: FeedbackDiagnosticScreen;
+  browserFamily: FeedbackBrowserFamily;
+  viewport: { width: number; height: number; category: "narrow" | "standard" | "wide" };
+  connectivity: "online" | "offline";
+}
+
+export interface FeedbackDiagnosticPayload extends FeedbackDiagnosticContext {
+  structure?: {
+    nodes: Array<{ kind: FeedbackStructuralKind; depth: number }>;
+    truncated: boolean;
+  };
+}
+
+export type FeedbackDiagnostics =
+  | { status: "available"; payload: FeedbackDiagnosticPayload }
+  | { status: "unavailable"; schemaVersion: 1; reason: "capture-failed" | "serialization-failed" };
+
 export interface CreateFeedbackCommand {
   type: FeedbackSubmissionType;
   description: string;
+  diagnostics: FeedbackDiagnostics;
 }
 
 export interface CreateFeedbackResponse {

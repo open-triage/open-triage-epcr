@@ -31,7 +31,9 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
 
+  let bugSubmission: any;
   await page.route("**/api/feedback/v1/submissions", async (route) => {
+    bugSubmission = route.request().postDataJSON();
     await new Promise((resolve) => setTimeout(resolve, 100));
     await route.fulfill({ status: 503, json: { message: "unavailable" } });
   });
@@ -45,6 +47,8 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   await expect(dialog.getByRole("button", { name: "Submitting…" })).toBeDisabled();
   await expect(dialog.getByRole("alert")).toContainText("still here");
   await expect(description).toHaveValue("The refresh control stopped responding");
+  expect(bugSubmission.diagnostics.status).toBe("available");
+  expect(bugSubmission.diagnostics.payload.structure.nodes).not.toContainEqual(expect.objectContaining({ kind: "dialog" }));
 });
 
 test("feature feedback submits the type-specific prompt and announces its opaque reference", async ({ page }) => {
@@ -63,5 +67,11 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("status").filter({ hasText: "Reference J7M4Q2K8X5PN" })).toBeVisible();
   await expect(trigger).toBeFocused();
-  expect(submitted).toEqual({ type: "feature", description: "Filter calls by unit" });
+  expect(submitted).toEqual(expect.objectContaining({ type: "feature", description: "Filter calls by unit" }));
+  const diagnostics = (submitted as any).diagnostics;
+  expect(diagnostics.status).toBe("available");
+  expect(diagnostics.payload).toEqual(expect.objectContaining({
+    schemaVersion: 1, mode: "mobile", screen: "calls", connectivity: "online"
+  }));
+  expect(diagnostics.payload).not.toHaveProperty("structure");
 });
