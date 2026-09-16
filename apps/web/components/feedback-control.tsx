@@ -1,10 +1,16 @@
 "use client";
 
-import type { FeedbackSubmissionType } from "@open-triage/contracts";
+import type { FeedbackDiagnosticMode, FeedbackDiagnosticScreen, FeedbackDiagnostics, FeedbackSubmissionType } from "@open-triage/contracts";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { feedbackDescriptionError, feedbackPrompt, FEEDBACK_DESCRIPTION_MAX_LENGTH, submitFeedback } from "../app/feedback";
+import { captureFeedbackDiagnostics, diagnosticsForType } from "../app/feedback-diagnostics";
 
-export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: string; readonly online: boolean }) {
+export function FeedbackControl({ csrfToken, online, mode, screen }: {
+  readonly csrfToken: string;
+  readonly online: boolean;
+  readonly mode: FeedbackDiagnosticMode;
+  readonly screen: FeedbackDiagnosticScreen;
+}) {
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const headingId = useId();
@@ -16,6 +22,7 @@ export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: str
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const diagnostics = useRef<FeedbackDiagnostics | null>(null);
   const validation = description ? feedbackDescriptionError(description) : null;
 
   useEffect(() => {
@@ -28,6 +35,7 @@ export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: str
     setType(null);
     setDescription("");
     setError(null);
+    diagnostics.current = null;
     idempotencyKey.current = null;
     window.requestAnimationFrame(() => trigger.current?.focus());
   }
@@ -55,12 +63,16 @@ export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: str
     setPending(true);
     setError(null);
     try {
+      const captured = diagnostics.current ?? { status: "unavailable", schemaVersion: 1, reason: "capture-failed" };
       const draftKey = idempotencyKey.current ?? crypto.randomUUID();
       idempotencyKey.current = draftKey;
-      const result = await submitFeedback(csrfToken, { idempotencyKey: draftKey, type, description: description.trim() });
+      const result = await submitFeedback(csrfToken, {
+        idempotencyKey: draftKey, type, description: description.trim(), diagnostics: diagnosticsForType(captured, type)
+      });
       setOpen(false);
       setType(null);
       setDescription("");
+      diagnostics.current = null;
       idempotencyKey.current = null;
       setNotice(`Feedback received. Reference ${result.referenceCode}.`);
       window.requestAnimationFrame(() => trigger.current?.focus());
@@ -75,7 +87,12 @@ export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: str
     <button ref={trigger} className="feedback-trigger" type="button"
       aria-label={online ? "Send feedback" : "Send feedback unavailable while offline"}
       title={online ? "Send feedback" : "Feedback is unavailable while offline"} disabled={!online}
-      onClick={() => { setNotice(null); idempotencyKey.current = crypto.randomUUID(); setOpen(true); }}>
+      onClick={() => {
+        setNotice(null);
+        idempotencyKey.current = crypto.randomUUID();
+        diagnostics.current = captureFeedbackDiagnostics(window, mode, screen);
+        setOpen(true);
+      }}>
       <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M9 9h6M9 13h6M8 4l1.2 2h5.6L16 4M6 8H4m16 0h-2M6 16H4m16 0h-2M8 6h8v12H8z" />
       </svg>

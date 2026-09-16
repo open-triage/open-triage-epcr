@@ -37,6 +37,12 @@ integrationTest("real PostgreSQL enforces private immutable feedback submissions
        organization_display_name, actor_display_name)
       values ('J7M4Q2K6X5PN', $3, 'bug', 'Original preserved text', $1, $2,
         'Feedback test EMS', 'Feedback test user')`, [organizationId, actorId, randomUUID()]);
+    await client.query(`insert into feedback.diagnostic
+      (submission_id, diagnostic_status, schema_version, payload)
+      select id, 'available', 1, $1::jsonb from feedback.submission where reference_code = 'J7M4Q2K6X5PN'`,
+      [JSON.stringify({ schemaVersion: 1, appVersion: "0.1.0", buildVersion: "test", mode: "mobile",
+        screen: "calls", browserFamily: "chromium", viewport: { width: 390, height: 844, category: "narrow" },
+        connectivity: "online", structure: { nodes: [{ kind: "main", depth: 1 }], truncated: false } })]);
 
     const stored = (await client.query(`select reference_code, submission_type, original_description,
       organization_id, actor_id, organization_display_name, actor_display_name
@@ -46,6 +52,12 @@ integrationTest("real PostgreSQL enforces private immutable feedback submissions
       organization_id: organizationId, actor_id: actorId,
       organization_display_name: "Feedback test EMS", actor_display_name: "Feedback test user"
     });
+    const diagnostic = (await client.query(`select diagnostic_status, schema_version, unavailable_reason, payload
+      from feedback.diagnostic where submission_id = (select id from feedback.submission where reference_code = 'J7M4Q2K6X5PN')`)).rows[0];
+    assert.equal(diagnostic.diagnostic_status, "available");
+    assert.equal(diagnostic.schema_version, 1);
+    assert.equal(diagnostic.unavailable_reason, null);
+    assert.equal(diagnostic.payload.structure.nodes[0].kind, "main");
     await assert.rejects(client.query("update feedback.submission set original_description = 'rewritten' where reference_code = 'J7M4Q2K6X5PN'"), /append-only/);
     await client.query("rollback");
 
@@ -54,6 +66,8 @@ integrationTest("real PostgreSQL enforces private immutable feedback submissions
     assert.equal((await client.query("select has_table_privilege('open_triage_feedback_writer', 'feedback.submission', 'select') allowed")).rows[0].allowed, false);
     assert.equal((await client.query("select has_table_privilege('open_triage_feedback_writer', 'feedback.submission', 'update') allowed")).rows[0].allowed, false);
     assert.equal((await client.query("select has_table_privilege('open_triage_feedback_writer', 'feedback.submission', 'delete') allowed")).rows[0].allowed, false);
+    assert.equal((await client.query("select has_table_privilege('open_triage_feedback_writer', 'feedback.diagnostic', 'insert') allowed")).rows[0].allowed, true);
+    assert.equal((await client.query("select has_table_privilege('open_triage_feedback_writer', 'feedback.diagnostic', 'select') allowed")).rows[0].allowed, false);
   } catch (error) {
     await client.query("rollback");
     throw error;

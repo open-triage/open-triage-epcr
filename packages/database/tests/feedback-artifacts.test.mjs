@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const sql = await readFile(path.join(repoRoot, "supabase/migrations/20260916120000_accept_authenticated_feedback.sql"), "utf8");
+const diagnosticsSql = await readFile(path.join(repoRoot, "supabase/migrations/20260916140000_attach_feedback_diagnostics.sql"), "utf8");
 const deliverySql = await readFile(path.join(repoRoot, "supabase/migrations/20260916130000_feedback_delivery_safety.sql"), "utf8");
 
 test("feedback storage is private, append-only, attributed, and narrowly writable", () => {
@@ -16,6 +17,17 @@ test("feedback storage is private, append-only, attributed, and narrowly writabl
   assert.match(sql, /foreign key \(organization_id, actor_id\)/);
   assert.match(sql, /grant insert on table feedback\.submission to open_triage_feedback_writer/);
   assert.doesNotMatch(sql, /grant (?:select|update|delete|all).*open_triage_feedback_writer/i);
+});
+
+test("feedback diagnostics are private, bounded, separately removable, and narrowly writable", () => {
+  assert.match(diagnosticsSql, /create table feedback\.diagnostic/);
+  assert.match(diagnosticsSql, /references feedback\.submission\(id\) on delete cascade/);
+  assert.match(diagnosticsSql, /schema_version = 1/);
+  assert.match(diagnosticsSql, /pg_column_size\(payload\) <= 16384/);
+  assert.match(diagnosticsSql, /revoke all on table feedback\.diagnostic from public/);
+  assert.match(diagnosticsSql, /grant insert on table feedback\.diagnostic to open_triage_feedback_writer/);
+  assert.doesNotMatch(diagnosticsSql, /grant (?:select|update|delete|all).*open_triage_feedback_writer/i);
+  assert.doesNotMatch(diagnosticsSql, /feedback_diagnostic_immutable/);
 });
 
 test("feedback retries have a required actor-scoped idempotency identity", () => {

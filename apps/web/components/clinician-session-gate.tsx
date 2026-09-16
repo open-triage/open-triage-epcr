@@ -247,7 +247,8 @@ export function ClinicianSessionGate({ children }: {
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header className="session-bar">
         {browserRequestConfiguration().mode === "server" &&
-          <FeedbackControl csrfToken={sessionRequestToken(session)} online={online} />}
+          <FeedbackControl csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
+            screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}
         {presentationMode !== "admin"
           ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
           : null}

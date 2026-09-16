@@ -62,15 +62,26 @@ export class FeedbackService {
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const referenceCode = createFeedbackReference();
+        const diagnostics = command.diagnostics;
         const result = await manager.query(`
-          insert into feedback.submission
+          with inserted as (
+            insert into feedback.submission
             (reference_code, idempotency_key, submission_type, original_description,
              organization_id, actor_id, organization_display_name, actor_display_name)
-          values ($1, $2, $3, $4, $5, $6, $7, $8)
-          on conflict (reference_code) do nothing
+            values ($1, $2, $3, $4, $5, $6, $7, $8)
+            on conflict (reference_code) do nothing
+            returning id
+          )
+          insert into feedback.diagnostic
+            (submission_id, diagnostic_status, schema_version, unavailable_reason, payload)
+          select id, $9, 1, $10, $11::jsonb from inserted
+          returning submission_id
         `, [referenceCode, command.idempotencyKey, command.type, command.description,
           session.organization.id, session.user.id,
-          session.organization.name, session.user.displayName]);
+          session.organization.name, session.user.displayName,
+          diagnostics.status,
+          diagnostics.status === "unavailable" ? diagnostics.reason : null,
+          diagnostics.status === "available" ? JSON.stringify(diagnostics.payload) : null]);
         if (affectedRowCount(result) === 1) {
           return { accepted: true, referenceCode };
         }
