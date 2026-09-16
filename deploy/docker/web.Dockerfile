@@ -15,6 +15,7 @@ RUN npm ci
 COPY apps/api apps/api
 COPY apps/web apps/web
 COPY packages/contracts packages/contracts
+COPY packages/database/config/identifying-elements.json packages/database/config/identifying-elements.json
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web
 
 FROM nginx:1.29-alpine

@@ -10,6 +10,7 @@ import {
 } from "../scripts/demo-image-identity.mjs";
 
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
+const webDockerfilePath = new URL("../deploy/docker/web.Dockerfile", import.meta.url);
 const sha = "0123456789abcdef0123456789abcdef01234567";
 const digest = `sha256:${"a".repeat(64)}`;
 
@@ -79,5 +80,14 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   assert.match(
     publishing,
     /name: demo-deployment-images-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
+  );
+});
+
+test("the web image includes the privacy policy consumed by its client build", async () => {
+  const dockerfile = await readFile(webDockerfilePath, "utf8");
+
+  assert.match(
+    dockerfile,
+    /COPY packages\/database\/config\/identifying-elements\.json packages\/database\/config\/identifying-elements\.json/,
   );
 });
