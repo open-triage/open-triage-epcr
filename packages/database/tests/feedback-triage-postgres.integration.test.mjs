@@ -33,6 +33,11 @@ integrationTest("real PostgreSQL atomically records approved triage with optimis
        organization_display_name, actor_display_name)
       values ('T7M4Q2K6X5PA', $3, 'bug', 'Original content remains unchanged', $1, $2,
         'Triage test EMS', 'Triage test user')`, [organizationId, actorId, randomUUID()]);
+    await client.query(`insert into feedback.submission
+      (reference_code, idempotency_key, submission_type, original_description, organization_id, actor_id,
+       organization_display_name, actor_display_name)
+      values ('C7M4Q2K6X5PA', $3, 'bug', 'Canonical report', $1, $2,
+        'Triage test EMS', 'Triage test user')`, [organizationId, actorId, randomUUID()]);
     await client.query(`do $$ begin
       execute format('grant open_triage_feedback_reviewer to %I', current_user);
     end $$`);
@@ -66,14 +71,42 @@ integrationTest("real PostgreSQL atomically records approved triage with optimis
     assert.equal(detail.review_history[1].reviewerType, "human");
     assert.equal(detail.review_history[1].modelIdentifier, null);
 
+    const duplicate = await client.query(`select * from feedback.record_review_decision(
+      'T7M4Q2K6X5PA', 2, 'duplicate', 'normal', 'Known duplicate', 'Canonical relationship approved',
+      'human', 'maintainer-2', null, null, 'C7M4Q2K6X5PA', 'issue',
+      'https://github.com/open-triage/open-triage-epcr/issues/403')`);
+    assert.equal(duplicate.rows[0].review_version, "3");
+    assert.equal(duplicate.rows[0].duplicate_of_reference, "C7M4Q2K6X5PA");
+
+    const duplicateDetail = (await client.query("select * from feedback.review_detail('T7M4Q2K6X5PA')")).rows[0];
+    assert.equal(duplicateDetail.submission.status, "duplicate");
+    assert.equal(duplicateDetail.submission.duplicateOfReference, "C7M4Q2K6X5PA");
+    assert.deepEqual(duplicateDetail.submission.externalWork, {
+      kind: "issue", url: "https://github.com/open-triage/open-triage-epcr/issues/403"
+    });
+    assert.equal(duplicateDetail.review_history[2].duplicateOfReference, "C7M4Q2K6X5PA");
+    assert.deepEqual(duplicateDetail.review_history[2].externalWork, duplicateDetail.submission.externalWork);
+
+    await client.query("savepoint before_self_duplicate");
+    await assert.rejects(client.query(`select * from feedback.record_review_decision(
+      'T7M4Q2K6X5PA', 3, 'duplicate', 'normal', null, 'Invalid self duplicate',
+      'human', 'maintainer-2', null, null, 'T7M4Q2K6X5PA', null, null)`), (error) => error.code === "PT003");
+    await client.query("rollback to savepoint before_self_duplicate");
+
+    await client.query("savepoint before_missing_canonical");
+    await assert.rejects(client.query(`select * from feedback.record_review_decision(
+      'T7M4Q2K6X5PA', 3, 'duplicate', 'normal', null, 'Missing canonical',
+      'human', 'maintainer-2', null, null, 'M7M4Q2K6X5PA', null, null)`), (error) => error.code === "PT004");
+    await client.query("rollback to savepoint before_missing_canonical");
+
     await client.query("savepoint before_invalid_provenance");
     await assert.rejects(client.query(`select * from feedback.record_review_decision(
-      'T7M4Q2K6X5PA', 2, 'resolved', 'urgent', null, 'Missing provenance',
+      'T7M4Q2K6X5PA', 3, 'resolved', 'urgent', null, 'Missing provenance',
       'ai_assisted', 'maintainer-2', null, null)`), (error) => error.code === "PT003");
     await client.query("rollback to savepoint before_invalid_provenance");
     const unchanged = (await client.query("select * from feedback.review_detail('T7M4Q2K6X5PA')")).rows[0];
-    assert.equal(unchanged.submission.reviewVersion, 2);
-    assert.equal(unchanged.review_history.length, 2);
+    assert.equal(unchanged.submission.reviewVersion, 3);
+    assert.equal(unchanged.review_history.length, 3);
 
     assert.equal((await client.query("select has_table_privilege('open_triage_feedback_reviewer', 'feedback.review_event', 'insert') allowed")).rows[0].allowed, false);
     await client.query("savepoint before_direct_event_write");

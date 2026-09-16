@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  StaleDecisionError, UsageError, decodeCursor, dryRunDecision, encodeCursor,
+  StaleDecisionError, UsageError, applyBulk, decodeCursor, dryRunBulk, dryRunDecision, encodeCursor,
   listFeedback, parseArguments, proposeFeedback, recordDecision, run, showFeedback
 } from "../scripts/feedback-review.mjs";
 
@@ -100,6 +100,48 @@ test("decision commands require explicit valid inputs and AI provenance", () => 
   assert.throws(() => parseArguments([...arguments_, "--sql", "update feedback.submission"]), /Unsupported argument/);
 });
 
+test("duplicate and external-work arguments are explicit, bounded, and safe", () => {
+  const base = [
+    "apply", "--reference", "J7M4Q2K6X5PN", "--expected-version", "2",
+    "--status", "duplicate", "--priority", "normal", "--note", "Confirmed duplicate",
+    "--human-reviewer", "maintainer-1", "--duplicate-of", "T7M4Q2K6X5PA",
+    "--external-kind", "issue", "--external-url", "https://github.com/open-triage/open-triage-epcr/issues/403"
+  ];
+  const parsed = parseArguments(base);
+  assert.equal(parsed.duplicateOf, "T7M4Q2K6X5PA");
+  assert.equal(parsed.externalKind, "issue");
+  assert.throws(() => parseArguments(base.filter((value, index) => index < base.indexOf("--duplicate-of") || index > base.indexOf("--duplicate-of") + 1)), /require --duplicate-of/);
+  assert.throws(() => parseArguments(base.map((value) => value === "T7M4Q2K6X5PA" ? "J7M4Q2K6X5PN" : value)), /another valid/);
+  assert.throws(() => parseArguments(base.map((value) => value.startsWith("https://") ? "file:///tmp/issue" : value)), /HTTPS/);
+  assert.throws(() => parseArguments(base.filter((value) => value !== "--external-kind" && value !== "issue")), /together/);
+  assert.throws(() => parseArguments(base.map((value, index) =>
+    index === base.indexOf("--status") + 1 ? "planned" : value)), UsageError);
+});
+
+test("bulk apply requires confirmation while bulk preview remains read-only", () => {
+  const common = [
+    "--item", "J7M4Q2K6X5PN:0", "--item", "T7M4Q2K6X5PA:3",
+    "--status", "planned", "--priority", "high", "--note", "Approved bulk decision",
+    "--human-reviewer", "maintainer-1"
+  ];
+  assert.throws(() => parseArguments(["bulk-apply", ...common]), /requires --confirm-bulk/);
+  assert.equal(parseArguments(["bulk-apply", ...common, "--confirm-bulk"]).confirmed, true);
+  assert.equal(parseArguments(["bulk-dry-run", ...common]).items.length, 2);
+  assert.throws(() => parseArguments(["bulk-dry-run", ...common, "--confirm-bulk"]), UsageError);
+  assert.throws(() => parseArguments(["bulk-apply", ...common, "--item", "J7M4Q2K6X5PN:1", "--confirm-bulk"]), /unique/);
+});
+
+test("unconfirmed bulk apply fails before opening a database connection", async () => {
+  class Client {
+    constructor() { throw new Error("must not connect"); }
+  }
+  await assert.rejects(run([
+    "bulk-apply", "--item", "J7M4Q2K6X5PN:0", "--status", "planned",
+    "--priority", "normal", "--note", "Approved bulk decision",
+    "--human-reviewer", "maintainer-1"
+  ], { Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" } }), /requires --confirm-bulk/);
+});
+
 test("proposal and dry run inspect current state without writing", async () => {
   const calls = [];
   const client = { query: async (sql) => {
@@ -134,6 +176,39 @@ test("apply uses only the fixed atomic decision function", async () => {
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /^select \* from feedback\.record_review_decision/);
   assert.equal(calls[0].values[6], "ai_assisted");
+  assert.equal(calls[0].values.length, 13);
+});
+
+test("bulk preview is non-mutating and confirmed apply reports known partial failures", async () => {
+  const options = {
+    items: [
+      { reference: "J7M4Q2K6X5PN", expectedVersion: 0 },
+      { reference: "T7M4Q2K6X5PA", expectedVersion: 1 }
+    ], status: "planned", priority: "normal", note: "Approved bulk note",
+    reviewerType: "human", humanReviewer: "maintainer-1"
+  };
+  const reads = [];
+  const preview = await dryRunBulk({ query: async (sql, values) => {
+    reads.push({ sql, values });
+    return { rowCount: 1, rows: [{ submission: { reviewVersion: values[0] === "J7M4Q2K6X5PN" ? 0 : 2 } }] };
+  } }, options);
+  assert.equal(preview.dryRun, true);
+  assert.deepEqual(preview.results.map(({ ok }) => ok), [true, false]);
+  assert.ok(reads.every(({ sql }) => sql === "select * from feedback.review_detail($1::text)"));
+
+  const writes = [];
+  const applied = await applyBulk({ query: async (sql, values) => {
+    writes.push({ sql, values });
+    if (sql.startsWith("select * from feedback.record_review_decision") && values[0] === "T7M4Q2K6X5PA") {
+      const error = new Error("unsafe detail"); error.code = "PT002"; throw error;
+    }
+    if (sql.startsWith("select * from feedback.record_review_decision")) return { rows: [{ reference_code: values[0] }] };
+    return { rows: [] };
+  } }, options);
+  assert.equal(applied.partialFailure, true);
+  assert.deepEqual(applied.results.map(({ ok }) => ok), [true, false]);
+  assert.equal(JSON.stringify(applied).includes("unsafe detail"), false);
+  assert.ok(writes.some(({ sql }) => sql === "rollback to savepoint feedback_bulk_1"));
 });
 
 test("apply is the only command that opens a write-capable transaction", async () => {
@@ -158,8 +233,8 @@ test("apply is the only command that opens a write-capable transaction", async (
   assert.deepEqual(calls.slice(0, 3), ["connect", "begin", "set local role open_triage_feedback_reviewer"]);
 });
 
-test("proposal and dry-run commands use database-enforced read-only transactions", async () => {
-  for (const command of ["propose", "dry-run"]) {
+test("proposal, dry-run, and bulk preview commands use database-enforced read-only transactions", async () => {
+  for (const command of ["propose", "dry-run", "bulk-dry-run"]) {
     const calls = [];
     class Client {
       async connect() { calls.push("connect"); }
@@ -172,10 +247,11 @@ test("proposal and dry-run commands use database-enforced read-only transactions
       }
       async end() { calls.push("end"); }
     }
-    const arguments_ = [
-      command, "--reference", "J7M4Q2K6X5PN", "--status", "triaged",
-      "--priority", "normal", "--note", "Suggested note"
-    ];
+    const arguments_ = command === "bulk-dry-run" ? [
+      command, "--item", "J7M4Q2K6X5PN:0", "--status", "triaged", "--priority", "normal",
+      "--note", "Suggested note", "--human-reviewer", "maintainer-1"
+    ] : [command, "--reference", "J7M4Q2K6X5PN", "--status", "triaged",
+      "--priority", "normal", "--note", "Suggested note"];
     if (command === "dry-run") arguments_.push("--expected-version", "0", "--human-reviewer", "maintainer-1");
     await run(arguments_, {
       Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" },
