@@ -11,6 +11,19 @@ export type FeedbackBrowserFamily = "chromium" | "firefox" | "safari" | "other";
 export type FeedbackStructuralKind =
   | "main" | "header" | "footer" | "nav" | "section" | "article" | "aside"
   | "form" | "fieldset" | "table" | "list" | "button" | "dialog" | "alert" | "status";
+export type FeedbackInteractionName =
+  | "feedback.opened" | "feedback.cancelled" | "feedback.type.bug.selected"
+  | "feedback.type.feature.selected" | "feedback.submit.attempted"
+  | "session.refresh.requested" | "session.logout.requested"
+  | "presentation.mobile.selected" | "presentation.stationary.selected" | "presentation.admin.selected";
+
+export interface FeedbackRequestFailure {
+  timestamp: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  endpointPattern: string;
+  status: number;
+  durationMs: number;
+}
 
 export interface FeedbackDiagnosticContext {
   schemaVersion: 1;
@@ -28,6 +41,8 @@ export interface FeedbackDiagnosticPayload extends FeedbackDiagnosticContext {
     nodes: Array<{ kind: FeedbackStructuralKind; depth: number }>;
     truncated: boolean;
   };
+  interactions?: FeedbackInteractionName[];
+  requestFailures?: FeedbackRequestFailure[];
 }
 
 export type FeedbackDiagnostics =

@@ -1,8 +1,13 @@
 import { BadRequestException } from "@nestjs/common";
-import type { CreateFeedbackCommand, FeedbackDiagnosticPayload, FeedbackDiagnostics, FeedbackStructuralKind } from "@open-triage/contracts";
+import type {
+  CreateFeedbackCommand, FeedbackDiagnosticPayload, FeedbackDiagnostics, FeedbackInteractionName,
+  FeedbackRequestFailure, FeedbackStructuralKind
+} from "@open-triage/contracts";
 
 const DIAGNOSTIC_MAX_BYTES = 16_384;
 const STRUCTURE_MAX_NODES = 200;
+const INTERACTION_MAX = 20;
+const REQUEST_FAILURE_MAX = 10;
 const allowedFields = new Set(["idempotencyKey", "type", "description", "diagnostics"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const modes = new Set(["mobile", "stationary", "admin"]);
@@ -14,6 +19,22 @@ const structuralKinds = new Set<FeedbackStructuralKind>([
   "main", "header", "footer", "nav", "section", "article", "aside", "form", "fieldset",
   "table", "list", "button", "dialog", "alert", "status"
 ]);
+const interactionNames = new Set<FeedbackInteractionName>([
+  "feedback.opened", "feedback.cancelled", "feedback.type.bug.selected",
+  "feedback.type.feature.selected", "feedback.submit.attempted", "session.refresh.requested",
+  "session.logout.requested", "presentation.mobile.selected", "presentation.stationary.selected",
+  "presentation.admin.selected"
+]);
+const requestMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+const endpointLiteralSegments = new Set([
+  "api", "admin", "calls", "assigned", "synthetic-generation", "feedback", "v1", "submissions",
+  "installation", "reports", "open", "sessions", "current", "password", "reauthenticate",
+  "context", "users", "roles", "catalogs", "forms", "draft", "changes", "sign", "amend",
+  "reopen", "assignments", "cancel", "complete", "ownership", "transfer", "preview", "publish",
+  "options", "capabilities", "packages", "import", "export", "generate", "delete"
+]);
+const endpointPattern = /^\/(?:[a-z0-9-]+|\{(?:value|invalid)\})(?:\/(?:[a-z0-9-]+|\{value\})){0,11}(?:\?(?:[a-z][a-z0-9_-]{0,30}|\{key\})=\{value\}(?:&(?:[a-z][a-z0-9_-]{0,30}|\{key\})=\{value\}){0,9})?$/;
+const isoTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const safeVersion = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 
 function record(value: unknown, message: string): Record<string, unknown> {
@@ -47,11 +68,55 @@ function validateStructure(value: unknown): NonNullable<FeedbackDiagnosticPayloa
   return { nodes, truncated: structure.truncated };
 }
 
+function validateInteractions(value: unknown): FeedbackInteractionName[] {
+  if (!Array.isArray(value) || value.length > INTERACTION_MAX) {
+    throw new BadRequestException("Diagnostic interactions must contain at most 20 approved names");
+  }
+  return value.map((name, index) => {
+    if (!interactionNames.has(name as FeedbackInteractionName)) {
+      throw new BadRequestException(`Diagnostic interaction ${index} is unsupported`);
+    }
+    return name as FeedbackInteractionName;
+  });
+}
+
+function validEndpointPattern(value: string): boolean {
+  if (!endpointPattern.test(value)) return false;
+  const path = value.split("?", 1)[0]!;
+  return path.split("/").filter(Boolean).every((segment) =>
+    segment === "{value}" || segment === "{invalid}" || endpointLiteralSegments.has(segment)
+  );
+}
+
+function validateRequestFailures(value: unknown): FeedbackRequestFailure[] {
+  if (!Array.isArray(value) || value.length > REQUEST_FAILURE_MAX) {
+    throw new BadRequestException("Diagnostic request failures must contain at most 10 summaries");
+  }
+  return value.map((item, index) => {
+    const failure = record(item, `Diagnostic request failure ${index} must be an object`);
+    exact(failure, new Set(["timestamp", "method", "endpointPattern", "status", "durationMs"]), `diagnostic request failure ${index}`);
+    if (typeof failure.timestamp !== "string" || !isoTimestamp.test(failure.timestamp)
+      || Number.isNaN(Date.parse(failure.timestamp))) throw new BadRequestException(`Diagnostic request failure ${index} has an invalid timestamp`);
+    if (!requestMethods.has(failure.method as string)) throw new BadRequestException(`Diagnostic request failure ${index} has an invalid method`);
+    if (typeof failure.endpointPattern !== "string" || !validEndpointPattern(failure.endpointPattern)) {
+      throw new BadRequestException(`Diagnostic request failure ${index} has an invalid endpoint pattern`);
+    }
+    if (!Number.isInteger(failure.status) || (Number(failure.status) !== 0 && (Number(failure.status) < 400 || Number(failure.status) > 599))) {
+      throw new BadRequestException(`Diagnostic request failure ${index} has an invalid status`);
+    }
+    if (!Number.isInteger(failure.durationMs) || Number(failure.durationMs) < 0 || Number(failure.durationMs) > 300_000) {
+      throw new BadRequestException(`Diagnostic request failure ${index} has an invalid duration`);
+    }
+    return { timestamp: failure.timestamp, method: failure.method, endpointPattern: failure.endpointPattern,
+      status: Number(failure.status), durationMs: Number(failure.durationMs) } as FeedbackRequestFailure;
+  });
+}
+
 function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagnosticPayload {
   const payload = record(value, "Diagnostic payload must be an object");
   exact(payload, new Set([
     "schemaVersion", "appVersion", "buildVersion", "mode", "screen", "browserFamily",
-    "viewport", "connectivity", ...(type === "bug" ? ["structure"] : [])
+    "viewport", "connectivity", ...(type === "bug" ? ["structure", "interactions", "requestFailures"] : [])
   ]), "diagnostic payload");
   if (payload.schemaVersion !== 1) throw new BadRequestException("Unsupported diagnostic schema version");
   if (typeof payload.appVersion !== "string" || !safeVersion.test(payload.appVersion)) throw new BadRequestException("Invalid diagnostic app version");
@@ -68,6 +133,8 @@ function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagn
   const expectedCategory = Number(viewport.width) < 640 ? "narrow" : Number(viewport.width) < 1200 ? "standard" : "wide";
   if (viewport.category !== expectedCategory) throw new BadRequestException("Diagnostic viewport category does not match width");
   if (type === "bug" && payload.structure === undefined) throw new BadRequestException("Bug diagnostics require a structural snapshot");
+  if (type === "bug" && payload.interactions === undefined) throw new BadRequestException("Bug diagnostics require interaction history");
+  if (type === "bug" && payload.requestFailures === undefined) throw new BadRequestException("Bug diagnostics require request-failure history");
 
   return {
     schemaVersion: 1,
@@ -78,7 +145,11 @@ function validatePayload(value: unknown, type: "bug" | "feature"): FeedbackDiagn
     browserFamily: payload.browserFamily as FeedbackDiagnosticPayload["browserFamily"],
     viewport: { width: Number(viewport.width), height: Number(viewport.height), category: viewport.category as "narrow" | "standard" | "wide" },
     connectivity: payload.connectivity as FeedbackDiagnosticPayload["connectivity"],
-    ...(type === "bug" ? { structure: validateStructure(payload.structure) } : {})
+    ...(type === "bug" ? {
+      structure: validateStructure(payload.structure),
+      interactions: validateInteractions(payload.interactions),
+      requestFailures: validateRequestFailures(payload.requestFailures)
+    } : {})
   };
 }
 

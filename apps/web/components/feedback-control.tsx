@@ -3,7 +3,8 @@
 import type { FeedbackDiagnosticMode, FeedbackDiagnosticScreen, FeedbackDiagnostics, FeedbackSubmissionType } from "@open-triage/contracts";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { feedbackDescriptionError, feedbackPrompt, FEEDBACK_DESCRIPTION_MAX_LENGTH, submitFeedback } from "../app/feedback";
-import { captureFeedbackDiagnostics, diagnosticsForType } from "../app/feedback-diagnostics";
+import { captureFeedbackDiagnostics, diagnosticsForSubmission } from "../app/feedback-diagnostics";
+import { recordFeedbackInteraction } from "../app/feedback-telemetry";
 
 export function FeedbackControl({ csrfToken, online, mode, screen }: {
   readonly csrfToken: string;
@@ -37,6 +38,7 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
     setError(null);
     diagnostics.current = null;
     idempotencyKey.current = null;
+    recordFeedbackInteraction("feedback.cancelled");
     window.requestAnimationFrame(() => trigger.current?.focus());
   }
 
@@ -62,12 +64,13 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
     if (fieldError) { setError(fieldError); return; }
     setPending(true);
     setError(null);
+    recordFeedbackInteraction("feedback.submit.attempted");
     try {
       const captured = diagnostics.current ?? { status: "unavailable", schemaVersion: 1, reason: "capture-failed" };
       const draftKey = idempotencyKey.current ?? crypto.randomUUID();
       idempotencyKey.current = draftKey;
       const result = await submitFeedback(csrfToken, {
-        idempotencyKey: draftKey, type, description: description.trim(), diagnostics: diagnosticsForType(captured, type)
+        idempotencyKey: draftKey, type, description: description.trim(), diagnostics: diagnosticsForSubmission(captured, type)
       });
       setOpen(false);
       setType(null);
@@ -89,6 +92,7 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
       title={online ? "Send feedback" : "Feedback is unavailable while offline"} disabled={!online}
       onClick={() => {
         setNotice(null);
+        recordFeedbackInteraction("feedback.opened");
         idempotencyKey.current = crypto.randomUUID();
         diagnostics.current = captureFeedbackDiagnostics(window, mode, screen);
         setOpen(true);
@@ -109,7 +113,10 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
         <fieldset className="feedback-type"><legend>Feedback type</legend>
           <div role="group" aria-label="Feedback type">
             {(["bug", "feature"] as const).map((value) => <button key={value} type="button"
-              aria-pressed={type === value} disabled={pending} onClick={() => { setType(value); setError(null); }}>
+              aria-pressed={type === value} disabled={pending} onClick={() => {
+                recordFeedbackInteraction(value === "bug" ? "feedback.type.bug.selected" : "feedback.type.feature.selected");
+                setType(value); setError(null);
+              }}>
               {value === "bug" ? "Bug" : "Feature"}
             </button>)}
           </div>
