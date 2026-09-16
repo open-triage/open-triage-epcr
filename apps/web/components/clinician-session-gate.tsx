@@ -262,7 +262,7 @@ export function ClinicianSessionGate({ children }: {
             recordFeedbackInteraction("session.refresh.requested");
             setRefreshRequest((value) => value + 1);
           }}>Refresh</button>
-          : null}
+          : <span className="call-list-refresh session-bar-spacer" aria-hidden="true" />}
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
         <div className="presentation-selector" role="group" aria-label="Documentation presentation">
           {hasClinicalMode(session.capabilities) && <>

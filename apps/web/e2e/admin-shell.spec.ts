@@ -159,6 +159,7 @@ test("Forms readers, authors, and publishers receive only their permitted contro
 });
 
 test("combined owners start clinically and can enter only server-authorized Admin panels by keyboard", async ({ page }) => {
+  await page.setViewportSize({ width: 1048, height: 1008 });
   await page.route("**/demo-assigned-calls.json", assignedCalls);
   await page.route("**/api/admin/context", (route) => route.fulfill({
     contentType: "application/json",
@@ -177,11 +178,23 @@ test("combined owners start clinically and can enter only server-authorized Admi
 
   const selector = page.getByRole("group", { name: "Documentation presentation" });
   await expect(selector.getByRole("button", { name: "Mobile" })).toHaveAttribute("aria-pressed", "true");
+  await selector.getByRole("button", { name: "Stationary" }).click();
+  const logOut = page.getByRole("button", { name: "Log out" });
+  const clinicalSelectorBox = await selector.boundingBox();
+  const clinicalLogOutBox = await logOut.boundingBox();
+  expect(clinicalSelectorBox).not.toBeNull();
+  expect(clinicalLogOutBox).not.toBeNull();
   const admin = selector.getByRole("button", { name: "Admin" });
   await admin.focus();
   await admin.press("Enter");
 
   await expect(admin).toHaveAttribute("aria-pressed", "true");
+  const adminSelectorBox = await selector.boundingBox();
+  const adminLogOutBox = await logOut.boundingBox();
+  expect(adminSelectorBox).not.toBeNull();
+  expect(adminLogOutBox).not.toBeNull();
+  expect(adminSelectorBox).toEqual(clinicalSelectorBox);
+  expect(adminLogOutBox).toEqual(clinicalLogOutBox);
   await expect(page.getByRole("heading", { name: "Active configuration" })).toBeVisible();
   await expect(page.getByText("NEMSIS 3.5.1", { exact: true })).toBeVisible();
   await expect(page.getByText("Agency Stationary, version 3", { exact: true })).toBeVisible();

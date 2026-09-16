@@ -98,8 +98,12 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
         diagnostics.current = captureFeedbackDiagnostics(window, mode, screen);
         setOpen(true);
       }}>
-      <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M9 9h6M9 13h6M8 4l1.2 2h5.6L16 4M6 8H4m16 0h-2M6 16H4m16 0h-2M8 6h8v12H8z" />
+      <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none"
+        stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter">
+        <path d="m9.5 7-2-2-3-.75M14.5 7l2-2 3-.75" />
+        <path d="m10 7-1.5 2L10 11h4l1.5-2L14 7h-4Z" />
+        <path d="m10 11-1 2v5l3 4 3-4v-5l-1-2M12 11v11" />
+        <path d="m9 12-3-2-1-2.5M15 12l3-2 1-2.5M9 14H6l-2 3M15 14h3l2 3M9 17l-2 3v2M15 17l2 3v2" />
       </svg>
     </button>
     <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
