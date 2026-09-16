@@ -47,8 +47,14 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   await trigger.click();
   dialog = page.getByRole("dialog", { name: "Send feedback" });
   await dialog.getByRole("button", { name: "Bug" }).click();
+  const prompt = dialog.getByText("What happened, and what did you expect to happen?", { exact: true });
   await expect(dialog.getByLabel("What happened, and what did you expect to happen?")).toBeVisible();
   const description = dialog.getByRole("textbox");
+  await description.focus();
+  const [promptBox, descriptionBox] = await Promise.all([prompt.boundingBox(), description.boundingBox()]);
+  expect(promptBox).not.toBeNull();
+  expect(descriptionBox).not.toBeNull();
+  expect(promptBox!.y + promptBox!.height).toBeLessThanOrEqual(descriptionBox!.y - 6);
   await description.fill("The refresh control stopped responding");
   await dialog.getByRole("button", { name: "Submit feedback" }).click();
   await expect(dialog.getByRole("button", { name: "Submitting…" })).toBeDisabled();
@@ -79,8 +85,11 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   await dialog.getByLabel("What would you like to do, and why would it help?").fill("Filter calls by unit");
   await dialog.getByRole("button", { name: "Submit feedback" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("status").filter({ hasText: "Reference J7M4Q2K8X5PN" })).toBeVisible();
+  const notice = page.getByRole("status").filter({ hasText: "Reference J7M4Q2K8X5PN" });
+  await expect(notice).toBeVisible();
   await expect(trigger).toBeFocused();
+  await page.getByRole("button", { name: "Refresh calls" }).click();
+  await expect(notice).toHaveCount(0);
   expect(submitted).toMatchObject({ type: "feature", description: "Filter calls by unit" });
   expect((submitted as { idempotencyKey: string }).idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   const diagnostics = (submitted as any).diagnostics;

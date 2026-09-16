@@ -58,7 +58,7 @@ input, select, textarea { touch-action: manipulation; }
 .feedback-type div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .feedback-type button { min-height: 46px; border: 1px solid #7b8179; border-radius: 6px; color: #202320; background: white; font-weight: 750; }
 .feedback-type button[aria-pressed="true"] { border-color: var(--green); color: white; background: var(--green); }
-.feedback-dialog form > label { margin-top: 16px; }
+.feedback-dialog form > label { margin: 16px 0 7px; }
 .feedback-dialog form > small { display: block; margin-top: 5px; color: var(--muted); }
 .presentation-selector { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; }
 .session-bar .presentation-selector button { min-height: 34px; padding: 3px 9px; border: 0; }

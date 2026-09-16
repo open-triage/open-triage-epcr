@@ -30,6 +30,17 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
     if (open) dialog.current?.querySelector<HTMLElement>("button")?.focus();
   }, [open]);
 
+  useEffect(() => {
+    if (!notice) return;
+    const dismiss = () => setNotice(null);
+    window.addEventListener("pointerdown", dismiss, { capture: true, once: true });
+    window.addEventListener("keydown", dismiss, { capture: true, once: true });
+    return () => {
+      window.removeEventListener("pointerdown", dismiss, { capture: true });
+      window.removeEventListener("keydown", dismiss, { capture: true });
+    };
+  }, [notice]);
+
   function closeAndRestore() {
     if (pending) return;
     setOpen(false);
