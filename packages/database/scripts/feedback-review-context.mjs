@@ -8,7 +8,7 @@ const DEMO_NAMESPACE = "open-triage";
 const DEMO_SECRET = "open-triage-feedback-reviewer";
 const REVIEW_URL_KEY = "FEEDBACK_REVIEW_DATABASE_URL";
 const SUPPORTED_COMMANDS = new Set([
-  "list", "show", "propose", "dry-run", "apply", "bulk-dry-run", "bulk-apply",
+  "list", "list-open", "show", "propose", "dry-run", "apply", "bulk-dry-run", "bulk-apply",
 ]);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const reviewCli = path.join(repoRoot, "packages/database/scripts/feedback-review.mjs");

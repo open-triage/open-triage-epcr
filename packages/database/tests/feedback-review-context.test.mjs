@@ -8,7 +8,7 @@ const localUrl = "postgresql://local-reviewer:secret@127.0.0.1:54322/postgres";
 const demoUrl = "postgresql://demo-reviewer:secret@aws-0-eu-north-1.pooler.supabase.com:5432/postgres";
 
 test("context arguments retain every guarded feedback workflow command", () => {
-  for (const command of ["list", "show", "propose", "dry-run", "apply", "bulk-dry-run", "bulk-apply"]) {
+  for (const command of ["list", "list-open", "show", "propose", "dry-run", "apply", "bulk-dry-run", "bulk-apply"]) {
     const parsed = parseContextArguments(["--instance", "public-demo", command, "--format", "text"]);
     assert.equal(parsed.instance, "public-demo");
     assert.deepEqual(parsed.reviewArguments, [command, "--format", "text"]);

@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import pg from "pg";
 
 const STATUSES = new Set(["new", "triaged", "planned", "in_progress", "resolved", "declined", "duplicate"]);
+const OPEN_STATUSES = ["new", "triaged", "planned", "in_progress"];
 const TYPES = new Set(["bug", "feature"]);
 const PRIORITIES = new Set(["low", "normal", "high", "urgent", "unassigned"]);
 const DECISION_PRIORITIES = new Set(["low", "normal", "high", "urgent"]);
@@ -189,6 +190,24 @@ export function parseArguments(arguments_) {
       createdBefore: timestamp(option(rest, "created-before"), "created-before"), format
     };
   }
+  if (command === "list-open") {
+    onlyKnownOptions(rest, new Set([
+      "type", "priority", "organization", "created-from", "created-before", "format"
+    ]));
+    const type = option(rest, "type");
+    if (type && !TYPES.has(type)) throw new UsageError("--type is not supported");
+    const priority = option(rest, "priority");
+    if (priority && !PRIORITIES.has(priority)) throw new UsageError("--priority is not supported");
+    const organization = option(rest, "organization");
+    if (organization && !UUID_PATTERN.test(organization)) throw new UsageError("--organization must be a UUID");
+    const format = option(rest, "format") ?? "json";
+    if (format !== "json" && format !== "text") throw new UsageError("--format must be json or text");
+    return {
+      command, type, priority, organization,
+      createdFrom: timestamp(option(rest, "created-from"), "created-from"),
+      createdBefore: timestamp(option(rest, "created-before"), "created-before"), format
+    };
+  }
   if (command === "show") {
     onlyKnownOptions(rest, new Set(["reference", "format"]));
     const reference = option(rest, "reference");
@@ -201,7 +220,7 @@ export function parseArguments(arguments_) {
   }
   if (["propose", "dry-run", "apply"].includes(command)) return decisionArguments(command, rest);
   if (["bulk-dry-run", "bulk-apply"].includes(command)) return bulkDecisionArguments(command, rest);
-  throw new UsageError("usage: feedback-review.mjs <list|show|propose|dry-run|apply|bulk-dry-run|bulk-apply> [supported options]");
+  throw new UsageError("usage: feedback-review.mjs <list|list-open|show|propose|dry-run|apply|bulk-dry-run|bulk-apply> [supported options]");
 }
 
 export function encodeCursor(createdAt, id) {
@@ -240,6 +259,26 @@ export async function listFeedback(client, options) {
     : null;
   const items = pageRows.map(({ cursor_id: _cursorId, ...row }) => row);
   return { items, nextCursor };
+}
+
+export async function listOpenFeedback(client, options, pageSize = MAX_PAGE_SIZE) {
+  const items = {};
+  const counts = {};
+  for (const status of OPEN_STATUSES) {
+    const statusItems = [];
+    let cursor;
+    const seenCursors = new Set();
+    do {
+      const page = await listFeedback(client, { ...options, status, cursor, limit: pageSize });
+      statusItems.push(...page.items);
+      cursor = page.nextCursor ?? undefined;
+      if (cursor && seenCursors.has(cursor)) throw new Error("Feedback review pagination did not advance");
+      if (cursor) seenCursors.add(cursor);
+    } while (cursor);
+    items[status] = statusItems;
+    counts[status] = statusItems.length;
+  }
+  return { items, counts, total: Object.values(counts).reduce((sum, count) => sum + count, 0) };
 }
 
 export async function showFeedback(client, options) {
@@ -358,6 +397,7 @@ export async function run(arguments_, { Client = pg.Client, env = process.env, s
     await client.query("set local role open_triage_feedback_reviewer");
     let value;
     if (options.command === "list") value = await listFeedback(client, options);
+    if (options.command === "list-open") value = await listOpenFeedback(client, options);
     if (options.command === "show") value = await showFeedback(client, options);
     if (options.command === "propose") value = await proposeFeedback(client, options);
     if (options.command === "dry-run") value = await dryRunDecision(client, options);

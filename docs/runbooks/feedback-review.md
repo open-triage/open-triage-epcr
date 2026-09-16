@@ -57,6 +57,8 @@ the complete guarded CLI workflow:
 npm run feedback:review:context -w @open-triage/database -- \
   --instance public-demo list --status new --limit 100
 npm run feedback:review:context -w @open-triage/database -- \
+  --instance public-demo list-open
+npm run feedback:review:context -w @open-triage/database -- \
   --instance public-demo show --reference J7M4Q2K6X5PN
 ```
 
@@ -66,6 +68,19 @@ bulk-confirmation requirements remain unchanged. The wrapper does not weaken or
 bypass validation performed by the underlying CLI.
 
 ## List the queue safely
+
+Use `list-open` for the normal review workflow. It fetches `new`, `triaged`,
+`planned`, and `in_progress`, follows every opaque cursor internally, and returns
+items grouped by status with counts and a total:
+
+```sh
+npm run feedback:review -w @open-triage/database -- list-open
+```
+
+It accepts the shared `--type`, `--priority`, `--organization`,
+`--created-from`, and `--created-before` filters. It intentionally does not
+accept `--status`, `--cursor`, or `--limit` because it owns complete open-queue
+pagination.
 
 The default page contains at most 25 records. Pages are ordered by creation time
 and the database-local unique key, newest first. Follow `nextCursor` exactly; do
@@ -203,3 +218,20 @@ make no database changes. No review command invokes a model, creates GitHub
 issues, branches, pull requests, code changes, or any other external action.
 Clear the environment variable after the review session and follow the
 installation's normal credential-rotation process if it was exposed.
+
+## Local human validation after an authorized fix
+
+Use the repository helper to run the database-backed app on its standard ports:
+
+```sh
+npm run feedback:validate -- start
+npm run feedback:validate -- status
+npm run feedback:validate -- stop
+```
+
+`start` reuses healthy compatible services on ports 3000 and 3001 and starts
+only missing ones with the development commands in `AGENTS.md`. It refuses to
+replace an unknown or incompatible port occupant. `stop` terminates only the
+processes recorded as started by this helper; compatible services that predated
+the validation session remain running. Logs and the ownership manifest are
+stored outside the repository in the operating system's temporary directory.

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   StaleDecisionError, UsageError, applyBulk, decodeCursor, dryRunBulk, dryRunDecision, encodeCursor,
-  listFeedback, parseArguments, proposeFeedback, recordDecision, run, showFeedback
+  listFeedback, listOpenFeedback, parseArguments, proposeFeedback, recordDecision, run, showFeedback
 } from "../scripts/feedback-review.mjs";
 
 test("list arguments are bounded and support every approved filter", () => {
@@ -31,6 +31,19 @@ test("cursor round trips a stable boundary and invalid cursors fail locally", ()
   }
 });
 
+test("list-open accepts shared filters but owns status and pagination", () => {
+  const parsed = parseArguments([
+    "list-open", "--type", "feature", "--priority", "unassigned",
+    "--created-from", "2026-09-01T00:00:00Z"
+  ]);
+  assert.equal(parsed.command, "list-open");
+  assert.equal(parsed.type, "feature");
+  assert.equal(parsed.priority, "unassigned");
+  assert.throws(() => parseArguments(["list-open", "--status", "new"]), /Unsupported argument/);
+  assert.throws(() => parseArguments(["list-open", "--cursor", "opaque"]), /Unsupported argument/);
+  assert.throws(() => parseArguments(["list-open", "--limit", "1"]), /Unsupported argument/);
+});
+
 test("list uses one fixed function call, strips cursor ids, and emits the final item boundary", async () => {
   const calls = [];
   const rows = [1, 2, 3].map((id) => ({
@@ -48,6 +61,30 @@ test("list uses one fixed function call, strips cursor ids, and emits the final 
   assert.deepEqual(decodeCursor(page.nextCursor), { createdAt: "2026-09-16T12:00:02.000Z", id: "2" });
 });
 
+test("list-open exhausts every open status and groups counts", async () => {
+  const calls = [];
+  const client = { query: async (_sql, values) => {
+    calls.push(values);
+    const status = values[1];
+    const cursorId = values[9];
+    if (status !== "new") return { rows: [] };
+    if (cursorId) return { rows: [{ reference_code: "AAAAAAAAAAA4", created_at: new Date("2026-09-16T11:59:58.000Z"), cursor_id: "4" }] };
+    return { rows: [
+      { reference_code: "AAAAAAAAAAA2", created_at: new Date("2026-09-16T12:00:00.000Z"), cursor_id: "2" },
+      { reference_code: "AAAAAAAAAAA3", created_at: new Date("2026-09-16T11:59:59.000Z"), cursor_id: "3" },
+      { reference_code: "AAAAAAAAAAA4", created_at: new Date("2026-09-16T11:59:58.000Z"), cursor_id: "4" },
+    ] };
+  } };
+  const result = await listOpenFeedback(client, {}, 2);
+  assert.deepEqual(result.counts, { new: 3, triaged: 0, planned: 0, in_progress: 0 });
+  assert.equal(result.total, 3);
+  assert.deepEqual(result.items.new.map(({ reference_code }) => reference_code), [
+    "AAAAAAAAAAA2", "AAAAAAAAAAA3", "AAAAAAAAAAA4"
+  ]);
+  assert.equal(calls.length, 5);
+  assert.ok(calls.every((values) => values[0] === 3));
+});
+
 test("detail uses only the opaque reference and missing references are safe", async () => {
   await assert.rejects(showFeedback({ query: async () => ({ rowCount: 0, rows: [] }) }, {
     reference: "J7M4Q2K6X5PN"
@@ -55,26 +92,28 @@ test("detail uses only the opaque reference and missing references are safe", as
   assert.throws(() => parseArguments(["show", "--reference", "1 OR 1=1"]), UsageError);
 });
 
-test("run always assumes the non-login reviewer role in a read-only transaction", async () => {
-  const calls = [];
-  class Client {
-    async connect() { calls.push("connect"); }
-    async query(sql) {
-      calls.push(sql);
-      if (sql.startsWith("select * from feedback.review_queue")) return { rows: [] };
-      return { rows: [] };
+test("list commands assume the non-login reviewer role in read-only transactions", async () => {
+  for (const command of ["list", "list-open"]) {
+    const calls = [];
+    class Client {
+      async connect() { calls.push("connect"); }
+      async query(sql) {
+        calls.push(sql);
+        if (sql.startsWith("select * from feedback.review_queue")) return { rows: [] };
+        return { rows: [] };
+      }
+      async end() { calls.push("end"); }
     }
-    async end() { calls.push("end"); }
+    let output = "";
+    await run([command], {
+      Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" },
+      stdout: { write(value) { output += value; } }
+    });
+    assert.deepEqual(calls.slice(0, 3), ["connect", "begin read only", "set local role open_triage_feedback_reviewer"]);
+    assert.equal(calls.at(-2), "commit");
+    assert.equal(calls.at(-1), "end");
+    assert.ok(output.endsWith("\n"));
   }
-  let output = "";
-  await run(["list"], {
-    Client, env: { FEEDBACK_REVIEW_DATABASE_URL: "postgresql://reviewer.invalid/db" },
-    stdout: { write(value) { output += value; } }
-  });
-  assert.deepEqual(calls.slice(0, 3), ["connect", "begin read only", "set local role open_triage_feedback_reviewer"]);
-  assert.equal(calls.at(-2), "commit");
-  assert.equal(calls.at(-1), "end");
-  assert.equal(output, '{"items":[],"nextCursor":null}\n');
 });
 
 test("decision commands require explicit valid inputs and AI provenance", () => {
