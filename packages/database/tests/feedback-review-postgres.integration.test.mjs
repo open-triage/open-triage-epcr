@@ -6,6 +6,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { grantRoleForTesting } from "./postgres-role-test-helpers.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,9 +43,7 @@ integrationTest("real PostgreSQL restricts reviewer access and preserves cursor 
 
     const ids = (await client.query(`select id, reference_code, created_at from feedback.submission
       where reference_code like 'R7M4Q2K6X5P_' order by created_at desc, id desc`)).rows;
-    await client.query(`do $$ begin
-      execute format('grant open_triage_feedback_reviewer to %I', current_user);
-    end $$`);
+    await grantRoleForTesting(client, "open_triage_feedback_reviewer");
     await client.query("savepoint before_denied_read");
     await client.query("set local role open_triage_feedback_reviewer");
     await assert.rejects(client.query("select * from feedback.submission"), /permission denied/);

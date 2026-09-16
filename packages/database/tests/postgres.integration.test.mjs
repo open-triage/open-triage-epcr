@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
+import { grantRoleForTesting } from "./postgres-role-test-helpers.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,6 +58,16 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   await execFileAsync(process.execPath, [migrationRunner], {
     env: { ...process.env, DATABASE_URL: databaseUrl }
   });
+
+  for (const role of [
+    "open_triage_analyst",
+    "open_triage_auditor",
+    "open_triage_identified_analyst",
+    "open_triage_operational",
+    "open_triage_query_auditor"
+  ]) {
+    await grantRoleForTesting(client, role);
+  }
 
   await t.test("enforces role-resolved authorization invariants", async () => {
     const capabilityKeys = (await client.query(

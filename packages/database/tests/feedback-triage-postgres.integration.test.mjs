@@ -6,6 +6,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { grantRoleForTesting } from "./postgres-role-test-helpers.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,9 +39,7 @@ integrationTest("real PostgreSQL atomically records approved triage with optimis
        organization_display_name, actor_display_name)
       values ('C7M4Q2K6X5PA', $3, 'bug', 'Canonical report', $1, $2,
         'Triage test EMS', 'Triage test user')`, [organizationId, actorId, randomUUID()]);
-    await client.query(`do $$ begin
-      execute format('grant open_triage_feedback_reviewer to %I', current_user);
-    end $$`);
+    await grantRoleForTesting(client, "open_triage_feedback_reviewer");
     await client.query("set local role open_triage_feedback_reviewer");
 
     const aiDecision = await client.query(`select * from feedback.record_review_decision(
