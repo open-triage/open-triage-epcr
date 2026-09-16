@@ -1,9 +1,10 @@
 # Read-only feedback review
 
 This runbook is the supported internal path for listing and inspecting feedback.
-It does not add a user-facing feedback inbox. The human running the review makes
-all product decisions; creating issues, branches, pull requests, or code changes
-requires a separate explicit instruction.
+It does not add a user-facing feedback inbox. A human makes every final review
+decision. Issue creation, branch creation, pull requests, and implementation
+each require separate explicit instructions; none is implied by a feedback
+status, duplicate relationship, or downstream-work link.
 
 ## Reviewer setup
 
@@ -112,6 +113,54 @@ npm run feedback:review -w @open-triage/database -- apply \
   --note 'Approved after inspecting sanitized evidence.' \
   --reviewer-type ai-assisted --model gpt-5 --review-run review-20260916-01 \
   --human-reviewer maintainer@example.invalid
+```
+
+## Canonical duplicates and downstream work
+
+Marking an item `duplicate` requires another existing feedback submission as
+the canonical target. Self-reference, a missing target, and supplying a target
+for any other status are rejected by both the CLI and PostgreSQL:
+
+```sh
+npm run feedback:review -w @open-triage/database -- apply \
+  --reference J7M4Q2K6X5PN --expected-version 1 \
+  --status duplicate --duplicate-of T7M4Q2K6X5PA \
+  --priority normal --note 'Confirmed as the same report.' \
+  --human-reviewer maintainer@example.invalid
+```
+
+After a human separately chooses or creates downstream work, an HTTPS issue or
+pull-request URL may be recorded with `--external-kind issue|pull-request` and
+`--external-url`. This command records only the link in an immutable review
+event and the current projection. It does not create or modify the linked issue
+or pull request, contact its hosting service, create a branch, open a pull
+request, or implement anything.
+
+## Guarded bulk review
+
+Use `bulk-dry-run` first with one to 100 unique `REFERENCE:VERSION` items. It
+uses a database-enforced read-only transaction and cannot record decisions:
+
+```sh
+npm run feedback:review -w @open-triage/database -- bulk-dry-run \
+  --item J7M4Q2K6X5PN:1 --item T7M4Q2K6X5PA:0 \
+  --status planned --priority high --note 'Approved release group.' \
+  --human-reviewer maintainer@example.invalid
+```
+
+`bulk-apply` rejects the same command unless the additional `--confirm-bulk`
+flag is present. Confirmed batches have documented partial success: every item
+runs behind its own savepoint, known missing/stale/validation failures are
+reported per reference, and successful items commit. An unexpected database or
+connection failure rolls back the entire still-open batch. Reinspect failures
+and their current versions before a separate retry; never blindly replay the
+whole batch.
+
+```sh
+npm run feedback:review -w @open-triage/database -- bulk-apply \
+  --item J7M4Q2K6X5PN:1 --item T7M4Q2K6X5PA:0 \
+  --status planned --priority high --note 'Approved release group.' \
+  --human-reviewer maintainer@example.invalid --confirm-bulk
 ```
 
 JSON is the default output for later AI-assisted sessions. `--format text`
