@@ -33,22 +33,24 @@ integrationTest("terminal diagnostic expiry is bounded, idempotent, indexed, and
       values ($1, $2, 'Retention test user')`, [actorId, organizationId]);
 
     const fixtures = [
-      ["A7M4Q2K6X5PA", "resolved", "40 days", true],
-      ["B7M4Q2K6X5PA", "declined", "31 days", true],
-      ["C7M4Q2K6X5PA", "duplicate", "60 days", false],
-      ["D7M4Q2K6X5PA", "resolved", "29 days", true],
-      ["E7M4Q2K6X5PA", "new", "60 days", true],
-      ["F7M4Q2K6X5PA", "in_progress", "60 days", true]
+      ["A7M4Q2K6X5PA", "resolved", "40 days", true, null],
+      ["B7M4Q2K6X5PA", "declined", "31 days", true, null],
+      ["C7M4Q2K6X5PA", "duplicate", "60 days", false, "A7M4Q2K6X5PA"],
+      ["D7M4Q2K6X5PA", "resolved", "29 days", true, null],
+      ["E7M4Q2K6X5PA", "new", "60 days", true, null],
+      ["F7M4Q2K6X5PA", "in_progress", "60 days", true, null]
     ];
-    for (const [reference, status, age, hasDiagnostic] of fixtures) {
+    for (const [reference, status, age, hasDiagnostic, canonicalReference] of fixtures) {
       await client.query(`insert into feedback.submission
         (reference_code, idempotency_key, submission_type, original_description,
          organization_id, actor_id, organization_display_name, actor_display_name,
          review_status, review_priority, approved_summary, approved_review_note,
-         review_version, review_updated_at)
+         review_version, review_updated_at, canonical_submission_id)
         values ($1, $2, 'bug', $3, $4, $5, 'Retention test EMS', 'Retention test user',
-          $6, 'normal', 'Preserved summary', 'Preserved note', 1, clock_timestamp() - $7::interval)`,
-      [reference, randomUUID(), `Preserved ${reference}`, organizationId, actorId, status, age]);
+          $6, 'normal', 'Preserved summary', 'Preserved note', 1, clock_timestamp() - $7::interval,
+          (select id from feedback.submission where reference_code = $8))`,
+      [reference, randomUUID(), `Preserved ${reference}`, organizationId, actorId, status, age,
+        canonicalReference]);
       if (hasDiagnostic) await client.query(`insert into feedback.diagnostic
         (submission_id, diagnostic_status, schema_version, payload)
         select id, 'available', 1, '{"schemaVersion":1}'::jsonb
