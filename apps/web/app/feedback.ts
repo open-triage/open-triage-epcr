@@ -26,7 +26,7 @@ export async function submitFeedback(csrfToken: string, command: CreateFeedbackC
   if (!response.ok) throw new Error(response.status === 401
     ? "Your session ended. Sign in and try again."
     : response.status === 429
-      ? "You have sent five feedback submissions in the last hour. Your description is still here; please try again later."
+      ? "You have sent feedback in the last minute. Your description is still here; please try again later."
     : "Feedback could not be submitted. Your description is still here; please try again.");
   return response.json() as Promise<CreateFeedbackResponse>;
 }

@@ -132,18 +132,25 @@ test("an identical retry returns its original reference without consuming quota"
   }), ConflictException);
 });
 
-test("a sixth distinct submission in a rolling hour receives a safe retry response", async () => {
+test("a second distinct submission in a rolling minute receives a safe retry response", async () => {
+  let rateLimitSql = "";
   const manager = { query: async (sql) => {
     if (sql.includes("where actor_id = $1 and idempotency_key")) return [];
-    if (sql.includes("count(*)")) return [{ submission_count: 5, retry_after_seconds: 721 }];
+    if (sql.includes("count(*)")) {
+      rateLimitSql = sql;
+      return [{ submission_count: 1, retry_after_seconds: 21 }];
+    }
     return [];
   } };
   const service = new FeedbackService({ transaction: (work) => work(manager) }, { get: async () => ({
     user: { id: "actor", displayName: "Actor" }, organization: { id: "org", name: "Org" }
   }) });
-  await assert.rejects(service.create("token", { idempotencyKey, type: "bug", description: "Sixth", diagnostics: bugDiagnostics }),
+  await assert.rejects(service.create("token", { idempotencyKey, type: "bug", description: "Second", diagnostics: bugDiagnostics }),
     (error) => error instanceof HttpException && error.getStatus() === 429
-      && error.getResponse().retryAfterSeconds === 721);
+      && error.getResponse().retryAfterSeconds === 21
+      && error.getResponse().message === "You have sent feedback in the last minute. Please try again later.");
+  assert.match(rateLimitSql, /max\(created_at\) \+ interval '1 minute'/);
+  assert.match(rateLimitSql, /created_at > now\(\) - interval '1 minute'/);
 });
 
 test("the feedback controller exposes create only and requires authentication", () => {

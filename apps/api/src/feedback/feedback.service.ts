@@ -48,15 +48,15 @@ export class FeedbackService {
 
       const recent = (await manager.query(`
         select count(*)::integer submission_count,
-          greatest(1, ceil(extract(epoch from (min(created_at) + interval '1 hour' - now()))))::integer retry_after_seconds
+          greatest(1, ceil(extract(epoch from (max(created_at) + interval '1 minute' - now()))))::integer retry_after_seconds
         from feedback.submission
-        where actor_id = $1 and created_at > now() - interval '1 hour'
+        where actor_id = $1 and created_at > now() - interval '1 minute'
       `, [session.user.id]))[0] as { submission_count: number; retry_after_seconds: number | null };
-      if (recent.submission_count >= 5) {
+      if (recent.submission_count >= 1) {
         throw new HttpException({
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: "You have sent five feedback submissions in the last hour. Please try again later.",
-          retryAfterSeconds: recent.retry_after_seconds ?? 3600
+          message: "You have sent feedback in the last minute. Please try again later.",
+          retryAfterSeconds: recent.retry_after_seconds ?? 60
         }, HttpStatus.TOO_MANY_REQUESTS);
       }
 
