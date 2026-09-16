@@ -1,7 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
 import type { CreateFeedbackCommand } from "@open-triage/contracts";
 
-const allowedFields = new Set(["type", "description"]);
+const allowedFields = new Set(["idempotencyKey", "type", "description"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function validateCreateFeedback(input: unknown): CreateFeedbackCommand {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
@@ -23,5 +24,8 @@ export function validateCreateFeedback(input: unknown): CreateFeedbackCommand {
   if (description.length > 4000) {
     throw new BadRequestException("Feedback description must be 4,000 characters or fewer");
   }
-  return { type: record.type, description };
+  if (typeof record.idempotencyKey !== "string" || !UUID_PATTERN.test(record.idempotencyKey)) {
+    throw new BadRequestException("Feedback idempotency key must be a UUID");
+  }
+  return { idempotencyKey: record.idempotencyKey.toLowerCase(), type: record.type, description };
 }

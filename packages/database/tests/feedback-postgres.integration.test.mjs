@@ -33,10 +33,10 @@ integrationTest("real PostgreSQL enforces private immutable feedback submissions
     await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
       values ($1, $2, 'Feedback test user')`, [actorId, organizationId]);
     await client.query(`insert into feedback.submission
-      (reference_code, submission_type, original_description, organization_id, actor_id,
+      (reference_code, idempotency_key, submission_type, original_description, organization_id, actor_id,
        organization_display_name, actor_display_name)
-      values ('J7M4Q2K6X5PN', 'bug', 'Original preserved text', $1, $2,
-        'Feedback test EMS', 'Feedback test user')`, [organizationId, actorId]);
+      values ('J7M4Q2K6X5PN', $3, 'bug', 'Original preserved text', $1, $2,
+        'Feedback test EMS', 'Feedback test user')`, [organizationId, actorId, randomUUID()]);
 
     const stored = (await client.query(`select reference_code, submission_type, original_description,
       organization_id, actor_id, organization_display_name, actor_display_name

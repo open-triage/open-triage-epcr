@@ -6,6 +6,7 @@ export interface HealthResponse {
 export type FeedbackSubmissionType = "bug" | "feature";
 
 export interface CreateFeedbackCommand {
+  idempotencyKey: string;
   type: FeedbackSubmissionType;
   description: string;
 }
