@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const repoRoot = new URL("../", import.meta.url);
@@ -8,7 +8,6 @@ const ignorePath = new URL("../.gitignore", import.meta.url);
 const packagePath = new URL("../apps/web/package.json", import.meta.url);
 const generatorPath = new URL("../apps/web/scripts/build-service-worker.ts", import.meta.url);
 const sourcePath = new URL("../apps/web/service-worker/service-worker.ts", import.meta.url);
-const generatedPath = new URL("../apps/web/public/sw.js", import.meta.url);
 const dockerfilePath = new URL("../deploy/docker/web.Dockerfile", import.meta.url);
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
 
@@ -20,9 +19,18 @@ test("the service worker is generated from TypeScript and excluded from version 
     readFile(sourcePath, "utf8"),
   ]);
   const webPackage = JSON.parse(packageText);
+  const generatedPath = "apps/web/public/sw.js";
+  const ignored = spawnSync("git", ["check-ignore", "--quiet", generatedPath], {
+    cwd: repoRoot,
+  });
+  const tracked = spawnSync("git", ["ls-files", "--error-unmatch", generatedPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
 
-  await assert.rejects(access(generatedPath), { code: "ENOENT" });
   assert.match(gitignore, /^\/apps\/web\/public\/sw\.js$/m);
+  assert.equal(ignored.status, 0, "generated service worker must remain ignored");
+  assert.notEqual(tracked.status, 0, "generated service worker must remain untracked");
   assert.match(webPackage.scripts.predev, /build-service-worker\.ts/);
   assert.match(webPackage.scripts.prebuild, /build-service-worker\.ts/);
   assert.match(generator, /entryPoints: \["service-worker\/service-worker\.ts"\]/);
