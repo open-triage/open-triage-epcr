@@ -61,6 +61,7 @@ export function ClinicianSessionGate({ children }: {
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
   const [completionNotice, setCompletionNotice] = useState<string | null>(null);
+  const [dismissedActiveReportNoticeId, setDismissedActiveReportNoticeId] = useState<string | null>(null);
   const [modeMessage, setModeMessage] = useState<string | null>(null);
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
@@ -297,20 +298,26 @@ export function ClinicianSessionGate({ children }: {
           suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
           setCompletionNotice(null);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
+          setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
         <OpenCalls key={openCallsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
         }} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
+          setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
       </div>}
-      {activeReport &&
-        <p className="active-report-notice" role="status" data-report-id={activeReport.id} data-form-version-id={activeReport.formVersionId}>
-          {activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"}
-        </p>
-      }
+      <TransientNotice
+        message={activeReport && dismissedActiveReportNoticeId !== activeReport.id
+          ? activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"
+          : null}
+        onDismiss={() => setDismissedActiveReportNoticeId(activeReport?.id ?? null)}
+        className="active-report-notice"
+        data-report-id={activeReport?.id}
+        data-form-version-id={activeReport?.formVersionId}
+      />
       {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode,
         reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);

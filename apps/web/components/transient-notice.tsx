@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ComponentPropsWithoutRef } from "react";
 
-export function TransientNotice({ message, onDismiss, focusOnMount = false }: {
+type TransientNoticeProps = {
   readonly message: string | null;
   readonly onDismiss: () => void;
   readonly focusOnMount?: boolean;
-}) {
+} & Omit<ComponentPropsWithoutRef<"div">, "children" | "role" | "aria-live">;
+
+export function TransientNotice({ message, onDismiss, focusOnMount = false, className, ...attributes }: TransientNoticeProps) {
   const notice = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -15,18 +17,20 @@ export function TransientNotice({ message, onDismiss, focusOnMount = false }: {
 
   useEffect(() => {
     if (!message) return;
-    window.addEventListener("pointerdown", onDismiss, { capture: true, once: true });
-    window.addEventListener("keydown", onDismiss, { capture: true, once: true });
+    const dismissOnOutsideInteraction = (event: Event) => {
+      if (!notice.current?.contains(event.target as Node)) onDismiss();
+    };
+    window.addEventListener("pointerdown", dismissOnOutsideInteraction, { capture: true, once: true });
+    window.addEventListener("keydown", dismissOnOutsideInteraction, { capture: true, once: true });
     return () => {
-      window.removeEventListener("pointerdown", onDismiss, { capture: true });
-      window.removeEventListener("keydown", onDismiss, { capture: true });
+      window.removeEventListener("pointerdown", dismissOnOutsideInteraction, { capture: true });
+      window.removeEventListener("keydown", dismissOnOutsideInteraction, { capture: true });
     };
   }, [message, onDismiss]);
 
   if (!message) return null;
-  return <div ref={notice} className="transient-notice" role="status" aria-live="polite"
+  return <div {...attributes} ref={notice} className={`transient-notice${className ? ` ${className}` : ""}`} role="status" aria-live="polite"
     tabIndex={focusOnMount ? -1 : undefined}>
     <span>{message}</span>
-    <button type="button" aria-label="Dismiss notification" onClick={onDismiss}>×</button>
   </div>;
 }

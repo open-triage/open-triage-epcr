@@ -565,6 +565,7 @@ test("a first open without connectivity leaves the assignment actionable and cre
 });
 
 test("open calls show workflow state newest first and reopen the existing pinned report", async ({ page }) => {
+  await page.setViewportSize({ width: 594, height: 951 });
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({
     contentType: "application/json",
@@ -577,6 +578,7 @@ test("open calls show workflow state newest first and reopen the existing pinned
       report: { ...openedAssignment.report, revision: 3, groups: [], occurrences: [] }
     })
   }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
   await signIn(page);
 
   const section = page.getByRole("region", { name: "Open calls" });
@@ -593,10 +595,23 @@ test("open calls show workflow state newest first and reopen the existing pinned
   expect(callNumberColors[0]).not.toBe(callNumberColors[1]);
 
   await cards.nth(0).getByRole("button", { name: "Reopen call" }).click();
-  const active = page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true });
+  const active = page.getByRole("status").filter({ hasText: `Documenting call ${assignedCall.callNumber} in its pinned form` });
   await expect(active).toBeVisible();
+  await expect(active).toHaveClass(/transient-notice/);
   await expect(active).toHaveAttribute("data-report-id", openedAssignment.report.id);
   await expect(active).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
+  await expect(active).toHaveCSS("position", "fixed");
+  await expect(active.getByRole("button")).toHaveCount(0);
+  const [toastBox, shellBox, viewport] = await Promise.all([
+    active.boundingBox(), page.locator(".authenticated-shell").boundingBox(), page.viewportSize()
+  ]);
+  expect(toastBox).not.toBeNull();
+  expect(shellBox).not.toBeNull();
+  expect(viewport).not.toBeNull();
+  expect(toastBox!.x).toBeGreaterThanOrEqual(0);
+  expect(toastBox!.x + toastBox!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(toastBox!.x).toBeGreaterThanOrEqual(shellBox!.x);
+  expect(toastBox!.x + toastBox!.width).toBeLessThanOrEqual(shellBox!.x + shellBox!.width);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 });
 
@@ -627,7 +642,7 @@ test("a stationary-completed report disappears from Open calls and only its cach
   const completionNotice = section.getByRole("status");
   await expect(completionNotice).toContainText("completed on the stationary interface");
   await expect(completionNotice).toHaveClass(/transient-notice/);
-  await completionNotice.getByRole("button", { name: "Dismiss notification" }).click();
+  await page.getByRole("heading", { name: "Open calls" }).click();
   await expect(completionNotice).toHaveCount(0);
   const cached = await page.evaluate(({ completedId, openId }) => ({
     completed: localStorage.getItem(`open-triage:standard-encounter-v1:report:${completedId}`),
