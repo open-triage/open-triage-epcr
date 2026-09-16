@@ -16,6 +16,7 @@
     "project:health": "node scripts/projection-health.mjs",
     "retention": "node scripts/retention.mjs",
     "feedback:review": "node scripts/feedback-review.mjs",
+    "feedback:expire-diagnostics": "node scripts/expire-feedback-diagnostics.mjs",
     "purge:synthetic": "node scripts/purge-synthetic-records.mjs",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "verify:replica": "node scripts/verify-reporting-replica.mjs",
