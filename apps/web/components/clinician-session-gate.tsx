@@ -12,7 +12,7 @@ import {
   sessionRequestToken
 } from "../app/clinician-session";
 import { AssignedCalls } from "./assigned-calls";
-import { OpenCalls } from "./open-calls";
+import { OpenReports } from "./open-reports";
 import type { ActiveDraftReport } from "../app/draft-report";
 import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
 import {
@@ -56,7 +56,7 @@ export function ClinicianSessionGate({ children }: {
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
-  const [openCallsRevision, setOpenCallsRevision] = useState(0);
+  const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
   const [completedCallNumbers, setCompletedCallNumbers] = useState<ReadonlyArray<string>>([]);
@@ -288,7 +288,7 @@ export function ClinicianSessionGate({ children }: {
           }}
           onDeleted={() => {
             setActiveReport(null);
-            setOpenCallsRevision((value) => value + 1);
+            setOpenReportsRevision((value) => value + 1);
             setRefreshRequest((value) => value + 1);
           }}
         />}
@@ -301,7 +301,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenCalls key={openCallsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
+        <OpenReports key={openReportsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
         }} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
@@ -321,12 +321,12 @@ export function ClinicianSessionGate({ children }: {
       {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode,
         reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
-        setOpenCallsRevision((value) => value + 1);
+        setOpenReportsRevision((value) => value + 1);
       }, completeReport: () => {
         if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
         setCompletionNotice(activeReport.callNumber ? `Call ${activeReport.callNumber} was signed and removed from active calls.` : "The report was signed and removed from active calls.");
         setActiveReport(null);
-        setOpenCallsRevision((value) => value + 1);
+        setOpenReportsRevision((value) => value + 1);
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} />}
     </div>

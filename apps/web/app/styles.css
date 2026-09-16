@@ -77,9 +77,9 @@ input, select, textarea { touch-action: manipulation; }
 .assigned-calls-heading h1 { margin: 2px 0 0; font-size: var(--text-heading); letter-spacing: -.025em; }
 .assigned-call-list { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
 .assigned-call-card { padding: 14px; border: 1px solid #cfd7d0; border-left: 4px solid var(--green); border-radius: 7px; background: #fff; box-shadow: 0 2px 8px rgb(20 39 27 / 6%); }
-.open-call-card.validation-error { border-left-color: #b8322a; background: #fff8f7; }
-.open-call-card.validation-error .assigned-call-title strong { color: #9a2c26; }
-.open-call-card.validation-clear .assigned-call-title strong { color: var(--green-dark); }
+.open-report-card.validation-error { border-left-color: #b8322a; background: #fff8f7; }
+.open-report-card.validation-error .assigned-call-title strong { color: #9a2c26; }
+.open-report-card.validation-clear .assigned-call-title strong { color: var(--green-dark); }
 .assigned-call-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .assigned-call-title strong { overflow-wrap: anywhere; font-size: var(--text-control); }
 .assigned-call-title span { padding: 4px 8px; border-radius: 999px; color: #fff; background: var(--green); font-size: var(--text-caption); font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }

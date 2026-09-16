@@ -1,17 +1,25 @@
 "use client";
 
-import type { ClinicianSession, OpenCall, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type {
+  ClinicianSession,
+  OpenCall as OpenReportSummary,
+  ReopenOpenCallResponse as ReopenOpenReportResponse,
+} from "@open-triage/contracts";
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ASSIGNED_CALL_POLL_INTERVAL_MS, fetchOpenCalls, reopenOpenCall } from "../app/assigned-calls";
+import {
+  ASSIGNED_CALL_POLL_INTERVAL_MS,
+  fetchOpenCalls as fetchOpenReports,
+  reopenOpenCall as reopenOpenReport,
+} from "../app/assigned-calls";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { saveDraftReport } from "../app/draft-report";
 import { clearShellState, purgeCompletedReportCaches } from "../app/local-persistence";
 import {
   acceptDraftChange,
-  cacheOpenCallSummary,
+  cacheOpenCallSummary as cacheOpenReportSummary,
   cacheReopenedReport,
-  cachedOpenCalls,
+  cachedOpenCalls as cachedOpenReportSummaries,
   cachedOpenReports,
   cachedReopenResponse,
   markDraftChangeAttempted,
@@ -32,7 +40,7 @@ function savedTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function OpenCalls({
+export function OpenReports({
   session,
   activeReportId,
   onCompleted,
@@ -43,16 +51,16 @@ export function OpenCalls({
   readonly session: ClinicianSession;
   readonly activeReportId?: string;
   readonly onCompleted?: (reportId: string) => void;
-  readonly onReopened?: (opened: ReopenOpenCallResponse) => void;
+  readonly onReopened?: (opened: ReopenOpenReportResponse) => void;
   readonly onSessionEnded?: () => void;
   readonly refreshRequest?: number;
 }) {
-  const [calls, setCalls] = useState<OpenCall[]>([]);
+  const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const callsRef = useRef<OpenCall[]>([]);
+  const reportsRef = useRef<OpenReportSummary[]>([]);
   const syncingCachedReports = useRef(false);
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
@@ -72,8 +80,8 @@ export function OpenCalls({
             if (saved.status === "signed") {
               clearShellState(window.localStorage, cached.report.id);
               removeSignedOfflineReport(window.localStorage, cached.report.id);
-              callsRef.current = callsRef.current.filter((call) => call.reportId !== cached.report.id);
-              setCalls(callsRef.current);
+              reportsRef.current = reportsRef.current.filter((report) => report.reportId !== cached.report.id);
+              setReports(reportsRef.current);
               break;
             }
             acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
@@ -95,13 +103,13 @@ export function OpenCalls({
   const refresh = useCallback(async () => {
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
-      const response = await fetchOpenCalls();
+      const response = await fetchOpenReports();
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
-      const removed = callsRef.current.filter((call) => completedIds.has(call.reportId));
+      const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
-      response.openCalls.forEach((call) => cacheOpenCallSummary(window.localStorage, session, call));
+      response.openCalls.forEach((report) => cacheOpenReportSummary(window.localStorage, session, report));
       if (browserRequestConfiguration().mode === "server") {
         reconcileServerOpenReports(
           window.localStorage,
@@ -109,16 +117,16 @@ export function OpenCalls({
           response.openCalls.map(({ reportId }) => reportId),
         ).forEach((reportId) => clearShellState(window.localStorage, reportId));
       }
-      const visible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
-      callsRef.current = visible;
-      setCalls(visible);
+      const visible = cachedOpenReportSummaries(window.localStorage, session.user.id).filter((report) => !completedIds.has(report.reportId));
+      reportsRef.current = visible;
+      setReports(visible);
       setLoaded(true);
       setError(null);
       await syncCachedReports();
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
-      const syncedVisible = cachedOpenCalls(window.localStorage, session.user.id).filter((call) => !completedIds.has(call.reportId));
-      callsRef.current = syncedVisible;
-      setCalls(syncedVisible);
+      const syncedVisible = cachedOpenReportSummaries(window.localStorage, session.user.id).filter((report) => !completedIds.has(report.reportId));
+      reportsRef.current = syncedVisible;
+      setReports(syncedVisible);
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
         ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
         : `${removed.length} calls were completed on the stationary interface.`);
@@ -128,23 +136,23 @@ export function OpenCalls({
         onSessionEnded?.();
         return;
       }
-      const cached = cachedOpenCalls(window.localStorage, session.user.id);
-      setCalls(cached);
+      const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
+      setReports(cached);
       setLoaded(true);
-      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open calls could not be refreshed.");
+      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open reports could not be refreshed.");
     }
   }, [activeReportId, onCompleted, onSessionEnded, session, syncCachedReports]);
 
-  const reopen = useCallback(async (call: OpenCall) => {
-    setReopeningId(call.reportId);
+  const reopen = useCallback(async (report: OpenReportSummary) => {
+    setReopeningId(report.reportId);
     setError(null);
     try {
-      let opened: ReopenOpenCallResponse;
+      let opened: ReopenOpenReportResponse;
       try {
-        opened = await reopenOpenCall(csrfToken, call.reportId);
+        opened = await reopenOpenReport(csrfToken, report.reportId);
         cacheReopenedReport(window.localStorage, session, opened);
       } catch (error) {
-        const cached = cachedReopenResponse(window.localStorage, session.user.id, call.reportId);
+        const cached = cachedReopenResponse(window.localStorage, session.user.id, report.reportId);
         if (!cached) throw error;
         opened = cached;
       }
@@ -170,10 +178,10 @@ export function OpenCalls({
       startOrPausePolling();
     };
     queueMicrotask(() => {
-      const cached = cachedOpenCalls(window.localStorage, session.user.id);
+      const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
       if (cached.length) {
-        callsRef.current = cached;
-        setCalls(cached);
+        reportsRef.current = cached;
+        setReports(cached);
         setLoaded(true);
       }
       void refresh();
@@ -193,36 +201,36 @@ export function OpenCalls({
   }, [refresh, refreshRequest]);
 
   return (
-    <section className="assigned-calls open-calls" aria-labelledby="open-calls-title">
+    <section className="assigned-calls open-reports" aria-labelledby="open-reports-title">
       <div className="assigned-calls-heading">
         <div>
           <p className="eyebrow">Your documentation</p>
-          <h1 id="open-calls-title">Open calls</h1>
+          <h1 id="open-reports-title">Open reports</h1>
         </div>
       </div>
       <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <p className="assignment-empty">Loading open calls…</p>}
-      {loaded && calls.length === 0 && <p className="assignment-empty">You have no open calls.</p>}
-      {calls.length > 0 && (
+      {!loaded && !error && <p className="assignment-empty">Loading open reports…</p>}
+      {loaded && reports.length === 0 && <p className="assignment-empty">You have no open reports.</p>}
+      {reports.length > 0 && (
         <ul className="assigned-call-list">
-          {calls.map((call) => (
+          {reports.map((report) => (
             <li
-              key={call.reportId}
-              className={`assigned-call-card open-call-card validation-${call.validationErrorCount > 0 ? "error" : "clear"}`}
-              data-validation-status={call.validationErrorCount > 0 ? "error" : "clear"}
+              key={report.reportId}
+              className={`assigned-call-card open-report-card validation-${report.validationErrorCount > 0 ? "error" : "clear"}`}
+              data-validation-status={report.validationErrorCount > 0 ? "error" : "clear"}
             >
               <div className="assigned-call-title">
-                <strong>{call.callNumber}</strong>
-                <span>{call.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
+                <strong>{report.callNumber}</strong>
+                <span>{report.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
               </div>
               <dl>
-                <div><dt>Priority</dt><dd>{call.dispatchPriority?.display ?? "Not provided"}</dd></div>
-                <div><dt>Last saved</dt><dd><time dateTime={call.lastSavedAt}>{savedTime(call.lastSavedAt)}</time></dd></div>
-                <div><dt>Validation errors</dt><dd>{call.validationErrorCount}</dd></div>
+                <div><dt>Priority</dt><dd>{report.dispatchPriority?.display ?? "Not provided"}</dd></div>
+                <div><dt>Last saved</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt)}</time></dd></div>
+                <div><dt>Validation errors</dt><dd>{report.validationErrorCount}</dd></div>
               </dl>
-              <button type="button" onClick={() => void reopen(call)} disabled={reopeningId !== null}>
-                {reopeningId === call.reportId ? "Reopening…" : "Reopen call"}
+              <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
+                {reopeningId === report.reportId ? "Reopening…" : "Reopen report"}
               </button>
             </li>
           ))}

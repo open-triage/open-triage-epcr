@@ -48,7 +48,7 @@ test("mobile capture reconciles into a complete stationary record that alone can
 
   const presentation = page.getByRole("group", { name: "Documentation presentation" });
   await presentation.getByRole("button", { name: "Stationary" }).click();
-  await page.getByRole("button", { name: "Reopen call" }).click();
+  await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.locator('[data-element-id="eNarrative.01"] textarea')).toHaveValue(/^Captured on the mobile presentation\n\d{4}-\d{2}-\d{2}T/);
 
   await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STATIONARY");

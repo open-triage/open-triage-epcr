@@ -120,7 +120,7 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
 
   await page.reload();
-  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
+  await page.getByRole("region", { name: "Open reports" }).getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
 });
 

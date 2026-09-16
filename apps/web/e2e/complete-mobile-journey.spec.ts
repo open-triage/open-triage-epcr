@@ -183,7 +183,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await expect(page.locator(".checklist-findings li.error")).toHaveCount(0);
     await page.getByRole("button", { name: "Save & close" }).click();
     await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
-    const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+    const pendingCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
     await expect(pendingCard).toContainText("Pending sync");
     const queuedBeforeRestart = await page.evaluate(({ expectedReportId }) => {
       const reports = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!);
@@ -196,12 +196,12 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     page = context.pages()[0] ?? await context.newPage();
     await page.goto("/");
     await expect(page.getByText("Signed in as Synthetic Clinician")).toBeVisible();
-    const recoveredCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+    const recoveredCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
     await expect(recoveredCard).toContainText("Pending sync");
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
 
     await context.setOffline(true);
-    await recoveredCard.getByRole("button", { name: "Reopen call" }).click();
+    await recoveredCard.getByRole("button", { name: "Reopen report" }).click();
     await page.getByRole("button", { name: /^Timeline/ }).click();
     await expect(page.locator(".timeline-list button").filter({ hasText: "Synthetic care documented on the Android-sized workflow" })).toBeVisible();
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", formVersionId);
@@ -220,7 +220,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await expect(page.locator(".transient-notice")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
-    await expect(page.getByRole("region", { name: "Open calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Open reports" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   } finally {
     await context.close();
   }

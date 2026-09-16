@@ -118,16 +118,16 @@ test("a persistent browser profile recovers only its clinician's open work after
 
     await expect(page.getByText("Signed in as Synthetic Clinician")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
     await expect(page.getByText("Care retained across a complete browser restart", { exact: true })).toHaveCount(0);
-    const recoveredCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card");
+    const recoveredCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card");
     await expect(recoveredCard).toContainText(assignedCall.callNumber);
     await expect(recoveredCard).toContainText("Pending sync");
 
     await page.getByRole("button", { name: "Log out" }).click();
     await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Open reports" })).toHaveCount(0);
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
     const retainedAfterLogout = await page.evaluate(({ metadataKey, expectedReportId }) => ({
       session: localStorage.getItem("open-triage.clinician-session.v1"),
@@ -149,15 +149,15 @@ test("a persistent browser profile recovers only its clinician's open work after
     }, { key: sessionKey });
     await page.reload();
     await expect(page.getByText("Signed in as Other Clinician")).toBeVisible();
-    await expect(page.getByRole("region", { name: "Open calls" }).getByText("You have no open calls.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reopen call" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Open reports" }).getByText("You have no open reports.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reopen report" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Log out" }).click();
     await page.getByLabel("Username").fill("demo");
     await page.getByLabel("Password").fill("opentriagedemo");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(recoveredCard).toContainText(assignedCall.callNumber);
-    await recoveredCard.getByRole("button", { name: "Reopen call" }).click();
+    await recoveredCard.getByRole("button", { name: "Reopen report" }).click();
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
     await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", formVersionId);
     await expect(page.getByText("Care retained across a complete browser restart", { exact: true })).toBeVisible();

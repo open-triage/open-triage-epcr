@@ -210,7 +210,7 @@ test("a mobile report reopens offline for stationary scalar editing through the 
 
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Reopen call" }).click();
+  await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.locator(".app-shell")).toHaveAttribute("data-presentation-mode", "stationary");
   await expect(page.locator('[data-element-id="eNarrative.01"] textarea')).toHaveValue(/^Started on mobile\n\d{4}-\d{2}-\d{2}T/);
   await page.getByRole("textbox", { name: "First Name", exact: true }).fill("STATIONARY");

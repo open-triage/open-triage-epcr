@@ -53,7 +53,7 @@ test("demo draft actions require a server-qualified open draft", () => {
 test("record cards do not gain synthetic or demo badges", async () => {
   const sources = await Promise.all([
     readFile(new URL("../components/assigned-calls.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/open-calls.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/open-reports.tsx", import.meta.url), "utf8"),
   ]);
   for (const source of sources) assert.doesNotMatch(source, /demoMutable|synthetic badge|demo badge/i);
 });

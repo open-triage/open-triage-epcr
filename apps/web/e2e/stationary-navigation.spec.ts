@@ -156,7 +156,7 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
   await expect(configuredPatient.locator('[data-element-id="ePatient.25"] select')).toContainText("Configured unknown");
   await expect(page.locator('[data-element-id="eVitals.06"]')).toHaveCount(0);
   await page.getByRole("button", { name: "Save & close" }).click();
-  await page.getByRole("button", { name: "Reopen call" }).click();
+  await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 4_000 });
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByText("0 errors · 0 warnings")).toBeVisible();

@@ -56,6 +56,22 @@ function fulfill(route: Route, assignedCalls: ReadonlyArray<AssignedCall> = [ass
   });
 }
 
+test("open report terminology is used for visible copy and UI identifiers", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
+  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() }),
+  }));
+  await signIn(page);
+
+  const section = page.getByRole("region", { name: "Open reports" });
+  await expect(section).toBeVisible();
+  await expect(section).toHaveClass(/open-reports/);
+  await expect(section.getByRole("heading", { name: "Open reports" })).toHaveAttribute("id", "open-reports-title");
+  await expect(section.getByText("You have no open reports.")).toBeVisible();
+  await expect(page.locator("#open-calls-title, .open-calls, .open-call-card")).toHaveCount(0);
+});
+
 test("the demo unit's assigned call shows its operational summary and manual cancellation refresh", async ({ page }) => {
   let canceled = false;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, canceled ? [] : [assignedCall], canceled ? [assignedCall.id] : []));
@@ -65,14 +81,14 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(page.locator(".encounter-header")).toHaveCount(0);
 
   const section = page.getByRole("region", { name: "Assigned calls" });
-  await expect(page.getByRole("region", { name: "Open calls" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Open reports" })).toBeVisible();
   const refresh = page.getByRole("button", { name: "Refresh calls" });
   await expect(refresh).toHaveCount(1);
   await expect(refresh).toHaveText("Refresh");
   await expect(page.locator(".session-bar > .call-list-refresh")).toHaveCount(1);
   const identityBox = await page.getByText("Signed in as Synthetic Clinician").boundingBox();
   expect(Math.abs((identityBox!.x + identityBox!.width / 2) - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(1);
-  expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open calls"]);
+  expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open reports"]);
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText(assignedCall.callNumber);
   await expect(card).toContainText(assignedCall.unit.callSign);
@@ -150,7 +166,7 @@ test("opening an assignment enters documentation and a retry resolves to the sam
 
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Open calls" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Open reports" })).toHaveCount(0);
   await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
   await expect(page.getByText(`Documenting call ${assignedCall.callNumber} in its pinned form`, { exact: true })).toBeVisible();
   await expect(page.locator(".encounter-header")).toContainText(`Incident ${generatedSummary.incidentNumber}`);
@@ -224,11 +240,11 @@ test("Save & close carries the form's current validation error count onto the op
   await expect(page.getByRole("button", { name: /Checklist, 1 error, 1 warning/ })).toBeVisible();
   await page.getByRole("button", { name: "Save & close" }).click();
 
-  const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  const card = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
   await expect(card).toContainText("Validation errors1");
 });
 
-test("Sign record requires acknowledged validation and removes the report from Open calls", async ({ page }) => {
+test("Sign record requires acknowledged validation and removes the report from Open reports", async ({ page }) => {
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json", body: JSON.stringify(openedAssignment)
@@ -261,7 +277,7 @@ test("Sign record requires acknowledged validation and removes the report from O
   await page.getByRole("button", { name: "Sign record" }).click();
 
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Open calls" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Open reports" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
 });
 
@@ -498,9 +514,9 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
   await page.getByLabel("Username").fill("demo");
   await page.getByLabel("Password").fill("opentriagedemo");
   await page.getByRole("button", { name: "Sign in" }).click();
-  const pendingCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  const pendingCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
   await expect(pendingCard).toContainText("Saved", { timeout: 3_000 });
-  await page.getByRole("region", { name: "Open calls" }).getByRole("button", { name: "Reopen call" }).click();
+  await page.getByRole("region", { name: "Open reports" }).getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Preserved across API restart", { exact: true })).toBeVisible();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
 });
@@ -543,7 +559,7 @@ test("opening the call list preserves queued edits when background recovery cann
   }, { call: serverCall, report: openedAssignment.report, userId: openedAssignment.report.documentingUserId, queuedCommandId: commandId });
   await page.reload();
 
-  const card = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: serverCall.callNumber });
+  const card = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: serverCall.callNumber });
   await expect.poll(() => syncAttempts).toBeGreaterThan(0);
   await expect(card).toContainText("Pending sync");
   expect(await page.evaluate(() => {
@@ -564,7 +580,7 @@ test("a first open without connectivity leaves the assignment actionable and cre
   expect(phantom).toBe(false);
 });
 
-test("open calls show workflow state newest first and reopen the existing pinned report", async ({ page }) => {
+test("open reports show workflow state newest first and reopen the existing pinned report", async ({ page }) => {
   await page.setViewportSize({ width: 594, height: 951 });
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({
@@ -581,8 +597,8 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
   await signIn(page);
 
-  const section = page.getByRole("region", { name: "Open calls" });
-  const cards = section.locator(".open-call-card");
+  const section = page.getByRole("region", { name: "Open reports" });
+  const cards = section.locator(".open-report-card");
   await expect(cards).toHaveCount(2);
   await expect(cards.nth(0)).toContainText(assignedCall.callNumber);
   await expect(cards.nth(0)).toContainText("Saved", { ignoreCase: true });
@@ -594,7 +610,7 @@ test("open calls show workflow state newest first and reopen the existing pinned
   const callNumberColors = await cards.locator(".assigned-call-title strong").evaluateAll((calls) => calls.map((call) => getComputedStyle(call).color));
   expect(callNumberColors[0]).not.toBe(callNumberColors[1]);
 
-  await cards.nth(0).getByRole("button", { name: "Reopen call" }).click();
+  await cards.nth(0).getByRole("button", { name: "Reopen report" }).click();
   const active = page.getByRole("status").filter({ hasText: `Documenting call ${assignedCall.callNumber} in its pinned form` });
   await expect(active).toBeVisible();
   await expect(active).toHaveClass(/transient-notice/);
@@ -615,7 +631,7 @@ test("open calls show workflow state newest first and reopen the existing pinned
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 });
 
-test("a stationary-completed report disappears from Open calls and only its cache is purged", async ({ page }) => {
+test("a stationary-completed report disappears from Open reports and only its cache is purged", async ({ page }) => {
   let completed = false;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({
@@ -627,7 +643,7 @@ test("a stationary-completed report disappears from Open calls and only its cach
     })
   }));
   await signIn(page);
-  const section = page.getByRole("region", { name: "Open calls" });
+  const section = page.getByRole("region", { name: "Open reports" });
   await expect(section.getByText(assignedCall.callNumber, { exact: true })).toBeVisible();
   await page.evaluate(({ completedId, openId }) => {
     localStorage.setItem(`open-triage:standard-encounter-v1:report:${completedId}`, "completed cache");
@@ -642,7 +658,7 @@ test("a stationary-completed report disappears from Open calls and only its cach
   const completionNotice = section.getByRole("status");
   await expect(completionNotice).toContainText("completed on the stationary interface");
   await expect(completionNotice).toHaveClass(/transient-notice/);
-  await page.getByRole("heading", { name: "Open calls" }).click();
+  await page.getByRole("heading", { name: "Open reports" }).click();
   await expect(completionNotice).toHaveCount(0);
   const cached = await page.evaluate(({ completedId, openId }) => ({
     completed: localStorage.getItem(`open-triage:standard-encounter-v1:report:${completedId}`),
@@ -675,7 +691,7 @@ test("completion discovered while a form is active stops editing and returns to 
 
   await expect(page.locator(".transient-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
 });
 
@@ -708,9 +724,9 @@ test("an Android-sized browser closes and reopens an edited call offline, then s
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
   await page.getByRole("button", { name: "Save & close" }).click();
 
-  const cachedCard = page.getByRole("region", { name: "Open calls" }).locator(".open-call-card").filter({ hasText: assignedCall.callNumber });
+  const cachedCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
   await expect(cachedCard).toContainText("Pending sync");
-  await cachedCard.getByRole("button", { name: "Reopen call" }).click();
+  await cachedCard.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Care documented beyond the dead zone", { exact: true })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
   const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0]);
