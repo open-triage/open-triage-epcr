@@ -4,11 +4,12 @@ import type { FeedbackSubmissionType } from "@open-triage/contracts";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { feedbackDescriptionError, feedbackPrompt, FEEDBACK_DESCRIPTION_MAX_LENGTH, submitFeedback } from "../app/feedback";
 
-export function FeedbackControl({ csrfToken }: { readonly csrfToken: string }) {
+export function FeedbackControl({ csrfToken, online }: { readonly csrfToken: string; readonly online: boolean }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const headingId = useId();
   const descriptionId = useId();
+  const idempotencyKey = useRef<string | null>(null);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackSubmissionType | null>(null);
   const [description, setDescription] = useState("");
@@ -27,6 +28,7 @@ export function FeedbackControl({ csrfToken }: { readonly csrfToken: string }) {
     setType(null);
     setDescription("");
     setError(null);
+    idempotencyKey.current = null;
     window.requestAnimationFrame(() => trigger.current?.focus());
   }
 
@@ -53,10 +55,13 @@ export function FeedbackControl({ csrfToken }: { readonly csrfToken: string }) {
     setPending(true);
     setError(null);
     try {
-      const result = await submitFeedback(csrfToken, { type, description: description.trim() });
+      const draftKey = idempotencyKey.current ?? crypto.randomUUID();
+      idempotencyKey.current = draftKey;
+      const result = await submitFeedback(csrfToken, { idempotencyKey: draftKey, type, description: description.trim() });
       setOpen(false);
       setType(null);
       setDescription("");
+      idempotencyKey.current = null;
       setNotice(`Feedback received. Reference ${result.referenceCode}.`);
       window.requestAnimationFrame(() => trigger.current?.focus());
     } catch (reason) {
@@ -67,8 +72,10 @@ export function FeedbackControl({ csrfToken }: { readonly csrfToken: string }) {
   }
 
   return <>
-    <button ref={trigger} className="feedback-trigger" type="button" aria-label="Send feedback" title="Send feedback"
-      onClick={() => { setNotice(null); setOpen(true); }}>
+    <button ref={trigger} className="feedback-trigger" type="button"
+      aria-label={online ? "Send feedback" : "Send feedback unavailable while offline"}
+      title={online ? "Send feedback" : "Feedback is unavailable while offline"} disabled={!online}
+      onClick={() => { setNotice(null); idempotencyKey.current = crypto.randomUUID(); setOpen(true); }}>
       <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M9 9h6M9 13h6M8 4l1.2 2h5.6L16 4M6 8H4m16 0h-2M6 16H4m16 0h-2M8 6h8v12H8z" />
       </svg>
