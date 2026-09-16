@@ -334,6 +334,57 @@ test("draft synchronization immediately rebases a rejected retry without showing
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
 });
 
+test("a no-op conflict recovery does not block a later edit from rebasing", async ({ page }) => {
+  const expectedRevisions: number[] = [];
+  let requests = 0;
+  let activeRequests = 0;
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+    contentType: "application/json", body: JSON.stringify(openedAssignment)
+  }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
+    requests += 1;
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    expectedRevisions.push(command.expectedRevision);
+    if (requests <= 2) return route.fulfill({
+      status: 409, contentType: "application/json", body: JSON.stringify({ message: "Draft revision is stale" })
+    });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      id: openedAssignment.report.id, status: "draft", revision: command.expectedRevision + 1
+    }) });
+  });
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => {
+    activeRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        reportId: openedAssignment.report.id,
+        reportRevision: 6,
+        dispatchRevision: 1,
+        document: openedAssignment.report.document,
+        dispatchConflicts: [],
+        dispatchCancellation: null,
+      }),
+    });
+  });
+
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call" }).click();
+  await expect.poll(() => requests).toBe(1);
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  const activeRequestsAfterNoOp = activeRequests;
+
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  await page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: /Systolic BP/ }).fill("118");
+  await page.getByRole("button", { name: "Add vital set" }).click();
+
+  await expect.poll(() => requests).toBe(3);
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  expect(activeRequests).toBeGreaterThan(activeRequestsAfterNoOp);
+  expect(expectedRevisions).toEqual([6, 6, 6]);
+  await expect(page.getByRole("button", { name: /Vital signs.*BP 118/ })).toBeVisible();
+});
+
 test("mobile vital signs remain saved when the rest of the synthetic form is populated", async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
   let revision = 0;

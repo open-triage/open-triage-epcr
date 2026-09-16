@@ -104,7 +104,7 @@ export const standardEncounterDefinition = {
         { id: "heartRate", label: "Heart rate", unit: "bpm", reference: "eVitals.10", ...vitalElementMetadata("eVitals.10", 40, 180) },
         { id: "spo2", label: "SpO₂", unit: "%", reference: "eVitals.12", ...vitalElementMetadata("eVitals.12", 90, 100) },
         { id: "respiratoryRate", label: "Respiratory rate", unit: "breaths/min", reference: "eVitals.14", ...vitalElementMetadata("eVitals.14", 8, 35) },
-        { id: "gcs", label: "GCS total", unit: "score", reference: "eVitals.23", ...vitalElementMetadata("eVitals.23", 12, 15) },
+        { id: "gcs", label: "GCS total", unit: "score", reference: "eVitals.23", ...vitalElementMetadata("eVitals.23", 3, 15) },
         { id: "pain", label: "Pain score", unit: "score", reference: "eVitals.27", ...vitalElementMetadata("eVitals.27", 0, 7) },
       ],
       summary: [

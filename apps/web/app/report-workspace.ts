@@ -319,21 +319,25 @@ export function useReportWorkspace({
         const hasPending = queued !== null;
         const targets = queued ? pendingDraftTargets(queued.command, persistedDraft.current) : undefined;
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
+        const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document);
         revision.current = response.resource.reportRevision;
         if (hasPending) {
           if (recoverConflictingQueue.current) {
+            const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged);
+            const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
             recoverConflictingQueue.current = false;
+            if (!retryDelta.groups.length && !retryDelta.occurrences.length) conflictRecoveryUsed.current = false;
             skipReconciledQueue.current = false;
             skipInitialQueue.current = false;
             setSyncStatus("Saved");
           } else {
             rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
           }
-          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
+          persistedDraft.current = serverDraft;
         }
         else {
-          persistedDraft.current = encounterDocumentToDraftMutations(report.id, response.resource.document);
+          persistedDraft.current = serverDraft;
           skipReconciledQueue.current = true;
         }
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);

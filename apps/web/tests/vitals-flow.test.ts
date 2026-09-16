@@ -77,6 +77,9 @@ test("NEMSIS ranges block errors while plausible-range warnings remain saveable"
     assert.match(zero.warnings[field] ?? "", /Clinically unusual/, `${field}=0 warns`);
   }
   assert.equal(zero.warnings.pain, undefined, "a zero pain score is clinically plausible");
+  const minimumGcs = validateVitals("09:00", { ...normal, gcs: "3" });
+  assert.equal(minimumGcs.errors.gcs, undefined, "the minimum valid GCS remains saveable");
+  assert.equal(minimumGcs.warnings.gcs, undefined, "the minimum valid GCS is not a clinically-unusual warning");
   assert.match(validateVitals("09:00", { ...normal, gcs: "0" }).errors.gcs ?? "", /integer from 3 to 15/,
     "a zero GCS remains a catalog-range error rather than a warning");
 });

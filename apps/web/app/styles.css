@@ -46,7 +46,7 @@ input, select, textarea { touch-action: manipulation; }
 .session-bar { position: sticky; z-index: 25; top: 0; display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 48px; padding: 4px 12px; color: #fff; background: #123b52; font-size: var(--text-caption); }
 .session-bar button { min-height: 40px; padding: 4px 12px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 5px; color: #fff; background: transparent; font-weight: 750; cursor: pointer; }
 .session-bar button:disabled { border-color: rgb(255 255 255 / 30%); color: rgb(255 255 255 / 45%); cursor: not-allowed; }
-.session-identity { min-width: 0; text-align: center; }
+.session-identity { min-width: 0; overflow-wrap: anywhere; text-align: center; }
 .session-bar .call-list-refresh { flex: 0 0 78px; width: 78px; white-space: nowrap; }
 .session-bar .feedback-trigger { display: grid; width: 42px; padding: 4px; place-items: center; }
 .feedback-notice { position: fixed; z-index: 60; top: 56px; left: 50%; width: min(92vw, 32rem); margin: 0; padding: 12px 16px; border-radius: 6px; color: #173723; background: #e8f5ec; box-shadow: 0 4px 18px rgb(0 0 0 / 18%); transform: translateX(-50%); }
@@ -65,6 +65,10 @@ input, select, textarea { touch-action: manipulation; }
 .session-bar .presentation-selector button[aria-pressed="true"] { color: #123b52; background: #fff; }
 .authenticated-shell .safety-notice { top: 48px; }
 .authenticated-shell .quick-actions { top: 86px; }
+.mobile-shell .session-bar { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+.mobile-shell .presentation-selector { grid-column: 1 / -1; grid-row: 2; justify-self: center; width: min(280px, 100%); }
+.mobile-shell .safety-notice { position: relative; top: auto; }
+.mobile-shell .quick-actions { top: 98px; }
 .assigned-calls { padding: 18px 16px 20px; border-bottom: 1px solid var(--line); background: #f3f7f4; }
 .assigned-calls-heading { display: flex; align-items: center; gap: 16px; }
 .assigned-calls-heading h1 { margin: 2px 0 0; font-size: var(--text-heading); letter-spacing: -.025em; }

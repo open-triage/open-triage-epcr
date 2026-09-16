@@ -106,3 +106,39 @@ test("feedback remains first in each authenticated mode and is unavailable offli
   await expect(bar.locator("button").first()).toBeDisabled();
   await expect(bar.locator("button").first()).toHaveAccessibleName("Send feedback unavailable while offline");
 });
+
+test("wide viewports keep the narrow mobile shell header and demo banner from overlapping", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1031 });
+  await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), {
+    ...session,
+    user: { ...session.user, displayName: "Demo" },
+    capabilities: ["clinical:demo", "clinical:document"]
+  });
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
+    assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString()
+  } }));
+  await page.route("**/api/reports/open", (route) => route.fulfill({ json: { reports: [] } }));
+  await page.route("**/api/calls/synthetic-generation", (route) => route.fulfill({ json: {
+    eligibleUnits: [{ id: "40000000-0000-4000-8000-000000000003", callSign: "M1", name: "Medic 1" }],
+    hasUnopenedCall: false
+  } }));
+
+  await page.goto("/");
+  const bar = page.locator(".session-bar");
+  const identity = page.locator(".session-identity");
+  const selector = page.getByRole("group", { name: "Documentation presentation" });
+  const banner = page.getByRole("note", { name: "Clinical Demo tools" });
+  await expect(banner).toBeVisible();
+
+  const [barBox, identityBox, selectorBox, bannerBox] = await Promise.all([
+    bar.boundingBox(), identity.boundingBox(), selector.boundingBox(), banner.boundingBox()
+  ]);
+  expect(barBox).not.toBeNull();
+  expect(identityBox).not.toBeNull();
+  expect(selectorBox).not.toBeNull();
+  expect(bannerBox).not.toBeNull();
+  expect(barBox!.width).toBeLessThanOrEqual(480);
+  expect(identityBox!.y + identityBox!.height).toBeLessThanOrEqual(selectorBox!.y);
+  expect(bannerBox!.y).toBeGreaterThanOrEqual(barBox!.y + barBox!.height);
+});
