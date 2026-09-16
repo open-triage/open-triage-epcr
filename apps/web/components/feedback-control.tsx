@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { feedbackDescriptionError, feedbackPrompt, FEEDBACK_DESCRIPTION_MAX_LENGTH, submitFeedback } from "../app/feedback";
 import { captureFeedbackDiagnostics, diagnosticsForSubmission } from "../app/feedback-diagnostics";
 import { recordFeedbackInteraction } from "../app/feedback-telemetry";
+import { TransientNotice } from "./transient-notice";
 
 export function FeedbackControl({ csrfToken, online, mode, screen }: {
   readonly csrfToken: string;
@@ -29,17 +30,6 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
   useEffect(() => {
     if (open) dialog.current?.querySelector<HTMLElement>("button")?.focus();
   }, [open]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const dismiss = () => setNotice(null);
-    window.addEventListener("pointerdown", dismiss, { capture: true, once: true });
-    window.addEventListener("keydown", dismiss, { capture: true, once: true });
-    return () => {
-      window.removeEventListener("pointerdown", dismiss, { capture: true });
-      window.removeEventListener("keydown", dismiss, { capture: true });
-    };
-  }, [notice]);
 
   function closeAndRestore() {
     if (pending) return;
@@ -112,7 +102,7 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
         <path d="M9 9h6M9 13h6M8 4l1.2 2h5.6L16 4M6 8H4m16 0h-2M6 16H4m16 0h-2M8 6h8v12H8z" />
       </svg>
     </button>
-    {notice && <p className="feedback-notice" role="status" aria-live="polite">{notice}</p>}
+    <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
     {open && <div className="dialog-backdrop feedback-backdrop" role="presentation">
       <section ref={dialog} className="note-dialog feedback-dialog" role="dialog" aria-modal="true"
         aria-labelledby={headingId} onKeyDown={trapKeys}>

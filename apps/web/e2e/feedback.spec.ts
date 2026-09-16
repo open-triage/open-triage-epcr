@@ -87,6 +87,8 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   await expect(dialog).toHaveCount(0);
   const notice = page.getByRole("status").filter({ hasText: "Reference J7M4Q2K8X5PN" });
   await expect(notice).toBeVisible();
+  await expect(notice).toHaveClass(/transient-notice/);
+  expect(await notice.evaluate((element) => getComputedStyle(element).position)).toBe("fixed");
   await expect(trigger).toBeFocused();
   await page.getByRole("button", { name: "Refresh calls" }).click();
   await expect(notice).toHaveCount(0);

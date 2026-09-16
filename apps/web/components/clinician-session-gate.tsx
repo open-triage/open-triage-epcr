@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   changeClinicianPassword,
@@ -29,6 +29,7 @@ import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
 import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
+import { TransientNotice } from "./transient-notice";
 
 function emphasizedText(value: string): ReactNode[] {
   return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
@@ -64,7 +65,6 @@ export function ClinicianSessionGate({ children }: {
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
   const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
-  const completionNoticeRef = useRef<HTMLParagraphElement>(null);
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
   }, [activeReport?.id]);
@@ -72,10 +72,6 @@ export function ClinicianSessionGate({ children }: {
   useEffect(() => {
     return installFeedbackRequestTracking(window);
   }, []);
-
-  useEffect(() => {
-    if (completionNotice) completionNoticeRef.current?.focus();
-  }, [completionNotice]);
 
   useEffect(() => {
     let current = true;
@@ -296,7 +292,7 @@ export function ClinicianSessionGate({ children }: {
           }}
         />}
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
-        {completionNotice && <p ref={completionNoticeRef} className="assignment-notice" role="status" tabIndex={-1}>{completionNotice}</p>}
+        <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
           setCompletionNotice(null);

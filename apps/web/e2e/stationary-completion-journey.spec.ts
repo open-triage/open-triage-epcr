@@ -96,7 +96,9 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await page.getByRole("button", { name: "Sign record" }).click();
 
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "was signed and removed from active calls" })).toBeFocused();
+  const completionNotice = page.getByRole("status").filter({ hasText: "was signed and removed from active calls" });
+  await expect(completionNotice).toBeFocused();
+  await expect(completionNotice).toHaveClass(/transient-notice/);
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   const cache = await page.evaluate((id) => ({
     shell: localStorage.getItem(`open-triage:standard-encounter-v1:report:${id}`),

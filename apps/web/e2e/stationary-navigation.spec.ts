@@ -165,5 +165,7 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
   await page.getByRole("button", { name: "Sign record" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "was signed and removed from active calls" })).toBeVisible();
+  const completionNotice = page.getByRole("status").filter({ hasText: "was signed and removed from active calls" });
+  await expect(completionNotice).toBeVisible();
+  await expect(completionNotice).toHaveClass(/transient-notice/);
 });

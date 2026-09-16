@@ -624,7 +624,11 @@ test("a stationary-completed report disappears from Open calls and only its cach
   await page.getByRole("button", { name: "Refresh calls" }).click();
 
   await expect(section.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
-  await expect(section.getByRole("status")).toContainText("completed on the stationary interface");
+  const completionNotice = section.getByRole("status");
+  await expect(completionNotice).toContainText("completed on the stationary interface");
+  await expect(completionNotice).toHaveClass(/transient-notice/);
+  await completionNotice.getByRole("button", { name: "Dismiss notification" }).click();
+  await expect(completionNotice).toHaveCount(0);
   const cached = await page.evaluate(({ completedId, openId }) => ({
     completed: localStorage.getItem(`open-triage:standard-encounter-v1:report:${completedId}`),
     open: localStorage.getItem(`open-triage:standard-encounter-v1:report:${openId}`),
@@ -654,7 +658,7 @@ test("completion discovered while a form is active stops editing and returns to 
   completed = true;
   await page.getByRole("button", { name: "Refresh calls" }).click();
 
-  await expect(page.locator(".assignment-notice")).toHaveCount(0);
+  await expect(page.locator(".transient-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open calls" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);

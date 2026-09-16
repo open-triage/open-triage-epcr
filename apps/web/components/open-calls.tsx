@@ -21,6 +21,7 @@ import {
   reconcileServerOpenReports,
   removeSignedOfflineReport,
 } from "../app/offline-reports";
+import { TransientNotice } from "./transient-notice";
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -199,7 +200,7 @@ export function OpenCalls({
           <h1 id="open-calls-title">Open calls</h1>
         </div>
       </div>
-      {notice && <p className="assignment-notice" role="status">{notice}</p>}
+      <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
       {error && <p className="assignment-error" role="alert">{error}</p>}
       {!loaded && !error && <p className="assignment-empty">Loading open calls…</p>}
       {loaded && calls.length === 0 && <p className="assignment-empty">You have no open calls.</p>}
