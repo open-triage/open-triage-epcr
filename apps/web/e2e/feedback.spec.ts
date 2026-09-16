@@ -22,6 +22,13 @@ async function openAuthenticatedMobile(page: Page) {
 
 test("feedback cancel restores focus and failure preserves the selected draft", async ({ page }) => {
   await openAuthenticatedMobile(page);
+  await page.route("**/api/reports/private-record**", (route) => route.fulfill({ status: 503, body: "SENSITIVE RESPONSE" }));
+  await page.evaluate(async () => {
+    await fetch("/api/reports/private-record?token=BEARER-SECRET&patient=PATIENT-123", {
+      method: "POST", headers: { authorization: "Bearer AUTH-SECRET", "x-patient": "PATIENT-123" }, body: "SENSITIVE BODY"
+    });
+  });
+  await page.getByRole("button", { name: "Refresh calls" }).click();
   const trigger = page.getByRole("button", { name: "Send feedback" });
   await trigger.click();
   let dialog = page.getByRole("dialog", { name: "Send feedback" });
@@ -49,6 +56,13 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   await expect(description).toHaveValue("The refresh control stopped responding");
   expect(bugSubmission.diagnostics.status).toBe("available");
   expect(bugSubmission.diagnostics.payload.structure.nodes).not.toContainEqual(expect.objectContaining({ kind: "dialog" }));
+  expect(bugSubmission.diagnostics.payload.interactions).toEqual(expect.arrayContaining([
+    "feedback.opened", "feedback.type.bug.selected", "feedback.submit.attempted", "session.refresh.requested"
+  ]));
+  expect(bugSubmission.diagnostics.payload.requestFailures).toEqual(expect.arrayContaining([expect.objectContaining({
+    method: "POST", endpointPattern: "/api/reports/{value}?patient={value}&token={value}", status: 503
+  })]));
+  expect(JSON.stringify(bugSubmission.diagnostics)).not.toMatch(/PATIENT-123|BEARER-SECRET|AUTH-SECRET|SENSITIVE BODY|SENSITIVE RESPONSE/);
 });
 
 test("feature feedback submits the type-specific prompt and announces its opaque reference", async ({ page }) => {
@@ -75,6 +89,8 @@ test("feature feedback submits the type-specific prompt and announces its opaque
     schemaVersion: 1, mode: "mobile", screen: "calls", connectivity: "online"
   }));
   expect(diagnostics.payload).not.toHaveProperty("structure");
+  expect(diagnostics.payload).not.toHaveProperty("interactions");
+  expect(diagnostics.payload).not.toHaveProperty("requestFailures");
 });
 
 test("feedback remains first in each authenticated mode and is unavailable offline", async ({ page, context }) => {

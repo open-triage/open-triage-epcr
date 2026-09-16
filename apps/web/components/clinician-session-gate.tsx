@@ -28,6 +28,7 @@ import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
 import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
+import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
 
 function emphasizedText(value: string): ReactNode[] {
   return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
@@ -69,6 +70,10 @@ export function ClinicianSessionGate({ children }: {
   }, [activeReport?.id]);
 
   useEffect(() => {
+    return installFeedbackRequestTracking(window);
+  }, []);
+
+  useEffect(() => {
     if (completionNotice) completionNoticeRef.current?.focus();
   }, [completionNotice]);
 
@@ -104,6 +109,7 @@ export function ClinicianSessionGate({ children }: {
     const remaining = Date.parse(session.expiresAt) - Date.now();
     if (remaining <= 0) {
       clearClinicianSession(window.localStorage);
+      clearFeedbackTelemetry();
       queueMicrotask(() => {
         setSession(null);
         setActiveReport(null);
@@ -113,6 +119,7 @@ export function ClinicianSessionGate({ children }: {
     }
     const timeout = window.setTimeout(() => {
       clearClinicianSession(window.localStorage);
+      clearFeedbackTelemetry();
       setSession(null);
       setActiveReport(null);
       setMessage("Your shift session expired. Sign in to continue.");
@@ -131,6 +138,7 @@ export function ClinicianSessionGate({ children }: {
         password: String(form.get("password") ?? "")
       });
       storeClinicianSession(window.localStorage, created);
+      clearFeedbackTelemetry();
       setActiveReport(null);
       setSession(created);
       const initialMode = loadPresentationMode(window.localStorage, created.capabilities);
@@ -169,17 +177,20 @@ export function ClinicianSessionGate({ children }: {
   }
 
   function logOut() {
+    recordFeedbackInteraction("session.logout.requested");
     const csrfToken = session ? sessionRequestToken(session) : "";
     clearClinicianSession(window.localStorage);
     setSession(null);
     setActiveReport(null);
     setMessage("You have logged out.");
+    clearFeedbackTelemetry();
     if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
   function selectPresentationMode(mode: PresentationMode) {
     if (mode === "admin" && activeReport) return;
     setModeMessage(null);
+    recordFeedbackInteraction(`presentation.${mode}.selected`);
     storePresentationMode(window.localStorage, mode);
     setPresentationMode(mode);
   }
@@ -189,6 +200,7 @@ export function ClinicianSessionGate({ children }: {
     setSession(null);
     setActiveReport(null);
     setMessage("Your shift session ended. Sign in again to sync your saved work.");
+    clearFeedbackTelemetry();
   }, []);
 
   if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
@@ -250,7 +262,10 @@ export function ClinicianSessionGate({ children }: {
           <FeedbackControl csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}
         {presentationMode !== "admin"
-          ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => setRefreshRequest((value) => value + 1)}>Refresh</button>
+          ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => {
+            recordFeedbackInteraction("session.refresh.requested");
+            setRefreshRequest((value) => value + 1);
+          }}>Refresh</button>
           : null}
         <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
         <div className="presentation-selector" role="group" aria-label="Documentation presentation">

@@ -12,7 +12,10 @@ const context = {
 const featureDiagnostics = { status: "available", payload: context };
 const bugDiagnostics = { status: "available", payload: { ...context, screen: "encounter", structure: {
   nodes: [{ kind: "main", depth: 1 }, { kind: "button", depth: 2 }], truncated: false
-} } };
+}, interactions: ["feedback.opened", "session.refresh.requested"], requestFailures: [{
+  timestamp: "2026-09-16T10:00:00.000Z", method: "GET", endpointPattern: "/api/reports/{value}?cursor={value}",
+  status: 503, durationMs: 42
+}] } };
 const idempotencyKey = "40000000-0000-4000-8000-000000000003";
 
 test("feedback validation trims bounded descriptions and requires a UUID idempotency key", () => {
@@ -49,6 +52,23 @@ test("feedback diagnostics reject unknown, oversized, type-inappropriate, and va
   assert.throws(() => validateCreateFeedback(command("feature", {
     status: "available", payload: { ...context, padding: "x".repeat(20_000) }
   })), /16,384/);
+  assert.throws(() => validateCreateFeedback(command("bug", { status: "available", payload: {
+    ...bugDiagnostics.payload, interactions: Array(21).fill("feedback.opened")
+  } })), /at most 20/);
+  assert.throws(() => validateCreateFeedback(command("bug", { status: "available", payload: {
+    ...bugDiagnostics.payload, interactions: ["clicked-patient-SENSITIVE"]
+  } })), /unsupported/);
+  assert.throws(() => validateCreateFeedback(command("bug", { status: "available", payload: {
+    ...bugDiagnostics.payload, requestFailures: Array(11).fill(bugDiagnostics.payload.requestFailures[0])
+  } })), /at most 10/);
+  for (const forbidden of ["url", "headers", "requestBody", "responseBody", "token"]) {
+    assert.throws(() => validateCreateFeedback(command("bug", { status: "available", payload: {
+      ...bugDiagnostics.payload, requestFailures: [{ ...bugDiagnostics.payload.requestFailures[0], [forbidden]: "SENSITIVE" }]
+    } })), new RegExp(forbidden));
+  }
+  assert.throws(() => validateCreateFeedback(command("bug", { status: "available", payload: {
+    ...bugDiagnostics.payload, requestFailures: [{ ...bugDiagnostics.payload.requestFailures[0], endpointPattern: "/api/reports/patient-123" }]
+  } })), /endpoint pattern/);
   assert.deepEqual(validateCreateFeedback(command("bug", {
     status: "unavailable", schemaVersion: 1, reason: "capture-failed"
   })).diagnostics, { status: "unavailable", schemaVersion: 1, reason: "capture-failed" });

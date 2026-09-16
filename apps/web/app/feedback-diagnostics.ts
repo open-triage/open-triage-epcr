@@ -7,6 +7,7 @@ import type {
   FeedbackStructuralKind
 } from "@open-triage/contracts";
 import identifyingPolicy from "../../../packages/database/config/identifying-elements.json";
+import { feedbackTelemetrySnapshot } from "./feedback-telemetry";
 
 export const FEEDBACK_DIAGNOSTIC_SCHEMA_VERSION = 1 as const;
 export const FEEDBACK_DIAGNOSTIC_MAX_BYTES = 16_384;
@@ -93,6 +94,12 @@ export function captureFeedbackDiagnostics(
 
 export function diagnosticsForType(capture: FeedbackDiagnostics, type: "bug" | "feature"): FeedbackDiagnostics {
   if (capture.status === "unavailable" || type === "bug") return capture;
-  const { structure: _structure, ...payload } = capture.payload;
+  const { structure: _structure, interactions: _interactions, requestFailures: _requestFailures, ...payload } = capture.payload;
   return { status: "available", payload };
+}
+
+export function diagnosticsForSubmission(capture: FeedbackDiagnostics, type: "bug" | "feature"): FeedbackDiagnostics {
+  const typed = diagnosticsForType(capture, type);
+  if (typed.status === "unavailable" || type === "feature") return typed;
+  return { status: "available", payload: { ...typed.payload, ...feedbackTelemetrySnapshot() } };
 }
