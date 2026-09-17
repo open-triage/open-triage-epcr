@@ -36,3 +36,20 @@ that has never synchronized cannot have a server checkpoint; complete loss or
 rollback of every copy of that browser profile remains outside the server's
 detection boundary. Unsynchronized ciphertext is therefore never a storage
 pressure eviction candidate.
+
+## Offline authorization-revocation window
+
+An already unlocked report can remain readable while the browser is fully
+disconnected because no server decision is available. That residual window
+ends at the earlier of the shift-session expiry or the next successful server
+contact. A 401 or 403 authority decision drops the in-memory report key and
+locks editing immediately. The server independently locks the recovery
+envelope when `clinical:document` is removed; the browser retains only opaque
+ciphertext until its original recovery deadline.
+
+Restoring `clinical:document` before that deadline permits the original user to
+recover through recent reauthentication. It never extends the deadline.
+Account deactivation, deletion, organization removal, or an administrator's
+explicit recovery purge destroys the wrapped keys for every browser. Password
+reset revokes sessions and outstanding grants but deliberately preserves an
+otherwise eligible envelope until its existing deadline.

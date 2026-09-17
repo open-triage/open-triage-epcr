@@ -139,6 +139,10 @@ export class ClinicianSessionService {
       if (!credentials[0]) throw new Error("The password credential update returned no row");
       await manager.query(`update app_identity.app_session set revoked_at = $2,
         revocation_reason = 'password_change' where user_id = $1 and revoked_at is null`, [account.user_id, now]);
+      await manager.query(
+        "select offline_recovery.revoke_user_recovery_grants($1, $2, 'password_reset')",
+        [account.organization_id, account.user_id]
+      );
       await this.audit(manager, account, "authentication.password_change", "succeeded");
 
       const replacementSessionToken = randomBytes(32).toString("base64url");
