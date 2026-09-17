@@ -20,6 +20,10 @@ const session = {
 async function installRoutes(page: Page) {
   let opened = false;
   await page.addInitScript((stored) => {
+    Object.defineProperties(navigator.storage, {
+      persisted: { configurable: true, value: async () => true },
+      persist: { configurable: true, value: async () => true },
+    });
     localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored));
     localStorage.setItem("open-triage:offline-reports-v1", "LEGACY CLINICAL PLAINTEXT");
     localStorage.setItem("open-triage:standard-encounter-v1:report:legacy", "LEGACY PATIENT");
@@ -56,6 +60,12 @@ async function installRoutes(page: Page) {
       recoveryDeadline: "2099-09-18T12:00:00.000Z",
       wrappingKeyVersion: 1,
     } });
+  });
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, async (route) => {
+    const command = route.request().postDataJSON() as { ciphertextRevision: number; ciphertextSha256: string };
+    expect(command.ciphertextRevision).toBeGreaterThan(0);
+    expect(command.ciphertextSha256).toMatch(/^[a-f0-9]{64}$/);
+    await route.fulfill({ json: command });
   });
   let revision = openedAssignment.report.revision;
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {

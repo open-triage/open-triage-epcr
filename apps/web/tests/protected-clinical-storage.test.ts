@@ -1,10 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  assertMonotonicCiphertextRevision,
   decryptProtectedPayload,
   deleteLegacyClinicalStorage,
   encryptProtectedPayload,
+  evictionOrder,
+  persistentStorageGranted,
+  restoreProtectedRecord,
+  type ProtectedClinicalRecord,
 } from "../app/protected-clinical-storage";
+
+function record(id: string, revision: number, synchronizedRevision: number, deadline: string, updatedAt = deadline): ProtectedClinicalRecord {
+  return {
+    localRecordId: id, schemaVersion: 1, algorithm: "AES-256-GCM", recoveryHandle: `handle-${id}`,
+    recoveryDeadline: deadline, ciphertextRevision: revision, synchronizedRevision, updatedAt,
+    nonce: new ArrayBuffer(12), ciphertext: new ArrayBuffer(16),
+  };
+}
 
 test("protected clinical payloads round-trip with a fresh 96-bit nonce for every write", async () => {
   const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
@@ -52,4 +65,52 @@ test("rollout removes every known and report-scoped plaintext clinical key witho
   } as Storage;
   deleteLegacyClinicalStorage(storage);
   assert.deepEqual([...values.keys()], ["open-triage.clinician-session.v1"]);
+});
+
+test("stale and swapped atomic replacements are rejected before the last ciphertext is touched", () => {
+  const current = record("report", 8, 7, "2026-09-19T00:00:00.000Z");
+  assert.throws(() => assertMonotonicCiphertextRevision(current, { recoveryHandle: current.recoveryHandle, ciphertextRevision: 8 }), /newer/);
+  assert.throws(() => assertMonotonicCiphertextRevision(current, { recoveryHandle: "swapped", ciphertextRevision: 9 }), /locked/);
+  assert.doesNotThrow(() => assertMonotonicCiphertextRevision(current, { recoveryHandle: current.recoveryHandle, ciphertextRevision: 9 }));
+});
+
+test("offline capability is enabled only after persistent storage is confirmed", async () => {
+  assert.equal(await persistentStorageGranted(undefined), false);
+  assert.equal(await persistentStorageGranted({ persisted: async () => false, persist: async () => false }), false);
+  assert.equal(await persistentStorageGranted({ persisted: async () => { throw new Error("blocked"); }, persist: async () => true }), false);
+  let checks = 0;
+  assert.equal(await persistentStorageGranted({
+    persisted: async () => ++checks > 1,
+    persist: async () => true,
+  }), true);
+  assert.equal(checks, 2);
+});
+
+test("quota pressure chooses expired then synchronized ciphertext and never unsynchronized work", () => {
+  const records = [
+    record("unsynchronized-expired", 9, 8, "2026-09-16T00:00:00.000Z"),
+    record("synchronized-current", 5, 5, "2026-09-20T00:00:00.000Z", "2026-09-15T00:00:00.000Z"),
+    record("expired", 3, 3, "2026-09-16T00:00:00.000Z"),
+    record("active", 2, 2, "2026-09-22T00:00:00.000Z", "2026-09-17T00:00:00.000Z"),
+  ];
+  assert.deepEqual(evictionOrder(records, new Date("2026-09-17T00:00:00.000Z")).map(({ localRecordId }) => localRecordId), ["expired", "synchronized-current", "active"]);
+});
+
+test("corruption and incompatible payloads stay locked in their original authenticated envelope", async () => {
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const encrypted = await encryptProtectedPayload(key, "handle", 2, { schemaVersion: 99 });
+  const original: ProtectedClinicalRecord = {
+    localRecordId: "report", schemaVersion: 1, algorithm: "AES-256-GCM", recoveryHandle: "handle",
+    recoveryDeadline: "2026-09-19T00:00:00.000Z", ciphertextRevision: 2, synchronizedRevision: 1,
+    updatedAt: "2026-09-17T00:00:00.000Z", ...encrypted,
+  };
+  assert.equal((await restoreProtectedRecord(key, original, "handle", (payload): payload is { schemaVersion: 1 } =>
+    !!payload && typeof payload === "object" && (payload as { schemaVersion?: unknown }).schemaVersion === 1)).status, "incompatible");
+  assert.equal((await restoreProtectedRecord(key, original, "another-handle", (_payload): _payload is unknown => true)).status, "locked");
+  const corrupted = { ...original, ciphertext: original.ciphertext.slice(0) };
+  const corruptedBytes = new Uint8Array(corrupted.ciphertext);
+  corruptedBytes[0] = corruptedBytes[0]! ^ 1;
+  assert.equal((await restoreProtectedRecord(key, corrupted, "handle", (_payload): _payload is unknown => true)).status, "locked");
+  assert.equal(original.localRecordId, "report");
+  assert.equal(original.ciphertextRevision, 2);
 });

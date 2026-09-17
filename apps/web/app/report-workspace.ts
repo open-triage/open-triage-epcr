@@ -2,7 +2,7 @@
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
-import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
 import {
   ACTIVE_REPORT_POLL_INTERVAL_MS,
@@ -39,6 +39,9 @@ import { bundledEncounterDefinition, type ShellAction, type ShellState } from ".
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
+import { protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
+
+const NO_PROTECTED_REPORT_STATUS = { mode: "online-only", explanation: null } as const;
 
 export interface ReportWorkspace {
   readonly restored: boolean;
@@ -48,6 +51,7 @@ export interface ReportWorkspace {
   readonly dispatchConflicts: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation: DispatchCancellation | null;
   readonly conflictError: string | null;
+  readonly editingBlocked: boolean;
   readonly flushSave: () => Promise<void>;
   readonly completeReport: () => void;
   readonly resolveConflict: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => Promise<void>;
@@ -61,6 +65,7 @@ export function useReportWorkspace({
   shell,
   dispatch,
   validationErrorCount,
+  online,
   onSessionEnded,
   onReportCompleted,
 }: {
@@ -70,6 +75,7 @@ export function useReportWorkspace({
   readonly shell: ShellState;
   readonly dispatch: Dispatch<ShellAction>;
   readonly validationErrorCount: number;
+  readonly online: boolean;
   readonly onSessionEnded: () => void;
   readonly onReportCompleted: () => void;
 }): ReportWorkspace {
@@ -80,6 +86,13 @@ export function useReportWorkspace({
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
   const [conflictRecoveryRequest, setConflictRecoveryRequest] = useState(0);
+  const protectedStatus = useSyncExternalStore(
+    useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
+      if (reportId === report?.id) changed();
+    }), [report?.id]),
+    useCallback(() => report ? protectedStorageStatus(report.id) : NO_PROTECTED_REPORT_STATUS, [report]),
+    () => NO_PROTECTED_REPORT_STATUS,
+  );
   const revision = useRef(report?.revision ?? 0);
   const csrfToken = sessionRequestToken(session);
   const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
@@ -383,5 +396,18 @@ export function useReportWorkspace({
     }
   }, [csrfToken, report]);
 
-  return { restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation, conflictError, flushSave, completeReport, resolveConflict };
+  return {
+    restored,
+    recoveryNotice: recoveryNotice ?? protectedStatus.explanation,
+    syncStatus,
+    revision,
+    dispatchConflicts,
+    dispatchCancellation,
+    conflictError,
+    editingBlocked: protectedStatus.mode === "read-only" || protectedStatus.mode === "locked" ||
+      (!online && protectedStatus.mode !== "active"),
+    flushSave,
+    completeReport,
+    resolveConflict,
+  };
 }

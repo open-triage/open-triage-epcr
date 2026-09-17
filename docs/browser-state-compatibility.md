@@ -27,3 +27,12 @@ fresh draft over that condition; recovery state remains available until the
 user explicitly resets local progress. This preserves the original clinical
 draft bytes for support-assisted recovery without silently applying an unsafe
 legacy conversion.
+## Protected offline ciphertext rollback boundary
+
+The server stores a monotonic revision-and-hash checkpoint after a protected
+ciphertext revision is synchronized. It rejects an older revision and rejects a
+different ciphertext at the same revision. Revisions created only in a browser
+that has never synchronized cannot have a server checkpoint; complete loss or
+rollback of every copy of that browser profile remains outside the server's
+detection boundary. Unsynchronized ciphertext is therefore never a storage
+pressure eviction candidate.

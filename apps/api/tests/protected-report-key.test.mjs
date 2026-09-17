@@ -74,3 +74,31 @@ test("an existing server envelope cannot be silently replaced with another brows
     schemaVersion: 1, recoveryHandle: randomUUID(), reportKeyBase64: Buffer.alloc(32).toString("base64"),
   }, "csrf"), ConflictException);
 });
+
+test("ciphertext checkpoints carry current authority and map rollback rejection to a conflict", async () => {
+  const reportId = randomUUID();
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const recoveryHandle = randomUUID();
+  const sha = "a".repeat(64);
+  const calls = [];
+  const service = new ProtectedReportKeyService(
+    { transaction: async (work) => work({ query: async (sql, parameters) => {
+      calls.push({ sql, parameters });
+      return [{ ciphertext_revision: "7", ciphertext_sha256: sha }];
+    } }) },
+    { assertCsrf: async () => undefined, requireCapability: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
+  );
+  assert.deepEqual(await service.checkpoint("session", reportId, {
+    schemaVersion: 1, recoveryHandle, ciphertextRevision: 7, ciphertextSha256: sha,
+  }, "csrf"), { ciphertextRevision: 7, ciphertextSha256: sha });
+  assert.deepEqual(calls[0].parameters, [reportId, organizationId, userId, recoveryHandle, 7, sha]);
+
+  const rejected = new ProtectedReportKeyService(
+    { transaction: async () => { throw { driverError: { code: "40001" } }; } },
+    { assertCsrf: async () => undefined, requireCapability: async () => undefined },
+  );
+  await assert.rejects(rejected.checkpoint("session", reportId, {
+    schemaVersion: 1, recoveryHandle, ciphertextRevision: 6, ciphertextSha256: sha,
+  }, "csrf"), ConflictException);
+});
