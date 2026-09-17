@@ -152,7 +152,7 @@ export class DraftReportService {
   ) {}
 
   async create(accessToken: string, input: unknown): Promise<DraftReportResult> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     let command: CreateDraftReportCommand;
     try {
       command = validateCreateDraftReportCommand(input);
@@ -248,7 +248,6 @@ export class DraftReportService {
   }
 
   async save(accessToken: string, reportId: string, input: unknown, csrfToken?: string): Promise<SaveDraftReportResult> {
-    const initialSession = await this.sessions.get(accessToken);
     let command: SaveDraftReportCommand;
     try {
       command = validateSaveDraftReportCommand(input);
@@ -260,9 +259,8 @@ export class DraftReportService {
       // The report row lock provides the serialization point while READ COMMITTED lets a
       // waiter observe the winner that committed before it acquired that lock.
       return await this.dataSource.transaction("READ COMMITTED", async (manager) => {
-        const session = command.demoAction
-          ? await this.sessions.requireCapability(accessToken, "clinical:demo", manager)
-          : initialSession;
+        const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+        if (command.demoAction) await this.sessions.requireCapability(accessToken, "clinical:demo", manager);
         if (command.demoAction) await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         await manager.query("select retention.purge_expired_synthetic_records(clock_timestamp())");
         await this.lockCommand(manager, command.commandId);
@@ -589,7 +587,7 @@ export class DraftReportService {
   }
 
   async get(accessToken: string, reportId: string): Promise<Record<string, unknown>> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     return withReportSnapshot(this.dataSource, async (manager) => {
       const report = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const groups = await manager.query<Array<Record<string, unknown>>>(`
@@ -623,7 +621,7 @@ export class DraftReportService {
   }
 
   async listOpen(accessToken: string, now = new Date()): Promise<OpenCallsResponse> {
-    const session = await this.sessions.get(accessToken, now);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document", undefined, now);
     await this.dataSource.query("select retention.purge_expired_synthetic_records($1)", [now]);
     const rows = await this.dataSource.query<OpenCallRow[]>(`
       select r.id as report_id, r.status, ca.call_number, ca.dispatched_at,
@@ -679,7 +677,7 @@ export class DraftReportService {
   }
 
   async reopen(accessToken: string, reportId: string): Promise<ReopenOpenCallResponse> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     return withReportSnapshot(this.dataSource, async (manager) => {
       const details = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const document = await encounterDocument(manager, reportId);
@@ -762,6 +760,7 @@ export class DraftReportService {
   async deleteSyntheticDraft(accessToken: string, reportId: string, csrfToken?: string): Promise<DeleteDraftReportResponse> {
     return this.dataSource.transaction(async (manager) => {
       await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      await this.sessions.requireCapability(accessToken, "clinical:document", manager);
       const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager);
       const reports = await manager.query<Array<{ patient_id: string }>>(`
         select r.patient_id from clinical.report r
@@ -870,7 +869,7 @@ export class DraftReportService {
     readonly etag: string;
     readonly resource: ActiveReportResource | null;
   }> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     return withReportSnapshot(this.dataSource, async (manager) => {
       const rows = await manager.query<Array<{
         revision: string | number;
@@ -918,7 +917,7 @@ export class DraftReportService {
     conflictId: string,
     input: unknown
   ): Promise<DispatchConflict> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     if (!input || typeof input !== "object" || !uuidV4.test(String((input as ResolveDispatchConflictCommand).commandId)) ||
         !["keep", "accept", "acknowledge"].includes(String((input as ResolveDispatchConflictCommand).disposition))) {
       throw new UnprocessableEntityException("A UUIDv4 commandId and keep, accept, or acknowledge disposition are required");
