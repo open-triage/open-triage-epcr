@@ -15,7 +15,7 @@ import {
 
 function record(id: string, revision: number, synchronizedRevision: number, deadline: string, updatedAt = deadline): ProtectedClinicalRecord {
   return {
-    localRecordId: id, schemaVersion: 1, algorithm: "AES-256-GCM", recoveryHandle: `handle-${id}`,
+    localRecordId: id, reportId: id, schemaVersion: 1, algorithm: "AES-256-GCM", recoveryHandle: `handle-${id}`,
     recoveryDeadline: deadline, ciphertextRevision: revision, synchronizedRevision, updatedAt,
     nonce: new ArrayBuffer(12), ciphertext: new ArrayBuffer(16),
   };

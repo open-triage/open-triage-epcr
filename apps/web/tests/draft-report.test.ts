@@ -203,6 +203,7 @@ test("a delayed synchronization receives a terminal purged result instead of ret
   });
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   globalThis.fetch = (async () => Response.json({ message: "permanently purged" }, { status: 410 })) as typeof fetch;
+  await assert.rejects(fetchActiveReport(reportId), /purged/);
   await assert.rejects(saveDraftReport("token", reportId, {
     commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
     authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:offline:test",

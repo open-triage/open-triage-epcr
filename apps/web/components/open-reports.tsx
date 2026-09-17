@@ -87,11 +87,15 @@ export function OpenReports({
           try {
             const saved = await saveDraftReport(csrfToken, cached.report.id, queued.command);
             if (saved.status === "signed") {
-              clearShellState(window.localStorage, cached.report.id);
-              removeSignedOfflineReport(window.localStorage, cached.report.id);
-              reportsRef.current = reportsRef.current.filter((report) => report.reportId !== cached.report.id);
-              setReports(reportsRef.current);
-              break;
+              acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
+              if (!nextDraftChange(window.localStorage, cached.report.id)) {
+                clearShellState(window.localStorage, cached.report.id);
+                removeSignedOfflineReport(window.localStorage, cached.report.id);
+                reportsRef.current = reportsRef.current.filter((report) => report.reportId !== cached.report.id);
+                setReports(reportsRef.current);
+                break;
+              }
+              continue;
             }
             acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
           } catch (syncError) {
@@ -116,6 +120,15 @@ export function OpenReports({
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
       const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
+      for (const reportId of completedReportIds) {
+        if (cachedOpenReports(window.localStorage, session.user.id).some((cached) => cached.report.id === reportId)) continue;
+        try {
+          const recovered = await recoverProtectedReport(csrfToken, reportId);
+          if (recovered) restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered);
+        } catch (recoveryError) {
+          if (!(recoveryError instanceof RecoveryReauthenticationRequiredError)) throw recoveryError;
+        }
+      }
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
       response.openCalls.forEach((report) => cacheOpenReportSummary(window.localStorage, session, report));
@@ -143,7 +156,8 @@ export function OpenReports({
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
         ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
         : `${removed.length} calls were completed on the stationary interface.`);
-      if (activeReportId && completedIds.has(activeReportId)) onCompleted?.(activeReportId);
+      if (activeReportId && completedIds.has(activeReportId)
+          && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
       if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
         onSessionEnded?.();
@@ -154,7 +168,7 @@ export function OpenReports({
       setLoaded(true);
       setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open reports could not be refreshed.");
     }
-  }, [activeReportId, onCompleted, onSessionEnded, session, syncCachedReports]);
+  }, [activeReportId, csrfToken, onCompleted, onSessionEnded, session, syncCachedReports]);
 
   const reopen = useCallback(async (report: OpenReportSummary) => {
     setReopeningId(report.reportId);

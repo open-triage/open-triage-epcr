@@ -151,6 +151,8 @@ export interface ProtectedReportRecoveryGrant {
   recoveryHandle: string;
   grant: string;
   expiresAt: string;
+  /** Signed is returned only when authenticated queued late work remains. */
+  reportStatus: "draft" | "signed";
 }
 
 export interface ConsumeProtectedReportRecoveryGrantCommand {

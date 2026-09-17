@@ -1,5 +1,5 @@
 import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
-import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
+import type { ActiveDraftReport, RetainedSignedDraftAttempt, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 import { browserRequestConfiguration } from "./browser-api";
 import { protectedStorageActive, removeProtectedReport, updateProtectedReport, type RecoveredProtectedPayload } from "./protected-clinical-storage";
 
@@ -300,7 +300,13 @@ export function markDraftChangeAttempted(storage: StoragePort, reportId: string,
   replace(storage, { ...cached, queuedChanges: cached.queuedChanges.map((queued) => queued.command.commandId === commandId ? { ...queued, attempted: true } : queued) });
 }
 
-export function acceptDraftChange(storage: StoragePort, reportId: string, commandId: string, saved: SavedDraftReport, now = new Date()): void {
+export function acceptDraftChange(
+  storage: StoragePort,
+  reportId: string,
+  commandId: string,
+  saved: SavedDraftReport | RetainedSignedDraftAttempt,
+  now = new Date(),
+): void {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   if (!cached) return;
   const queuedChanges = cached.queuedChanges.filter((queued) => queued.command.commandId !== commandId);
