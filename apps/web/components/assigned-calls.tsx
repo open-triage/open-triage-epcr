@@ -27,7 +27,7 @@ export function AssignedCalls({
   focusAssignmentId = null,
 }: {
   readonly session: ClinicianSession;
-  readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void;
+  readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void | Promise<void>;
   readonly refreshRequest?: number;
   readonly suppressedCallNumbers?: ReadonlyArray<string>;
   readonly focusAssignmentId?: string | null;
@@ -64,7 +64,7 @@ export function AssignedCalls({
       }
       callsRef.current = nextCalls;
       setCalls(nextCalls);
-      onOpened?.(opened, call);
+      await onOpened?.(opened, call);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "The call could not be opened.");

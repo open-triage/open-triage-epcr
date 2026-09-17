@@ -12,7 +12,7 @@ test("the built static export starts and is served from the domain root", async 
   expect(response.status()).toBe(200);
   const serviceWorker = await request.get("/sw.js");
   expect(serviceWorker.status()).toBe(200);
-  expect(await serviceWorker.text()).toContain("demo-assigned-calls.json");
+  expect(await serviceWorker.text()).not.toContain("demo-assigned-calls.json");
 
   const installationRequest = page.waitForRequest(installationUrl);
   await page.route(installationUrl, async (route) =>

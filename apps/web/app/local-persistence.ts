@@ -4,6 +4,8 @@ import { EncounterDocumentError, loadEncounterDocument } from "./encounter-docum
 import { saveCanonicalEvent } from "./canonical-events";
 import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { bundledEncounterDefinition, type EncounterEvent, type ShellState } from "./standard-encounter";
+import { browserRequestConfiguration } from "./browser-api";
+import { protectedShellState, protectedStorageActive, removeProtectedReport, updateProtectedShellState } from "./protected-clinical-storage";
 
 export const STORAGE_KEY = "open-triage:standard-encounter-v1";
 export const REPORT_SYNC_STORAGE_PREFIX = "open-triage:report-sync-v1";
@@ -23,6 +25,7 @@ export function reportSyncStorageKey(reportId: string): string {
 }
 
 export function saveReportSyncStatus(storage: LocalStoragePort, reportId: string, status: "Saved" | "Saving" | "Pending sync" | "Conflict"): void {
+  if (typeof window !== "undefined") return;
   storage.setItem(reportSyncStorageKey(reportId), status);
 }
 
@@ -40,6 +43,12 @@ export type ShellStateLoadResult =
   | { readonly status: "restored"; readonly state: ShellState; readonly migrated: boolean };
 
 export function saveShellState(storage: LocalStoragePort, state: ShellState, reportId?: string): void {
+  if (typeof window !== "undefined") {
+    if (reportId && browserRequestConfiguration().mode === "server" && protectedStorageActive(reportId)) {
+      updateProtectedShellState(reportId, state);
+    }
+    return;
+  }
   const document = {
     ...state.encounter.document,
     [ENCOUNTER_EXTENSION_KEY]: {
@@ -73,6 +82,11 @@ export function loadShellStateResult(
   reportId?: string,
   expectedFormProfile?: PersistedFormProfile,
 ): ShellStateLoadResult {
+  if (typeof window !== "undefined") {
+    if (!reportId || browserRequestConfiguration().mode !== "server") return { status: "empty" };
+    const protectedState = protectedShellState(reportId);
+    return protectedState ? { status: "restored", state: protectedState as ShellState, migrated: false } : { status: "empty" };
+  }
   const key = reportStorageKey(reportId);
   const serialized = storage.getItem(key);
   if (serialized === null) {
@@ -170,6 +184,7 @@ export function loadShellState(
 }
 
 export function clearShellState(storage: LocalStoragePort, reportId?: string): void {
+  if (typeof window !== "undefined" && reportId) removeProtectedReport(reportId);
   storage.removeItem(reportStorageKey(reportId));
   if (reportId) storage.removeItem(reportSyncStorageKey(reportId));
   storage.removeItem(RECOVERY_STORAGE_KEY);

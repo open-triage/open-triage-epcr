@@ -108,6 +108,19 @@ export interface DeleteDraftReportResponse {
   reportId: string;
 }
 
+export interface RegisterProtectedReportKeyCommand {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  reportKeyBase64: string;
+}
+
+export interface ProtectedReportKeyEnvelope {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  recoveryDeadline: string;
+  wrappingKeyVersion: number;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];

@@ -1,5 +1,7 @@
 import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
+import { browserRequestConfiguration } from "./browser-api";
+import { protectedStorageActive, removeProtectedReport, updateProtectedReport } from "./protected-clinical-storage";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
 
@@ -24,6 +26,7 @@ export interface CachedOpenReport {
 }
 
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
+let protectedRuntimeReports: CachedOpenReport[] = [];
 type OpenedCallContext = {
   readonly callNumber: string;
   readonly dispatchedAt?: string;
@@ -34,6 +37,9 @@ type OpenedCallContext = {
 };
 
 function read(storage: StoragePort): CachedOpenReport[] {
+  if (typeof window !== "undefined") {
+    return browserRequestConfiguration().mode === "server" ? protectedRuntimeReports : [];
+  }
   try {
     const value: unknown = JSON.parse(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY) ?? "[]");
     if (!Array.isArray(value)) return [];
@@ -49,6 +55,15 @@ function read(storage: StoragePort): CachedOpenReport[] {
 }
 
 function write(storage: StoragePort, reports: ReadonlyArray<CachedOpenReport>): void {
+  if (typeof window !== "undefined") {
+    if (browserRequestConfiguration().mode === "server") {
+      protectedRuntimeReports = [...reports];
+      for (const report of reports) {
+        if (protectedStorageActive(report.report.id)) updateProtectedReport(report.report.id, report);
+      }
+    }
+    return;
+  }
   storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, JSON.stringify(reports));
 }
 
@@ -206,6 +221,7 @@ export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: Re
 
 export function removeSignedOfflineReport(storage: StoragePort, reportId: string): void {
   write(storage, read(storage).filter((candidate) => candidate.report.id !== reportId));
+  if (typeof window !== "undefined") removeProtectedReport(reportId);
 }
 
 /** Removes all browser-held state after a server-confirmed draft deletion. */

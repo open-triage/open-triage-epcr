@@ -30,6 +30,7 @@ import {
   removeSignedOfflineReport,
 } from "../app/offline-reports";
 import { TransientNotice } from "./transient-notice";
+import { flushProtectedReport, prepareProtectedReport } from "../app/protected-clinical-storage";
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -117,14 +118,18 @@ export function OpenReports({
           response.openCalls.map(({ reportId }) => reportId),
         ).forEach((reportId) => clearShellState(window.localStorage, reportId));
       }
-      const visible = cachedOpenReportSummaries(window.localStorage, session.user.id).filter((report) => !completedIds.has(report.reportId));
+      const visible = (browserRequestConfiguration().mode === "server"
+        ? cachedOpenReportSummaries(window.localStorage, session.user.id)
+        : response.openCalls).filter((report) => !completedIds.has(report.reportId));
       reportsRef.current = visible;
       setReports(visible);
       setLoaded(true);
       setError(null);
       await syncCachedReports();
       purgeCompletedOfflineReports(window.localStorage, completedReportIds);
-      const syncedVisible = cachedOpenReportSummaries(window.localStorage, session.user.id).filter((report) => !completedIds.has(report.reportId));
+      const syncedVisible = (browserRequestConfiguration().mode === "server"
+        ? cachedOpenReportSummaries(window.localStorage, session.user.id)
+        : response.openCalls).filter((report) => !completedIds.has(report.reportId));
       reportsRef.current = syncedVisible;
       setReports(syncedVisible);
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
@@ -150,7 +155,9 @@ export function OpenReports({
       let opened: ReopenOpenReportResponse;
       try {
         opened = await reopenOpenReport(csrfToken, report.reportId);
+        await prepareProtectedReport(csrfToken, report.reportId);
         cacheReopenedReport(window.localStorage, session, opened);
+        await flushProtectedReport(report.reportId);
       } catch (error) {
         const cached = cachedReopenResponse(window.localStorage, session.user.id, report.reportId);
         if (!cached) throw error;

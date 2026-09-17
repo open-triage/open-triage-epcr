@@ -4,10 +4,11 @@ import { DraftReportService } from "./draft-report.service.js";
 import { SignReportService } from "./sign-report.service.js";
 import { AmendReportService } from "./amend-report.service.js";
 import { SessionsModule } from "../sessions/sessions.module.js";
+import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 
 @Module({
   imports: [SessionsModule],
   controllers: [DraftReportController],
-  providers: [DraftReportService, SignReportService, AmendReportService]
+  providers: [DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService]
 })
 export class ReportsModule {}

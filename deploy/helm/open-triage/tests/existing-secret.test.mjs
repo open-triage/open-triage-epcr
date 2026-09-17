@@ -55,9 +55,12 @@ test("managed-Secret mode remains available", () => {
     "secrets.patientKeyInstallationId=managed-installation",
     "--set-string",
     "secrets.patientKeySecretBase64=managed-key",
+    "--set-string",
+    "secrets.offlineRecoverySecretBase64=managed-offline-key",
   );
 
   assert.match(output, /kind: Secret(?:\n|\r\n)/);
   assert.match(output, /name: open-triage-database/);
   assert.match(output, /DATABASE_URL: \"managed-database-url\"/);
+  assert.match(output, /OFFLINE_RECOVERY_SECRET_BASE64: \"managed-offline-key\"/);
 });

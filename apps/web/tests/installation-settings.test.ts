@@ -22,6 +22,13 @@ test("the sole installation policy is the production security and retention base
     durationHours: 10 * 365 * 24,
     automaticDeletionEnabled: false,
   });
+  assert.deepEqual(production.offlineRecovery, {
+    windowHours: 24,
+    restartReauthenticationRequired: true,
+  });
+  assert.throws(() => parseInstallationSettings({
+    ...production, offlineRecovery: { ...production.offlineRecovery, windowHours: 169 },
+  }), /less than or equal to 168/);
   for (const removed of ["syntheticFixtures", "sampleDispatchAssignment", "syntheticDataBanner", "administration"]) {
     assert.equal(removed in production, false);
   }
