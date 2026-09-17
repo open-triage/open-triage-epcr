@@ -15,7 +15,9 @@ export type FeedbackInteractionName =
   | "feedback.opened" | "feedback.cancelled" | "feedback.type.bug.selected"
   | "feedback.type.feature.selected" | "feedback.submit.attempted"
   | "session.refresh.requested" | "session.logout.requested"
-  | "presentation.mobile.selected" | "presentation.stationary.selected" | "presentation.admin.selected";
+  | "presentation.mobile.selected" | "presentation.stationary.selected" | "presentation.admin.selected"
+  | "draft-sync.server-conflict" | "draft-sync.validation-rejected"
+  | "draft-sync.recovered" | "draft-sync.retry-exhausted";
 
 export interface FeedbackRequestFailure {
   timestamp: string;

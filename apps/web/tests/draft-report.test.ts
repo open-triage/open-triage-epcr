@@ -10,6 +10,8 @@ import {
   draftChangesUrl,
   deleteDraftReport,
   demoActionMutationDelta,
+  DRAFT_CONFLICT_RECOVERY_LIMIT,
+  DraftSaveRejectedError,
   encounterDocumentToDraftMutations,
   fetchActiveReport,
   saveDraftReport,
@@ -48,6 +50,7 @@ test("the draft adapter retains stable report, group, and occurrence identities"
   assert.equal(DRAFT_SAVE_DEBOUNCE_MS, 1_000);
   assert.equal(DRAFT_SYNC_RETRY_MS, 2_000);
   assert.equal(ACTIVE_REPORT_POLL_INTERVAL_MS, 10_000);
+  assert.equal(DRAFT_CONFLICT_RECOVERY_LIMIT, 1);
 });
 
 test("the draft adapter preserves identities rehydrated from PostgreSQL", () => {
@@ -190,7 +193,25 @@ test("an invalid saved browser command is distinguished from a temporary outage"
     commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
     authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:stationary:test",
     clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
-  }), /invalid/);
+  }), (error) => error instanceof DraftSaveRejectedError && error.category === "validation-rejected");
+});
+
+test("draft save conflicts expose only a privacy-safe category", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemoSession = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemoSession === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemoSession;
+  });
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  globalThis.fetch = (async () => Response.json({ message: "value-bearing server detail must not escape" }, { status: 409 })) as typeof fetch;
+  await assert.rejects(saveDraftReport("token", reportId, {
+    commandId: "52000000-0000-4000-8000-000000000013", expectedRevision: 7,
+    authorId: "32000000-0000-4000-8000-000000000003", deviceId: "web:test",
+    clientTime: "2026-09-03T12:00:00.000Z", groups: [], occurrences: [],
+  }), (error) => error instanceof DraftSaveRejectedError &&
+    error.category === "server-conflict" && error.message === "server-conflict");
 });
 
 test("a delayed synchronization receives a terminal purged result instead of retrying offline", async (t) => {

@@ -12,7 +12,18 @@ import {
 export const DRAFT_SAVE_DEBOUNCE_MS = 1_000;
 export const DRAFT_SYNC_RETRY_MS = 2_000;
 export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
+export const DRAFT_CONFLICT_RECOVERY_LIMIT = 1;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
+
+export type DraftSaveFailureCategory = "server-conflict" | "validation-rejected";
+
+/** A bounded, value-free failure classification safe to include in diagnostics. */
+export class DraftSaveRejectedError extends Error {
+  constructor(readonly category: DraftSaveFailureCategory) {
+    super(category);
+    this.name = "DraftSaveRejectedError";
+  }
+}
 
 export function shouldQueueInitialDraftSnapshot(
   localStateStatus: "empty" | "restored" | "incompatible" | "invalid",
@@ -280,8 +291,8 @@ export async function saveDraftReport(csrfToken: string, reportId: string, comma
   } catch {
     throw new Error("offline");
   }
-  if (response.status === 409) throw new Error("conflict");
-  if (response.status === 422) throw new Error("invalid");
+  if (response.status === 409) throw new DraftSaveRejectedError("server-conflict");
+  if (response.status === 422) throw new DraftSaveRejectedError("validation-rejected");
   if (response.status === 410) throw new Error("purged");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return response.json() as Promise<SavedDraftReport | RetainedSignedDraftAttempt>;
