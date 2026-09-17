@@ -28,6 +28,7 @@ async function installRoutes(page: Page) {
   let recoveryHandle = "";
   let reportKeyBase64 = "";
   let grantConsumed = false;
+  let reauthenticated = false;
   let currentSession = session;
   await page.addInitScript((stored) => {
     Object.defineProperties(navigator.storage, {
@@ -48,6 +49,12 @@ async function installRoutes(page: Page) {
     const command = route.request().postDataJSON() as { username?: string };
     currentSession = command.username === "other" ? otherSession : session;
     return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: currentSession });
+  });
+  await page.route("**/api/sessions/reauthenticate", async (route) => {
+    const command = route.request().postDataJSON() as { currentPassword?: string };
+    if (!command.currentPassword) return route.fulfill({ status: 401 });
+    reauthenticated = true;
+    return route.fulfill({ json: { reauthenticatedUntil: "2099-09-17T12:05:00.000Z" } });
   });
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
     assignedCalls: currentSession.user.id === session.user.id ? [assignedCall] : [],
@@ -110,15 +117,19 @@ async function installRoutes(page: Page) {
     unitCallSign: assignedCall.unit.callSign,
     report: openedAssignment.report,
   } }));
-  await page.route(`**/api/reports/${reportId}/recovery-grants`, (route) => route.fulfill({
-    status: 201,
-    headers: { "cache-control": "no-store, private", pragma: "no-cache" },
-    json: {
-      schemaVersion: 1, envelopeVersion: 1, recoveryHandle,
-      grant: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
-      expiresAt: "2099-09-18T12:00:00.000Z",
-    },
-  }));
+  await page.route(`**/api/reports/${reportId}/recovery-grants`, (route) => {
+    if (restarted && !reauthenticated) return route.fulfill({ status: 428 });
+    return route.fulfill({
+      status: 201,
+      headers: { "cache-control": "no-store, private", pragma: "no-cache" },
+      json: {
+        schemaVersion: 1, envelopeVersion: 1, recoveryHandle,
+        grant: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+        expiresAt: "2099-09-18T12:00:00.000Z",
+        reportStatus: "draft",
+      },
+    });
+  });
   await page.route(`**/api/reports/${reportId}/recovery-grants/consume`, (route) => {
     if (grantConsumed) return route.fulfill({ status: 404, json: { message: "Protected report recovery is unavailable" } });
     grantConsumed = true;
@@ -181,6 +192,11 @@ test("one online-opened report remains editable through connection loss using on
   expect(plaintextStorage).not.toContain("LEGACY CLINICAL PLAINTEXT");
   expect(plaintextStorage).not.toContain("LEGACY PATIENT");
 
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Stationary", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(JSON.stringify((await encryptedRecords(page))[0])).not.toContain(reportId);
+  await page.getByRole("button", { name: "Mobile", exact: true }).click();
+
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await page.getByRole("button", { name: "Add clinical note" }).click();
@@ -205,7 +221,11 @@ test("one online-opened report remains editable through connection loss using on
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
+  await expect(page.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
+  await page.getByLabel("Current password").fill("current-password");
+  await page.getByRole("button", { name: "Confirm and recover" }).click();
   await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
 });
 
 test("logout locks pending ciphertext, reveals nothing to another user, and lets only the original user recover it", async ({ page, context }) => {

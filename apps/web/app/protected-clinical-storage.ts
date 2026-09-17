@@ -7,7 +7,6 @@ export const PROTECTED_ENVELOPE_SCHEMA = 1 as const;
 
 export interface ProtectedClinicalRecord {
   readonly localRecordId: string;
-  readonly reportId?: string;
   readonly schemaVersion: 1;
   readonly algorithm: "AES-256-GCM";
   readonly recoveryHandle: string;
@@ -210,11 +209,6 @@ export async function lockProtectedClinicalStorage(now = new Date()): Promise<vo
   await deleteRecords(records.filter(({ localRecordId }) => !retainedIds.has(localRecordId)).map(({ localRecordId }) => localRecordId));
 }
 
-async function deleteRecordsForReport(reportId: string): Promise<void> {
-  const matching = (await allRecords()).filter((record) => record.reportId === reportId);
-  await deleteRecords(matching.map(({ localRecordId }) => localRecordId));
-}
-
 export function evictionOrder(records: ReadonlyArray<ProtectedClinicalRecord>, now = new Date(), excludedLocalRecordId?: string): ProtectedClinicalRecord[] {
   const candidates = records.filter((record) => record.localRecordId !== excludedLocalRecordId && record.synchronizedRevision >= record.ciphertextRevision);
   const expired = candidates.filter((record) => Date.parse(record.recoveryDeadline) <= now.getTime())
@@ -319,7 +313,7 @@ async function persist(reportId: string): Promise<void> {
   const revision = context.revision + 1;
   const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, structuredClone(context.payload));
   const record: ProtectedClinicalRecord = {
-    localRecordId: context.localRecordId, reportId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
+    localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
   };
@@ -504,7 +498,11 @@ export async function recoverProtectedReport(
   }));
   if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
   if (grantResponse.status === 404 || grantResponse.status === 410) {
-    await deleteRecordsForReport(reportId);
+    // Records deliberately contain no report identifier or other label. A
+    // denial therefore cannot safely target ciphertext without either making
+    // retained work enumerable or risking deletion of another pending report.
+    // The server has destroyed access to the key; opaque bytes age out at the
+    // immutable deadline.
     return null;
   }
   if (!grantResponse.ok) throw new Error(grantResponse.status === 401

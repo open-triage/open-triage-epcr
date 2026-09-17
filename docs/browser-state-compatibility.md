@@ -1,32 +1,20 @@
 # Browser-state compatibility and recovery
 
-The approved automatic compatibility window is the current browser persistence
-version and the immediately previous version. Each previous version remains
-supported for at least one complete release cycle after its successor ships.
-When a new current version is introduced, its implementation must retain and
-test the version it replaces; an older migration may be removed only in a later
-release after it falls outside this window.
+The protected-storage rollout ends browser compatibility with every plaintext
+clinical persistence format. At application startup and after every identity
+transition, the browser deletes the old encounter, per-report, synchronization,
+offline queue, raw-recovery, and category-named keys. It never imports, copies,
+or rewrites those values. A production browser can create persistent clinical
+state only as an authenticated encrypted record in the protected IndexedDB
+store described in [Protected offline clinical storage](protected-offline-clinical-storage.md).
 
-The current window is:
-
-- Version 5 is the native canonical-document envelope written by the app.
-- Version 4 is the only automatically migrated format. Its canonical document,
-  extension events, workflow drafts, compatible extensions, and custom data are
-  carried into version 5. The separately persisted offline report queue is not
-  rewritten during this migration, so pending commands retain their exact
-  serialized representation.
-- Versions 2 and 3, unversioned payloads, and unknown future versions are not
-  interpreted or migrated. The old category-named storage key is also not
-  reinterpreted as current clinical state.
-
-Unsupported or malformed payloads produce an explicit `invalid` or
-`incompatible` load result. Before the source key is removed, its original
-serialized value is copied without parsing or reserialization to
-`open-triage:standard-encounter-v1:recovery`. The application must not create a
-fresh draft over that condition; recovery state remains available until the
-user explicitly resets local progress. This preserves the original clinical
-draft bytes for support-assisted recovery without silently applying an unsafe
-legacy conversion.
+The version 4/5 local-storage parser remains a non-browser pure compatibility
+fixture for historical unit tests and static-demo development. Browser entry
+points return before that parser and all browser writes return before touching
+local storage. It is not a production migration or recovery path and must not
+be called from browser code. Future protected-envelope versions preserve an
+incompatible authenticated ciphertext record intact; they must not export raw
+clinical JSON into another browser store.
 ## Protected offline ciphertext rollback boundary
 
 The server stores a monotonic revision-and-hash checkpoint after a protected

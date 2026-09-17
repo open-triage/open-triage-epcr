@@ -10,6 +10,14 @@ const appShell = [
   new URL("manifest.webmanifest", appRoot).toString(),
 ];
 
+function isApprovedStaticRequest(request: Request): boolean {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (url.toString() === appRoot || url.toString() === appShell[1]) return true;
+  return url.pathname.includes("/_next/static/") &&
+    ["script", "style", "font", "image"].includes(request.destination);
+}
+
 async function cacheStaticShell(): Promise<void> {
   const cache = await caches.open(cacheName);
   const rootResponse = await fetch(appRoot);
@@ -39,7 +47,7 @@ self.addEventListener("fetch", (event) => {
   if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith(".json")) return;
 
   event.respondWith(fetch(event.request).then((response) => {
-    if (response.ok && new URL(event.request.url).origin === self.location.origin) {
+    if (response.ok && isApprovedStaticRequest(event.request)) {
       event.waitUntil(caches.open(cacheName).then((cache) => cache.put(event.request, response.clone())));
     }
     return response;

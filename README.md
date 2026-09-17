@@ -74,6 +74,9 @@ future-skew guard, and equal or untrustworthy times follow server receipt order.
 values and both commands' lineage remain in append-only reconciliation audit data.
 The supported local persistence window and byte-preserving recovery behavior are
 documented in [`docs/browser-state-compatibility.md`](docs/browser-state-compatibility.md).
+The production protected-storage guarantee, lifecycle behavior, operational
+requirements, threat exclusions, and deferred device controls are documented in
+[`docs/protected-offline-clinical-storage.md`](docs/protected-offline-clinical-storage.md).
 
 ## Kubernetes demo
 
