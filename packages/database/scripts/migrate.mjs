@@ -6,6 +6,18 @@ import pg from "pg";
 
 const migrationName = /^(\d+)_([a-z0-9][a-z0-9_-]*)\.sql$/;
 const lockName = "open-triage-forward-only-migrations-v1";
+const compatibleMigrationChecksums = new Map([
+  ["20260912120000", new Map([
+    [
+      "de083488ce021a6cfd2333603b5e8e3da700553bc8f024840e3dd5c3b9ff4534",
+      "a94e7492463a45e29089d56e0e1d8c46a31f544efe9af4ea93eabf7e60feeeed",
+    ],
+  ])],
+]);
+
+function isCompatibleMigrationChecksum(version, recordedChecksum, currentChecksum) {
+  return compatibleMigrationChecksums.get(version)?.get(recordedChecksum) === currentChecksum;
+}
 
 export async function readMigrations(migrationsDirectory) {
   const entries = await readdir(migrationsDirectory, { withFileTypes: true });
@@ -68,10 +80,14 @@ export async function applyMigrations(client, migrations, log = console) {
     for (const migration of migrations) {
       const recordedChecksum = applied.get(migration.version);
       if (applied.has(migration.version)) {
-        if (recordedChecksum && recordedChecksum !== migration.checksum) {
+        const compatibleChecksum = recordedChecksum && recordedChecksum !== migration.checksum &&
+          isCompatibleMigrationChecksum(migration.version, recordedChecksum, migration.checksum);
+        if (recordedChecksum && recordedChecksum !== migration.checksum && !compatibleChecksum) {
           throw new Error(`Applied migration ${migration.version} has been modified`);
         }
-        const verification = recordedChecksum ? "checksum verified" : "trusted Supabase history";
+        const verification = compatibleChecksum
+          ? "compatible legacy checksum verified"
+          : recordedChecksum ? "checksum verified" : "trusted Supabase history";
         log.info(`Migration ${migration.version}_${migration.name} already applied (${verification})`);
         continue;
       }

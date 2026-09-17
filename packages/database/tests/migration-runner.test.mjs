@@ -84,6 +84,20 @@ test("completed migrations are safe to rerun and changed history is rejected", a
   await assert.rejects(applyMigrations(client, migrations, silentLog), /has been modified/);
 });
 
+test("the known transaction-only role migration amendment preserves immutable history", async () => {
+  const migrations = await readMigrations(path.resolve(import.meta.dirname, "../../../supabase/migrations"));
+  const migration = migrations.find(({ version }) => version === "20260912120000");
+  assert.equal(migration?.checksum, "a94e7492463a45e29089d56e0e1d8c46a31f544efe9af4ea93eabf7e60feeeed");
+  const legacyChecksum = "de083488ce021a6cfd2333603b5e8e3da700553bc8f024840e3dd5c3b9ff4534";
+  const client = new FakeClient([[migration.version, legacyChecksum]]);
+  const messages = [];
+
+  await applyMigrations(client, [migration], { info(message) { messages.push(message); } });
+
+  assert.equal(client.applied.get(migration.version), legacyChecksum, "the recorded checksum must not be rewritten");
+  assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
+});
+
 test("migration history previously written by the Supabase CLI is respected", async () => {
   const migrations = await migrationSet({ "202608300001_first.sql": "select 'first migration';" });
   const client = new FakeClient([[migrations[0].version, null]]);
