@@ -10,6 +10,7 @@ implemented behavior.
 | [OpenTriage demo](open-triage-demo.md) | Broad demo product baseline | Precedes the narrower MVP definition |
 | [OpenTriage MVP](open-triage-mvp.md) | First delivery scope | Implemented through GitHub issue #54 and its subissues |
 | [Mobile call flow](flow-mobile.md) | Feature specification | Extends the MVP with assigned-call and mobile workflow behavior |
+| [Protected offline clinical storage](protected-offline-clinical-storage.md) | Security feature specification | Defines encrypted browser persistence and supersedes older plaintext/offline-restart assumptions; parent issue #418 |
 | [Dispatch payload](dispatch-payload.md) | Feature specification | Defines dispatch ingestion and projection boundaries |
 | [Stationary workflow MVP](stationary-workflow-mvp.md) | Feature specification | Defines the stationary documentation workflow |
 | [Admin controls](admin-controls.md) | Broad product direction | Parent scope for administration capabilities |

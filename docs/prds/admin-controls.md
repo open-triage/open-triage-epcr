@@ -1,5 +1,11 @@
 # Admin Controls PRD
 
+> Offline clinical persistence and grant behavior is specified by the
+> [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md).
+> It supersedes broader offline-grant statements here where the documents
+> differ. Agency mutation controls for its stored policy defaults remain a
+> later Admin-controls slice.
+
 ## Problem Statement
 
 OpenTriage installations need a secure, understandable way to administer the people, permissions, operational resources, clinical configuration, and installation settings that make the documentation workflow function. Today, important behavior is spread across seeded database records, committed configuration, hard-coded demo credentials, generated catalogs, and application constants. An agency cannot safely manage users, tailor its stationary documentation, inspect configuration history, or transfer reusable configuration without developer or database access.

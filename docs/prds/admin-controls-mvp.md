@@ -86,7 +86,7 @@ Success means a representative agency administrator completes the entire configu
 - Ship only the built-in Clinician and Administrator capability sets needed by the acceptance journey. Do not implement role-management UI, custom roles, or ownership transfer.
 - Make the API derive the user and organization context from the session. Do not accept client-submitted role, capability, or organization claims as authority.
 - Use least-privilege database access and organization/capability-aware database enforcement where practical. Index foreign keys and authorization predicates.
-- The new signed offline-grant architecture is deferred. Existing queued clinical-draft behavior should not be intentionally removed, but production-ready offline reload and expired-session recovery are not MVP claims.
+- The protected offline-grant architecture is deferred to the [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md). Existing queued clinical-draft behavior should not be intentionally removed, but production-ready offline reload and expired-session recovery are not MVP claims.
 
 ### Admin Application Shell
 
@@ -239,7 +239,7 @@ Good tests verify externally observable behavior and durable safety properties r
 - Localization authoring, translation management, and complete UI localization.
 - Theme, logo, and accent-color editing.
 - Multifactor authentication, self-service forgotten-password delivery, the future Swedish external identity provider, and federated provisioning.
-- New signed offline grants, offline reload authorization, and complete expired-session reconnect handling.
+- Protected offline grants, encrypted reload authorization, and expired-session reconnect handling defined by the [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md).
 - The read-only database-backed demo Admin experience and demo-admin credentials.
 - Automated 24-hour server deletion, browser cache expiry, delayed-sync tombstones, production archival, and production retention execution.
 - Audit browsing, filtering, CSV/JSON export, and administrative file downloads.
@@ -260,6 +260,6 @@ Good tests verify externally observable behavior and durable safety properties r
 - Advanced validation should be revisited when a real Swedish agency rule cannot be expressed through element-level requiredness and constraints.
 - Custom elements/groups should be revisited when an agency requirement cannot be satisfied by the existing catalog.
 - Portable configuration should be revisited when a second agency needs to reuse the first agency's catalog/form work.
-- Production-grade offline authentication must be completed before the new session system is represented as fully production-ready for disrupted field connectivity.
+- The [Protected Offline Clinical Storage PRD](protected-offline-clinical-storage.md) must be completed before the new session system is represented as fully production-ready for disrupted field connectivity.
 - Administrative scale profiles should be added when the corresponding Users, Units, History, or Audit collections become functional.
 - The first implementation slice is: operator CLI owner provisioning, forced password replacement, secure sign-in, capability-authorized Admin mode, the Stationary-styled shell with placeholders, and read-only display of active catalog/form versions.
