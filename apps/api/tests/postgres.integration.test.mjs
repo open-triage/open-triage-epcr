@@ -1286,7 +1286,12 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     select
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
-        where e.release_id = $1 and e.base_datatype = 'string' order by e.element_id limit 1) as text_id,
+        where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs = 1
+        order by e.element_id limit 1) as text_id,
+      (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
+        on m.release_id = e.release_id and m.element_id = e.element_id
+        where e.release_id = $1 and e.base_datatype = 'string' and e.max_occurs is null
+        order by e.element_id limit 1) as repeatable_text_id,
       (select e.element_id from catalog.element_definition e join catalog.analytics_element_mapping m
         on m.release_id = e.release_id and m.element_id = e.element_id
         where e.release_id = $1 and e.base_datatype = 'dateTime' order by e.element_id limit 1) as datetime_id,
@@ -1568,13 +1573,13 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     saveMerge({
       commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "disjoint-a",
       clientTime: clientTime(1),
-      occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, ordinal: 0,
+      occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id, ordinal: 0,
         value: { kind: "text", value: "disjoint-a" } }]
     }),
     saveMerge({
       commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "disjoint-b",
       clientTime: clientTime(2),
-      occurrences: [{ id: mergeOccurrenceB, elementId: ids.text_id, ordinal: 1,
+      occurrences: [{ id: mergeOccurrenceB, elementId: ids.repeatable_text_id, ordinal: 1,
         value: { kind: "text", value: "disjoint-b" } }]
     })
   ]);
@@ -1586,10 +1591,10 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   const collisionCommands = [
     { commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: "collision-older",
-      clientTime: clientTime(10), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      clientTime: clientTime(10), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
         value: { kind: "text", value: "collision-older" } }] },
     { commandId: randomUUID(), expectedRevision: 2, authorId: userId, deviceId: "collision-newer",
-      clientTime: clientTime(20), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      clientTime: clientTime(20), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
         value: { kind: "text", value: "collision-newer" } }] }
   ];
   const collisions = await Promise.all(collisionCommands.map(saveMerge));
@@ -1600,12 +1605,12 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   const mergeDeleteCommand = {
     commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "delete-newer",
-    clientTime: clientTime(40), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, tombstone: true }]
+    clientTime: clientTime(40), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id, tombstone: true }]
   };
   const editDelete = await Promise.all([
     saveMerge({
       commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "edit-older",
-      clientTime: clientTime(30), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+      clientTime: clientTime(30), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
         value: { kind: "text", value: "edit-before-delete" } }]
     }),
     saveMerge(mergeDeleteCommand)
@@ -1619,7 +1624,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   const resurrected = await saveMerge({
     commandId: randomUUID(), expectedRevision: 4, authorId: userId, deviceId: "resurrection",
-    clientTime: clientTime(50), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+    clientTime: clientTime(50), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
       value: { kind: "text", value: "resurrected" } }]
   });
   assert.equal(resurrected.response.status, 201, JSON.stringify(resurrected.payload));
@@ -1627,19 +1632,19 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   await saveMerge({
     commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "skew-base",
-    clientTime: clientTime(60), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+    clientTime: clientTime(60), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
       value: { kind: "text", value: "sane-base" } }]
   });
   const futureCommand = {
     commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "future-clock",
     clientTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
       value: { kind: "text", value: "future-clock" } }]
   };
   await saveMerge(futureCommand);
   const afterSkew = await saveMerge({
     commandId: randomUUID(), expectedRevision: 7, authorId: userId, deviceId: "sane-after-skew",
-    clientTime: clientTime(70), occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id,
+    clientTime: clientTime(70), occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id,
       value: { kind: "text", value: "sane-after-skew" } }]
   });
   assert.equal(afterSkew.payload.revision, 10);
@@ -1649,11 +1654,11 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const tieTime = clientTime(80);
   await saveMerge({
     commandId: randomUUID(), expectedRevision: 10, authorId: userId, deviceId: "tie-first", clientTime: tieTime,
-    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, value: { kind: "text", value: "tie-first" } }]
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id, value: { kind: "text", value: "tie-first" } }]
   });
   const tieSecondCommand = {
     commandId: randomUUID(), expectedRevision: 10, authorId: userId, deviceId: "tie-second", clientTime: tieTime,
-    occurrences: [{ id: mergeOccurrenceA, elementId: ids.text_id, value: { kind: "text", value: "tie-second" } }]
+    occurrences: [{ id: mergeOccurrenceA, elementId: ids.repeatable_text_id, value: { kind: "text", value: "tie-second" } }]
   };
   const tieSecond = await saveMerge(tieSecondCommand);
   const tieRetry = await saveMerge(tieSecondCommand);
@@ -1684,6 +1689,108 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(Number(skewAudit.losing_base_revision), 7);
   await assert.rejects(client.query("update clinical_audit.draft_reconciliation set resolution = resolution where report_id = $1",
     [mergeReportId]), /append-only/);
+
+  const singletonReportId = randomUUID();
+  const singletonCreated = await request("/reports", "POST", {
+    commandId: randomUUID(), reportId: singletonReportId, incidentId: randomUUID(), patientId: randomUUID(),
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
+  });
+  assert.equal(singletonCreated.response.status, 201, JSON.stringify(singletonCreated.payload));
+  const singletonOlderId = randomUUID();
+  const singletonNewerId = randomUUID();
+  const singletonOlderCommand = {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "singleton-older",
+    clientTime: clientTime(100), occurrences: [{ id: singletonOlderId, elementId: ids.text_id,
+      ordinal: 0, value: { kind: "text", value: "singleton-older" } }]
+  };
+  const singletonNewerCommand = {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "singleton-newer",
+    clientTime: clientTime(110), occurrences: [{ id: singletonNewerId, elementId: ids.text_id,
+      ordinal: 0, value: { kind: "text", value: "singleton-newer" } }]
+  };
+  const singletonResults = await Promise.all([
+    request(`/reports/${singletonReportId}/draft-changes`, "POST", singletonOlderCommand),
+    request(`/reports/${singletonReportId}/draft-changes`, "POST", singletonNewerCommand)
+  ]);
+  assert.deepEqual(singletonResults.map(({ response }) => response.status), [201, 201]);
+  assert.deepEqual(singletonResults.map(({ payload }) => payload.revision).sort((a, b) => a - b), [1, 2]);
+  const singletonState = await client.query(`select id, value_text from clinical.element_occurrence
+    where report_id = $1 and element_id = $2 and tombstoned_at is null`, [singletonReportId, ids.text_id]);
+  assert.equal(singletonState.rowCount, 1);
+  assert.equal(singletonState.rows[0].value_text, "singleton-newer");
+  assert.ok([singletonOlderId, singletonNewerId].includes(singletonState.rows[0].id));
+  const singletonLineage = await client.query(`select reconciliation.target_id,
+      reconciliation.losing_value, reconciliation.winning_idempotency_key,
+      reconciliation.winning_device_id, reconciliation.resolution,
+      state.target_id as state_target_id, state.target_value
+    from clinical_audit.draft_reconciliation reconciliation
+    join clinical.draft_target_state state
+      on state.report_id = reconciliation.report_id
+     and state.target_type = reconciliation.target_type
+     and state.target_id = reconciliation.target_id
+    where reconciliation.report_id = $1`, [singletonReportId]);
+  assert.equal(singletonLineage.rowCount, 1);
+  assert.equal(singletonLineage.rows[0].target_id, singletonState.rows[0].id);
+  assert.equal(singletonLineage.rows[0].state_target_id, singletonState.rows[0].id);
+  assert.equal(singletonLineage.rows[0].losing_value.id, singletonOlderId);
+  assert.equal(singletonLineage.rows[0].winning_idempotency_key, singletonNewerCommand.commandId);
+  assert.equal(singletonLineage.rows[0].winning_device_id, "singleton-newer");
+  assert.equal(singletonLineage.rows[0].resolution, "client-time");
+  assert.equal(singletonLineage.rows[0].target_value.value.value, "singleton-newer");
+
+  const singletonTieReportId = randomUUID();
+  const singletonTieCreated = await request("/reports", "POST", {
+    commandId: randomUUID(), reportId: singletonTieReportId, incidentId: randomUUID(), patientId: randomUUID(),
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
+  });
+  assert.equal(singletonTieCreated.response.status, 201, JSON.stringify(singletonTieCreated.payload));
+  const singletonTieFirstId = randomUUID();
+  const singletonTieSecondId = randomUUID();
+  const singletonTieTime = clientTime(120);
+  const singletonTieFirst = await request(`/reports/${singletonTieReportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "singleton-tie-first",
+    clientTime: singletonTieTime, occurrences: [{ id: singletonTieFirstId, elementId: ids.text_id,
+      ordinal: 0, value: { kind: "text", value: "singleton-tie-first" } }]
+  });
+  assert.equal(singletonTieFirst.response.status, 201, JSON.stringify(singletonTieFirst.payload));
+  const singletonTieSecond = await request(`/reports/${singletonTieReportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "singleton-tie-second",
+    clientTime: singletonTieTime, occurrences: [{ id: singletonTieSecondId, elementId: ids.text_id,
+      ordinal: 0, value: { kind: "text", value: "singleton-tie-second" } }]
+  });
+  assert.equal(singletonTieSecond.response.status, 201, JSON.stringify(singletonTieSecond.payload));
+  assert.deepEqual((await client.query(`select id, value_text from clinical.element_occurrence
+    where report_id = $1 and element_id = $2 and tombstoned_at is null`,
+  [singletonTieReportId, ids.text_id])).rows, [{ id: singletonTieFirstId, value_text: "singleton-tie-second" }]);
+  assert.deepEqual((await client.query(`select target_id, winning_device_id, resolution
+    from clinical_audit.draft_reconciliation where report_id = $1`, [singletonTieReportId])).rows,
+  [{ target_id: singletonTieFirstId, winning_device_id: "singleton-tie-second", resolution: "server-receipt-order" }]);
+
+  const cardinalityGuardReportId = randomUUID();
+  const cardinalityGuardCreated = await request("/reports", "POST", {
+    commandId: randomUUID(), reportId: cardinalityGuardReportId, incidentId: randomUUID(), patientId: randomUUID(),
+    organizationId, documentingUserId: userId, formId, patientIdentityState: "unknown"
+  });
+  assert.equal(cardinalityGuardCreated.response.status, 201, JSON.stringify(cardinalityGuardCreated.payload));
+  const invalidDraft = await request(`/reports/${cardinalityGuardReportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId,
+    occurrences: [
+      { id: randomUUID(), elementId: ids.text_id, ordinal: 0, value: { kind: "text", value: "first" } },
+      { id: randomUUID(), elementId: ids.text_id, ordinal: 1, value: { kind: "text", value: "second" } }
+    ]
+  });
+  assert.equal(invalidDraft.response.status, 201, JSON.stringify(invalidDraft.payload));
+  const guardedReconciliation = await request(`/reports/${cardinalityGuardReportId}/draft-changes`, "POST", {
+    commandId: randomUUID(), expectedRevision: 0, authorId: userId, deviceId: "guarded-reconciliation",
+    clientTime: clientTime(130), occurrences: [{ id: randomUUID(), elementId: ids.text_id,
+      ordinal: 0, value: { kind: "text", value: "must-not-commit" } }]
+  });
+  assert.equal(guardedReconciliation.response.status, 422, JSON.stringify(guardedReconciliation.payload));
+  assert.deepEqual((await client.query(`select
+      (select revision from clinical.report where id = $1) as revision,
+      (select count(*)::integer from clinical.element_occurrence where report_id = $1) as occurrences,
+      (select count(*)::integer from clinical.report_change where report_id = $1) as changes`,
+  [cardinalityGuardReportId])).rows[0], { revision: "1", occurrences: 2, changes: 1 });
 
   const sign = (body) => request(`/reports/${reportId}/sign`, "POST", body);
   const missingRequired = await sign({

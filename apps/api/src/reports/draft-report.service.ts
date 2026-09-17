@@ -64,6 +64,11 @@ type ElementMetadata = {
   analytical_repeatable: boolean;
   identifying: boolean;
   allowed_absence_states: string[];
+  max_occurs: number | null;
+};
+
+type SingletonTargetStateRow = DraftTargetStateRow & {
+  incoming_target_id: string;
 };
 
 type OpenCallRow = {
@@ -308,6 +313,7 @@ export class DraftReportService {
         const winningOccurrences: DraftOccurrenceMutation[] = [];
         const winningTargets: IncomingTarget[] = [];
         const audits: ReconciliationAudit[] = [];
+        let reconciledSingleton = false;
         const targets: Array<{ type: DraftTargetType; value: DraftGroupMutation | DraftOccurrenceMutation }> = [
           ...(command.groups ?? []).map((value) => ({ type: "group" as const, value })),
           ...(command.occurrences ?? []).map((value) => ({ type: "occurrence" as const, value }))
@@ -317,6 +323,12 @@ export class DraftReportService {
           manager,
           report,
           (command.occurrences ?? []).filter((occurrence) => !occurrence.tombstone)
+        );
+        const singletonStates = await this.singletonTargetStates(
+          manager,
+          report.id,
+          (command.occurrences ?? []).filter((occurrence) => !occurrence.tombstone),
+          occurrenceMetadata
         );
         for (const target of targets) {
           const incoming: IncomingTarget = {
@@ -331,7 +343,15 @@ export class DraftReportService {
             serverReceivedTime,
             baseRevision: command.expectedRevision
           };
-          const current = currentStates.get(`${target.type}:${target.value.id}`) ?? null;
+          const directCurrent = currentStates.get(`${target.type}:${target.value.id}`) ?? null;
+          const singletonCurrent = target.type === "occurrence"
+            ? singletonStates.get(target.value.id) ?? null
+            : null;
+          const current = directCurrent ?? (
+            singletonCurrent && Number(singletonCurrent.revision) > command.expectedRevision
+              ? singletonCurrent
+              : null
+          );
           if (current) this.assertStableTarget(current.target_value, target.value, target.type);
           if (target.type === "occurrence" && !(target.value as DraftOccurrenceMutation).tombstone) {
             const occurrence = target.value as DraftOccurrenceMutation;
@@ -339,27 +359,46 @@ export class DraftReportService {
             this.validateDatatype(occurrence.value!, metadata, occurrence.elementId);
           }
           let incomingWins = true;
+          let winningTarget = incoming;
           if (current && Number(current.revision) > command.expectedRevision) {
+            if (singletonCurrent && !directCurrent) reconciledSingleton = true;
             const prior = this.targetFromState(current);
             const decision = this.selectConcurrentWinner(prior, incoming);
             incomingWins = decision.winner === incoming;
             audits.push({
               targetType: target.type,
-              targetId: target.value.id,
+              targetId: current.target_id,
               losing: decision.winner === incoming ? prior : incoming,
               winning: decision.winner,
               resolution: decision.resolution
             });
+            if (incomingWins && singletonCurrent && !directCurrent) {
+              const incumbent = singletonCurrent.target_value as DraftOccurrenceMutation;
+              const value = target.value as DraftOccurrenceMutation;
+              const resolvedValue: DraftOccurrenceMutation = {
+                ...value,
+                id: singletonCurrent.target_id,
+                groupInstanceId: incumbent.groupInstanceId,
+                ordinal: incumbent.ordinal
+              };
+              winningTarget = {
+                ...incoming,
+                targetId: singletonCurrent.target_id,
+                value: resolvedValue
+              };
+              occurrenceMetadata.set(singletonCurrent.target_id, occurrenceMetadata.get(value.id)!);
+            }
           }
           if (incomingWins) {
-            winningTargets.push(incoming);
-            if (target.type === "group") winningGroups.push(target.value as DraftGroupMutation);
-            else winningOccurrences.push(target.value as DraftOccurrenceMutation);
+            winningTargets.push(winningTarget);
+            if (target.type === "group") winningGroups.push(winningTarget.value as DraftGroupMutation);
+            else winningOccurrences.push(winningTarget.value as DraftOccurrenceMutation);
           }
         }
 
         await this.applyGroups(manager, report, { ...command, groups: winningGroups });
         await this.applyOccurrences(manager, report, command, winningOccurrences, occurrenceMetadata);
+        if (reconciledSingleton) await this.assertPinnedCardinality(manager, report);
 
         await manager.query(`
           with updated as (
@@ -453,6 +492,77 @@ export class DraftReportService {
       for update
     `, [reportId, targets.map(({ value }) => value.id)]);
     return new Map(rows.map((row) => [`${row.target_type}:${row.target_id}`, row]));
+  }
+
+  private async singletonTargetStates(
+    manager: EntityManager,
+    reportId: string,
+    occurrences: ReadonlyArray<DraftOccurrenceMutation>,
+    metadataByOccurrence: ReadonlyMap<string, ElementMetadata>
+  ): Promise<Map<string, DraftTargetStateRow>> {
+    const candidates = occurrences.flatMap((occurrence) => {
+      const metadata = metadataByOccurrence.get(occurrence.id);
+      return metadata?.max_occurs === 1 ? [{
+        target_id: occurrence.id,
+        group_instance_id: occurrence.groupInstanceId ?? null,
+        element_identity_id: metadata.element_identity_id
+      }] : [];
+    });
+    if (!candidates.length) return new Map();
+    const rows = await manager.query<SingletonTargetStateRow[]>(`
+      select incoming.target_id as incoming_target_id,
+             state.target_type, state.target_id, state.revision, state.idempotency_key,
+             state.author_id, state.device_id, state.client_time, state.server_received_time,
+             state.base_revision, state.target_value
+      from jsonb_to_recordset($2::jsonb) as incoming(
+        target_id uuid, group_instance_id uuid, element_identity_id uuid)
+      join clinical.element_occurrence occurrence
+        on occurrence.report_id = $1
+       and occurrence.id <> incoming.target_id
+       and occurrence.group_instance_id is not distinct from incoming.group_instance_id
+       and occurrence.element_identity_id = incoming.element_identity_id
+       and occurrence.tombstoned_at is null
+      join clinical.draft_target_state state
+        on state.report_id = occurrence.report_id
+       and state.target_type = 'occurrence'
+       and state.target_id = occurrence.id
+      order by incoming.target_id, occurrence.id
+    `, [reportId, JSON.stringify(candidates)]);
+    const result = new Map<string, DraftTargetStateRow>();
+    for (const row of rows) {
+      if (result.has(row.incoming_target_id)) {
+        throw new UnprocessableEntityException("The draft already violates pinned max-one field cardinality");
+      }
+      result.set(row.incoming_target_id, row);
+    }
+    return result;
+  }
+
+  private async assertPinnedCardinality(manager: EntityManager, report: ReportRow): Promise<void> {
+    const violations = await manager.query<Array<{
+      element_id: string;
+      max_occurs: string | number;
+      occurrence_count: string | number;
+    }>>(`
+      select occurrence.element_id, definition.max_occurs, count(*) as occurrence_count
+      from clinical.element_occurrence occurrence
+      join catalog.element_definition definition
+        on definition.release_id = occurrence.catalog_release_id
+       and definition.element_id = occurrence.element_id
+      where occurrence.report_id = $1
+        and occurrence.tombstoned_at is null
+        and definition.max_occurs is not null
+      group by occurrence.group_instance_id, occurrence.element_id, definition.max_occurs
+      having count(*) > definition.max_occurs
+      order by occurrence.element_id
+      limit 1
+    `, [report.id]);
+    const violation = violations[0];
+    if (violation) {
+      throw new UnprocessableEntityException(
+        `${violation.element_id} permits at most ${violation.max_occurs} occurrence(s), not ${violation.occurrence_count}`
+      );
+    }
   }
 
   private targetFromState(state: DraftTargetStateRow): IncomingTarget {
@@ -1189,7 +1299,7 @@ export class DraftReportService {
     if (!occurrences.length) return new Map();
     const elementIds = [...new Set(occurrences.map(({ elementId }) => elementId))];
     const standard = await manager.query<ElementMetadata[]>(`
-      select e.element_id, e.element_identity_id, e.base_datatype,
+      select e.element_id, e.element_identity_id, e.base_datatype, e.max_occurs,
              (m.analytical_location = 'repeatable') as analytical_repeatable,
              m.identifying,
              array(select o.source_kind || ':' || o.code from catalog.element_option o
@@ -1203,7 +1313,7 @@ export class DraftReportService {
     const fields = formFieldIds.length ? await manager.query<ElementMetadata[]>(`
         select ff.id as form_field_id, ced.namespace || '.' || ced.slug as element_id,
                coalesce(ff.catalog_element_identity_id, ff.custom_element_definition_id) as element_identity_id,
-               ced.base_datatype,
+               ced.base_datatype, null::integer as max_occurs,
                ff.analytical_repeatable, ced.identifying,
                array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff

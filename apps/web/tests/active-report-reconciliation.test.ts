@@ -71,6 +71,50 @@ test("target-aware reconciliation keeps a stationary field edit and a disjoint s
   assert.equal(scalar("ePatient.03"), "Local first name");
 });
 
+test("max-one reconciliation does not duplicate distinct client occurrence identities", () => {
+  const baseline = structuredClone(synthetic) as EncounterDocument;
+  const replaceFirstName = (document: EncounterDocument, occurrenceId: string, value: string): EncounterDocument => ({
+    ...document,
+    groups: document.groups.map((group) => group.id === "ePatient.PatientNameGroup" ? {
+      ...group,
+      instances: group.instances.map((instance) => ({
+        ...instance,
+        elements: [
+          ...instance.elements.filter((element) => element.id !== "ePatient.03"),
+          { id: "ePatient.03", values: [{ kind: "scalar" as const, occurrenceId, value }] },
+        ],
+      })),
+    } : group),
+  });
+  const withoutFirstName = replaceFirstName(baseline, "removed", "removed");
+  const empty = {
+    ...withoutFirstName,
+    groups: withoutFirstName.groups.map((group) => group.id === "ePatient.PatientNameGroup" ? {
+      ...group,
+      instances: group.instances.map((instance) => ({
+        ...instance,
+        elements: instance.elements.filter((element) => element.id !== "ePatient.03"),
+      })),
+    } : group),
+  };
+  const local = replaceFirstName(empty, "local-first-name", "Local winner");
+  const server = replaceFirstName(empty, "server-first-name", "Server incumbent");
+  const persisted = encounterDocumentToDraftMutations(reportId, empty);
+  const command = encounterDocumentToDraftMutations(reportId, local, persisted);
+  const targets = pendingDraftTargets(command, persisted);
+
+  const pending = reconcileActiveReportDocument(reportId, local, server, true, targets);
+  const pendingValues = pending.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!
+    .instances[0]!.elements.find(({ id }) => id === "ePatient.03")!.values;
+  assert.deepEqual(pendingValues.map(({ occurrenceId }) => occurrenceId), ["local-first-name"]);
+
+  const winningSnapshot = replaceFirstName(empty, "server-first-name", "Local winner");
+  const firstClient = reconcileActiveReportDocument(reportId, local, winningSnapshot, false);
+  const secondClient = reconcileActiveReportDocument(reportId, server, winningSnapshot, false);
+  assert.deepEqual(firstClient, winningSnapshot);
+  assert.deepEqual(secondClient, winningSnapshot);
+});
+
 test("target-aware reconciliation keeps a pending occurrence deletion during a server refresh", () => {
   const baseline = structuredClone(synthetic) as EncounterDocument;
   const nameInstance = baseline.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!;

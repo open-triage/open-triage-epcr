@@ -1,5 +1,6 @@
 import type { EncounterDocument, EncounterGroupInstance } from "@open-triage/contracts";
 import { stableDraftId, type SaveDraftReportCommand } from "./draft-report";
+import { getNemsisDataElement } from "./nemsis-data-model";
 
 const OWNER = "x-open-triage-owner";
 
@@ -48,7 +49,9 @@ function mergeInstance(
     const serverElement = server.elements.find(({ id }) => id === elementId);
     const localChanged = localElement?.values.filter((value) => targets.occurrenceIds.has(targetId(reportId, "occurrence", value.occurrenceId))) ?? [];
     const serverValues = serverElement?.values.filter((value) => !targets.occurrenceIds.has(targetId(reportId, "occurrence", value.occurrenceId))) ?? [];
-    const values = [...serverValues, ...localChanged];
+    const values = localChanged.length > 0 && getNemsisDataElement(elementId)?.occurrence.max === 1
+      ? localChanged
+      : [...serverValues, ...localChanged];
     return values.length ? [{ ...(serverElement ?? localElement!), values }] : [];
   });
   return { ...server, elements };

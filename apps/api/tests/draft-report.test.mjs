@@ -180,7 +180,7 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     if (normalized.includes("from clinical.draft_target_state") && normalized.includes("for update")) return [];
     if (normalized.includes("from catalog.element_definition")) return [{
       element_id: "eNarrative.01", element_identity_id: elementIdentityId, base_datatype: "string",
-      analytical_repeatable: false, identifying: false, allowed_absence_states: []
+      analytical_repeatable: false, identifying: false, allowed_absence_states: [], max_occurs: null
     }];
     if (normalized.startsWith("insert into clinical.element_occurrence")) {
       const rows = JSON.parse(parameters[3]).map(({ id }) => ({ id }));
