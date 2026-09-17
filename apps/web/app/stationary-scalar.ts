@@ -233,8 +233,9 @@ function replaceElementValues(document: EncounterDocument, groupId: string, grou
   const instance = group.instances[instanceIndex]!;
   const elementIndex = instance.elements.findIndex((element) => element.id === elementId);
   const elements = [...instance.elements];
-  if (elementIndex < 0) elements.push({ id: elementId, values });
-  else elements[elementIndex] = { ...elements[elementIndex]!, values };
+  if (values.length === 0 && elementIndex >= 0) elements.splice(elementIndex, 1);
+  else if (elementIndex < 0 && values.length > 0) elements.push({ id: elementId, values });
+  else if (elementIndex >= 0) elements[elementIndex] = { ...elements[elementIndex]!, values };
   const instances = [...group.instances];
   instances[instanceIndex] = { ...instance, attributes: clinicianOwnedAttributes(instance.attributes), elements };
   const groups = [...document.groups];
