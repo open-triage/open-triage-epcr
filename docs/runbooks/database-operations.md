@@ -85,3 +85,56 @@ Rotate analyst credentials at 15 minutes, service credentials by 30 days, and
 break-glass credentials at 60 minutes. Revoke the old credential after at most
 24 hours of service rotation overlap, confirm connection drain, and retain only
 credential identifiers and timestamps in security evidence.
+
+## Offline recovery wrapping-secret backup and rotation
+
+Offline report keys use a dedicated installation secret family. It must never be
+derived from or reused as a pseudonymization, database credential, session, CSRF,
+or application-signing secret. Store the JSON keyring only in the installation's
+approved secret manager and offline escrow; do not put it in PostgreSQL, a database
+backup, logs, source control, or a browser. Each value is an independently random
+32-byte secret encoded as canonical base64 and keyed by its positive integer version:
+
+```text
+OFFLINE_RECOVERY_WRAPPING_KEYS_JSON={"1":"<base64>","2":"<base64>"}
+```
+
+Every backup set must include, in separately protected escrow, **every version
+referenced by a live `offline_recovery.report_key_envelope`**. Losing any referenced
+version makes the affected offline work permanently unrecoverable; a database restore
+cannot reconstruct the secret. Before accepting a backup, compare escrow inventory
+with this metadata-only query while assuming `open_triage_offline_key_rotator`:
+
+```sql
+select wrapping_key_version, count(*)
+from offline_recovery.report_key_envelope
+where state in ('live', 'locked')
+group by wrapping_key_version order by wrapping_key_version;
+```
+
+To rotate, add a newly generated version to the secret manager and escrow, deploy the
+complete old-plus-new keyring, then run:
+
+```bash
+OLD_OFFLINE_RECOVERY_KEY_VERSION=1 \
+NEW_OFFLINE_RECOVERY_KEY_VERSION=2 \
+OFFLINE_RECOVERY_WRAPPING_KEYS_JSON="$OFFLINE_RECOVERY_WRAPPING_KEYS_JSON" \
+DATABASE_URL="$OFFLINE_RECOVERY_ROTATOR_DATABASE_URL" \
+  npm run rotate:offline-recovery-keys -w @open-triage/database
+```
+
+The rotator decrypts and rewraps in process memory, records one bounded audit event per
+envelope, verifies that zero live envelopes reference the old version, and only then
+marks it retired. It is restart-safe: envelopes already moved to the new version are
+not selected again. Keep retired material through the approved backup-retention window
+because an older database backup may still reference it. Remove it only after every
+retained backup is newer than the completed rotation and a restore exercise confirms
+the version inventory. A failed coverage check is a stop condition, never a reason to
+force retirement.
+
+The API runtime role can register, recover, lock, expire, and purge lifecycle state but
+has no table privileges. The rotator can call only version/rewrap operations. The
+administrative recovery-purger can only delete a selected envelope and receives no
+operation that returns wrapped or plaintext keys, so administration cannot use this
+workflow to obtain another clinician's key. Audit records contain only bounded actor,
+organization, report, policy, outcome, time, reason, and version facts.
