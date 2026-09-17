@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
@@ -108,10 +108,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
     restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
-    conflictError, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
+    conflictError, editingBlocked, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
-    validationErrorCount: reviewErrors.length,
+    validationErrorCount: reviewErrors.length, online,
     onSessionEnded,
     onReportCompleted,
   });
@@ -339,8 +339,18 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     await resolveConflict(conflict, disposition);
   }
 
+  const blockProtectedEdit = (event: SyntheticEvent<HTMLElement>) => {
+    if (!editingBlocked) return;
+    const target = event.target as HTMLElement;
+    if (!target.closest("button, input, select, textarea, label, [contenteditable='true']")) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
-    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}>
+    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}
+      data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
+      onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>

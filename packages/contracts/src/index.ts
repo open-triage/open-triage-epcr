@@ -121,6 +121,18 @@ export interface ProtectedReportKeyEnvelope {
   wrappingKeyVersion: number;
 }
 
+export interface CheckpointProtectedReportCommand {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  ciphertextRevision: number;
+  ciphertextSha256: string;
+}
+
+export interface ProtectedReportCheckpoint {
+  ciphertextRevision: number;
+  ciphertextSha256: string;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];

@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ProtectedReportKeyEnvelope, RegisterProtectedReportKeyCommand } from "@open-triage/contracts";
+import type { CheckpointProtectedReportCommand, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope, RegisterProtectedReportKeyCommand } from "@open-triage/contracts";
 import { createCipheriv, createHash, randomBytes } from "node:crypto";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -98,6 +98,32 @@ export class ProtectedReportKeyService {
     });
   }
 
+  async checkpoint(
+    accessToken: string,
+    reportId: string,
+    input: unknown,
+    csrfToken?: string,
+  ): Promise<ProtectedReportCheckpoint> {
+    const command = this.validateCheckpoint(input);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+        const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+        const rows = await manager.query<Array<{ ciphertext_revision: string | number; ciphertext_sha256: string }>>(`
+          select * from offline_recovery.checkpoint_report_ciphertext($1, $2, $3, $4, $5, $6)
+        `, [reportId, session.organization.id, session.user.id, command.recoveryHandle,
+          command.ciphertextRevision, command.ciphertextSha256]);
+        if (!rows[0]) throw new NotFoundException("The protected report is unavailable");
+        return { ciphertextRevision: Number(rows[0].ciphertext_revision), ciphertextSha256: rows[0].ciphertext_sha256 };
+      });
+    } catch (error) {
+      const code = (error as { driverError?: { code?: unknown }; code?: unknown })?.driverError?.code ??
+        (error as { code?: unknown })?.code;
+      if (code === "40001" || code === "23505") throw new ConflictException("The protected ciphertext checkpoint would roll back synchronized state");
+      throw error;
+    }
+  }
+
   private validate(input: unknown): RegisterProtectedReportKeyCommand {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new UnprocessableEntityException("Protected report key registration is invalid");
@@ -110,5 +136,17 @@ export class ProtectedReportKeyService {
       throw new UnprocessableEntityException("Protected report key registration is invalid");
     }
     return record as unknown as RegisterProtectedReportKeyCommand;
+  }
+
+  private validateCheckpoint(input: unknown): CheckpointProtectedReportCommand {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Protected ciphertext checkpoint is invalid");
+    const record = input as Record<string, unknown>;
+    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
+        record.schemaVersion !== 1 || typeof record.recoveryHandle !== "string" || !uuidV4.test(record.recoveryHandle) ||
+        !Number.isSafeInteger(record.ciphertextRevision) || Number(record.ciphertextRevision) < 1 ||
+        typeof record.ciphertextSha256 !== "string" || !/^[a-f0-9]{64}$/.test(record.ciphertextSha256)) {
+      throw new UnprocessableEntityException("Protected ciphertext checkpoint is invalid");
+    }
+    return record as unknown as CheckpointProtectedReportCommand;
   }
 }

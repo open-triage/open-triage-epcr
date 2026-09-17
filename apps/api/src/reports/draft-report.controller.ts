@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
-import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ProtectedReportKeyEnvelope, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -34,6 +34,19 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string,
   ): Promise<ProtectedReportKeyEnvelope> {
     return this.protectedKeys.register(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/protected-ciphertext-checkpoint")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  checkpointProtectedCiphertext(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportCheckpoint> {
+    return this.protectedKeys.checkpoint(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
   @Get("open")
