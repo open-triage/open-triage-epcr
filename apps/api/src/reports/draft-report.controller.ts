@@ -21,6 +21,7 @@ export class DraftReportController {
   ) {}
 
   @Post()
+  @Header("Cache-Control", "no-store, private")
   create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<DraftReportResult> {
     return this.reports.create(bearerToken(authorization, cookie), body);
   }
@@ -93,11 +94,13 @@ export class DraftReportController {
   }
 
   @Get("open")
+  @Header("Cache-Control", "no-store, private")
   listOpen(@Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<OpenCallsResponse> {
     return this.reports.listOpen(bearerToken(authorization, cookie));
   }
 
   @Post(":id/draft-changes")
+  @Header("Cache-Control", "no-store, private")
   save(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
@@ -110,6 +113,7 @@ export class DraftReportController {
 
   @Post(":id/reopen")
   @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
   reopen(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization?: string,
@@ -119,6 +123,7 @@ export class DraftReportController {
   }
 
   @Delete(":id")
+  @Header("Cache-Control", "no-store, private")
   deleteDraft(
     @Param("id", uuidV4) id: string,
     @Headers("x-csrf-token") csrfToken?: string,
@@ -129,6 +134,7 @@ export class DraftReportController {
   }
 
   @Get(":id/active")
+  @Header("Cache-Control", "no-store, private")
   async active(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization: string | undefined,
@@ -146,6 +152,7 @@ export class DraftReportController {
   }
 
   @Post(":id/dispatch-conflicts/:conflictId")
+  @Header("Cache-Control", "no-store, private")
   resolveDispatchConflict(
     @Param("id", uuidV4) id: string,
     @Param("conflictId", uuidV4) conflictId: string,
@@ -157,6 +164,7 @@ export class DraftReportController {
   }
 
   @Post(":id/sign")
+  @Header("Cache-Control", "no-store, private")
   sign(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
@@ -167,6 +175,7 @@ export class DraftReportController {
   }
 
   @Get(":id")
+  @Header("Cache-Control", "no-store, private")
   get(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization?: string,
