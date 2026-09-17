@@ -7,6 +7,7 @@ import {
   deleteLegacyClinicalStorage,
   encryptProtectedPayload,
   evictionOrder,
+  offlineEditingAvailable,
   persistentStorageGranted,
   protectedRecordExpired,
   retainedProtectedRecords,
@@ -77,7 +78,7 @@ test("stale and swapped atomic replacements are rejected before the last ciphert
   assert.doesNotThrow(() => assertMonotonicCiphertextRevision(current, { recoveryHandle: current.recoveryHandle, ciphertextRevision: 9 }));
 });
 
-test("offline capability is enabled only after persistent storage is confirmed", async () => {
+test("persistent storage grant detection fails closed", async () => {
   assert.equal(await persistentStorageGranted(undefined), false);
   assert.equal(await persistentStorageGranted({ persisted: async () => false, persist: async () => false }), false);
   assert.equal(await persistentStorageGranted({ persisted: async () => { throw new Error("blocked"); }, persist: async () => true }), false);
@@ -87,6 +88,14 @@ test("offline capability is enabled only after persistent storage is confirmed",
     persist: async () => true,
   }), true);
   assert.equal(checks, 2);
+});
+
+test("encrypted IndexedDB remains available in explicit best-effort mode", () => {
+  assert.equal(offlineEditingAvailable("active"), true);
+  assert.equal(offlineEditingAvailable("best-effort"), true);
+  assert.equal(offlineEditingAvailable("online-only"), false);
+  assert.equal(offlineEditingAvailable("read-only"), false);
+  assert.equal(offlineEditingAvailable("locked"), false);
 });
 
 test("quota pressure chooses expired then synchronized ciphertext and never unsynchronized work", () => {

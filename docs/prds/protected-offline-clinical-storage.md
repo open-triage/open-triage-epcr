@@ -88,7 +88,7 @@ browser, operating system, extension, or active unlocked session.
 42. As a clinician, I want only one browser tab to edit a report at a time, so that competing local writers cannot overwrite ciphertext.
 43. As a clinician, I want a second tab to explain the lock and remain read-only, so that concurrency behavior is understandable.
 44. As a clinician, I want expired and synchronized records removed before storage pressure affects pending work, so that unsynchronized ciphertext is never evicted silently.
-45. As a clinician, I want offline editing disabled when persistent browser storage is unavailable, so that the browser does not promise durability it cannot provide.
+45. As a clinician, I want denied persistent storage to fall back to explicitly labeled, encrypted best-effort IndexedDB, so that offline work remains possible without promising eviction resistance.
 46. As an auditor, I want recovery grants, denials, locks, expiry, purge, and successful recovery recorded, so that sensitive key-release behavior is attributable.
 47. As a privacy officer, I want audit records to exclude ciphertext, keys, patient fields, queued changes, browser contents, and credentials, so that auditing does not create another clinical store.
 48. As an unauthorized caller, I want the same generic denial for missing, expired, purged, or inaccessible reports, so that key-release APIs do not reveal record existence.
@@ -150,7 +150,7 @@ All four modules are required. Agency policy controls and device registration ar
 - Use IndexedDB for protected clinical persistence. Do not store clinical documents, report summaries, queued changes, recovery bytes, or report keys in `localStorage`, session storage, Cache Storage, service-worker caches, or logs.
 - Outside ciphertext retain only a random local record ID, opaque server recovery handle, envelope and algorithm versions, nonce and authentication-tag material, and recovery deadline.
 - Do not expose user ID, organization ID, report ID, call number, patient data, workflow state, or queued-change details as local plaintext metadata.
-- Require persistent browser storage before enabling offline edits. If unsupported or denied, operate online-only and explain the limitation.
+- Require Web Crypto, IndexedDB, and Web Locks before enabling offline edits. If persistent storage is denied, use explicitly labeled best-effort encrypted IndexedDB; if the required primitives are unsupported, operate online-only and explain the limitation.
 - Each write commits a complete replacement atomically while retaining the previous authenticated envelope until success.
 - Use an exclusive per-report browser lock. A second tab remains read-only and may take over only after the writer releases the lock.
 - Maintain monotonic ciphertext revisions and a hash chain for accidental corruption and local ordering. Server checkpoints provide the authoritative rollback floor after synchronization.

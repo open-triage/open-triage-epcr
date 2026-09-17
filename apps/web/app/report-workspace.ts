@@ -42,7 +42,7 @@ import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
 import { recordFeedbackInteraction } from "./feedback-telemetry";
-import { markProtectedReportCompleted, protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
+import { markProtectedReportCompleted, offlineEditingAvailable, protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
 
 const NO_PROTECTED_REPORT_STATUS = { mode: "online-only", explanation: null } as const;
 
@@ -444,16 +444,20 @@ export function useReportWorkspace({
   return {
     restored,
     recoveryNotice: recoveryNotice ?? protectedStatus.explanation,
-    recoveryNoticeHeading: recoveryNotice || protectedStatus.mode !== "online-only"
+    recoveryNoticeHeading: recoveryNotice
       ? "Saved data needs recovery"
-      : "Offline storage unavailable",
+      : protectedStatus.mode === "best-effort"
+        ? "Best-effort offline storage"
+        : protectedStatus.mode === "online-only"
+          ? "Offline storage unavailable"
+          : "Saved data needs recovery",
     syncStatus,
     revision,
     dispatchConflicts,
     dispatchCancellation,
     conflictError,
     editingBlocked: protectedStatus.mode === "read-only" || protectedStatus.mode === "locked" ||
-      (!online && protectedStatus.mode !== "active"),
+      (!online && !offlineEditingAvailable(protectedStatus.mode)),
     flushSave,
     completeReport,
     resolveConflict,

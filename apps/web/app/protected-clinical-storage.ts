@@ -19,7 +19,7 @@ export interface ProtectedClinicalRecord {
 }
 
 type ProtectedClinicalPayload = { readonly schemaVersion: 1; readonly report?: unknown; readonly shellState?: unknown };
-export type ProtectedStorageMode = "active" | "online-only" | "read-only" | "locked";
+export type ProtectedStorageMode = "active" | "best-effort" | "online-only" | "read-only" | "locked";
 export interface ProtectedStorageStatus { readonly mode: ProtectedStorageMode; readonly explanation: string | null }
 export interface ProtectedLogoutSummary {
   readonly pendingReportCount: number;
@@ -47,6 +47,7 @@ type RuntimeContext = {
   failure: Error | null;
   locking: boolean;
   receiptRequest: AbortController | null;
+  readonly persistentStorage: boolean;
 };
 
 export type RecoveredProtectedPayload = {
@@ -69,6 +70,19 @@ const DEFAULT_STORAGE_STATUS: ProtectedStorageStatus = {
   mode: "online-only",
   explanation: "Offline editing is unavailable until protected persistent storage is prepared.",
 };
+
+const BEST_EFFORT_STORAGE_STATUS: ProtectedStorageStatus = {
+  mode: "best-effort",
+  explanation: "Offline work is encrypted in IndexedDB, but this browser may evict it under storage pressure because persistent storage was not granted.",
+};
+
+function writableStorageStatus(context: Pick<RuntimeContext, "persistentStorage">): ProtectedStorageStatus {
+  return context.persistentStorage ? { mode: "active", explanation: null } : BEST_EFFORT_STORAGE_STATUS;
+}
+
+export function offlineEditingAvailable(mode: ProtectedStorageMode): boolean {
+  return mode === "active" || mode === "best-effort";
+}
 
 function payloadHasPendingWork(payload: ProtectedClinicalPayload): boolean {
   const report = payload.report as { queuedChanges?: unknown } | undefined;
@@ -356,7 +370,7 @@ async function persist(reportId: string): Promise<void> {
   }
   context.revision = revision;
   context.failure = null;
-  publishStatus(reportId, { mode: "active", explanation: null });
+  publishStatus(reportId, writableStorageStatus(context));
   if (context.synchronizedRevision >= revision) void checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext);
 }
 
@@ -417,7 +431,9 @@ async function acquireEditLock(reportId: string): Promise<(() => void) | null> {
   return (await acquired) ? release : null;
 }
 
-export function protectedStorageActive(reportId: string): boolean { return contexts.has(reportId) && protectedStorageStatus(reportId).mode === "active"; }
+export function protectedStorageActive(reportId: string): boolean {
+  return contexts.has(reportId) && offlineEditingAvailable(protectedStorageStatus(reportId).mode);
+}
 
 /**
  * Applies a server authority decision without probing local ciphertext. A
@@ -444,10 +460,11 @@ export function applyProtectedAuthorityResponse(reportId: string,
 export async function prepareProtectedReport(csrfToken: string, reportId: string): Promise<boolean> {
   if (browserRequestConfiguration().mode !== "server") return false;
   if (contexts.has(reportId)) return true;
-  if (!("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request || !(await persistentStorageGranted())) {
-    publishStatus(reportId, { mode: "online-only", explanation: "This browser did not grant persistent protected storage. Online editing and server saves remain available, but offline editing is unavailable." });
+  if (!("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) {
+    publishStatus(reportId, { mode: "online-only", explanation: "This browser does not provide the protected storage features required for offline editing. Online editing and server saves remain available." });
     return false;
   }
+  const persistentStorage = await persistentStorageGranted();
   const releaseLock = await acquireEditLock(reportId);
   if (!releaseLock) {
     publishStatus(reportId, { mode: "read-only", explanation: "This report is already open for editing in another browser tab." });
@@ -472,8 +489,11 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
-    contexts.set(reportId, { key, localRecordId: crypto.randomUUID(), envelope, csrfToken, payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0, pending: Promise.resolve(), failure: null, locking: false, receiptRequest: null, releaseLock });
-    publishStatus(reportId, { mode: "active", explanation: null });
+    const context: RuntimeContext = { key, localRecordId: crypto.randomUUID(), envelope, csrfToken,
+      payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
+      pending: Promise.resolve(), failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage };
+    contexts.set(reportId, context);
+    publishStatus(reportId, writableStorageStatus(context));
     return true;
   } catch (error) {
     releaseLock();
@@ -487,8 +507,8 @@ export async function recoverProtectedReport(
   reportId: string,
 ): Promise<RecoveredProtectedPayload | null> {
   if (browserRequestConfiguration().mode !== "server" || contexts.has(reportId) ||
-      !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request ||
-      !(await persistentStorageGranted())) return null;
+      !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) return null;
+  const persistentStorage = await persistentStorageGranted();
   const createUrl = apiRequestUrl(`/api/reports/${reportId}/recovery-grants`);
   if (!createUrl) return null;
   const grantResponse = await fetch(createUrl, browserRequestInit({
@@ -560,11 +580,12 @@ export async function recoverProtectedReport(
       failure: null,
       locking: false,
       receiptRequest: null,
+      persistentStorage,
     });
     activated = true;
     publishStatus(reportId, grant.reportStatus === "signed"
       ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
-      : { mode: "active", explanation: null });
+      : writableStorageStatus({ persistentStorage }));
     return protectedPayload;
   } finally {
     raw?.fill(0);

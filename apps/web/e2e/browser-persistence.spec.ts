@@ -22,7 +22,7 @@ const otherSession = {
   user: { id: "42000000-0000-4000-8000-000000000099", displayName: "Different Clinician" },
 };
 
-async function installRoutes(page: Page) {
+async function installRoutes(page: Page, persistentStorage = true) {
   let opened = false;
   let restarted = false;
   let recoveryHandle = "";
@@ -30,15 +30,15 @@ async function installRoutes(page: Page) {
   let grantConsumed = false;
   let reauthenticated = false;
   let currentSession = session;
-  await page.addInitScript((stored) => {
+  await page.addInitScript(({ stored, persistentStorage }) => {
     Object.defineProperties(navigator.storage, {
-      persisted: { configurable: true, value: async () => true },
-      persist: { configurable: true, value: async () => true },
+      persisted: { configurable: true, value: async () => persistentStorage },
+      persist: { configurable: true, value: async () => persistentStorage },
     });
     localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored));
     localStorage.setItem("open-triage:offline-reports-v1", "LEGACY CLINICAL PLAINTEXT");
     localStorage.setItem("open-triage:standard-encounter-v1:report:legacy", "LEGACY PATIENT");
-  }, session);
+  }, { stored: session, persistentStorage });
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
   await page.route("**/api/sessions/current", async (route) => {
     if (route.request().method() === "DELETE") return route.fulfill({ status: 204 });
@@ -170,6 +170,23 @@ async function encryptedRecords(page: Page): Promise<Array<Record<string, unknow
     }
   }, { databaseName: "open-triage-protected-clinical-v1", storeName: "encrypted-reports" });
 }
+
+test("denied persistence falls back to encrypted best-effort IndexedDB", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page, false);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".safety-notice")).toContainText("Best-effort offline storage");
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Best-effort encrypted offline note");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(0);
+});
 
 test("one online-opened report remains editable through connection loss using only authenticated IndexedDB ciphertext", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");

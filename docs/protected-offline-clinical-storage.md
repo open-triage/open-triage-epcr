@@ -31,10 +31,11 @@ wrapping secrets, grants, wrapped keys, request bodies, or ciphertext samples.
 
 ## Recovery and lifecycle guarantees
 
-- Offline editing is offered only after Web Crypto, IndexedDB, Web Locks, and
-  persistent browser storage are available. Otherwise the report is online-only;
-  a failure while disconnected makes it read-only without evicting unsynchronized
-  ciphertext.
+- Offline editing requires Web Crypto, IndexedDB, and Web Locks. When the browser
+  denies persistent storage, encrypted IndexedDB remains available in an explicit
+  best-effort mode with an eviction warning. Missing storage primitives keep the
+  report online-only; a write failure while disconnected makes it read-only without
+  evicting unsynchronized ciphertext.
 - A page restart reveals no retained-report label. After the server identifies a
   report already authorized to the current user, recent password reauthentication
   is required before a single-use, 60-second, report/session/user/organization
