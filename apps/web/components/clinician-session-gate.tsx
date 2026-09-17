@@ -7,6 +7,7 @@ import {
   changeClinicianPassword,
   createClinicianSession,
   endClinicianSession,
+  authenticateRestartedClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
@@ -53,6 +54,7 @@ export function ClinicianSessionGate({ children }: {
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
   const [ready, setReady] = useState(false);
+  const [restartReconnectPending, setRestartReconnectPending] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -77,19 +79,47 @@ export function ClinicianSessionGate({ children }: {
 
   useEffect(() => {
     let current = true;
+    let resolved = false;
+    let inFlight = false;
     deleteLegacyClinicalStorage(window.localStorage);
-    loadInstallationConfiguration().then((loaded) => {
-      if (!current) return;
-      const loadedSession = loadClinicianSession(window.localStorage);
-      setInstallation(loaded);
-      setSession(loadedSession);
-      setPresentationMode(loadPresentationMode(window.localStorage, loadedSession?.capabilities));
-    }).catch((reason: unknown) => {
-      if (current) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
-    }).finally(() => {
-      if (current) setReady(true);
+    const loadedSession = loadClinicianSession(window.localStorage);
+    const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
+    if (serverRestart) queueMicrotask(() => {
+      if (current) setRestartReconnectPending(true);
     });
-    return () => { current = false; };
+
+    const load = async () => {
+      if (inFlight || resolved) return;
+      inFlight = true;
+      try {
+        const loaded = await loadInstallationConfiguration();
+        const authenticated = serverRestart
+          ? await authenticateRestartedClinicianSession(loadedSession!)
+          : loadedSession;
+        if (!current) return;
+        if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
+        setInstallation(loaded);
+        setSession(authenticated);
+        setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
+        setRestartReconnectPending(false);
+        resolved = true;
+      } catch (reason: unknown) {
+        if (!current) return;
+        if (!serverRestart) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
+      } finally {
+        inFlight = false;
+        if (current) setReady(true);
+      }
+    };
+    void load();
+    const reconnect = () => void load();
+    const retry = window.setInterval(reconnect, 5_000);
+    window.addEventListener("online", reconnect);
+    return () => {
+      current = false;
+      window.clearInterval(retry);
+      window.removeEventListener("online", reconnect);
+    };
   }, []);
 
   useEffect(() => {
@@ -202,7 +232,9 @@ export function ClinicianSessionGate({ children }: {
     clearFeedbackTelemetry();
   }, []);
 
-  if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
+  if (!ready || restartReconnectPending) return <main className="session-loading" aria-label="Reconnecting securely">
+    <p>Reconnect to continue.</p>
+  </main>;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
   if (!session) {
     return (

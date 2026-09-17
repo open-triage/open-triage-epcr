@@ -5,8 +5,8 @@ import type {
   OpenCall as OpenReportSummary,
   ReopenOpenCallResponse as ReopenOpenReportResponse,
 } from "@open-triage/contracts";
-import { sessionRequestToken } from "../app/clinician-session";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   fetchOpenCalls as fetchOpenReports,
@@ -28,9 +28,15 @@ import {
   purgeExpiredOfflineReports,
   reconcileServerOpenReports,
   removeSignedOfflineReport,
+  restoreRecoveredReport,
 } from "../app/offline-reports";
 import { TransientNotice } from "./transient-notice";
-import { flushProtectedReport, prepareProtectedReport } from "../app/protected-clinical-storage";
+import {
+  flushProtectedReport,
+  prepareProtectedReport,
+  recoverProtectedReport,
+  RecoveryReauthenticationRequiredError,
+} from "../app/protected-clinical-storage";
 
 function savedTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -59,6 +65,8 @@ export function OpenReports({
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
+  const [reauthenticationId, setReauthenticationId] = useState<string | null>(null);
+  const [reauthenticating, setReauthenticating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const reportsRef = useRef<OpenReportSummary[]>([]);
@@ -155,22 +163,46 @@ export function OpenReports({
       let opened: ReopenOpenReportResponse;
       try {
         opened = await reopenOpenReport(csrfToken, report.reportId);
-        await prepareProtectedReport(csrfToken, report.reportId);
+        const recovered = await recoverProtectedReport(csrfToken, report.reportId);
+        if (recovered) restoreRecoveredReport(window.localStorage, session.user.id, report.reportId, recovered);
+        else await prepareProtectedReport(csrfToken, report.reportId);
         cacheReopenedReport(window.localStorage, session, opened);
         await flushProtectedReport(report.reportId);
       } catch (error) {
+        if (error instanceof RecoveryReauthenticationRequiredError) throw error;
         const cached = cachedReopenResponse(window.localStorage, session.user.id, report.reportId);
         if (!cached) throw error;
         opened = cached;
       }
+      setReauthenticationId(null);
       onReopened?.(opened);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (reopenError) {
+      if (reopenError instanceof RecoveryReauthenticationRequiredError) {
+        setReauthenticationId(report.reportId);
+        return;
+      }
       setError(reopenError instanceof Error ? reopenError.message : "The report could not be reopened.");
     } finally {
       setReopeningId(null);
     }
   }, [csrfToken, onReopened, session]);
+
+  const reauthenticateAndReopen = useCallback(async (event: FormEvent<HTMLFormElement>, report: OpenReportSummary) => {
+    event.preventDefault();
+    setReauthenticating(true);
+    setError(null);
+    const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
+    try {
+      await reauthenticateClinicianSession(password, csrfToken);
+      setReauthenticationId(null);
+      await reopen(report);
+    } catch (reauthenticationError) {
+      setError(reauthenticationError instanceof Error ? reauthenticationError.message : "Reauthentication failed.");
+    } finally {
+      setReauthenticating(false);
+    }
+  }, [csrfToken, reopen]);
 
   useEffect(() => {
     let pollTimer: number | null = null;
@@ -239,6 +271,15 @@ export function OpenReports({
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
                 {reopeningId === report.reportId ? "Reopening…" : "Reopen report"}
               </button>
+              {reauthenticationId === report.reportId && <form className="report-reauthentication"
+                onSubmit={(event) => void reauthenticateAndReopen(event, report)}>
+                <p>Confirm your password to recover protected work from this browser.</p>
+                <label>Current password<input name="currentPassword" type="password"
+                  autoComplete="current-password" required /></label>
+                <button type="submit" disabled={reauthenticating}>
+                  {reauthenticating ? "Confirming…" : "Confirm and recover"}
+                </button>
+              </form>}
             </li>
           ))}
         </ul>

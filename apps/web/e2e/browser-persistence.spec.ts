@@ -19,6 +19,10 @@ const session = {
 
 async function installRoutes(page: Page) {
   let opened = false;
+  let restarted = false;
+  let recoveryHandle = "";
+  let reportKeyBase64 = "";
+  let grantConsumed = false;
   await page.addInitScript((stored) => {
     Object.defineProperties(navigator.storage, {
       persisted: { configurable: true, value: async () => true },
@@ -29,6 +33,10 @@ async function installRoutes(page: Page) {
     localStorage.setItem("open-triage:standard-encounter-v1:report:legacy", "LEGACY PATIENT");
   }, session);
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/api/sessions/current", async (route) => {
+    if (restarted) await new Promise((resolve) => setTimeout(resolve, 750));
+    return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: session });
+  });
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
     assignedCalls: [assignedCall], canceledAssignmentIds: [], refreshedAt: new Date().toISOString(),
   } }));
@@ -54,6 +62,8 @@ async function installRoutes(page: Page) {
     const command = route.request().postDataJSON() as { schemaVersion: number; recoveryHandle: string; reportKeyBase64: string };
     expect(command.schemaVersion).toBe(1);
     expect(atob(command.reportKeyBase64)).toHaveLength(32);
+    recoveryHandle = command.recoveryHandle;
+    reportKeyBase64 = command.reportKeyBase64;
     await route.fulfill({ status: 201, headers: { "cache-control": "no-store, private" }, json: {
       schemaVersion: 1,
       recoveryHandle: command.recoveryHandle,
@@ -78,6 +88,32 @@ async function installRoutes(page: Page) {
       schemaVersion: 1, recoveryDeadline: "2099-09-18T12:00:00.000Z",
     } });
   });
+  await page.route(`**/api/reports/${reportId}/reopen`, (route) => route.fulfill({ json: {
+    callNumber: assignedCall.callNumber,
+    dispatchedAt: assignedCall.dispatchedAt,
+    dispatchReason: assignedCall.dispatchReason,
+    dispatchPriority: assignedCall.dispatchPriority,
+    chiefComplaint: assignedCall.chiefComplaint,
+    unitCallSign: assignedCall.unit.callSign,
+    report: openedAssignment.report,
+  } }));
+  await page.route(`**/api/reports/${reportId}/recovery-grants`, (route) => route.fulfill({
+    status: 201,
+    headers: { "cache-control": "no-store, private", pragma: "no-cache" },
+    json: {
+      schemaVersion: 1, envelopeVersion: 1, recoveryHandle,
+      grant: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+      expiresAt: "2099-09-18T12:00:00.000Z",
+    },
+  }));
+  await page.route(`**/api/reports/${reportId}/recovery-grants/consume`, (route) => {
+    if (grantConsumed) return route.fulfill({ status: 404, json: { message: "Protected report recovery is unavailable" } });
+    grantConsumed = true;
+    return route.fulfill({
+      headers: { "cache-control": "no-store, private", pragma: "no-cache" },
+      json: { schemaVersion: 1, envelopeVersion: 1, wrappingKeyVersion: 1, reportKeyBase64 },
+    });
+  });
   let revision = openedAssignment.report.revision;
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {
     const command = route.request().postDataJSON() as { expectedRevision: number };
@@ -85,6 +121,7 @@ async function installRoutes(page: Page) {
     await route.fulfill({ json: { id: reportId, status: "draft", revision } });
   });
   await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({ status: 304 }));
+  return { restart: () => { restarted = true; } };
 }
 
 async function encryptedRecords(page: Page): Promise<Array<Record<string, unknown>>> {
@@ -112,7 +149,7 @@ async function encryptedRecords(page: Page): Promise<Array<Record<string, unknow
 
 test("one online-opened report remains editable through connection loss using only authenticated IndexedDB ciphertext", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
-  await installRoutes(page);
+  const controls = await installRoutes(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
@@ -143,6 +180,16 @@ test("one online-opened report remains editable through connection loss using on
   expect(JSON.stringify(after)).not.toContain("Encrypted field care while disconnected");
 
   await page.getByRole("button", { name: "Save & close" }).click();
+  await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
+  await page.getByRole("button", { name: "Reopen report" }).click();
+  await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await context.setOffline(false);
+  controls.restart();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("main", { name: "Reconnecting securely" })).toBeVisible();
+  await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();

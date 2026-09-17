@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createCipheriv, randomUUID } from "node:crypto";
 import test from "node:test";
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { ConflictException, HttpException, NotFoundException } from "@nestjs/common";
 import { offlineRecoveryWrappingKey, ProtectedReportKeyService } from "../dist/reports/protected-report-key.service.js";
 
 test("offline recovery wrapping uses a dedicated exact-length versioned secret", () => {
@@ -127,55 +127,88 @@ test("an authenticated ciphertext write advances only through the retention func
   assert.deepEqual(calls[0].parameters, [reportId, organizationId, userId, recoveryHandle, 3, "a".repeat(64)]);
 });
 
-test("expired and unknown recovery attempts have the same generic external result", async () => {
+test("recovery grants are opaque, expire after sixty seconds, and bind every authority dimension", async () => {
+  const reportId = randomUUID();
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const recoveryHandle = randomUUID();
+  const queries = [];
+  const manager = { query: async (sql, parameters) => {
+    queries.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
+    return [{ result: "created", recovery_handle: recoveryHandle, grant_id: randomUUID(), expires_at: "2026-09-17T12:01:00.000Z" }];
+  } };
   const service = new ProtectedReportKeyService(
-    { transaction: async (work) => work({ query: async (sql) =>
-      sql.includes("offline_recovery_restart_reauthentication_required") ? [{ required: false }] : [] }) },
+    { transaction: async (work) => work(manager) },
     {
       assertCsrf: async () => undefined,
-      requireCapability: async () => ({ organization: { id: randomUUID() }, user: { id: randomUUID() } }),
+      get: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
     },
   );
-  await assert.rejects(service.recover("session", randomUUID(), {
-    schemaVersion: 1, recoveryHandle: randomUUID(),
-  }, "csrf"), (error) => error instanceof NotFoundException && error.message === "Protected report recovery is unavailable");
+  const result = await service.createRecoveryGrant("session-secret", reportId,
+    { schemaVersion: 1, envelopeVersion: 1 }, "csrf");
+  assert.equal(result.recoveryHandle, recoveryHandle);
+  assert.match(result.grant, /^[A-Za-z0-9_-]{43}$/);
+  const call = queries[0];
+  assert.match(call.sql, /create_report_recovery_grant/);
+  assert.deepEqual(call.parameters.slice(0, 3), [reportId, organizationId, userId]);
+  assert.match(call.parameters[3], /^[a-f0-9]{64}$/);
+  assert.match(call.parameters[4], /^[a-f0-9]{64}$/);
+  assert.notEqual(call.parameters[3], "session-secret");
+  assert.notEqual(call.parameters[4], result.grant);
+  assert.equal(call.parameters[5], 1);
 });
 
-test("live recovery unwraps the exact report key with authenticated envelope metadata", async () => {
-  const priorSecret = process.env.OFFLINE_RECOVERY_SECRET_BASE64;
-  const priorVersion = process.env.OFFLINE_RECOVERY_KEY_VERSION;
-  const secret = Buffer.alloc(32, 0x52);
-  process.env.OFFLINE_RECOVERY_SECRET_BASE64 = secret.toString("base64");
-  process.env.OFFLINE_RECOVERY_KEY_VERSION = "4";
+test("recovery consumption unwraps one report key only after the atomic database consume", async () => {
+  const reportId = randomUUID();
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const recoveryHandle = randomUUID();
+  const rawKey = Buffer.alloc(32, 0x5a);
+  const wrappingSecret = Buffer.alloc(32, 0x71);
+  const nonce = Buffer.alloc(12, 0x13);
+  const associatedData = Buffer.from(JSON.stringify({
+    schemaVersion: 1, organizationId, reportId, ownerUserId: userId,
+    recoveryHandle, wrappingKeyVersion: 7,
+  }));
+  const cipher = createCipheriv("aes-256-gcm", wrappingSecret, nonce);
+  cipher.setAAD(associatedData);
+  const wrapped = Buffer.concat([cipher.update(rawKey), cipher.final(), cipher.getAuthTag()]);
+  const previousSecret = process.env.OFFLINE_RECOVERY_SECRET_BASE64;
+  const previousVersion = process.env.OFFLINE_RECOVERY_KEY_VERSION;
+  process.env.OFFLINE_RECOVERY_SECRET_BASE64 = wrappingSecret.toString("base64");
+  process.env.OFFLINE_RECOVERY_KEY_VERSION = "7";
   try {
-    const organizationId = randomUUID();
-    const userId = randomUUID();
-    const reportId = randomUUID();
-    const recoveryHandle = randomUUID();
-    const reportKey = Buffer.alloc(32, 0x39);
-    const nonce = Buffer.alloc(12, 0x28);
-    const cipher = createCipheriv("aes-256-gcm", secret, nonce);
-    cipher.setAAD(Buffer.from(JSON.stringify({
-      schemaVersion: 1, organizationId, reportId, ownerUserId: userId,
-      recoveryHandle, wrappingKeyVersion: 4,
-    }), "utf8"));
-    const wrapped = Buffer.concat([cipher.update(reportKey), cipher.final(), cipher.getAuthTag()]);
     const service = new ProtectedReportKeyService(
-      { transaction: async (work) => work({ query: async (sql) => {
-        if (sql.includes("offline_recovery_restart_reauthentication_required")) return [{ required: false }];
-        return [{ wrapping_key_version: 4, wrapping_nonce: nonce, wrapped_data_key: wrapped }];
-      } }) },
-      {
-        assertCsrf: async () => undefined,
-        requireCapability: async () => ({ organization: { id: organizationId }, user: { id: userId } }),
-      },
+      { transaction: async (work) => work({ query: async () => [{
+        result: "consumed", recovery_handle: recoveryHandle, wrapping_key_version: 7,
+        wrapping_nonce: nonce, wrapped_data_key: wrapped,
+      }] }) },
+      { assertCsrf: async () => undefined, get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) },
     );
-    const recovered = await service.recover("session", reportId, { schemaVersion: 1, recoveryHandle }, "csrf");
-    assert.equal(recovered.reportKeyBase64, reportKey.toString("base64"));
+    const recovered = await service.consumeRecoveryGrant("session-secret", reportId, {
+      schemaVersion: 1, envelopeVersion: 1, grant: Buffer.alloc(32, 0x61).toString("base64url"),
+    }, "csrf");
+    assert.deepEqual(Buffer.from(recovered.reportKeyBase64, "base64"), rawKey);
   } finally {
-    if (priorSecret === undefined) delete process.env.OFFLINE_RECOVERY_SECRET_BASE64;
-    else process.env.OFFLINE_RECOVERY_SECRET_BASE64 = priorSecret;
-    if (priorVersion === undefined) delete process.env.OFFLINE_RECOVERY_KEY_VERSION;
-    else process.env.OFFLINE_RECOVERY_KEY_VERSION = priorVersion;
+    if (previousSecret === undefined) delete process.env.OFFLINE_RECOVERY_SECRET_BASE64;
+    else process.env.OFFLINE_RECOVERY_SECRET_BASE64 = previousSecret;
+    if (previousVersion === undefined) delete process.env.OFFLINE_RECOVERY_KEY_VERSION;
+    else process.env.OFFLINE_RECOVERY_KEY_VERSION = previousVersion;
   }
+});
+
+test("grant assurance failures are distinct while every recovery denial is generic", async () => {
+  const session = { organization: { id: randomUUID() }, user: { id: randomUUID() } };
+  const serviceFor = (result) => new ProtectedReportKeyService(
+    { transaction: async (work) => work({ query: async () => [result] }) },
+    { assertCsrf: async () => undefined, get: async () => session },
+  );
+  await assert.rejects(serviceFor({ result: "reauthentication_required" }).createRecoveryGrant(
+    "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"),
+  (error) => error instanceof HttpException && error.getStatus() === 428);
+  await assert.rejects(serviceFor({ result: "denied" }).createRecoveryGrant(
+    "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1 }, "csrf"), NotFoundException);
+  await assert.rejects(serviceFor({ result: "denied" }).consumeRecoveryGrant(
+    "session", randomUUID(), { schemaVersion: 1, envelopeVersion: 1, grant: Buffer.alloc(32).toString("base64url") }, "csrf"),
+  (error) => error instanceof NotFoundException && error.message === "Protected report recovery is unavailable");
 });

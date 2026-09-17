@@ -1,7 +1,7 @@
 import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 import { browserRequestConfiguration } from "./browser-api";
-import { protectedStorageActive, removeProtectedReport, updateProtectedReport } from "./protected-clinical-storage";
+import { protectedStorageActive, removeProtectedReport, updateProtectedReport, type RecoveredProtectedPayload } from "./protected-clinical-storage";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
 
@@ -94,6 +94,11 @@ export function cacheOpenedReport(
         ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
         ...(call.unit?.callSign ? { unitCallSign: call.unit.callSign } : {}),
       }),
+      ...(existing?.queuedChanges.length && existing.report.document ? {
+        revision: existing.report.revision,
+        document: existing.report.document,
+        dispatchConflicts: existing.report.dispatchConflicts ?? [],
+      } : {}),
     },
     ownerUserId: session.user.id,
     callNumber,
@@ -104,6 +109,22 @@ export function cacheOpenedReport(
     localValidationErrorCount: existing?.localValidationErrorCount,
     queuedChanges: existing?.queuedChanges ?? [],
   });
+}
+
+export function restoreRecoveredReport(
+  storage: StoragePort,
+  ownerUserId: string,
+  reportId: string,
+  payload: RecoveredProtectedPayload,
+): boolean {
+  const candidate = payload.report;
+  if (!candidate || typeof candidate !== "object") return false;
+  const recovered = candidate as Partial<CachedOpenReport>;
+  if (recovered.ownerUserId !== ownerUserId || recovered.workflowState !== "open" ||
+      !recovered.report || recovered.report.id !== reportId ||
+      recovered.report.documentingUserId !== ownerUserId || !Array.isArray(recovered.queuedChanges)) return false;
+  replace(storage, recovered as CachedOpenReport);
+  return true;
 }
 
 export function cacheReopenedReport(

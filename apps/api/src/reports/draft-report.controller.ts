@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse,
   ProtectedCiphertextReceipt, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope,
-  RecoveredProtectedReportKey, ReopenOpenCallResponse } from "@open-triage/contracts";
+  ProtectedReportRecoveryGrant, RecoveredProtectedReportKey, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -64,17 +64,32 @@ export class DraftReportController {
     return this.protectedKeys.recordWrite(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
-  @Post(":id/protected-key-recovery")
+  @Post(":id/recovery-grants")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
+  createRecoveryGrant(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportRecoveryGrant> {
+    return this.protectedKeys.createRecoveryGrant(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/recovery-grants/consume")
   @HttpCode(200)
   @Header("Cache-Control", "no-store, private")
-  recoverProtectedKey(
+  @Header("Pragma", "no-cache")
+  consumeRecoveryGrant(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
     @Headers("x-csrf-token") csrfToken?: string,
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string,
   ): Promise<RecoveredProtectedReportKey> {
-    return this.protectedKeys.recover(bearerToken(authorization, cookie), id, body, csrfToken);
+    return this.protectedKeys.consumeRecoveryGrant(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
   @Get("open")

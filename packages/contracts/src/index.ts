@@ -140,14 +140,29 @@ export interface ProtectedCiphertextReceipt {
   recoveryDeadline: string;
 }
 
-export interface RecoverProtectedReportKeyCommand {
+export interface CreateProtectedReportRecoveryGrantCommand {
   schemaVersion: 1;
+  envelopeVersion: 1;
+}
+
+export interface ProtectedReportRecoveryGrant {
+  schemaVersion: 1;
+  envelopeVersion: 1;
   recoveryHandle: string;
+  grant: string;
+  expiresAt: string;
+}
+
+export interface ConsumeProtectedReportRecoveryGrantCommand {
+  schemaVersion: 1;
+  envelopeVersion: 1;
+  grant: string;
 }
 
 export interface RecoveredProtectedReportKey {
   schemaVersion: 1;
-  recoveryHandle: string;
+  envelopeVersion: 1;
+  wrappingKeyVersion: number;
   reportKeyBase64: string;
 }
 

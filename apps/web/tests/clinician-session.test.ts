@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ClinicianSession } from "@open-triage/contracts";
 import {
   CLINICIAN_SESSION_STORAGE_KEY,
+  authenticateRestartedClinicianSession,
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
@@ -36,6 +37,29 @@ test("stored clinician sessions remain active only before their fixed deadline",
   assert.deepEqual(loadClinicianSession(storage, new Date("2026-09-03T21:59:59.999Z")), session);
   assert.equal(loadClinicianSession(storage, new Date(session.expiresAt)), null);
   assert.equal(storage.getItem(CLINICIAN_SESSION_STORAGE_KEY), null);
+});
+
+test("browser restart trusts only a matching authenticated server identity", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const stored = { ...session, accessToken: undefined, csrfToken: "persisted-csrf", user: { ...session.user, displayName: "Stale label" } };
+  try {
+    globalThis.fetch = async () => Response.json({ ...session, accessToken: undefined, csrfToken: undefined,
+      user: { ...session.user, displayName: "Server label" } });
+    const authenticated = await authenticateRestartedClinicianSession(stored);
+    assert.equal(authenticated?.user.displayName, "Server label");
+    assert.equal(authenticated?.csrfToken, "persisted-csrf");
+
+    globalThis.fetch = async () => Response.json({ ...session, user: { id: "other-user", displayName: "Other" } });
+    assert.equal(await authenticateRestartedClinicianSession(stored), null);
+    globalThis.fetch = async () => new Response(null, { status: 401 });
+    assert.equal(await authenticateRestartedClinicianSession(stored), null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
 });
 
 test("cookie-backed sessions remain valid without an access token", () => {

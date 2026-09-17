@@ -43,6 +43,19 @@ type RuntimeContext = {
   failure: Error | null;
 };
 
+export type RecoveredProtectedPayload = {
+  readonly schemaVersion: 1;
+  readonly report?: unknown;
+  readonly shellState?: unknown;
+};
+
+export class RecoveryReauthenticationRequiredError extends Error {
+  constructor() {
+    super("Confirm your password to recover this protected report.");
+    this.name = "RecoveryReauthenticationRequiredError";
+  }
+}
+
 const contexts = new Map<string, RuntimeContext>();
 const statuses = new Map<string, ProtectedStorageStatus>();
 const statusListeners = new Set<(reportId: string, status: ProtectedStorageStatus) => void>();
@@ -208,6 +221,10 @@ async function updateRecordDeadline(localRecordId: string, ciphertextRevision: n
   } finally { database.close(); }
 }
 
+async function recordForRecoveryHandle(recoveryHandle: string): Promise<ProtectedClinicalRecord | null> {
+  return (await allRecords()).find((record) => record.recoveryHandle === recoveryHandle) ?? null;
+}
+
 export async function encryptProtectedPayload(
   key: CryptoKey,
   recoveryHandle: string,
@@ -356,9 +373,17 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const url = apiRequestUrl(`/api/reports/${reportId}/protected-key-envelope`);
     if (!url) { raw.fill(0); releaseLock(); return false; }
     const response = await fetch(url, browserRequestInit({ method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify({ schemaVersion: 1, recoveryHandle, reportKeyBase64: bytesToBase64(raw) }) }));
-    if (!response.ok) { raw.fill(0); throw new Error(response.status === 401 ? "Your shift session has ended." : "Protected offline storage could not be prepared."); }
+    if (!response.ok) {
+      raw.fill(0);
+      if (response.status === 409) {
+        releaseLock();
+        publishStatus(reportId, { mode: "online-only", explanation: "Protected recovery belongs to another browser profile; connected server saves remain available." });
+        return false;
+      }
+      throw new Error(response.status === 401 ? "Your shift session has ended." : "Protected offline storage could not be prepared.");
+    }
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
-    const key = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
     contexts.set(reportId, { key, localRecordId: crypto.randomUUID(), envelope, csrfToken, payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0, pending: Promise.resolve(), failure: null, releaseLock });
     publishStatus(reportId, { mode: "active", explanation: null });
@@ -367,6 +392,84 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     releaseLock();
     publishStatus(reportId, { mode: "online-only", explanation: "Protected offline storage could not be prepared; connected server saves remain available." });
     throw error;
+  }
+}
+
+export async function recoverProtectedReport(
+  csrfToken: string,
+  reportId: string,
+): Promise<RecoveredProtectedPayload | null> {
+  if (browserRequestConfiguration().mode !== "server" || contexts.has(reportId) ||
+      !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request ||
+      !(await persistentStorageGranted())) return null;
+  const createUrl = apiRequestUrl(`/api/reports/${reportId}/recovery-grants`);
+  if (!createUrl) return null;
+  const grantResponse = await fetch(createUrl, browserRequestInit({
+    method: "POST",
+    headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+    body: JSON.stringify({ schemaVersion: 1, envelopeVersion: 1 }),
+  }));
+  if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
+  if (grantResponse.status === 404) return null;
+  if (!grantResponse.ok) throw new Error(grantResponse.status === 401
+    ? "Your shift session has ended." : "Protected report recovery is unavailable.");
+  const grant = await grantResponse.json() as {
+    schemaVersion: 1; envelopeVersion: 1; recoveryHandle: string; grant: string; expiresAt: string;
+  };
+  const record = await recordForRecoveryHandle(grant.recoveryHandle);
+  if (!record || record.schemaVersion !== 1 || record.algorithm !== "AES-256-GCM" ||
+      Date.parse(record.recoveryDeadline) <= Date.now() || Date.parse(grant.expiresAt) <= Date.now()) return null;
+
+  const releaseLock = await acquireEditLock(reportId);
+  if (!releaseLock) {
+    publishStatus(reportId, { mode: "read-only", explanation: "This report is already open for editing in another browser tab." });
+    return null;
+  }
+  let activated = false;
+  let raw: Uint8Array | undefined;
+  try {
+
+    const consumeUrl = apiRequestUrl(`/api/reports/${reportId}/recovery-grants/consume`);
+    if (!consumeUrl) return null;
+    const consumeResponse = await fetch(consumeUrl, browserRequestInit({
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
+      body: JSON.stringify({ schemaVersion: 1, envelopeVersion: grant.envelopeVersion, grant: grant.grant }),
+    }));
+    if (!consumeResponse.ok) throw new Error(consumeResponse.status === 401
+      ? "Your shift session has ended." : "Protected report recovery is unavailable.");
+    const recovered = await consumeResponse.json() as { reportKeyBase64: string; wrappingKeyVersion: number };
+    raw = Uint8Array.from(atob(recovered.reportKeyBase64), (character) => character.charCodeAt(0));
+    if (raw.byteLength !== 32) throw new Error("Protected report recovery is unavailable.");
+    const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    const payload = await decryptProtectedPayload(key, record);
+    if (!payload || typeof payload !== "object" || (payload as { schemaVersion?: unknown }).schemaVersion !== 1) {
+      throw new Error("Protected report recovery is unavailable.");
+    }
+    const protectedPayload = payload as RecoveredProtectedPayload;
+    const recoveredReportId = (protectedPayload.report as { report?: { id?: unknown } } | undefined)?.report?.id;
+    if (recoveredReportId !== undefined && recoveredReportId !== reportId) {
+      throw new Error("Protected report recovery is unavailable.");
+    }
+    contexts.set(reportId, {
+      key,
+      localRecordId: record.localRecordId,
+      envelope: { schemaVersion: 1, recoveryHandle: record.recoveryHandle,
+        recoveryDeadline: record.recoveryDeadline, wrappingKeyVersion: recovered.wrappingKeyVersion },
+      csrfToken,
+      releaseLock,
+      payload: protectedPayload,
+      revision: record.ciphertextRevision,
+      synchronizedRevision: record.synchronizedRevision,
+      pending: Promise.resolve(),
+      failure: null,
+    });
+    activated = true;
+    publishStatus(reportId, { mode: "active", explanation: null });
+    return protectedPayload;
+  } finally {
+    raw?.fill(0);
+    if (!activated) releaseLock();
   }
 }
 
