@@ -301,7 +301,7 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
       </div>}
     </div>
     <div className="stationary-table-scroll" tabIndex={0} role="region" aria-label={`${label} table`}>
-      <table><thead><tr>{(placement.presentation.columns ?? []).map((column) => <th key={column.elementId} style={{ width: column.width }}>{column.label ?? requireNemsisDataElement(column.elementId).name}</th>)}<th>Actions</th></tr></thead>
+      <table><thead><tr>{(placement.presentation.columns ?? []).map((column) => <th key={column.elementId}>{column.label ?? requireNemsisDataElement(column.elementId).name}</th>)}<th>Actions</th></tr></thead>
         <tbody>{instances.map((instance) => <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}>
             {repeatingGroupSummary(document, placement, instance).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>Not recorded</span>}</td>)}
             <td className="stationary-table-actions"><div className="stationary-row-actions"><button className="stationary-icon-action edit" type="button" aria-label={`${editable ? "Edit" : "View"} ${actionLabel} row`} title={editable ? "Edit" : "View"} data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}><span aria-hidden="true">{editable ? "✎" : "View"}</span></button>

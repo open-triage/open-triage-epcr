@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
-import React, { useId, useState, type CSSProperties } from "react";
+import React, { useId, useState } from "react";
 import {
   editNonRepeatingCodedValue,
   editNonRepeatingScalarValue,
@@ -167,13 +167,12 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
       const groupFindings = findings.filter((finding) => finding.target.groupId === group.id && !(finding.target.fieldId ?? finding.target.elementId));
       const groupSeverity = stationaryFindingSeverity(groupFindings);
       return <section
-        className={`stationary-inline-group ${group.readOnly ? "stationary-read-only-group" : "stationary-editable-group"}${groupSeverity ? ` stationary-validation-state ${groupSeverity}` : ""}`}
+        className={`stationary-inline-group stationary-depth-${Math.min(group.depth, 9)} ${group.readOnly ? "stationary-read-only-group" : "stationary-editable-group"}${groupSeverity ? ` stationary-validation-state ${groupSeverity}` : ""}`}
         data-group-id={group.id}
         data-group-path={ancestry}
         data-cardinality="single"
         id={`stationary-group-${group.id.replaceAll(".", "-")}`}
         key={group.id}
-        style={{ "--stationary-depth": group.depth } as CSSProperties}
         aria-label={`${group.label} fields`}
       >
         {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={instance?.instanceId ?? parentInstanceId ?? contextIndex}>
