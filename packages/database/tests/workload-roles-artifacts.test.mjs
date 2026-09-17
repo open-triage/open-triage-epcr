@@ -26,4 +26,6 @@ test("declares one least-privilege contract for every database workload", () => 
   assert.doesNotMatch(apiContract, /analytics_private|operations/);
   assert.match(sql, /grant select on operations\.projection_health to open_triage_analytics_health/);
   assert.doesNotMatch(sql, /grant select on all tables in schema operations to open_triage_analytics_health/);
+  assert.match(sql, /revoke all on schema clinical, forms, catalog, app_identity\s+from open_triage_projector/);
+  assert.doesNotMatch(sql, /grant usage on schema[^;]*app_identity[^;]*to open_triage_projector/);
 });

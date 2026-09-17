@@ -100,6 +100,17 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
 
     await client.query("begin");
     try {
+      await client.query("set local role open_triage_analytics_projector");
+      await client.query("select * from clinical.signed_snapshot limit 0");
+      await rejectsSql(client, "select * from app_identity.local_credential limit 0", [], "42501");
+      await client.query("rollback");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+
+    await client.query("begin");
+    try {
       await client.query("set local role open_triage_analytics_health");
       await client.query("select * from operations.projection_health limit 0");
       await rejectsSql(client, "select * from clinical.report limit 0", [], "42501");

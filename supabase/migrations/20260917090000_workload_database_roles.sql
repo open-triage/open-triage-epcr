@@ -54,6 +54,26 @@ alter default privileges in schema app_identity, catalog, forms, clinical,
 -- The projector must inspect identified signed source state to build the
 -- de-identified and identified analytical contracts. No other analytics
 -- workload receives that source access.
+revoke all on all tables in schema clinical, forms, catalog, app_identity
+  from open_triage_projector;
+revoke all on schema clinical, forms, catalog, app_identity
+  from open_triage_projector;
+grant usage on schema clinical, forms, catalog to open_triage_projector;
+grant select on
+  clinical.report,
+  clinical.patient,
+  clinical.signed_snapshot,
+  clinical.element_occurrence,
+  clinical.group_instance,
+  clinical.amendment,
+  clinical.amendment_change,
+  forms.form_version,
+  forms.custom_group_definition,
+  catalog.release,
+  catalog.element_identity,
+  catalog.analytics_element_mapping,
+  catalog.repeating_group_time_mapping
+  to open_triage_projector;
 grant open_triage_projector to open_triage_analytics_projector;
 
 grant usage on schema operations to open_triage_analytics_health;
