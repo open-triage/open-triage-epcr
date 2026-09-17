@@ -27,6 +27,11 @@ export interface CachedOpenReport {
 
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
 let protectedRuntimeReports: CachedOpenReport[] = [];
+
+/** Clears all decrypted report objects when the authenticated browser identity ends. */
+export function clearProtectedRuntimeReports(): void {
+  protectedRuntimeReports = [];
+}
 type OpenedCallContext = {
   readonly callNumber: string;
   readonly dispatchedAt?: string;
