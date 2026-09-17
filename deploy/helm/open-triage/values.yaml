@@ -66,3 +66,5 @@ secrets:
   patientKeyInstallationId: ""
   patientKeyVersion: "1"
   patientKeySecretBase64: ""
+  offlineRecoveryKeyVersion: "1"
+  offlineRecoverySecretBase64: ""

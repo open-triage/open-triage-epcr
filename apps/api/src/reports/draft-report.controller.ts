@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
-import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ProtectedReportKeyEnvelope, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
+import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -13,12 +14,26 @@ type ConditionalResponse = { setHeader(name: string, value: string): unknown; st
 export class DraftReportController {
   constructor(
     private readonly reports: DraftReportService,
-    private readonly signing: SignReportService
+    private readonly signing: SignReportService,
+    private readonly protectedKeys: ProtectedReportKeyService,
   ) {}
 
   @Post()
   create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<DraftReportResult> {
     return this.reports.create(bearerToken(authorization, cookie), body);
+  }
+
+  @Post(":id/protected-key-envelope")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  registerProtectedKey(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportKeyEnvelope> {
+    return this.protectedKeys.register(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
   @Get("open")

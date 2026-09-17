@@ -30,6 +30,7 @@ import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
 import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
 import { TransientNotice } from "./transient-notice";
+import { deleteLegacyClinicalStorage, flushProtectedReport, prepareProtectedReport } from "../app/protected-clinical-storage";
 
 function emphasizedText(value: string): ReactNode[] {
   return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
@@ -76,6 +77,7 @@ export function ClinicianSessionGate({ children }: {
 
   useEffect(() => {
     let current = true;
+    deleteLegacyClinicalStorage(window.localStorage);
     loadInstallationConfiguration().then((loaded) => {
       if (!current) return;
       const loadedSession = loadClinicianSession(window.localStorage);
@@ -295,9 +297,11 @@ export function ClinicianSessionGate({ children }: {
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
-          suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
+          suppressedCallNumbers={completedCallNumbers} onOpened={async (opened, call) => {
           setCompletionNotice(null);
+          await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
+          await flushProtectedReport(opened.report.id);
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />

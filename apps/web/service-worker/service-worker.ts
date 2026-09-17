@@ -8,9 +8,6 @@ const appRoot = new URL("./", self.registration.scope).toString();
 const appShell = [
   appRoot,
   new URL("manifest.webmanifest", appRoot).toString(),
-  new URL("demo-assigned-calls.json", appRoot).toString(),
-  new URL("demo-open-calls.json", appRoot).toString(),
-  new URL("demo-open-assignment.json", appRoot).toString(),
 ];
 
 async function cacheStaticShell(): Promise<void> {
@@ -38,6 +35,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith(".json")) return;
 
   event.respondWith(fetch(event.request).then((response) => {
     if (response.ok && new URL(event.request.url).origin === self.location.origin) {

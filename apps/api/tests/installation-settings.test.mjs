@@ -17,6 +17,10 @@ test("the API always uses ordinary production installation policy", () => {
       durationHours: 10 * 365 * 24,
       automaticDeletionEnabled: false,
     });
+    assert.deepEqual(production.offlineRecovery, {
+      windowHours: 24,
+      restartReauthenticationRequired: true,
+    });
   } finally {
     if (original === undefined) delete process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE;
     else process.env.OPEN_TRIAGE_INSTALLATION_SETTINGS_BASELINE = original;
