@@ -61,13 +61,66 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
 
   for (const role of [
     "open_triage_analyst",
+    "open_triage_api_runtime",
+    "open_triage_analytics_health",
+    "open_triage_analytics_projector",
     "open_triage_auditor",
     "open_triage_identified_analyst",
     "open_triage_operational",
-    "open_triage_query_auditor"
+    "open_triage_operational_audit_writer",
+    "open_triage_query_auditor",
+    "open_triage_retention"
   ]) {
     await grantRoleForTesting(client, role);
   }
+
+  await t.test("keeps workload database roles inside their approved privilege contracts", async () => {
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_api_runtime");
+      await client.query("select * from clinical.report limit 0");
+      for (const sql of [
+        "select * from analytics_private.epcr limit 0",
+        "select * from operations.projection_health limit 0",
+        "create schema api_escape",
+        "create table public.api_escape (id integer)",
+        "create function public.api_escape() returns integer language sql as 'select 1'",
+        "alter table clinical.report add column api_escape integer",
+        "drop table clinical.report",
+        "grant select on clinical.report to public",
+        "create role api_escape"
+      ]) {
+        await rejectsSql(client, sql, [], "42501");
+      }
+      await client.query("rollback");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_analytics_health");
+      await client.query("select * from operations.projection_health limit 0");
+      await rejectsSql(client, "select * from clinical.report limit 0", [], "42501");
+      await rejectsSql(client, "select * from analytics_private.epcr limit 0", [], "42501");
+      await client.query("rollback");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+
+    await client.query("begin");
+    try {
+      await client.query("set local role open_triage_operational_audit_writer");
+      await rejectsSql(client, "select * from clinical.report limit 0", [], "42501");
+      await rejectsSql(client, "select * from operations.query_audit_event limit 0", [], "42501");
+      await client.query("rollback");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+  });
 
   await t.test("enforces role-resolved authorization invariants", async () => {
     const capabilityKeys = (await client.query(

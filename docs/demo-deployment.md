@@ -38,15 +38,16 @@ Before the first deployment, operators must provide:
   `ghcr.io/open-triage/open-triage-{api,web}`. If the packages are private,
   provision a pull credential outside the workflow and expose it through the
   chart's `imagePullSecrets` value or the namespace's default service account;
-- the `open-triage` namespace and its cluster-owned
-  `open-triage-database` Secret. Although Helm is invoked with
+- the `open-triage` namespace and its cluster-owned API, migration, analytics
+  projector, analytics health, retention, and operational-audit database
+  Secrets. Although Helm is invoked with
   `--create-namespace`, a usable first deployment requires operators to create
-  the namespace and Secret in advance because the pre-install migration hook
-  needs the Secret before Helm-managed resources exist. Follow the
+  the namespace and Secrets in advance because the pre-install migration hook
+  needs its dedicated Secret before Helm-managed resources exist. Follow the
   [chart instructions](../deploy/helm/open-triage/README.md) for the required
   keys and safe creation procedure;
 - the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
-  Secret, initialized only with fictional demo data.
+  workload Secrets, initialized only with fictional demo data.
 
 The fixed automated targets are Helm release `open-triage`, namespace
 `open-triage`, web host `https://demo.opentriage.org`, and API host

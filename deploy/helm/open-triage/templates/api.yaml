@@ -25,8 +25,19 @@ spec:
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           ports: [{ name: http, containerPort: 3001 }]
-          envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
           env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: DATABASE_URL } }
+            - name: SUPABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_URL } }
+            - name: SUPABASE_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: SUPABASE_SECRET_KEY } }
+            - name: PATIENT_KEY_INSTALLATION_ID
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_INSTALLATION_ID } }
+            - name: PATIENT_KEY_VERSION
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_VERSION } }
+            - name: PATIENT_KEY_SECRET_BASE64
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_SECRET_BASE64 } }
             - name: PORT
               value: "3001"
             - name: WEB_ORIGIN

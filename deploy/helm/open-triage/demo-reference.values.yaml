@@ -11,7 +11,18 @@ ingress:
         - api.demo.opentriage.org
 
 secrets:
-  existingSecret: open-triage-database
+  api:
+    existingSecret: open-triage-api-database
+  migration:
+    existingSecret: open-triage-migration-database
+  analyticsProjector:
+    existingSecret: open-triage-analytics-projector-database
+  analyticsHealth:
+    existingSecret: open-triage-analytics-health-database
+  retention:
+    existingSecret: open-triage-retention-database
+  operationalAudit:
+    existingSecret: open-triage-operational-audit-database
 
 migration:
   bootstrapSynthetic: true

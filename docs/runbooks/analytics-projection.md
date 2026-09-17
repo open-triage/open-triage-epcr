@@ -4,8 +4,10 @@ The production scheduler is defined only by the
 [`analytics-cronjobs.yaml` Helm template](../../deploy/helm/open-triage/templates/analytics-cronjobs.yaml).
 Configure it through the chart's `analytics` values. Both jobs use the immutable
 `api.image` selected for the application, the configured `imagePullSecrets`, and
-the database Secret selected by `secrets.existingSecret`; that Secret must expose
-`DATABASE_URL`.
+the distinct database Secrets selected by
+`secrets.analyticsProjector.existingSecret` and
+`secrets.analyticsHealth.existingSecret`; each Secret exposes only its
+workload-specific `DATABASE_URL`.
 
 The default projector schedule runs one bounded batch every two minutes with
 overlapping runs forbidden. This cadence leaves normal operating margin inside
