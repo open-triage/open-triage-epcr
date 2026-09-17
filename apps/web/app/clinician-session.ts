@@ -73,6 +73,22 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
   };
 }
 
+/** Re-establishes server authority after a browser restart without trusting the persisted identity payload. */
+export async function authenticateRestartedClinicianSession(stored: ClinicianSession): Promise<ClinicianSession | null> {
+  const url = apiRequestUrl("/api/sessions/current");
+  if (!url) return stored;
+  const response = await fetch(url, browserRequestInit({ method: "GET", cache: "no-store" }));
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error("Secure reconnection is unavailable.");
+  const authenticated = await response.json() as ClinicianSession;
+  if (authenticated.user.id !== stored.user.id || authenticated.organization.id !== stored.organization.id) return null;
+  return {
+    ...authenticated,
+    ...(stored.csrfToken ? { csrfToken: stored.csrfToken } : {}),
+    ...(stored.accessToken ? { accessToken: stored.accessToken } : {}),
+  };
+}
+
 export async function endClinicianSession(csrfToken: string): Promise<void> {
   const url = apiRequestUrl("/api/sessions/current");
   if (!url) return;
