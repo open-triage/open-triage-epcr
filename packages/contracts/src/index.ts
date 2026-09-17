@@ -128,9 +128,27 @@ export interface CheckpointProtectedReportCommand {
   ciphertextSha256: string;
 }
 
+export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand;
+
 export interface ProtectedReportCheckpoint {
   ciphertextRevision: number;
   ciphertextSha256: string;
+}
+
+export interface ProtectedCiphertextReceipt {
+  schemaVersion: 1;
+  recoveryDeadline: string;
+}
+
+export interface RecoverProtectedReportKeyCommand {
+  schemaVersion: 1;
+  recoveryHandle: string;
+}
+
+export interface RecoveredProtectedReportKey {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  reportKeyBase64: string;
 }
 
 export interface AdminContext {

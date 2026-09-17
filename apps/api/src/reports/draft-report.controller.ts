@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
-import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope, ReopenOpenCallResponse } from "@open-triage/contracts";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse,
+  ProtectedCiphertextReceipt, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope,
+  RecoveredProtectedReportKey, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
@@ -47,6 +49,32 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string,
   ): Promise<ProtectedReportCheckpoint> {
     return this.protectedKeys.checkpoint(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/protected-ciphertext-receipt")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  recordProtectedCiphertext(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedCiphertextReceipt> {
+    return this.protectedKeys.recordWrite(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/protected-key-recovery")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  recoverProtectedKey(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<RecoveredProtectedReportKey> {
+    return this.protectedKeys.recover(bearerToken(authorization, cookie), id, body, csrfToken);
   }
 
   @Get("open")

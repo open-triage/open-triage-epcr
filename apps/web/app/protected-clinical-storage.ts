@@ -1,4 +1,4 @@
-import type { ProtectedReportKeyEnvelope } from "@open-triage/contracts";
+import type { ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const PROTECTED_CLINICAL_DATABASE = "open-triage-protected-clinical-v1";
@@ -21,10 +21,19 @@ export interface ProtectedClinicalRecord {
 type ProtectedClinicalPayload = { readonly schemaVersion: 1; readonly report?: unknown; readonly shellState?: unknown };
 export type ProtectedStorageMode = "active" | "online-only" | "read-only" | "locked";
 export interface ProtectedStorageStatus { readonly mode: ProtectedStorageMode; readonly explanation: string | null }
+
+export function protectedRecordExpired(
+  record: Pick<ProtectedClinicalRecord, "recoveryDeadline">,
+  now = new Date(),
+): boolean {
+  const deadline = Date.parse(record.recoveryDeadline);
+  return !Number.isFinite(deadline) || deadline <= now.getTime();
+}
+
 type RuntimeContext = {
   readonly key: CryptoKey;
   readonly localRecordId: string;
-  readonly envelope: ProtectedReportKeyEnvelope;
+  envelope: ProtectedReportKeyEnvelope;
   readonly releaseLock: () => void;
   readonly csrfToken: string;
   payload: ProtectedClinicalPayload;
@@ -154,7 +163,57 @@ async function storeWithPressureRecovery(record: ProtectedClinicalRecord): Promi
   throw new DOMException("Protected storage quota is exhausted; unsynchronized ciphertext was retained", "QuotaExceededError");
 }
 
-export async function encryptProtectedPayload(key: CryptoKey, recoveryHandle: string, ciphertextRevision: number, payload: unknown): Promise<Pick<ProtectedClinicalRecord, "nonce" | "ciphertext">> {
+/** Removes expired ciphertext and its opaque metadata without loading a key or decrypting. */
+export async function deleteExpiredProtectedRecords(now = new Date()): Promise<number> {
+  if (!("indexedDB" in globalThis)) return 0;
+  const database = await openDatabase();
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      let removed = 0;
+      const transaction = database.transaction(PROTECTED_CLINICAL_STORE, "readwrite");
+      const request = transaction.objectStore(PROTECTED_CLINICAL_STORE).openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        const record = cursor.value as Partial<ProtectedClinicalRecord>;
+        if (typeof record.recoveryDeadline !== "string" ||
+            protectedRecordExpired(record as Pick<ProtectedClinicalRecord, "recoveryDeadline">, now)) {
+          cursor.delete();
+          removed += 1;
+        }
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve(removed);
+      transaction.onabort = () => reject(transaction.error ?? new Error("Protected clinical cleanup was aborted"));
+      transaction.onerror = () => reject(transaction.error ?? new Error("Protected clinical cleanup failed"));
+    });
+  } finally {
+    database.close();
+  }
+}
+
+function ciphertextSha256(ciphertext: ArrayBuffer): Promise<string> {
+  return crypto.subtle.digest("SHA-256", ciphertext).then((digest) =>
+    [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""));
+}
+
+async function updateRecordDeadline(localRecordId: string, ciphertextRevision: number, recoveryDeadline: string): Promise<void> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction(PROTECTED_CLINICAL_STORE, "readwrite", { durability: "strict" });
+    const store = transaction.objectStore(PROTECTED_CLINICAL_STORE);
+    const current = await requestResult(store.get(localRecordId)) as ProtectedClinicalRecord | undefined;
+    if (current?.ciphertextRevision === ciphertextRevision) store.put({ ...current, recoveryDeadline });
+    await transactionComplete(transaction);
+  } finally { database.close(); }
+}
+
+export async function encryptProtectedPayload(
+  key: CryptoKey,
+  recoveryHandle: string,
+  ciphertextRevision: number,
+  payload: unknown,
+): Promise<Pick<ProtectedClinicalRecord, "nonce" | "ciphertext">> {
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce, additionalData: associatedData(recoveryHandle, ciphertextRevision), tagLength: 128 }, key, new TextEncoder().encode(JSON.stringify(payload)));
   return { nonce: nonce.buffer.slice(0), ciphertext };
@@ -184,11 +243,37 @@ async function persist(reportId: string): Promise<void> {
   if (!context) return;
   const revision = context.revision + 1;
   const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, structuredClone(context.payload));
-  await storeWithPressureRecovery({
+  const record: ProtectedClinicalRecord = {
     localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
-  });
+  };
+  await storeWithPressureRecovery(record);
+
+  const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
+  if (url && navigator.onLine) {
+    const response = await fetch(url, browserRequestInit({
+      method: "POST",
+      headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        recoveryHandle: context.envelope.recoveryHandle,
+        ciphertextRevision: revision,
+        ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
+      }),
+    }));
+    if (response.status === 404 || response.status === 410) {
+      contexts.delete(reportId);
+      statuses.delete(reportId);
+      context.releaseLock();
+      await deleteRecords([context.localRecordId]);
+      throw new Error("Protected report recovery is unavailable");
+    }
+    if (!response.ok) throw new Error("Protected ciphertext receipt could not be recorded");
+    const receipt = await response.json() as ProtectedCiphertextReceipt;
+    context.envelope = { ...context.envelope, recoveryDeadline: receipt.recoveryDeadline };
+    await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
+  }
   context.revision = revision;
   context.failure = null;
   publishStatus(reportId, { mode: "active", explanation: null });
@@ -328,3 +413,17 @@ export function deleteLegacyClinicalStorage(storage: Storage): void {
     if (LEGACY_CLINICAL_STORAGE_KEYS.includes(key as typeof LEGACY_CLINICAL_STORAGE_KEYS[number]) || key.startsWith("open-triage:standard-encounter-v1:report:") || key.startsWith("open-triage:report-sync-v1:")) storage.removeItem(key);
   }
 }
+
+function installProtectedCleanup(): void {
+  if (!("indexedDB" in globalThis) || !("window" in globalThis)) return;
+  const cleanup = () => void deleteExpiredProtectedRecords().catch(() => undefined);
+  cleanup();
+  window.addEventListener("online", cleanup);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") cleanup();
+  });
+  const timer = window.setInterval(cleanup, 15 * 60 * 1_000);
+  window.addEventListener("pagehide", () => window.clearInterval(timer), { once: true });
+}
+
+installProtectedCleanup();

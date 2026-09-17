@@ -1,7 +1,9 @@
-import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { CheckpointProtectedReportCommand, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope, RegisterProtectedReportKeyCommand } from "@open-triage/contracts";
-import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import type { CheckpointProtectedReportCommand, ProtectedCiphertextReceipt, ProtectedReportCheckpoint,
+  ProtectedReportKeyEnvelope, RecoveredProtectedReportKey, RecordProtectedCiphertextCommand,
+  RecoverProtectedReportKeyCommand, RegisterProtectedReportKeyCommand } from "@open-triage/contracts";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { DataSource } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
@@ -39,12 +41,35 @@ type RegisteredEnvelopeRow = {
   created: boolean;
 };
 
+type RecoverableEnvelopeRow = {
+  wrapping_key_version: string | number;
+  wrapping_nonce: Buffer;
+  wrapped_data_key: Buffer;
+};
+
 @Injectable()
-export class ProtectedReportKeyService {
+export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy {
+  private expiryTimer?: NodeJS.Timeout;
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly sessions: ClinicianSessionService,
   ) {}
+
+  onModuleInit(): void {
+    void this.expireDueKeys();
+    this.expiryTimer = setInterval(() => void this.expireDueKeys(), 60_000);
+    this.expiryTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.expiryTimer) clearInterval(this.expiryTimer);
+  }
+
+  private async expireDueKeys(): Promise<void> {
+    await this.dataSource.query("select offline_recovery.expire_due_report_keys()")
+      .catch(() => undefined);
+  }
 
   async register(
     accessToken: string,
@@ -124,6 +149,75 @@ export class ProtectedReportKeyService {
     }
   }
 
+  async recordWrite(
+    accessToken: string,
+    reportId: string,
+    input: unknown,
+    csrfToken?: string,
+  ): Promise<ProtectedCiphertextReceipt> {
+    const command = this.validateWrite(input);
+    const stored = await this.dataSource.transaction(async (manager) => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+      const rows = await manager.query<Array<{ recovery_deadline: Date | string }>>(`
+        select * from offline_recovery.record_ciphertext_write($1, $2, $3, $4, $5, $6)
+      `, [reportId, session.organization.id, session.user.id, command.recoveryHandle,
+        command.ciphertextRevision, command.ciphertextSha256]);
+      return rows[0];
+    });
+    if (!stored) throw new NotFoundException("Protected report recovery is unavailable");
+    return { schemaVersion: 1, recoveryDeadline: new Date(stored.recovery_deadline).toISOString() };
+  }
+
+  async recover(
+    accessToken: string,
+    reportId: string,
+    input: unknown,
+    csrfToken?: string,
+  ): Promise<RecoveredProtectedReportKey> {
+    const command = this.validateRecovery(input);
+    const result = await this.dataSource.transaction(async (manager) => {
+      await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+      const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
+      const policies = await manager.query<Array<{ required: boolean }>>(`
+        select offline_recovery_restart_reauthentication_required as required
+        from app_identity.organization where id = $1
+      `, [session.organization.id]);
+      if (policies[0]?.required) await this.sessions.requireRecentReauthentication(accessToken, manager);
+      const rows = await manager.query<RecoverableEnvelopeRow[]>(`
+        select * from offline_recovery.recover_report_key($1, $2, $3, $4)
+      `, [reportId, session.organization.id, session.user.id, command.recoveryHandle]);
+      return { row: rows[0], organizationId: session.organization.id, ownerUserId: session.user.id };
+    });
+    if (!result.row) throw new NotFoundException("Protected report recovery is unavailable");
+
+    try {
+      const wrapping = offlineRecoveryWrappingKey(process.env);
+      if (Number(result.row.wrapping_key_version) !== wrapping.version) {
+        throw new Error("Unavailable wrapping key version");
+      }
+      const wrapped = Buffer.from(result.row.wrapped_data_key);
+      const encrypted = wrapped.subarray(0, wrapped.byteLength - 16);
+      const tag = wrapped.subarray(wrapped.byteLength - 16);
+      const decipher = createDecipheriv("aes-256-gcm", wrapping.secret, Buffer.from(result.row.wrapping_nonce));
+      decipher.setAAD(Buffer.from(JSON.stringify({
+        schemaVersion: 1,
+        organizationId: result.organizationId,
+        reportId,
+        ownerUserId: result.ownerUserId,
+        recoveryHandle: command.recoveryHandle,
+        wrappingKeyVersion: wrapping.version,
+      }), "utf8"));
+      decipher.setAuthTag(tag);
+      const key = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+      const reportKeyBase64 = key.toString("base64");
+      key.fill(0);
+      return { schemaVersion: 1, recoveryHandle: command.recoveryHandle, reportKeyBase64 };
+    } catch {
+      throw new NotFoundException("Protected report recovery is unavailable");
+    }
+  }
+
   private validate(input: unknown): RegisterProtectedReportKeyCommand {
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new UnprocessableEntityException("Protected report key registration is invalid");
@@ -148,5 +242,31 @@ export class ProtectedReportKeyService {
       throw new UnprocessableEntityException("Protected ciphertext checkpoint is invalid");
     }
     return record as unknown as CheckpointProtectedReportCommand;
+  }
+
+  private validateWrite(input: unknown): RecordProtectedCiphertextCommand {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new UnprocessableEntityException("Protected ciphertext receipt is invalid");
+    }
+    const record = input as Record<string, unknown>;
+    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
+        record.schemaVersion !== 1 || typeof record.recoveryHandle !== "string" || !uuidV4.test(record.recoveryHandle) ||
+        typeof record.ciphertextRevision !== "number" || !Number.isSafeInteger(record.ciphertextRevision) || record.ciphertextRevision < 1 ||
+        typeof record.ciphertextSha256 !== "string" || !/^[a-f0-9]{64}$/.test(record.ciphertextSha256)) {
+      throw new UnprocessableEntityException("Protected ciphertext receipt is invalid");
+    }
+    return record as unknown as RecordProtectedCiphertextCommand;
+  }
+
+  private validateRecovery(input: unknown): RecoverProtectedReportKeyCommand {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new UnprocessableEntityException("Protected report recovery is invalid");
+    }
+    const record = input as Record<string, unknown>;
+    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle"].includes(key)) ||
+        record.schemaVersion !== 1 || typeof record.recoveryHandle !== "string" || !uuidV4.test(record.recoveryHandle)) {
+      throw new UnprocessableEntityException("Protected report recovery is invalid");
+    }
+    return record as unknown as RecoverProtectedReportKeyCommand;
   }
 }
