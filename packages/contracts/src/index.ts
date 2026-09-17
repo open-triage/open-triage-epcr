@@ -343,6 +343,19 @@ export interface ResetAdminCredentialResult {
   sessionsRevoked: number;
 }
 
+export interface PurgeAdminOfflineRecoveryCommand {
+  /** A bounded operational reason; report content must never be supplied. */
+  reason: string;
+}
+
+export interface PurgedAdminOfflineRecovery {
+  userId: string;
+  purgedEnvelopeCount: number;
+  revokedGrantCount: number;
+  /** Device linking is not available, so containment is user-wide. */
+  appliesToAllBrowsers: true;
+}
+
 export interface AdminCapabilityDefinition {
   key: string;
   description: string;

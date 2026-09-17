@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertMonotonicCiphertextRevision,
+  applyProtectedAuthorityResponse,
   decryptProtectedPayload,
   deleteLegacyClinicalStorage,
   encryptProtectedPayload,
@@ -135,4 +136,11 @@ test("expiry cleanup decides from opaque deadline metadata without decrypting ci
   assert.equal(protectedRecordExpired({ recoveryDeadline: "2026-09-17T12:00:00.000Z" }, now), true);
   assert.equal(protectedRecordExpired({ recoveryDeadline: "2026-09-17T12:00:00.001Z" }, now), false);
   assert.equal(protectedRecordExpired({ recoveryDeadline: "not-a-timestamp" }, now), true);
+});
+
+test("only an explicit server authorization denial is treated as a clinical lock signal", () => {
+  assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 401 }), true);
+  assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 403 }), true);
+  assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 404 }), false);
+  assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 503 }), false);
 });

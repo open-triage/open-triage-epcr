@@ -345,6 +345,9 @@ async function persist(reportId: string): Promise<void> {
     } finally {
       if (context.receiptRequest === receiptRequest) context.receiptRequest = null;
     }
+    if (applyProtectedAuthorityResponse(reportId, response)) {
+      throw new Error("Clinical authorization changed; protected editing is locked");
+    }
     if (response.status === 404 || response.status === 410) {
       contexts.delete(reportId);
       statuses.delete(reportId);
@@ -374,6 +377,7 @@ async function checkpointProtectedCiphertext(reportId: string, context: RuntimeC
       headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
       body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle, ciphertextRevision: revision, ciphertextSha256 }),
     }));
+    if (applyProtectedAuthorityResponse(reportId, response)) return;
     if (response.status === 409) publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
   } catch { /* The local authenticated ciphertext remains authoritative until reconnect. */ }
 }
@@ -383,6 +387,7 @@ function queuePersist(reportId: string): Promise<void> {
   if (!context) return Promise.resolve();
   context.pending = context.pending.catch(() => undefined).then(() => persist(reportId)).catch((error: unknown) => {
     context.failure = error instanceof Error ? error : new Error("Protected clinical persistence failed");
+    if (contexts.get(reportId) !== context) throw context.failure;
     publishStatus(reportId, {
       mode: navigator.onLine ? "online-only" : "read-only",
       explanation: navigator.onLine
@@ -419,6 +424,28 @@ async function acquireEditLock(reportId: string): Promise<(() => void) | null> {
 }
 
 export function protectedStorageActive(reportId: string): boolean { return contexts.has(reportId) && protectedStorageStatus(reportId).mode === "active"; }
+
+/**
+ * Applies a server authority decision without probing local ciphertext. A
+ * denial drops the only readable key reference immediately and leaves the
+ * opaque record to its existing recovery deadline.
+ */
+export function applyProtectedAuthorityResponse(reportId: string,
+  response: Pick<Response, "status">): boolean {
+  if (response.status !== 401 && response.status !== 403) return false;
+  const context = contexts.get(reportId);
+  if (!context) return true;
+  context.locking = true;
+  context.receiptRequest?.abort();
+  contexts.delete(reportId);
+  context.payload = { schemaVersion: PROTECTED_ENVELOPE_SCHEMA };
+  context.releaseLock();
+  publishStatus(reportId, {
+    mode: "locked",
+    explanation: "Clinical authorization changed. Protected work is locked until server access is restored before its existing deadline.",
+  });
+  return true;
+}
 
 export async function prepareProtectedReport(csrfToken: string, reportId: string): Promise<boolean> {
   if (browserRequestConfiguration().mode !== "server") return false;
