@@ -8,6 +8,7 @@ import { encounterEventPresentation, INITIAL_SHELL_STATE, reviewEncounter, trans
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 import { requireNemsisDataElement } from "../app/nemsis-data-model";
 import { OFFLINE_REPORTS_STORAGE_KEY } from "../app/offline-reports";
+import { encounterDocumentDiagnostics } from "../app/encounter-document";
 
 function beginNote(time = "09:02"): ShellState {
   return transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "visitor-note-1", time });
@@ -161,6 +162,35 @@ test("browser persistence stores one versioned canonical document and preserves 
   assert.equal(envelope.document[ENCOUNTER_EXTENSION_KEY].version, ENCOUNTER_EXTENSION_VERSION);
   assert.equal(envelope.document["x-agency:unknown"].retained, true);
   assert.equal(loadShellState(storage)?.encounter.document["x-agency:unknown"] && (loadShellState(storage)!.encounter.document["x-agency:unknown"] as { retained: boolean }).retained, true);
+});
+
+test("report-scoped browser state repairs empty elements without losing unrelated clinical values", () => {
+  const storage = memoryStorage();
+  const reportId = "42000000-0000-4000-8000-000000000426";
+  saveShellState(storage, INITIAL_SHELL_STATE, reportId);
+  const key = `${STORAGE_KEY}:report:${reportId}`;
+  const envelope = JSON.parse(storage.getItem(key)!);
+  const patient = envelope.document.groups.find((group: { id: string }) => group.id === "ePatientSection").instances[0];
+  const retained = structuredClone(patient.elements.find((element: { id: string }) => element.id === "ePatient.17"));
+  patient.elements.push({ id: "ePatient.19", values: [] });
+  storage.setItem(key, JSON.stringify(envelope));
+
+  const restored = loadShellStateResult(storage, undefined, reportId);
+  assert.equal(restored.status, "restored");
+  if (restored.status !== "restored") return;
+  assert.equal(restored.migrated, true);
+  const restoredPatient = restored.state.encounter.document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  assert.equal(restoredPatient.elements.find(({ id }) => id === "ePatient.19"), undefined);
+  assert.deepEqual(restoredPatient.elements.find(({ id }) => id === "ePatient.17"), retained);
+  assert.deepEqual(encounterDocumentDiagnostics(restored.state.encounter.document), []);
+
+  saveShellState(storage, restored.state, reportId);
+  const reopened = loadShellStateResult(storage, undefined, reportId);
+  assert.equal(reopened.status, "restored");
+  if (reopened.status === "restored") {
+    assert.equal(reopened.migrated, false);
+    assert.deepEqual(encounterDocumentDiagnostics(reopened.state.encounter.document), []);
+  }
 });
 
 test("an incompatible canonical extension is preserved with an explicit diagnostic", () => {

@@ -139,6 +139,11 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     : null;
   const formRequired = new Set(clinicalForm?.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
     field.source.kind === "nemsis" && field.required ? [field.source.elementId] : [])) ?? []);
+  const explicitlyRequiredElements = new Set(NEMSIS_DATA_MODEL.elements.filter((element) =>
+    formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true).map(({ id }) => id));
+  const explicitlyRequiredGroups = new Set(NEMSIS_DATA_MODEL.elements.filter(({ id }) => explicitlyRequiredElements.has(id))
+    .flatMap(({ groupPath }) => groupPath));
+  const catalogGroups = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
   const instancesByGroup = new Map(document.groups.map((group) => [group.id, group.instances]));
   const seenInstances = new Set<string>();
   const seenOccurrences = new Set<string>();
@@ -149,10 +154,14 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const instances = instancesByGroup.get(catalogGroup.id) ?? [];
     const presentation = groupPresentation.get(catalogGroup.id);
     const parents = catalogGroup.parentId ? instancesByGroup.get(catalogGroup.parentId) ?? [] : [undefined];
-    if (relevant && presentation?.mode !== "read-only") for (const parent of parents) {
+    const explicitlyRequired = explicitlyRequiredGroups.has(catalogGroup.id);
+    const minimum = catalogGroup.repeating && !explicitlyRequired ? 0 : catalogGroup.occurrence.min;
+    const parentIsRepeating = catalogGroup.parentId ? catalogGroups.get(catalogGroup.parentId)?.repeating === true : false;
+    const validationParents = parents.length ? parents : explicitlyRequired && !parentIsRepeating ? [undefined] : [];
+    if (relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
       const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
-      if (count < catalogGroup.occurrence.min) findings.push(finding(
-        "group.minimum", `${catalogGroup.name} requires at least ${catalogGroup.occurrence.min} occurrence(s); found ${count}.`,
+      if (count < minimum) findings.push(finding(
+        "group.minimum", `${catalogGroup.name} requires at least ${minimum} occurrence(s); found ${count}.`,
         { groupId: catalogGroup.id, ...(parent ? { parentGroupInstanceId: parent.instanceId } : {}) }, catalogGroup.name,
       ));
       if (catalogGroup.occurrence.max !== "unbounded" && count > catalogGroup.occurrence.max) findings.push(finding(
@@ -175,10 +184,6 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const minimum = formRequired.has(element.id) || configured?.agencyRequired ? Math.max(1, configured?.minOccurs ?? element.occurrence.min) : configured?.minOccurs ?? element.occurrence.min;
     const maximum = configured ? configured.maxOccurs ?? "unbounded" : element.occurrence.max;
     const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
-    if (editable && minimum > 0 && elementInstances.length === 0) findings.push(finding(
-      "field.minimum", `${element.name} requires at least ${minimum} value(s); found 0.`,
-      { groupId, fieldId: element.id }, element.name, requirednessSeverity,
-    ));
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
       if (editable && values.length < minimum) findings.push(finding(

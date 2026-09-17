@@ -3,6 +3,7 @@ import test from "node:test";
 import type { EncounterDocument } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
 import { encounterDocumentToDraftMutations } from "../app/draft-report";
+import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { requireNemsisDataElement, type NemsisDataElement } from "../app/nemsis-data-model";
 import {
   editScalarOccurrence,
@@ -138,6 +139,35 @@ test("repeatable scalar occurrences add, edit, order, remove, and project stable
   if (!removed.ok) return;
   const reopenedDraft = encounterDocumentToDraftMutations(reportId, removed.document).occurrences.find(({ elementId, ordinal }) => elementId === "ePatient.18" && ordinal === 0);
   assert.equal(reopenedDraft?.id, stableDraftId);
+});
+
+test("removing the final scalar drops its element and emits a persisted occurrence tombstone", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const persisted = encounterDocumentToDraftMutations(reportId, document);
+  const removed = editScalarOccurrence(document, {
+    groupId: patientGroupId,
+    groupInstanceId: patientInstanceId,
+    elementId: "ePatient.17",
+    occurrenceId: "synthetic-patient-dob",
+    input: "",
+  });
+
+  assert.equal(removed.ok, true);
+  if (!removed.ok) return;
+  const patient = removed.document.groups.find(({ id }) => id === patientGroupId)!.instances
+    .find(({ instanceId }) => instanceId === patientInstanceId)!;
+  assert.equal(patient.elements.find(({ id }) => id === "ePatient.17"), undefined);
+  assert.deepEqual(encounterDocumentDiagnostics(removed.document), []);
+
+  const mutations = encounterDocumentToDraftMutations(reportId, removed.document, persisted);
+  const original = persisted.occurrences.find(({ elementId }) => elementId === "ePatient.17")!;
+  assert.deepEqual(mutations.occurrences.find(({ id }) => id === original.id), {
+    id: original.id,
+    elementId: original.elementId,
+    groupInstanceId: original.groupInstanceId,
+    ordinal: original.ordinal,
+    tombstone: true,
+  });
 });
 
 test("invalid edits leave the canonical document untouched", () => {

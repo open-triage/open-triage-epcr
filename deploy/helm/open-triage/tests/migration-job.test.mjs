@@ -18,7 +18,7 @@ test("migration Job gates install and upgrade before application rollout", () =>
   assert.match(job, /"helm\.sh\/hook-weight": "-5"/);
   assert.match(job, /backoffLimit: 0/);
   assert.match(job, /command: \["npm", "run", "migrate", "-w", "@open-triage\/database"\]/);
-  assert.match(job, /secretRef: \{ name: open-triage-database \}/);
+  assert.match(job, /secretKeyRef: \{ name: open-triage-migration-database, key: DATABASE_URL \}/);
 });
 
 test("successful migration state survives a later rollout failure", () => {
@@ -44,20 +44,19 @@ test("demo deployment restores its idempotent synthetic installation before roll
 test("migration gate requires a pre-existing cluster-owned Secret", () => {
   assert.throws(
     () => render(
-      "--set", "secrets.existingSecret=",
-      "--set-string", "secrets.databaseUrl=managed",
-      "--set-string", "secrets.patientKeyInstallationId=installation",
-      "--set-string", "secrets.patientKeySecretBase64=key",
+      "--set", "secrets.migration.existingSecret=",
+      "--set-string", "secrets.migration.databaseUrl=managed",
     ),
-    /secrets\.existingSecret is required when migration\.enabled is true/,
+    /secrets\.migration\.existingSecret is required when migration\.enabled is true/,
   );
 
   const managed = render(
     "--set", "migration.enabled=false",
-    "--set", "secrets.existingSecret=",
-    "--set-string", "secrets.databaseUrl=managed",
-    "--set-string", "secrets.patientKeyInstallationId=installation",
-    "--set-string", "secrets.patientKeySecretBase64=key",
+    "--set", "secrets.api.existingSecret=",
+    "--set-string", "secrets.api.databaseUrl=managed",
+    "--set-string", "secrets.api.patientKeyInstallationId=installation",
+    "--set-string", "secrets.api.patientKeySecretBase64=key",
+    "--set-string", "secrets.api.authRateLimitSecretBase64=auth-key",
   );
   assert.match(managed, /kind: Secret/);
   assert.doesNotMatch(managed, /kind: Job/);

@@ -186,7 +186,7 @@ export class AssignedCallsService {
   ) {}
 
   async list(accessToken: string, now = new Date()): Promise<AssignedCallsResponse> {
-    const session = await this.sessions.get(accessToken, now);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document", undefined, now);
     await this.dataSource.query("select retention.purge_expired_synthetic_records($1)", [now]);
     const rows = await this.dataSource.query<AssignedCallRow[]>(`
       select ca.id, ca.call_number, ou.id as unit_id, ou.call_sign,
@@ -219,6 +219,7 @@ export class AssignedCallsService {
   }
 
   async syntheticGenerationContext(accessToken: string): Promise<SyntheticCallGenerationContext> {
+    await this.sessions.requireCapability(accessToken, "clinical:document");
     const session = await this.sessions.requireCapability(accessToken, "clinical:demo");
     const [units, unopenedCalls] = await Promise.all([
       this.dataSource.query<EligibleUnitRow[]>(`
@@ -248,6 +249,7 @@ export class AssignedCallsService {
     try {
       return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
+        await this.sessions.requireCapability(accessToken, "clinical:document", manager, now);
         const session = await this.sessions.requireCapability(accessToken, "clinical:demo", manager, now);
         await manager.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
           `synthetic-call:${session.organization.id}:${session.user.id}:${unitId}`,
@@ -304,7 +306,7 @@ export class AssignedCallsService {
   }
 
   async open(accessToken: string, assignmentId: string): Promise<OpenAssignmentResponse> {
-    const session = await this.sessions.get(accessToken);
+    const session = await this.sessions.requireCapability(accessToken, "clinical:document");
     try {
       const opened = await this.dataSource.transaction(async (manager) => {
         const assignments = await manager.query<OpenableAssignmentRow[]>(`

@@ -323,6 +323,40 @@ export function loadEncounterDocument(
   return structuredClone(value) as EncounterDocument;
 }
 
+export interface EncounterDocumentNormalization {
+  readonly document: unknown;
+  readonly removedEmptyElementCount: number;
+}
+
+/**
+ * Repairs the one recoverable legacy shape that older editors could persist.
+ * Everything except element objects with an explicit empty `values` array is
+ * retained byte-for-byte at the value level so normal validation can still
+ * reject unrelated corruption instead of silently rewriting it.
+ */
+export function normalizeEmptyEncounterElements(value: unknown): EncounterDocumentNormalization {
+  if (!isRecord(value) || !Array.isArray(value.groups)) return { document: value, removedEmptyElementCount: 0 };
+  let removedEmptyElementCount = 0;
+  const groups = value.groups.map((group) => {
+    if (!isRecord(group) || !Array.isArray(group.instances)) return group;
+    const originalInstances = group.instances;
+    const instances = originalInstances.map((instance) => {
+      if (!isRecord(instance) || !Array.isArray(instance.elements)) return instance;
+      const elements = instance.elements.filter((element) => {
+        const empty = isRecord(element) && Array.isArray(element.values) && element.values.length === 0;
+        if (empty) removedEmptyElementCount += 1;
+        return !empty;
+      });
+      return elements.length === instance.elements.length ? instance : { ...instance, elements };
+    });
+    return instances.every((instance, index) => instance === originalInstances[index]) ? group : { ...group, instances };
+  });
+  return {
+    document: removedEmptyElementCount === 0 ? value : { ...value, groups },
+    removedEmptyElementCount,
+  };
+}
+
 export function serializeEncounterDocument(document: EncounterDocument): string {
   return `${JSON.stringify(sortObjectKeys(loadEncounterDocument(document)), null, 2)}\n`;
 }

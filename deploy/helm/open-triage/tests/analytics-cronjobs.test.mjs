@@ -29,7 +29,8 @@ test("the canonical render preserves both analytics workloads", () => {
     "--set-string", "api.image.repository=registry.example/open-triage-api",
     "--set-string", "api.image.tag=release-sha",
     "--set", "api.image.pullPolicy=Always",
-    "--set", "secrets.existingSecret=analytics-database",
+    "--set", "secrets.analyticsProjector.existingSecret=projector-database",
+    "--set", "secrets.analyticsHealth.existingSecret=health-database",
   );
 
   assert.equal(output.match(/kind: CronJob/g)?.length, 2);
@@ -40,7 +41,8 @@ test("the canonical render preserves both analytics workloads", () => {
   assert.equal(output.match(/concurrencyPolicy: Forbid/g)?.length, 2);
   assert.equal(output.match(/image: "registry\.example\/open-triage-api:release-sha"/g)?.length, 2);
   assert.equal(output.match(/imagePullPolicy: Always/g)?.length, 2);
-  assert.equal(output.match(/secretRef: \{ name: analytics-database \}/g)?.length, 2);
+  assert.equal(output.match(/secretKeyRef: \{ name: projector-database, key: DATABASE_URL \}/g)?.length, 1);
+  assert.equal(output.match(/secretKeyRef: \{ name: health-database, key: DATABASE_URL \}/g)?.length, 1);
   assert.match(output, /command: \["npm", "run", "project", "-w", "@open-triage\/database"\]/);
   assert.match(output, /command: \["npm", "run", "project:health", "-w", "@open-triage\/database"\]/);
   assert.match(output, /ANALYTICS_PROJECTOR_BATCH_SIZE\n\s+value: "500"/);

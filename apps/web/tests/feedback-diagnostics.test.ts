@@ -65,9 +65,11 @@ test("feature diagnostics retain only lightweight context", () => {
   }
 });
 
-test("semantic interactions are allowlisted, memory-only, bounded, and newest-first", () => {
+test("semantic interactions, including value-free sync categories, are memory-only, bounded, and newest-first", () => {
   clearFeedbackTelemetry();
-  const names = ["feedback.opened", "session.refresh.requested", "presentation.stationary.selected"] as const;
+  const names = ["feedback.opened", "session.refresh.requested", "presentation.stationary.selected",
+    "draft-sync.server-conflict", "draft-sync.validation-rejected", "draft-sync.recovered",
+    "draft-sync.retry-exhausted"] as const;
   for (let index = 0; index < 23; index += 1) recordFeedbackInteraction(names[index % names.length]!);
   const snapshot = feedbackTelemetrySnapshot();
   assert.equal(snapshot.interactions?.length, 20);

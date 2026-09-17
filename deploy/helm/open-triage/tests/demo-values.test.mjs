@@ -26,10 +26,15 @@ test("demo values preserve private image access for every workload", () => {
   );
 });
 
-test("demo values preserve public TLS and the cluster-owned database Secret", () => {
+test("demo values preserve public TLS and workload-specific cluster-owned database Secrets", () => {
   const output = renderDemo();
 
   assert.match(output, /tls:\n\s+- hosts:\n\s+- demo\.opentriage\.org\n\s+- api\.demo\.opentriage\.org\n\s+secretName: open-triage-tls/);
-  assert.equal(output.match(/secretRef: \{ name: open-triage-database \}/g)?.length, 5);
+  for (const name of [
+    "open-triage-api-database", "open-triage-migration-database",
+    "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
+    "open-triage-retention-database"
+  ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
+  assert.doesNotMatch(output, /envFrom:/);
   assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|stringData:/);
 });

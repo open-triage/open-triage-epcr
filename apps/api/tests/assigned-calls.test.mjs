@@ -134,8 +134,9 @@ test("the authenticated call-list integration returns only the clinician's assig
       }];
     }
   };
-  const sessions = { get: (token) => {
+  const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
+    assert.equal(capability, "clinical:document");
     return session;
   } };
   const controller = new AssignedCallsController(new AssignedCallsService(dataSource, sessions));
@@ -164,6 +165,30 @@ test("the assigned-call endpoint requires a current clinician session", async ()
   assert.throws(() => controller.list(), (error) => error instanceof UnauthorizedException);
 });
 
+test("removing clinical document authority blocks assigned-call access on the next request despite retained admin access", async () => {
+  let canDocument = true;
+  let queries = 0;
+  const remainingCapabilities = ["admin-dashboard:read"];
+  const dataSource = { query: async () => { queries += 1; return []; } };
+  const sessions = { requireCapability: async (_token, capability) => {
+    assert.equal(capability, "clinical:document");
+    assert.deepEqual(remainingCapabilities, ["admin-dashboard:read"]);
+    if (!canDocument) throw new UnauthorizedException("The requested capability is required");
+    return session;
+  } };
+  const service = new AssignedCallsService(dataSource, sessions);
+
+  await service.list(session.accessToken);
+  assert.equal(queries, 2);
+  canDocument = false;
+  await assert.rejects(service.list(session.accessToken), UnauthorizedException);
+  await assert.rejects(
+    service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
+    UnauthorizedException,
+  );
+  assert.equal(queries, 2, "an old unit assignment must not be queried after authority is removed");
+});
+
 test("generation context returns every eligible active unit and only counts unopened synthetic calls", async () => {
   const queries = [];
   const service = new AssignedCallsService({ query: async (sql, parameters) => {
@@ -176,7 +201,7 @@ test("generation context returns every eligible active unit and only counts unop
   } }, {
     requireCapability: async (token, capability) => {
       assert.equal(token, session.accessToken);
-      assert.equal(capability, "clinical:demo");
+      assert.ok(["clinical:document", "clinical:demo"].includes(capability));
       return session;
     }
   });
@@ -274,8 +299,9 @@ test("opening and retrying one assignment creates one draft without an automatic
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { ...transactional(manager, isolations), query: manager.query };
-  const sessions = { get: (token) => {
+  const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
+    assert.equal(capability, "clinical:document");
     return session;
   } };
   const controller = new AssignedCallsController(new AssignedCallsService(dataSource, sessions));
@@ -351,7 +377,7 @@ test("Clinical Demo generation ignores ordinary calls, creates once, reuses per 
     },
     requireCapability: async (token, capability) => {
       assert.equal(token, session.accessToken);
-      assert.equal(capability, "clinical:demo");
+      assert.ok(["clinical:document", "clinical:demo"].includes(capability));
       return session;
     }
   };
@@ -378,7 +404,10 @@ test("generation rejects missing current Clinical Demo authority before any data
   const manager = { query: async () => { queried = true; return []; } };
   const service = new AssignedCallsService(transactional(manager), {
     assertCsrf: async () => undefined,
-    requireCapability: async () => { throw new UnauthorizedException("The requested capability is required"); }
+    requireCapability: async (_token, capability) => {
+      if (capability === "clinical:document") return session;
+      throw new UnauthorizedException("The requested capability is required");
+    }
   });
 
   await assert.rejects(
@@ -436,8 +465,9 @@ test("a serialization failure while opening an assignment surfaces as a retriabl
       throw error;
     }
   };
-  const sessions = { get: (token) => {
+  const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
+    assert.equal(capability, "clinical:document");
     return session;
   } };
   const service = new AssignedCallsService(dataSource, sessions);
@@ -450,8 +480,9 @@ test("a serialization failure while opening an assignment surfaces as a retriabl
 
 test("a not-found error while opening an assignment keeps its original status instead of becoming a conflict", async () => {
   const dataSource = transactional({ query: async () => [] });
-  const sessions = { get: (token) => {
+  const sessions = { requireCapability: (token, capability) => {
     assert.equal(token, session.accessToken);
+    assert.equal(capability, "clinical:document");
     return session;
   } };
   const service = new AssignedCallsService(dataSource, sessions);

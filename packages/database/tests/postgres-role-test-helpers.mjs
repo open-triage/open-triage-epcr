@@ -1,11 +1,16 @@
 const TESTABLE_ROLES = new Set([
   "open_triage_analyst",
   "open_triage_auditor",
+  "open_triage_api_runtime",
+  "open_triage_analytics_health",
+  "open_triage_analytics_projector",
   "open_triage_feedback_retention",
   "open_triage_feedback_reviewer",
   "open_triage_identified_analyst",
   "open_triage_operational",
-  "open_triage_query_auditor"
+  "open_triage_operational_audit_writer",
+  "open_triage_query_auditor",
+  "open_triage_retention"
 ]);
 
 export async function grantRoleForTesting(client, role) {

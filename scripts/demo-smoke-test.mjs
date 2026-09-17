@@ -44,6 +44,36 @@ async function responseJson(response, label) {
   }
 }
 
+function verifySecurityHeaders(response, label) {
+  const contentSecurityPolicy = response.headers.get("content-security-policy") ?? "";
+  if (!/(?:^|;)\s*default-src\s+'none'(?:\s*;|$)/i.test(contentSecurityPolicy) ||
+      !/(?:^|;)\s*frame-ancestors\s+'none'(?:\s*;|$)/i.test(contentSecurityPolicy) ||
+      /'unsafe-(?:inline|eval)'/i.test(contentSecurityPolicy)) {
+    throw new Error(`${label} returned an invalid Content-Security-Policy`);
+  }
+  if (response.headers.get("x-content-type-options")?.toLowerCase() !== "nosniff") {
+    throw new Error(`${label} did not disable content-type sniffing`);
+  }
+  if (response.headers.get("referrer-policy")?.toLowerCase() !== "strict-origin-when-cross-origin") {
+    throw new Error(`${label} returned an invalid Referrer-Policy`);
+  }
+  const permissions = response.headers.get("permissions-policy")?.toLowerCase() ?? "";
+  for (const feature of ["camera", "microphone", "geolocation"]) {
+    if (!new RegExp(`(?:^|,)\\s*${feature}=\\(\\)(?:\\s*,|$)`).test(permissions)) {
+      throw new Error(`${label} returned an invalid Permissions-Policy`);
+    }
+  }
+  if (response.headers.get("x-frame-options")?.toUpperCase() !== "DENY") {
+    throw new Error(`${label} did not prevent framing for legacy clients`);
+  }
+  const hsts = response.headers.get("strict-transport-security") ?? "";
+  const maxAge = /(?:^|;)\s*max-age=(\d+)(?:\s*;|$)/i.exec(hsts)?.[1];
+  if (!maxAge || Number(maxAge) !== 31_536_000 || !/(?:^|;)\s*includesubdomains(?:\s*;|$)/i.test(hsts) ||
+      /(?:^|;)\s*preload(?:\s*;|$)/i.test(hsts)) {
+    throw new Error(`${label} returned an invalid Strict-Transport-Security policy`);
+  }
+}
+
 async function retry(operation, { attempts, delayMilliseconds }) {
   let failure;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -82,21 +112,23 @@ export async function verifyPublicDemo(
 
   await retry(async () => {
     const response = await request(fetchImpl, "Frontend HTTPS", frontend);
+    verifySecurityHeaders(response, "Frontend HTTPS");
     const body = await response.text();
     if (!body.includes("OpenTriage synthetic encounter")) {
       throw new Error("Frontend HTTPS returned an unexpected response");
     }
   }, { attempts: readinessAttempts, delayMilliseconds: readinessDelayMilliseconds });
-  log("PASS frontend HTTPS and certificate verification");
+  log("PASS frontend HTTPS, certificate, and security-header verification");
 
   await retry(async () => {
     const response = await request(fetchImpl, "API health", new URL("/api/health", api));
+    verifySecurityHeaders(response, "API health");
     const health = await responseJson(response, "API health");
     if (health?.status !== "ok" || health?.service !== "open-triage-api") {
       throw new Error("API health returned an unexpected response");
     }
   }, { attempts: readinessAttempts, delayMilliseconds: readinessDelayMilliseconds });
-  log("PASS public API health");
+  log("PASS public API health and security-header verification");
 
   const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", api));
   const installation = await responseJson(installationResponse, "Installation configuration");

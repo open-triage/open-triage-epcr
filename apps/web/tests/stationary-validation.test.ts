@@ -5,6 +5,11 @@ import { editScalarOccurrence } from "../app/stationary-scalar";
 import { validateStationaryRecord } from "../app/stationary-validation";
 import { syntheticEncounter } from "../app/standard-encounter";
 
+function withGroupInstances(document: typeof syntheticEncounter.document, groupId: string,
+  instances: Array<{ instanceId: string; parentInstanceId?: string; elements: Array<{ id: string; values: [] }> }>) {
+  return { ...document, groups: [...document.groups.filter(({ id }) => id !== groupId), { id: groupId, instances }] };
+}
+
 test("complete-record validation associates required findings with stable navigable targets", () => {
   const findings = validateStationaryRecord(syntheticEncounter.document);
   const patient = findings.find(({ target }) => target.fieldId === "ePatient.07");
@@ -62,4 +67,58 @@ test("report-pinned form requiredness and configured choices define clinical val
   assert.deepEqual(missing.filter(({ target }) => target.fieldId === "ePatient.25").map(({ id }) => id.split(":")[1]), ["field.minimum"]);
   assert.equal(missing.some(({ target }) => target.fieldId && target.fieldId !== "ePatient.25"), false,
     "fields removed from the form do not block completion");
+});
+
+test("absent optional repeating records do not promote child minima to report-level findings", () => {
+  const findings = validateStationaryRecord(syntheticEncounter.document);
+  for (const groupId of ["eVitals.VitalGroup", "eMedications.MedicationGroup", "eProcedures.ProcedureGroup"]) {
+    assert.equal(findings.some(({ target }) => target.groupId === groupId), false, `${groupId} remains optional while absent`);
+  }
+});
+
+test("an existing repeating occurrence activates its required child fields", () => {
+  const document = withGroupInstances(syntheticEncounter.document, "eMedications.MedicationGroup", [
+    { instanceId: "medication-one", elements: [] },
+  ]);
+  const findings = validateStationaryRecord(document).filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
+  assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "medication-one"
+    && target.fieldId === "eMedications.03" && id.includes("field.minimum")));
+  assert.ok(findings.every(({ target }) => target.groupInstanceId === "medication-one"),
+    "child findings stay scoped to the occurrence that exists");
+});
+
+test("a pinned form can explicitly require an otherwise optional repeating record", () => {
+  const clinicalForm = {
+    definition: { schemaVersion: 1 as const, sections: [{ key: "medications", fields: [
+      { key: "medication", source: { kind: "nemsis" as const, elementId: "eMedications.03" }, required: true },
+    ] }] },
+    catalogFields: { "eMedications.03": {
+      agencyRequired: false, minOccurs: 1, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: true,
+    } },
+  };
+  const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm);
+  const missingRecord = findings.filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
+  assert.equal(missingRecord.length, 1);
+  assert.match(missingRecord[0]!.id, /group\.minimum/);
+  assert.equal(missingRecord[0]!.target.fieldId, undefined,
+    "the missing record is reported once instead of once for every required child");
+});
+
+test("nested validation is isolated across multiple repeating parent occurrences", () => {
+  let document = withGroupInstances(syntheticEncounter.document, "eVitals.VitalGroup", [
+    { instanceId: "vital-one", elements: [] },
+    { instanceId: "vital-two", elements: [] },
+  ]);
+  document = withGroupInstances(document, "eVitals.BloodPressureGroup", [
+    { instanceId: "pressure-one", parentInstanceId: "vital-one", elements: [] },
+  ]);
+  const findings = validateStationaryRecord(document).filter(({ target }) => target.groupId === "eVitals.BloodPressureGroup");
+  assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "pressure-one"
+    && target.fieldId === "eVitals.06" && id.includes("field.minimum")));
+  assert.ok(findings.some(({ target, id }) => target.parentGroupInstanceId === "vital-two"
+    && target.groupInstanceId === undefined && id.includes("group.minimum")));
+  assert.equal(findings.some(({ target }) => target.groupInstanceId === "pressure-one"
+    && target.parentGroupInstanceId === "vital-two"), false,
+    "child-field findings do not leak from one repeating parent occurrence to another");
 });

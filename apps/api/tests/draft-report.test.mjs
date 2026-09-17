@@ -137,12 +137,10 @@ test("every demo save rechecks the live capability and CSRF proof before report 
       correlationId: "demo:stationary-populate-v1:test" }] };
   const noDatabaseAccess = { transaction: async (_level, work) => work({ query: async () => { throw new Error("database touched"); } }) };
   const removedRole = new DraftReportService(noDatabaseAccess, {
-    get: async () => session,
     requireCapability: async () => { throw new UnauthorizedException("role removed"); },
   });
   await assert.rejects(removedRole.save("session", randomUUID(), command, "csrf-proof"), UnauthorizedException);
   const badCsrf = new DraftReportService(noDatabaseAccess, {
-    get: async () => session,
     requireCapability: async () => session,
     assertCsrf: async () => { throw new UnauthorizedException("bad csrf"); },
   });
@@ -180,7 +178,7 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     if (normalized.includes("from clinical.draft_target_state") && normalized.includes("for update")) return [];
     if (normalized.includes("from catalog.element_definition")) return [{
       element_id: "eNarrative.01", element_identity_id: elementIdentityId, base_datatype: "string",
-      analytical_repeatable: false, identifying: false, allowed_absence_states: []
+      analytical_repeatable: false, identifying: false, allowed_absence_states: [], max_occurs: null
     }];
     if (normalized.startsWith("insert into clinical.element_occurrence")) {
       const rows = JSON.parse(parameters[3]).map(({ id }) => ({ id }));
@@ -195,7 +193,10 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { transaction: async (_isolation, operation) => operation(manager) };
-  const sessions = { get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
+  const sessions = { requireCapability: async (_token, capability) => {
+    assert.equal(capability, "clinical:document");
+    return { organization: { id: organizationId }, user: { id: userId } };
+  } };
   const service = new DraftReportService(dataSource, sessions);
 
   const saved = await service.save("session", reportId, {

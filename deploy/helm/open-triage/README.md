@@ -1,14 +1,18 @@
 # OpenTriage demo chart
 
 This chart deploys the static web frontend, NestJS API, and analytics CronJobs.
-PostgreSQL remains in Supabase Free. By default the chart references the
-cluster-owned `open-triage-database` Secret; Helm neither renders its values nor
-updates the Secret during upgrades.
+PostgreSQL remains in Supabase Free. By default the chart references separate
+cluster-owned Secrets for each database workload; Helm neither renders their
+values nor updates the Secrets during upgrades. See the
+[workload credential runbook](../../../docs/runbooks/database-workload-credentials.md)
+for role contracts, provisioning, and rotation.
 
 The chart is the canonical source for both analytics CronJobs. Configure their
 schedules, batch/retry/freshness limits, and resources under `analytics` in a
 values file. They use `api.image` (including its pull policy),
-`imagePullSecrets`, and the Secret selected by `secrets.existingSecret`.
+`imagePullSecrets`, and the distinct Secrets selected by
+`secrets.analyticsProjector.existingSecret` and
+`secrets.analyticsHealth.existingSecret`.
 Generate standalone YAML for inspection or another deployment tool from the
 chart rather than maintaining a second manifest:
 
@@ -32,15 +36,27 @@ docker build -f deploy/docker/api.Dockerfile \
   -t ghcr.io/open-triage/open-triage-api:demo .
 ```
 
-Create the Secret outside Helm before the first install (or retain the existing
-one when upgrading). It must contain `DATABASE_URL`, `SUPABASE_URL`,
-`SUPABASE_SECRET_KEY`, `PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`, and
-`PATIENT_KEY_SECRET_BASE64`. Keep the sensitive values in a private input file:
+Create the Secrets outside Helm before the first install (or retain existing
+ones when upgrading). Every Secret contains only `DATABASE_URL`, except the API
+Secret, which also contains `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
+`PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`, and
+`PATIENT_KEY_SECRET_BASE64`, and `AUTH_RATE_LIMIT_SECRET_BASE64`. The
+authentication rate-limit secret must be a distinct random value of at least 32
+bytes, shared by every API replica. Keep each workload's values in a separate
+private input file:
 
 ```sh
-kubectl create secret generic open-triage-database \
+kubectl create secret generic open-triage-api-database \
   --namespace open-triage \
-  --from-env-file=/private/path/open-triage-database.env
+  --from-env-file=/private/path/open-triage-api.env
+kubectl create secret generic open-triage-migration-database --namespace open-triage \
+  --from-env-file=/private/path/open-triage-migration.env
+kubectl create secret generic open-triage-analytics-projector-database --namespace open-triage \
+  --from-env-file=/private/path/open-triage-analytics-projector.env
+kubectl create secret generic open-triage-analytics-health-database --namespace open-triage \
+  --from-env-file=/private/path/open-triage-analytics-health.env
+kubectl create secret generic open-triage-retention-database --namespace open-triage \
+  --from-env-file=/private/path/open-triage-retention.env
 ```
 
 Install or upgrade the workloads without passing secret values to Helm:
@@ -53,10 +69,10 @@ helm upgrade --install open-triage ./deploy/helm/open-triage \
 
 The committed demo reference values contain no credentials. They preserve the
 cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
-`open-triage-database` application Secret during repeatable upgrades.
+workload database Secrets during repeatable upgrades.
 
 Helm runs a forward-only migration Job before each install or upgrade. The Job
-reads `DATABASE_URL` from the cluster-owned Secret and must succeed before Helm
+reads `DATABASE_URL` only from the migration Secret and must succeed before Helm
 updates the application Deployments. Applied migration versions and checksums
 are recorded in Supabase's standard
 `supabase_migrations.schema_migrations` table. Checksums for migrations applied
@@ -77,14 +93,13 @@ accounts and never changes an existing account. For a one-time manual bootstrap,
 npm run bootstrap:synthetic -w @open-triage/database
 ```
 
-To use a different cluster-owned Secret, set `secrets.existingSecret` to its
-name. For installations where Helm should create the Secret, set
-`secrets.existingSecret` to an empty string and supply the other `secrets` values
-in a private values file, and set `migration.enabled=false` after arranging a
-separate pre-rollout migration mechanism. A Helm hook cannot consume a Secret
-that the same release has not created yet. Do not switch an already Helm-managed
-Secret to existing-Secret mode without first transferring its ownership outside
-the release.
+To use different cluster-owned Secrets, set the `existingSecret` field under
+each `secrets` workload. Helm-managed Secrets remain available by clearing the
+corresponding field and supplying that workload's values privately. Set
+`migration.enabled=false` when managing its Secret through Helm and arrange a
+separate pre-rollout migration mechanism: a Helm hook cannot consume a Secret
+that the same release has not created yet. Never point two workload entries at
+the same Secret.
 
 Set `web.replicas` and `api.replicas` to `3` when the cluster has three worker
 nodes. The current defaults are deliberately one replica for a one-node demo.

@@ -31,22 +31,25 @@ Before the first deployment, operators must provide:
 
 - an existing DOKS cluster with enough capacity for the chart's resource
   requests, an `nginx` IngressClass, and HTTPS termination for both public
-  hosts;
+  hosts; its ingress-nginx controller ConfigMap must set `hsts: "true"`,
+  `hsts-max-age: "31536000"`, `hsts-include-subdomains: "true"`, and
+  `hsts-preload: "false"`;
 - DNS for `demo.opentriage.org` and `api.demo.opentriage.org` pointing to that
   Ingress;
 - access from the cluster to
   `ghcr.io/open-triage/open-triage-{api,web}`. If the packages are private,
   provision a pull credential outside the workflow and expose it through the
   chart's `imagePullSecrets` value or the namespace's default service account;
-- the `open-triage` namespace and its cluster-owned
-  `open-triage-database` Secret. Although Helm is invoked with
+- the `open-triage` namespace and its cluster-owned API, migration, analytics
+  projector, analytics health, retention, and operational-audit database
+  Secrets. Although Helm is invoked with
   `--create-namespace`, a usable first deployment requires operators to create
-  the namespace and Secret in advance because the pre-install migration hook
-  needs the Secret before Helm-managed resources exist. Follow the
+  the namespace and Secrets in advance because the pre-install migration hook
+  needs its dedicated Secret before Helm-managed resources exist. Follow the
   [chart instructions](../deploy/helm/open-triage/README.md) for the required
   keys and safe creation procedure;
 - the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
-  Secret, initialized only with fictional demo data.
+  workload Secrets, initialized only with fictional demo data.
 
 The fixed automated targets are Helm release `open-triage`, namespace
 `open-triage`, web host `https://demo.opentriage.org`, and API host
@@ -77,6 +80,33 @@ Smoke verification logs only named pass/fail stages and HTTP status codes. It
 does not print bearer tokens, login responses, or assigned-call response bodies.
 Both public URLs must use HTTPS; Node's normal TLS verification rejects an
 expired, untrusted, or hostname-mismatched certificate.
+
+## Browser security-header policy
+
+The web image emits a restrictive Content Security Policy. Next.js static-export
+hydration scripts are authorized by build-generated SHA-256 hashes; the policy
+does not permit `unsafe-inline` or `unsafe-eval`. Styles and all other active
+content are same-origin, connections are limited to the configured API origin,
+framing is denied by both `frame-ancestors 'none'` and `X-Frame-Options: DENY`,
+MIME sniffing is disabled, referrers are reduced to their origin on cross-origin
+requests, and camera, microphone, and geolocation browser features are disabled.
+The API applies the same non-CSP headers and a `default-src 'none'` CSP.
+
+TLS terminates at nginx Ingress, which redirects HTTP and sets HSTS on both
+public hosts. The reviewed rollout is one year (`max-age=31536000`) with
+`includeSubDomains` enabled and preload disabled. The include-subdomains scope is
+limited to descendants of the dedicated `demo.opentriage.org` and
+`api.demo.opentriage.org` hosts; it does not cover their sibling or parent hosts.
+Preload remains excluded because its persistence and removal process require a
+separate inventory and rollback review. ingress-nginx configures HSTS in its
+controller ConfigMap rather than through per-Ingress annotations, so any new TLS
+terminator must reproduce this exact policy. The deployment smoke test is the
+release gate that prevents a controller or environment migration from silently
+losing it. Local Next.js and API development stays on HTTP and does not set HSTS.
+
+The post-deployment smoke test rejects either host when CSP, HSTS, MIME-sniffing,
+referrer, permissions, or clickjacking protection is missing or weakened. This
+makes an ingress migration fail visibly instead of silently losing the policy.
 
 ## Failure recovery and rollback
 

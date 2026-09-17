@@ -8,8 +8,10 @@ import {
   ACTIVE_REPORT_POLL_INTERVAL_MS,
   applyDraftMutationDelta,
   demoActionMutationDelta,
+  DRAFT_CONFLICT_RECOVERY_LIMIT,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
+  DraftSaveRejectedError,
   draftMutationDelta,
   encounterDocumentToDraftMutations,
   fetchActiveReport,
@@ -39,6 +41,7 @@ import { bundledEncounterDefinition, type ShellAction, type ShellState } from ".
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
+import { recordFeedbackInteraction } from "./feedback-telemetry";
 
 export interface ReportWorkspace {
   readonly restored: boolean;
@@ -57,7 +60,6 @@ export interface ReportWorkspace {
 export function useReportWorkspace({
   session,
   report,
-  presentationMode,
   shell,
   dispatch,
   validationErrorCount,
@@ -85,11 +87,10 @@ export function useReportWorkspace({
   const persistedDraft = useRef<ReturnType<typeof shellStateToDraftMutations>>({ groups: [], occurrences: [] });
   const activeEtag = useRef<string | undefined>(undefined);
   const shellRef = useRef(shell);
-  const presentationRef = useRef(presentationMode);
   const skipReconciledQueue = useRef(false);
   const activeSave = useRef<Promise<void> | null>(null);
   const recoverConflictingQueue = useRef(false);
-  const conflictRecoveryUsed = useRef(false);
+  const conflictRecoveryAttempts = useRef(0);
   const skipInitialQueue = useRef(false);
   const queueInitialSnapshot = useRef(false);
   const saveTimer = useRef<number | null>(null);
@@ -97,8 +98,6 @@ export function useReportWorkspace({
   const pendingDemoAction = useRef<"populate" | "clear" | null>(null);
 
   useEffect(() => { shellRef.current = shell; }, [shell]);
-  useEffect(() => { presentationRef.current = presentationMode; }, [presentationMode]);
-
   useEffect(() => {
     const authorized = () => canUseClinicalDemoDraftActions(report) && navigator.onLine &&
       browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true;
@@ -123,7 +122,7 @@ export function useReportWorkspace({
   useEffect(() => {
     completed.current = false;
     recoverConflictingQueue.current = false;
-    conflictRecoveryUsed.current = false;
+    conflictRecoveryAttempts.current = 0;
     persistedDraft.current = report?.document
       ? encounterDocumentToDraftMutations(report.id, report.document)
       : { groups: [], occurrences: [] };
@@ -180,7 +179,8 @@ export function useReportWorkspace({
             return;
           }
           revision.current = saved.revision;
-          conflictRecoveryUsed.current = false;
+          if (conflictRecoveryAttempts.current > 0) recordFeedbackInteraction("draft-sync.recovered");
+          conflictRecoveryAttempts.current = 0;
           acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
           persistedDraft.current = applyDraftMutationDelta(persistedDraft.current, queued.command);
         } catch (error) {
@@ -198,15 +198,24 @@ export function useReportWorkspace({
             completeReport();
             return;
           }
-          if ((reason === "conflict" || reason === "invalid") && !conflictRecoveryUsed.current) {
+          if (error instanceof DraftSaveRejectedError) {
+            recordFeedbackInteraction(`draft-sync.${error.category}`);
+          }
+          if (error instanceof DraftSaveRejectedError && error.category === "server-conflict" &&
+              conflictRecoveryAttempts.current < DRAFT_CONFLICT_RECOVERY_LIMIT) {
             recoverConflictingQueue.current = true;
-            conflictRecoveryUsed.current = true;
+            conflictRecoveryAttempts.current += 1;
             activeEtag.current = undefined;
             setSyncStatus("Saving");
             requestConflictRecovery = true;
             return;
           }
-          setSyncStatus(reason === "conflict" || reason === "invalid" ? "Conflict" : "Pending sync");
+          if (error instanceof DraftSaveRejectedError) {
+            if (error.category === "server-conflict") recordFeedbackInteraction("draft-sync.retry-exhausted");
+            setSyncStatus("Conflict");
+            return;
+          }
+          setSyncStatus("Pending sync");
         }
       })();
       activeSave.current = attempt;
@@ -267,7 +276,10 @@ export function useReportWorkspace({
       commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
       expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
       authorId: session.user.id,
-      deviceId: `web:${presentationRef.current}:${report.id}`,
+      // Presentation is a view choice, not a synchronization identity. Keeping
+      // this stable prevents mobile/stationary switches from looking like a new
+      // target writer while the report remains open.
+      deviceId: `web:${report.id}`,
       clientTime: existing && !existing.attempted ? existing.command.clientTime : new Date().toISOString(),
       ...(demoAction ? { demoAction } : {}),
       ...mutations,
@@ -327,12 +339,16 @@ export function useReportWorkspace({
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
             discardQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision, new Date().toISOString());
             recoverConflictingQueue.current = false;
-            if (!retryDelta.groups.length && !retryDelta.occurrences.length) conflictRecoveryUsed.current = false;
+            if (!retryDelta.groups.length && !retryDelta.occurrences.length) conflictRecoveryAttempts.current = 0;
             skipReconciledQueue.current = false;
             skipInitialQueue.current = false;
             setSyncStatus("Saved");
           } else {
             rebaseQueuedDraftChanges(window.localStorage, report.id, response.resource.reportRevision);
+            // The queued command already owns the pending targets. Do not let
+            // the document-opened dispatch synthesize another command on each
+            // poll, especially after a terminal rejected retry.
+            skipReconciledQueue.current = true;
           }
           persistedDraft.current = serverDraft;
         }

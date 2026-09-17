@@ -18,6 +18,7 @@ api:
     pullPolicy: IfNotPresent
   replicas: 1
   host: api.demo.opentriage.org
+  trustProxyHops: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
@@ -55,14 +56,36 @@ imagePullSecrets: []
 ingress:
   className: nginx
   tls: []
+  authenticationRateLimit:
+    enabled: true
+    requestsPerSecond: 10
+    burstMultiplier: 3
 
 secrets:
-  # The demo Secret is cluster-owned. When this is set, the chart only
-  # references it and ignores the managed Secret values below.
-  existingSecret: open-triage-database
-  databaseUrl: ""
-  supabaseUrl: ""
-  supabaseSecretKey: ""
-  patientKeyInstallationId: ""
-  patientKeyVersion: "1"
-  patientKeySecretBase64: ""
+  # Production Secrets are cluster-owned and contain one workload credential.
+  # Empty existingSecret values opt into Helm-managed Secrets for non-hook
+  # workloads; the migration hook always requires a pre-existing Secret.
+  api:
+    existingSecret: open-triage-api-database
+    databaseUrl: ""
+    supabaseUrl: ""
+    supabaseSecretKey: ""
+    patientKeyInstallationId: ""
+    patientKeyVersion: "1"
+    patientKeySecretBase64: ""
+    authRateLimitSecretBase64: ""
+  migration:
+    existingSecret: open-triage-migration-database
+    databaseUrl: ""
+  analyticsProjector:
+    existingSecret: open-triage-analytics-projector-database
+    databaseUrl: ""
+  analyticsHealth:
+    existingSecret: open-triage-analytics-health-database
+    databaseUrl: ""
+  retention:
+    existingSecret: open-triage-retention-database
+    databaseUrl: ""
+  operationalAudit:
+    existingSecret: open-triage-operational-audit-database
+    databaseUrl: ""

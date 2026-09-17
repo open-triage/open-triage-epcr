@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { ConflictException, GoneException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { DraftReportController } from "../dist/reports/draft-report.controller.js";
@@ -14,14 +15,12 @@ const ownerSession = {
 };
 
 function sessions() {
-  return { get(token) {
+  return { requireCapability(token, capability) {
     if (token !== ownerSession.accessToken) throw new UnauthorizedException();
+    if (!["clinical:document", "clinical:demo"].includes(capability)) throw new UnauthorizedException();
     return ownerSession;
   }, assertCsrf(token, csrf) {
     if (token !== ownerSession.accessToken || csrf !== "csrf-proof") throw new UnauthorizedException();
-  }, requireCapability(token, capability) {
-    if (token !== ownerSession.accessToken || capability !== "clinical:demo") throw new UnauthorizedException();
-    return ownerSession;
   } };
 }
 
@@ -68,9 +67,11 @@ test("prototype deletion refuses reports outside the owned synthetic-draft bound
 
 test("demo deletion independently rejects missing CSRF proof or current Clinical Demo authority", async () => {
   const service = new DraftReportService(transactional({ query: async () => [] }), {
-    get: () => ownerSession,
     assertCsrf: (_token, csrf) => { if (csrf !== "csrf-proof") throw new UnauthorizedException(); },
-    requireCapability: () => { throw new UnauthorizedException("role removed"); },
+    requireCapability: (_token, capability) => {
+      if (capability === "clinical:document") return ownerSession;
+      throw new UnauthorizedException("role removed");
+    },
   });
   await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010"), UnauthorizedException);
   await assert.rejects(service.deleteSyntheticDraft(ownerSession.accessToken, "42000000-0000-4000-8000-000000000010", "csrf-proof"), UnauthorizedException);
@@ -407,6 +408,48 @@ test("open-call endpoints require a clinician session", () => {
   const controller = new DraftReportController({ listOpen() {} }, {});
   assert.throws(() => controller.listOpen(), UnauthorizedException);
   assert.throws(() => controller.reopen("42000000-0000-4000-8000-000000000002"), UnauthorizedException);
+});
+
+test("administrator-only accounts cannot discover or mutate clinical records", async () => {
+  let databaseQueries = 0;
+  const manager = { query: async () => {
+    databaseQueries += 1;
+    throw new Error("clinical data was queried");
+  } };
+  const dataSource = {
+    query: manager.query,
+    transaction: async (first, second) => (typeof first === "function" ? first : second)(manager),
+  };
+  const administratorSessions = {
+    requireCapability: async (_token, capability) => {
+      assert.equal(capability, "clinical:document");
+      throw new UnauthorizedException("The requested capability is required");
+    },
+  };
+  const drafts = new DraftReportService(dataSource, administratorSessions);
+  const signing = new SignReportService(dataSource, administratorSessions);
+  const reportId = randomUUID();
+  const save = {
+    commandId: randomUUID(), expectedRevision: 0, authorId: randomUUID(),
+    occurrences: [{ id: randomUUID(), elementId: "eScene.01", value: { kind: "text", value: "blocked" } }],
+  };
+  const conflict = { commandId: randomUUID(), disposition: "keep" };
+
+  for (const operation of [
+    () => drafts.create("admin-token", {}),
+    () => drafts.listOpen("admin-token"),
+    () => drafts.get("admin-token", reportId),
+    () => drafts.reopen("admin-token", reportId),
+    () => drafts.active("admin-token", reportId),
+    () => drafts.save("admin-token", reportId, save),
+    () => drafts.resolveDispatchConflict("admin-token", reportId, randomUUID(), conflict),
+    () => signing.sign("admin-token", reportId, {}),
+  ]) {
+    await assert.rejects(operation(), (error) =>
+      error instanceof UnauthorizedException && error.message === "The requested capability is required");
+  }
+  await assert.rejects(drafts.get("admin-token", randomUUID()), UnauthorizedException);
+  assert.equal(databaseQueries, 0, "authorization failures must not disclose whether a clinical object exists");
 });
 
 test("another clinician cannot replay a queued signing command", async () => {
