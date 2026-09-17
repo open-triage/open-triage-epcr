@@ -1,5 +1,7 @@
 import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
-import type { ActiveDraftReport, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
+import type { ActiveDraftReport, RetainedSignedDraftAttempt, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
+import { browserRequestConfiguration } from "./browser-api";
+import { protectedStorageActive, removeProtectedReport, updateProtectedReport, type RecoveredProtectedPayload } from "./protected-clinical-storage";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
 
@@ -24,6 +26,12 @@ export interface CachedOpenReport {
 }
 
 type StoragePort = Pick<Storage, "getItem" | "setItem">;
+let protectedRuntimeReports: CachedOpenReport[] = [];
+
+/** Clears all decrypted report objects when the authenticated browser identity ends. */
+export function clearProtectedRuntimeReports(): void {
+  protectedRuntimeReports = [];
+}
 type OpenedCallContext = {
   readonly callNumber: string;
   readonly dispatchedAt?: string;
@@ -34,6 +42,12 @@ type OpenedCallContext = {
 };
 
 function read(storage: StoragePort): CachedOpenReport[] {
+  if (typeof window !== "undefined") {
+    // Keep the in-memory adapter value-based like encrypted persistence. This
+    // prevents UI-owned document objects from aliasing the synchronization
+    // baseline and making a local edit appear already persisted.
+    return structuredClone(protectedRuntimeReports);
+  }
   try {
     const value: unknown = JSON.parse(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY) ?? "[]");
     if (!Array.isArray(value)) return [];
@@ -49,6 +63,15 @@ function read(storage: StoragePort): CachedOpenReport[] {
 }
 
 function write(storage: StoragePort, reports: ReadonlyArray<CachedOpenReport>): void {
+  if (typeof window !== "undefined") {
+    protectedRuntimeReports = [...structuredClone(reports)];
+    if (browserRequestConfiguration().mode === "server") {
+      for (const report of reports) {
+        if (protectedStorageActive(report.report.id)) updateProtectedReport(report.report.id, report);
+      }
+    }
+    return;
+  }
   storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, JSON.stringify(reports));
 }
 
@@ -79,6 +102,11 @@ export function cacheOpenedReport(
         ...(call.chiefComplaint !== undefined ? { chiefComplaint: call.chiefComplaint } : {}),
         ...(call.unit?.callSign ? { unitCallSign: call.unit.callSign } : {}),
       }),
+      ...(existing?.queuedChanges.length && existing.report.document ? {
+        revision: existing.report.revision,
+        document: existing.report.document,
+        dispatchConflicts: existing.report.dispatchConflicts ?? [],
+      } : {}),
     },
     ownerUserId: session.user.id,
     callNumber,
@@ -89,6 +117,22 @@ export function cacheOpenedReport(
     localValidationErrorCount: existing?.localValidationErrorCount,
     queuedChanges: existing?.queuedChanges ?? [],
   });
+}
+
+export function restoreRecoveredReport(
+  storage: StoragePort,
+  ownerUserId: string,
+  reportId: string,
+  payload: RecoveredProtectedPayload,
+): boolean {
+  const candidate = payload.report;
+  if (!candidate || typeof candidate !== "object") return false;
+  const recovered = candidate as Partial<CachedOpenReport>;
+  if (recovered.ownerUserId !== ownerUserId || recovered.workflowState !== "open" ||
+      !recovered.report || recovered.report.id !== reportId ||
+      recovered.report.documentingUserId !== ownerUserId || !Array.isArray(recovered.queuedChanges)) return false;
+  replace(storage, recovered as CachedOpenReport);
+  return true;
 }
 
 export function cacheReopenedReport(
@@ -206,6 +250,7 @@ export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: Re
 
 export function removeSignedOfflineReport(storage: StoragePort, reportId: string): void {
   write(storage, read(storage).filter((candidate) => candidate.report.id !== reportId));
+  if (typeof window !== "undefined") removeProtectedReport(reportId);
 }
 
 /** Removes all browser-held state after a server-confirmed draft deletion. */
@@ -258,7 +303,13 @@ export function markDraftChangeAttempted(storage: StoragePort, reportId: string,
   replace(storage, { ...cached, queuedChanges: cached.queuedChanges.map((queued) => queued.command.commandId === commandId ? { ...queued, attempted: true } : queued) });
 }
 
-export function acceptDraftChange(storage: StoragePort, reportId: string, commandId: string, saved: SavedDraftReport, now = new Date()): void {
+export function acceptDraftChange(
+  storage: StoragePort,
+  reportId: string,
+  commandId: string,
+  saved: SavedDraftReport | RetainedSignedDraftAttempt,
+  now = new Date(),
+): void {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   if (!cached) return;
   const queuedChanges = cached.queuedChanges.filter((queued) => queued.command.commandId !== commandId);

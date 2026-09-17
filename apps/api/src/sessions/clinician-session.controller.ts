@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from "@nestjs/common";
 import type { ClinicianSession, EndClinicianSessionResponse, ReauthenticationResult } from "@open-triage/contracts";
 import { ClinicianSessionService } from "./clinician-session.service.js";
 import { validateChangePassword, validateCreateClinicianSession, validateReauthenticate } from "./clinician-session.validation.js";
@@ -50,6 +50,7 @@ export class ClinicianSessionController {
   }
 
   @Get("current")
+  @Header("Cache-Control", "no-store, private")
   current(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<ClinicianSession> {
     return this.sessions.get(sessionToken(request, authorization), new Date(), true);
   }

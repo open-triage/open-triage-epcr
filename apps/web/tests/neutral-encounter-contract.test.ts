@@ -30,7 +30,7 @@ test("active source cannot introduce category-specific form identities or condit
     const source = readFileSync(file, "utf8");
     const displayName = relative(new URL("../../", import.meta.url).pathname, file);
     const legacyMatches = source.match(/adult[-_ ]chest|adultChestPain|chest[- ]pain form/gi) ?? [];
-    const isLegacyResetBoundary = file.endsWith("local-persistence.ts");
+    const isLegacyResetBoundary = file.endsWith("local-persistence.ts") || file.endsWith("protected-clinical-storage.ts");
     if (legacyMatches.length !== (isLegacyResetBoundary ? LEGACY_STORAGE_KEYS.length : 0)) violations.push(`${displayName}: legacy category identity`);
     if (/complaintCategory|clinicalCategory|categoryRule|complaintRule|displayWhen|enabledWhen|visibleWhen|requiredWhen/i.test(source)) {
       violations.push(`${displayName}: category-conditional form behavior`);

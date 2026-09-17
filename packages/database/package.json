@@ -13,6 +13,7 @@
     "load:catalog": "node scripts/load-nemsis-catalog.mjs",
     "project": "node scripts/project-analytics.mjs",
     "rotate:patient-keys": "node scripts/rotate-patient-keys.mjs",
+    "rotate:offline-recovery-keys": "node scripts/rotate-offline-recovery-keys.mjs",
     "project:health": "node scripts/projection-health.mjs",
     "retention": "node scripts/retention.mjs",
     "feedback:review": "node scripts/feedback-review.mjs",

@@ -87,11 +87,18 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         "create function public.api_escape() returns integer language sql as 'select 1'",
         "alter table clinical.report add column api_escape integer",
         "drop table clinical.report",
-        "grant select on clinical.report to public",
         "create role api_escape"
       ]) {
         await rejectsSql(client, sql, [], "42501");
       }
+      const beforeGrant = await client.query(
+        "select relacl::text from pg_class where oid = 'clinical.report'::regclass",
+      );
+      await client.query("grant select on clinical.report to public");
+      const afterGrant = await client.query(
+        "select relacl::text from pg_class where oid = 'clinical.report'::regclass",
+      );
+      assert.deepEqual(afterGrant.rows, beforeGrant.rows, "runtime role must not be able to grant its table privileges");
       await client.query("rollback");
     } catch (error) {
       await client.query("rollback");

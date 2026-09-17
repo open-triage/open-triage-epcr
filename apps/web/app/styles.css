@@ -64,6 +64,9 @@ input, select, textarea { touch-action: manipulation; }
 .feedback-type button[aria-pressed="true"] { border-color: var(--green); color: white; background: var(--green); }
 .feedback-dialog form > label { margin: 16px 0 7px; }
 .feedback-dialog form > small { display: block; margin-top: 5px; color: var(--muted); }
+.logout-backdrop { z-index: 70; }
+.logout-dialog { height: auto; color: #202320; }
+.logout-dialog > p { line-height: 1.5; }
 .presentation-selector { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: max-content; padding: 2px; border: 1px solid rgb(255 255 255 / 65%); border-radius: 7px; }
 .session-bar .presentation-selector button { min-height: 34px; padding: 3px 9px; border: 0; }
 .session-bar .presentation-selector button[aria-pressed="true"] { color: var(--green-dark); background: #fff; }

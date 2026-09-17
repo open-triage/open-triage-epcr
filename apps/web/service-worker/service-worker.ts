@@ -8,10 +8,15 @@ const appRoot = new URL("./", self.registration.scope).toString();
 const appShell = [
   appRoot,
   new URL("manifest.webmanifest", appRoot).toString(),
-  new URL("demo-assigned-calls.json", appRoot).toString(),
-  new URL("demo-open-calls.json", appRoot).toString(),
-  new URL("demo-open-assignment.json", appRoot).toString(),
 ];
+
+function isApprovedStaticRequest(request: Request): boolean {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (url.toString() === appRoot || url.toString() === appShell[1]) return true;
+  return url.pathname.includes("/_next/static/") &&
+    ["script", "style", "font", "image"].includes(request.destination);
+}
 
 async function cacheStaticShell(): Promise<void> {
   const cache = await caches.open(cacheName);
@@ -38,9 +43,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.startsWith("/api/") || requestUrl.pathname.endsWith(".json")) return;
 
   event.respondWith(fetch(event.request).then((response) => {
-    if (response.ok && new URL(event.request.url).origin === self.location.origin) {
+    if (response.ok && isApprovedStaticRequest(event.request)) {
       event.waitUntil(caches.open(cacheName).then((cache) => cache.put(event.request, response.clone())));
     }
     return response;

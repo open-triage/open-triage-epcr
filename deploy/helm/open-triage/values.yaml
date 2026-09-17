@@ -74,6 +74,8 @@ secrets:
     patientKeyVersion: "1"
     patientKeySecretBase64: ""
     authRateLimitSecretBase64: ""
+    offlineRecoveryKeyVersion: "1"
+    offlineRecoverySecretBase64: ""
   migration:
     existingSecret: open-triage-migration-database
     databaseUrl: ""

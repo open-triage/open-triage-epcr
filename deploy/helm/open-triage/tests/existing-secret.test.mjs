@@ -17,6 +17,9 @@ test("existing-Secret mode mounts one database credential per workload", () => {
     "open-triage-retention-database"
   ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
   assert.equal(output.match(/key: DATABASE_URL/g)?.length, 5);
+  assert.match(output, /key: AUTH_RATE_LIMIT_SECRET_BASE64/);
+  assert.match(output, /key: OFFLINE_RECOVERY_KEY_VERSION/);
+  assert.match(output, /key: OFFLINE_RECOVERY_SECRET_BASE64/);
 });
 
 test("each workload can select a different existing Secret", () => {
@@ -40,6 +43,7 @@ test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
     "--set-string", "secrets.api.patientKeyInstallationId=installation",
     "--set-string", "secrets.api.patientKeySecretBase64=patient-key",
     "--set-string", "secrets.api.authRateLimitSecretBase64=auth-rate-limit-key",
+    "--set-string", "secrets.api.offlineRecoverySecretBase64=offline-recovery-key",
     "--set", "secrets.analyticsProjector.existingSecret=",
     "--set-string", "secrets.analyticsProjector.databaseUrl=projector-url",
     "--set", "secrets.analyticsHealth.existingSecret=",
@@ -56,4 +60,5 @@ test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
     ["operational-audit", "audit-url"]
   ]) assert.match(output, new RegExp(`name: open-triage-${name}-database[\\s\\S]*?DATABASE_URL: "${url}"`));
   assert.match(output, /AUTH_RATE_LIMIT_SECRET_BASE64: "auth-rate-limit-key"/);
+  assert.match(output, /OFFLINE_RECOVERY_SECRET_BASE64: "offline-recovery-key"/);
 });

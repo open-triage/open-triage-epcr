@@ -66,7 +66,7 @@ test("mobile and stationary clients converge a conflicting clinical-note replace
     await page.route("**/demo-open-calls.json", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
       openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString(),
     }) }));
-    await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => {
+    await page.route("**/demo-open-assignment.json", (route) => {
       const response: OpenAssignmentResponse = {
         ...demoOpenAssignment as OpenAssignmentResponse,
         report: { ...demoOpenAssignment.report, revision: 1, document: serverDocument } as OpenAssignmentResponse["report"],
@@ -142,7 +142,7 @@ test("a repeatedly rejected note save stops after one recovery request and remai
   await page.route("**/demo-open-calls.json", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
     openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString(),
   }) }));
-  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
+  await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       ...demoOpenAssignment,

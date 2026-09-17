@@ -21,6 +21,7 @@ import {
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
   reconcileServerOpenReports,
+  restoreRecoveredReport,
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
@@ -97,6 +98,25 @@ test("opened report identity, ownership, pinned form, revision, workflow and pen
   assert.equal(cachedReopenResponse(reloaded, session.user.id, opened.report.id)?.callNumber, "CALL-51");
   assert.equal(cachedReopenResponse(reloaded, "different-clinician", opened.report.id), null);
   assert.ok(bytes.has(OFFLINE_REPORTS_STORAGE_KEY));
+});
+
+test("recovered ciphertext is admitted only for the selected report and authenticated owner", () => {
+  const source = memoryStorage();
+  const protectedReport = cacheOpenedReport(source, session, opened, "CALL-51");
+  const target = memoryStorage();
+  assert.equal(restoreRecoveredReport(target, session.user.id, opened.report.id, {
+    schemaVersion: 1, report: protectedReport,
+  }), true);
+  assert.equal(cachedOpenReports(target, session.user.id)[0]?.report.id, opened.report.id);
+
+  const otherTarget = memoryStorage();
+  assert.equal(restoreRecoveredReport(otherTarget, "other-clinician", opened.report.id, {
+    schemaVersion: 1, report: protectedReport,
+  }), false);
+  assert.deepEqual(cachedOpenReports(otherTarget, session.user.id), []);
+  assert.equal(restoreRecoveredReport(otherTarget, session.user.id, "different-report", {
+    schemaVersion: 1, report: protectedReport,
+  }), false);
 });
 
 test("a locally edited canonical document makes an opened report self-contained for offline reopen", () => {

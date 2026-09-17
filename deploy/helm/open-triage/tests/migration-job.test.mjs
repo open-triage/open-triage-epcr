@@ -57,6 +57,7 @@ test("migration gate requires a pre-existing cluster-owned Secret", () => {
     "--set-string", "secrets.api.patientKeyInstallationId=installation",
     "--set-string", "secrets.api.patientKeySecretBase64=key",
     "--set-string", "secrets.api.authRateLimitSecretBase64=auth-key",
+    "--set-string", "secrets.api.offlineRecoverySecretBase64=offline-key",
   );
   assert.match(managed, /kind: Secret/);
   assert.doesNotMatch(managed, /kind: Job/);

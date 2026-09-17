@@ -110,6 +110,66 @@ export interface DeleteDraftReportResponse {
   reportId: string;
 }
 
+export interface RegisterProtectedReportKeyCommand {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  reportKeyBase64: string;
+}
+
+export interface ProtectedReportKeyEnvelope {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  recoveryDeadline: string;
+  wrappingKeyVersion: number;
+}
+
+export interface CheckpointProtectedReportCommand {
+  schemaVersion: 1;
+  recoveryHandle: string;
+  ciphertextRevision: number;
+  ciphertextSha256: string;
+}
+
+export type RecordProtectedCiphertextCommand = CheckpointProtectedReportCommand;
+
+export interface ProtectedReportCheckpoint {
+  ciphertextRevision: number;
+  ciphertextSha256: string;
+}
+
+export interface ProtectedCiphertextReceipt {
+  schemaVersion: 1;
+  recoveryDeadline: string;
+}
+
+export interface CreateProtectedReportRecoveryGrantCommand {
+  schemaVersion: 1;
+  envelopeVersion: 1;
+}
+
+export interface ProtectedReportRecoveryGrant {
+  schemaVersion: 1;
+  envelopeVersion: 1;
+  recoveryHandle: string;
+  grant: string;
+  expiresAt: string;
+  /** Signed is returned only when authenticated queued late work remains. */
+  reportStatus: "draft" | "signed";
+}
+
+export interface ConsumeProtectedReportRecoveryGrantCommand {
+  schemaVersion: 1;
+  envelopeVersion: 1;
+  grant: string;
+}
+
+export interface RecoveredProtectedReportKey {
+  schemaVersion: 1;
+  envelopeVersion: 1;
+  wrappingKeyVersion: number;
+  reportKeyBase64: string;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
@@ -283,6 +343,19 @@ export interface ResetAdminCredentialResult {
   active: boolean;
   temporaryPasswordExpiresAt: string;
   sessionsRevoked: number;
+}
+
+export interface PurgeAdminOfflineRecoveryCommand {
+  /** A bounded operational reason; report content must never be supplied. */
+  reason: string;
+}
+
+export interface PurgedAdminOfflineRecovery {
+  userId: string;
+  purgedEnvelopeCount: number;
+  revokedGrantCount: number;
+  /** Device linking is not available, so containment is user-wide. */
+  appliesToAllBrowsers: true;
 }
 
 export interface AdminCapabilityDefinition {

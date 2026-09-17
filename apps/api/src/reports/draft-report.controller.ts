@@ -1,10 +1,13 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
-import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
+import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
+import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse,
+  ProtectedCiphertextReceipt, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope,
+  ProtectedReportRecoveryGrant, RecoveredProtectedReportKey, ReopenOpenCallResponse } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
+import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -13,20 +16,91 @@ type ConditionalResponse = { setHeader(name: string, value: string): unknown; st
 export class DraftReportController {
   constructor(
     private readonly reports: DraftReportService,
-    private readonly signing: SignReportService
+    private readonly signing: SignReportService,
+    private readonly protectedKeys: ProtectedReportKeyService,
   ) {}
 
   @Post()
+  @Header("Cache-Control", "no-store, private")
   create(@Body() body: unknown, @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<DraftReportResult> {
     return this.reports.create(bearerToken(authorization, cookie), body);
   }
 
+  @Post(":id/protected-key-envelope")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  registerProtectedKey(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportKeyEnvelope> {
+    return this.protectedKeys.register(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/protected-ciphertext-checkpoint")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  checkpointProtectedCiphertext(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportCheckpoint> {
+    return this.protectedKeys.checkpoint(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/protected-ciphertext-receipt")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  recordProtectedCiphertext(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedCiphertextReceipt> {
+    return this.protectedKeys.recordWrite(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/recovery-grants")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
+  createRecoveryGrant(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ProtectedReportRecoveryGrant> {
+    return this.protectedKeys.createRecoveryGrant(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/recovery-grants/consume")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
+  consumeRecoveryGrant(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<RecoveredProtectedReportKey> {
+    return this.protectedKeys.consumeRecoveryGrant(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
   @Get("open")
+  @Header("Cache-Control", "no-store, private")
   listOpen(@Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<OpenCallsResponse> {
     return this.reports.listOpen(bearerToken(authorization, cookie));
   }
 
   @Post(":id/draft-changes")
+  @Header("Cache-Control", "no-store, private")
   save(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
@@ -39,6 +113,7 @@ export class DraftReportController {
 
   @Post(":id/reopen")
   @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
   reopen(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization?: string,
@@ -48,6 +123,7 @@ export class DraftReportController {
   }
 
   @Delete(":id")
+  @Header("Cache-Control", "no-store, private")
   deleteDraft(
     @Param("id", uuidV4) id: string,
     @Headers("x-csrf-token") csrfToken?: string,
@@ -58,6 +134,7 @@ export class DraftReportController {
   }
 
   @Get(":id/active")
+  @Header("Cache-Control", "no-store, private")
   async active(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization: string | undefined,
@@ -75,6 +152,7 @@ export class DraftReportController {
   }
 
   @Post(":id/dispatch-conflicts/:conflictId")
+  @Header("Cache-Control", "no-store, private")
   resolveDispatchConflict(
     @Param("id", uuidV4) id: string,
     @Param("conflictId", uuidV4) conflictId: string,
@@ -86,6 +164,7 @@ export class DraftReportController {
   }
 
   @Post(":id/sign")
+  @Header("Cache-Control", "no-store, private")
   sign(
     @Param("id", uuidV4) id: string,
     @Body() body: unknown,
@@ -96,6 +175,7 @@ export class DraftReportController {
   }
 
   @Get(":id")
+  @Header("Cache-Control", "no-store, private")
   get(
     @Param("id", uuidV4) id: string,
     @Headers("authorization") authorization?: string,

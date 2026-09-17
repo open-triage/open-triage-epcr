@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Param, Post } from "@nestjs/common";
 import type {
   AssignedCallsResponse,
   GenerateSyntheticCallResponse,
@@ -13,11 +13,13 @@ export class AssignedCallsController {
   constructor(private readonly calls: AssignedCallsService) {}
 
   @Get("assigned")
+  @Header("Cache-Control", "no-store, private")
   list(@Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string): Promise<AssignedCallsResponse> {
     return this.calls.list(bearerToken(authorization, cookie));
   }
 
   @Get("synthetic-generation")
+  @Header("Cache-Control", "no-store, private")
   syntheticGenerationContext(
     @Headers("authorization") authorization?: string,
     @Headers("cookie") cookie?: string,
@@ -27,6 +29,7 @@ export class AssignedCallsController {
 
   @Post("synthetic-generation")
   @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
   generateSynthetic(
     @Body() body: unknown,
     @Headers("x-csrf-token") csrfToken?: string,
@@ -43,6 +46,7 @@ export class AssignedCallsController {
 
   @Post(":assignmentId/open")
   @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
   open(
     @Param("assignmentId") assignmentId: string,
     @Headers("authorization") authorization?: string,

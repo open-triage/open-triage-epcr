@@ -1,29 +1,43 @@
 # Browser-state compatibility and recovery
 
-The approved automatic compatibility window is the current browser persistence
-version and the immediately previous version. Each previous version remains
-supported for at least one complete release cycle after its successor ships.
-When a new current version is introduced, its implementation must retain and
-test the version it replaces; an older migration may be removed only in a later
-release after it falls outside this window.
+The protected-storage rollout ends browser compatibility with every plaintext
+clinical persistence format. At application startup and after every identity
+transition, the browser deletes the old encounter, per-report, synchronization,
+offline queue, raw-recovery, and category-named keys. It never imports, copies,
+or rewrites those values. A production browser can create persistent clinical
+state only as an authenticated encrypted record in the protected IndexedDB
+store described in [Protected offline clinical storage](protected-offline-clinical-storage.md).
 
-The current window is:
+The version 4/5 local-storage parser remains a non-browser pure compatibility
+fixture for historical unit tests and static-demo development. Browser entry
+points return before that parser and all browser writes return before touching
+local storage. It is not a production migration or recovery path and must not
+be called from browser code. Future protected-envelope versions preserve an
+incompatible authenticated ciphertext record intact; they must not export raw
+clinical JSON into another browser store.
+## Protected offline ciphertext rollback boundary
 
-- Version 5 is the native canonical-document envelope written by the app.
-- Version 4 is the only automatically migrated format. Its canonical document,
-  extension events, workflow drafts, compatible extensions, and custom data are
-  carried into version 5. The separately persisted offline report queue is not
-  rewritten during this migration, so pending commands retain their exact
-  serialized representation.
-- Versions 2 and 3, unversioned payloads, and unknown future versions are not
-  interpreted or migrated. The old category-named storage key is also not
-  reinterpreted as current clinical state.
+The server stores a monotonic revision-and-hash checkpoint after a protected
+ciphertext revision is synchronized. It rejects an older revision and rejects a
+different ciphertext at the same revision. Revisions created only in a browser
+that has never synchronized cannot have a server checkpoint; complete loss or
+rollback of every copy of that browser profile remains outside the server's
+detection boundary. Unsynchronized ciphertext is therefore never a storage
+pressure eviction candidate.
 
-Unsupported or malformed payloads produce an explicit `invalid` or
-`incompatible` load result. Before the source key is removed, its original
-serialized value is copied without parsing or reserialization to
-`open-triage:standard-encounter-v1:recovery`. The application must not create a
-fresh draft over that condition; recovery state remains available until the
-user explicitly resets local progress. This preserves the original clinical
-draft bytes for support-assisted recovery without silently applying an unsafe
-legacy conversion.
+## Offline authorization-revocation window
+
+An already unlocked report can remain readable while the browser is fully
+disconnected because no server decision is available. That residual window
+ends at the earlier of the shift-session expiry or the next successful server
+contact. A 401 or 403 authority decision drops the in-memory report key and
+locks editing immediately. The server independently locks the recovery
+envelope when `clinical:document` is removed; the browser retains only opaque
+ciphertext until its original recovery deadline.
+
+Restoring `clinical:document` before that deadline permits the original user to
+recover through recent reauthentication. It never extends the deadline.
+Account deactivation, deletion, organization removal, or an administrator's
+explicit recovery purge destroys the wrapped keys for every browser. Password
+reset revokes sessions and outstanding grants but deliberately preserves an
+otherwise eligible envelope until its existing deadline.

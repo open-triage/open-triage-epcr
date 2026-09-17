@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -36,12 +37,25 @@ class FakeClient {
 }
 
 const silentLog = { info() {} };
+const repositoryMigrations = fileURLToPath(new URL("../../../supabase/migrations", import.meta.url));
 
 async function migrationSet(files) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "open-triage-migrations-"));
   await Promise.all(Object.entries(files).map(([name, sql]) => writeFile(path.join(directory, name), sql)));
   return readMigrations(directory);
 }
+
+test("repository migration versions are globally unique", async () => {
+  const migrations = await readMigrations(repositoryMigrations);
+  assert.equal(new Set(migrations.map(({ version }) => version)).size, migrations.length);
+});
+
+test("duplicate migration versions fail before any migration can run", async () => {
+  await assert.rejects(migrationSet({
+    "20260917110000_first.sql": "select 'first';",
+    "20260917110000_second.sql": "select 'second';",
+  }), /Duplicate migration version: 20260917110000/);
+});
 
 test("migrations run in version order before rollout", async () => {
   const migrations = await migrationSet({

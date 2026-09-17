@@ -11,6 +11,10 @@ export interface InstallationSettings {
     minimumPasswordLength: number;
     temporaryPasswordHours: number;
   };
+  offlineRecovery: {
+    windowHours: number;
+    restartReauthenticationRequired: boolean;
+  };
   exports: {
     downloadsAllowed: boolean;
     auditExportsAllowed: boolean;
@@ -45,6 +49,12 @@ function integerAt(value: unknown, path: string, minimum: number): number {
   return value as number;
 }
 
+function boundedIntegerAt(value: unknown, path: string, minimum: number, maximum: number): number {
+  const parsed = integerAt(value, path, minimum);
+  if (parsed > maximum) throw new TypeError(`${path} must be less than or equal to ${maximum}`);
+  return parsed;
+}
+
 function stringAt(value: unknown, path: string, maximumLength: number): string {
   if (typeof value !== "string" || value.length < 1 || value.length > maximumLength) {
     throw new TypeError(`${path} must be a string between 1 and ${maximumLength} characters`);
@@ -55,15 +65,17 @@ function stringAt(value: unknown, path: string, maximumLength: number): string {
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
   const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
   const authentication = objectAt(root.authentication, "authentication");
+  const offlineRecovery = objectAt(root.offlineRecovery, "offlineRecovery");
   const exports = objectAt(root.exports, "exports");
   exactKeys(signIn, "signIn", ["brandText", "helperText"]);
   exactKeys(retention, "clinicalRetention", ["durationHours", "automaticDeletionEnabled"]);
   exactKeys(authentication, "authentication", ["sessionDurationMinutes", "idleTimeoutMinutes", "minimumPasswordLength", "temporaryPasswordHours"]);
+  exactKeys(offlineRecovery, "offlineRecovery", ["windowHours", "restartReauthenticationRequired"]);
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
@@ -80,6 +92,10 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
       idleTimeoutMinutes: integerAt(authentication.idleTimeoutMinutes, "authentication.idleTimeoutMinutes", 5),
       minimumPasswordLength: integerAt(authentication.minimumPasswordLength, "authentication.minimumPasswordLength", 8),
       temporaryPasswordHours: integerAt(authentication.temporaryPasswordHours, "authentication.temporaryPasswordHours", 1),
+    },
+    offlineRecovery: {
+      windowHours: boundedIntegerAt(offlineRecovery.windowHours, "offlineRecovery.windowHours", 1, 168),
+      restartReauthenticationRequired: booleanAt(offlineRecovery.restartReauthenticationRequired, "offlineRecovery.restartReauthenticationRequired"),
     },
     exports: {
       downloadsAllowed: booleanAt(exports.downloadsAllowed, "exports.downloadsAllowed"),

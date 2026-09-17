@@ -9,6 +9,7 @@
     "signIn",
     "clinicalRetention",
     "authentication",
+    "offlineRecovery",
     "exports"
   ],
   "properties": {
@@ -40,6 +41,15 @@
         "idleTimeoutMinutes": { "type": "integer", "minimum": 5 },
         "minimumPasswordLength": { "type": "integer", "minimum": 8 },
         "temporaryPasswordHours": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "offlineRecovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["windowHours", "restartReauthenticationRequired"],
+      "properties": {
+        "windowHours": { "type": "integer", "minimum": 1, "maximum": 168 },
+        "restartReauthenticationRequired": { "type": "boolean" }
       }
     },
     "exports": {

@@ -40,10 +40,12 @@ Create the Secrets outside Helm before the first install (or retain existing
 ones when upgrading). Every Secret contains only `DATABASE_URL`, except the API
 Secret, which also contains `SUPABASE_URL`, `SUPABASE_SECRET_KEY`,
 `PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`, and
-`PATIENT_KEY_SECRET_BASE64`, and `AUTH_RATE_LIMIT_SECRET_BASE64`. The
+`PATIENT_KEY_SECRET_BASE64`, `AUTH_RATE_LIMIT_SECRET_BASE64`,
+`OFFLINE_RECOVERY_KEY_VERSION`, and `OFFLINE_RECOVERY_SECRET_BASE64`. The
 authentication rate-limit secret must be a distinct random value of at least 32
-bytes, shared by every API replica. Keep each workload's values in a separate
-private input file:
+bytes, shared by every API replica. The protected-storage wrapping secret must
+also be dedicated to that purpose and backed up according to the offline
+recovery runbook. Keep each workload's values in a separate private input file:
 
 ```sh
 kubectl create secret generic open-triage-api-database \

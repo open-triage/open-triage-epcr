@@ -23,6 +23,9 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
     if (event.sql.startsWith("select app_user.id, app_user.active")) return [{ id: targetId,
       active: false, revision: "7", owner: false, actor_owner: false, ...target }];
     if (event.sql.startsWith("select distinct capability.capability_key")) return targetOnly;
+    if (event.sql.startsWith("select id from app_identity.app_user")) return [{ id: targetId }];
+    if (event.sql.startsWith("select count(*) as revoked")) return [{ revoked: "3" }];
+    if (event.sql.includes("purge_user_recovery_as_administrator")) return [{ purged: "2" }];
     if (event.sql.startsWith("update app_identity.app_session") && event.sql.includes("returning id")) {
       return [{ id: sessionId }, { id: "50000000-0000-4000-8000-000000000001" }];
     }
@@ -55,6 +58,8 @@ function setup({ capabilities = ["users:read", "sessions:read", "sessions:revoke
   const sessions = { requireCapability: async (_token, capability) => {
     events.push({ sql: "authorize", parameters: [capability] });
     return actor;
+  }, requireRecentReauthentication: async () => {
+    events.push({ sql: "recent-reauthentication", parameters: [] });
   } };
   return { service: new SessionAdministrationService(dataSource, sessions), events };
 }
@@ -137,6 +142,20 @@ test("credential reset rolls back credential, revision, and revocations when saf
   assert.ok(events.some(({ sql }) => sql.startsWith("update app_identity.local_credential")));
   assert.ok(events.some(({ sql }) => sql.startsWith("update app_identity.app_session")));
   assert.equal(events.at(-1).sql, "rollback");
+});
+
+test("administrative recovery purge is recent-authenticated, user-wide, audited, and content blind", async () => {
+  const { service, events } = setup();
+  const result = await service.purgeOfflineRecovery("actor-token", targetId,
+    { reason: "Confirmed lost browser" }, now);
+  assert.deepEqual(result, { userId: targetId, purgedEnvelopeCount: 2,
+    revokedGrantCount: 3, appliesToAllBrowsers: true });
+  assert.ok(events.some(({ sql }) => sql === "recent-reauthentication"));
+  const purge = events.find(({ sql }) => sql.includes("purge_user_recovery_as_administrator"));
+  assert.deepEqual(purge.parameters, [organizationId, targetId, actorId, "Confirmed lost browser"]);
+  const audit = events.find(({ sql }) => sql.startsWith("insert into app_identity.authentication_event"));
+  assert.match(audit.sql, /all_browsers/);
+  assert.doesNotMatch(JSON.stringify(events), /patient|ciphertext|wrapped_data_key|report_id/i);
 });
 
 test("security command validation accepts only bounded, credential-safe inputs", () => {

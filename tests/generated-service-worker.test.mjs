@@ -39,7 +39,13 @@ test("the service worker is generated from TypeScript and excluded from version 
   assert.match(source, /open-triage-shell-v5-\$\{__OPEN_TRIAGE_BUILD_SHA__\}/);
   assert.doesNotMatch(generator, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
   assert.doesNotMatch(source, /SAMPLE_DISPATCH_ASSIGNMENT_ENABLED/);
-  assert.match(source, /new URL\("demo-assigned-calls\.json"/);
+  assert.doesNotMatch(source, /demo-(?:assigned-calls|open-calls|open-assignment)\.json/,
+    "clinical demo fixtures must never be copied into Cache Storage");
+  assert.match(source, /pathname\.startsWith\("\/api\/"\)/);
+  assert.match(source, /isApprovedStaticRequest/);
+  assert.match(source, /\/_next\/static\//);
+  assert.doesNotMatch(source, /response\.ok && new URL\(event\.request\.url\)\.origin/,
+    "arbitrary same-origin responses must never enter the application-shell cache");
 });
 
 test("build and CI require the generated worker in deployable output", async () => {

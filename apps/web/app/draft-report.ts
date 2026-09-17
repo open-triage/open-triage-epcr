@@ -333,7 +333,8 @@ export async function fetchActiveReport(
     throw new Error("offline");
   }
   if (response.status === 304) return null;
-  if (response.status === 404 || response.status === 410) throw new Error("completed");
+  if (response.status === 410) throw new Error("purged");
+  if (response.status === 404) throw new Error("completed");
   if (!response.ok) throw new Error(response.status === 401 ? "session" : "offline");
   return { etag: response.headers.get("etag") ?? "", resource: await response.json() as ActiveReportResource };
 }

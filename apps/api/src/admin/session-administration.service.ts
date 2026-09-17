@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AdminSessionList, ResetAdminCredentialCommand, ResetAdminCredentialResult,
-  RevokedAdminSession, RevokeAdminSessionCommand } from "@open-triage/contracts";
+  PurgedAdminOfflineRecovery, RevokedAdminSession, RevokeAdminSessionCommand } from "@open-triage/contracts";
 import { DataSource } from "typeorm";
 import { createPasswordVerifier } from "../identity/password.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -145,6 +145,10 @@ export class SessionAdministrationService {
       const revoked = mutationRows<{ id: string }>(await manager.query(`update app_identity.app_session
         set revoked_at = $2, revocation_reason = 'password_reset'
         where user_id = $1 and revoked_at is null returning id`, [target.id, now]));
+      await manager.query(
+        "select offline_recovery.revoke_user_recovery_grants($1, $2, 'password_reset') as revoked",
+        [actor.organization.id, target.id]
+      );
       await manager.query(`insert into app_identity.authentication_event
         (organization_id, actor_id, action, result, target_user_id, note, details)
         values ($1, $2, 'account.reset_password', 'succeeded', $3, $4,
@@ -155,6 +159,55 @@ export class SessionAdministrationService {
       return { userId: target.id, revision: command.expectedRevision + 1, active: target.active,
         temporaryPasswordExpiresAt: expiresAt.toISOString(), sessionsRevoked: revoked.length };
     });
+  }
+
+  async purgeOfflineRecovery(token: string, targetUserId: string, input: unknown,
+    now = new Date()): Promise<PurgedAdminOfflineRecovery> {
+    const reason = this.purgeReason(input);
+    return this.dataSource.transaction(async (manager) => {
+      const actor = await this.sessions.requireCapability(token, "users:write", manager, now);
+      if (!actor.capabilities?.includes("users:read")) {
+        throw new UnauthorizedException("users:read and users:write are required");
+      }
+      await this.sessions.requireRecentReauthentication(token, manager, now);
+      const targets = await manager.query<Array<{ id: string }>>(
+        "select id from app_identity.app_user where organization_id = $1 and id = $2 for update",
+        [actor.organization.id, targetUserId]
+      );
+      if (!targets[0]) throw new NotFoundException("User was not found");
+      const grantRows = await manager.query<Array<{ revoked: string | number }>>(
+        "select count(*) as revoked from offline_recovery.report_recovery_grant where organization_id = $1 and user_id = $2 and consumed_at is null",
+        [actor.organization.id, targetUserId]
+      );
+      const rows = await manager.query<Array<{ purged: string | number }>>(
+        "select offline_recovery.purge_user_recovery_as_administrator($1, $2, $3, $4) as purged",
+        [actor.organization.id, targetUserId, actor.user.id, reason]
+      );
+      const purgedEnvelopeCount = Number(rows[0]?.purged ?? 0);
+      const revokedGrantCount = Number(grantRows[0]?.revoked ?? 0);
+      await manager.query(`insert into app_identity.authentication_event
+        (organization_id, actor_id, action, result, target_user_id, note, details)
+        values ($1, $2, 'offline_recovery.administrative_purge', 'succeeded', $3, $4,
+          jsonb_build_object('purgedEnvelopeCount', $5::integer,
+            'revokedGrantCount', $6::integer, 'scope', 'all_browsers'))`,
+      [actor.organization.id, actor.user.id, targetUserId, reason,
+        purgedEnvelopeCount, revokedGrantCount]);
+      return { userId: targetUserId, purgedEnvelopeCount, revokedGrantCount,
+        appliesToAllBrowsers: true };
+    });
+  }
+
+  private purgeReason(input: unknown): string {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new ConflictException("A recovery purge reason is required");
+    }
+    const record = input as Record<string, unknown>;
+    const reason = typeof record.reason === "string" ? record.reason.normalize("NFC").trim() : "";
+    if (Object.keys(record).some((key) => key !== "reason") || !reason || reason.length > 200 ||
+        /[\p{Cc}\p{Cf}]/u.test(reason)) {
+      throw new ConflictException("A valid recovery purge reason is required");
+    }
+    return reason;
   }
 
   private requireCombinedSessionAuthority(capabilities: string[] | undefined, revocation: boolean): void {

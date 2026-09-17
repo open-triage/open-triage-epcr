@@ -1,12 +1,13 @@
 "use client";
 
 import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
   changeClinicianPassword,
   createClinicianSession,
   endClinicianSession,
+  authenticateRestartedClinicianSession,
   loadClinicianSession,
   storeClinicianSession,
   sessionRequestToken
@@ -14,7 +15,7 @@ import {
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
 import type { ActiveDraftReport } from "../app/draft-report";
-import { cacheOpenedReport, cacheReopenedReport } from "../app/offline-reports";
+import { cacheOpenedReport, cacheReopenedReport, clearProtectedRuntimeReports } from "../app/offline-reports";
 import {
   hasAdminMode,
   hasClinicalMode,
@@ -30,6 +31,14 @@ import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
 import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
 import { TransientNotice } from "./transient-notice";
+import {
+  deleteLegacyClinicalStorage,
+  flushProtectedReport,
+  lockProtectedClinicalStorage,
+  prepareProtectedReport,
+  protectedLogoutSummary,
+  type ProtectedLogoutSummary,
+} from "../app/protected-clinical-storage";
 
 function emphasizedText(value: string): ReactNode[] {
   return value.split(/(\*\*[^*]+\*\*)/).filter(Boolean).map((part, index) =>
@@ -52,6 +61,7 @@ export function ClinicianSessionGate({ children }: {
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
   const [ready, setReady] = useState(false);
+  const [restartReconnectPending, setRestartReconnectPending] = useState(false);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +76,10 @@ export function ClinicianSessionGate({ children }: {
   const [, setReportWithErrorsId] = useState<string | null>(null);
   const [online, setOnline] = useState(false);
   const [generatedAssignmentId, setGeneratedAssignmentId] = useState<string | null>(null);
+  const [logoutWarning, setLogoutWarning] = useState<ProtectedLogoutSummary | null>(null);
+  const [lockingSession, setLockingSession] = useState(false);
+  const logoutHeadingId = useId();
+  const logoutDialog = useRef<HTMLElement>(null);
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
   }, [activeReport?.id]);
@@ -75,19 +89,68 @@ export function ClinicianSessionGate({ children }: {
   }, []);
 
   useEffect(() => {
+    if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [logoutWarning]);
+
+  const lockAndEndLocalSession = useCallback(async (endedMessage: string) => {
+    clearClinicianSession(window.localStorage);
+    clearFeedbackTelemetry();
+    setActiveReport(null);
+    try { await lockProtectedClinicalStorage(); }
+    catch { /* Readable runtime state is cleared even if browser storage cleanup fails. */ }
+    finally {
+      clearProtectedRuntimeReports();
+      deleteLegacyClinicalStorage(window.localStorage);
+      setSession(null);
+      setLogoutWarning(null);
+      setLockingSession(false);
+      setMessage(endedMessage);
+    }
+  }, []);
+
+  useEffect(() => {
     let current = true;
-    loadInstallationConfiguration().then((loaded) => {
-      if (!current) return;
-      const loadedSession = loadClinicianSession(window.localStorage);
-      setInstallation(loaded);
-      setSession(loadedSession);
-      setPresentationMode(loadPresentationMode(window.localStorage, loadedSession?.capabilities));
-    }).catch((reason: unknown) => {
-      if (current) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
-    }).finally(() => {
-      if (current) setReady(true);
+    let resolved = false;
+    let inFlight = false;
+    deleteLegacyClinicalStorage(window.localStorage);
+    const loadedSession = loadClinicianSession(window.localStorage);
+    const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
+    if (serverRestart) queueMicrotask(() => {
+      if (current) setRestartReconnectPending(true);
     });
-    return () => { current = false; };
+
+    const load = async () => {
+      if (inFlight || resolved) return;
+      inFlight = true;
+      try {
+        const loaded = await loadInstallationConfiguration();
+        const authenticated = serverRestart
+          ? await authenticateRestartedClinicianSession(loadedSession!)
+          : loadedSession;
+        if (!current) return;
+        if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
+        setInstallation(loaded);
+        setSession(authenticated);
+        setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
+        setRestartReconnectPending(false);
+        resolved = true;
+      } catch (reason: unknown) {
+        if (!current) return;
+        if (!serverRestart) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
+      } finally {
+        inFlight = false;
+        if (current) setReady(true);
+      }
+    };
+    void load();
+    const reconnect = () => void load();
+    const retry = window.setInterval(reconnect, 5_000);
+    window.addEventListener("online", reconnect);
+    return () => {
+      current = false;
+      window.clearInterval(retry);
+      window.removeEventListener("online", reconnect);
+    };
   }, []);
 
   useEffect(() => {
@@ -105,24 +168,14 @@ export function ClinicianSessionGate({ children }: {
     if (!session) return;
     const remaining = Date.parse(session.expiresAt) - Date.now();
     if (remaining <= 0) {
-      clearClinicianSession(window.localStorage);
-      clearFeedbackTelemetry();
-      queueMicrotask(() => {
-        setSession(null);
-        setActiveReport(null);
-        setMessage("Your shift session expired. Sign in to continue.");
-      });
+      queueMicrotask(() => void lockAndEndLocalSession("Your shift session expired. Sign in to continue."));
       return;
     }
     const timeout = window.setTimeout(() => {
-      clearClinicianSession(window.localStorage);
-      clearFeedbackTelemetry();
-      setSession(null);
-      setActiveReport(null);
-      setMessage("Your shift session expired. Sign in to continue.");
+      void lockAndEndLocalSession("Your shift session expired. Sign in to continue.");
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timeout);
-  }, [session]);
+  }, [lockAndEndLocalSession, session]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -173,15 +226,25 @@ export function ClinicianSessionGate({ children }: {
     }
   }
 
-  function logOut() {
+  function requestLogout() {
     recordFeedbackInteraction("session.logout.requested");
+    const summary = protectedLogoutSummary();
+    if (summary.pendingReportCount > 0) {
+      setLogoutWarning(summary);
+      return;
+    }
+    void logOut();
+  }
+
+  async function logOut() {
     const csrfToken = session ? sessionRequestToken(session) : "";
-    clearClinicianSession(window.localStorage);
-    setSession(null);
-    setActiveReport(null);
-    setMessage("You have logged out.");
-    clearFeedbackTelemetry();
+    setLockingSession(true);
+    await lockAndEndLocalSession("You have logged out.");
     if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
+  }
+
+  function logoutDialogKeys(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === "Escape" && !lockingSession) setLogoutWarning(null);
   }
 
   function selectPresentationMode(mode: PresentationMode) {
@@ -193,14 +256,12 @@ export function ClinicianSessionGate({ children }: {
   }
 
   const sessionEnded = useCallback(() => {
-    clearClinicianSession(window.localStorage);
-    setSession(null);
-    setActiveReport(null);
-    setMessage("Your shift session ended. Sign in again to sync your saved work.");
-    clearFeedbackTelemetry();
-  }, []);
+    void lockAndEndLocalSession("Your shift session ended. Sign in again to sync your saved work.");
+  }, [lockAndEndLocalSession]);
 
-  if (!ready) return <main className="session-loading" aria-label="Loading OpenTriage" />;
+  if (!ready || restartReconnectPending) return <main className="session-loading" aria-label="Reconnecting securely">
+    <p>Reconnect to continue.</p>
+  </main>;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
   if (!session) {
     return (
@@ -247,7 +308,7 @@ export function ClinicianSessionGate({ children }: {
         <p className="eyebrow">Signed in</p>
         <h1 id="no-workspace-heading">No workspace assigned</h1>
         <p>Your account is active, but it does not have an active workspace role. Contact an administrator for access.</p>
-        <button type="button" onClick={logOut}>Log out</button>
+        <button type="button" onClick={requestLogout}>Log out</button>
       </section>
     </main>;
   }
@@ -274,8 +335,23 @@ export function ClinicianSessionGate({ children }: {
             disabled={activeReport !== null}
             onClick={() => selectPresentationMode("admin")}>Admin</button>}
         </div>
-        <button type="button" onClick={logOut}>Log out</button>
+        <button type="button" onClick={requestLogout}>Log out</button>
       </header>
+      {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">
+        <section ref={logoutDialog} className="note-dialog logout-dialog" role="alertdialog" aria-modal="true"
+          aria-labelledby={logoutHeadingId} onKeyDown={logoutDialogKeys}>
+          <div className="note-dialog-heading"><div><p className="eyebrow">Pending protected work</p>
+            <h2 id={logoutHeadingId}>Log out and lock this work?</h2></div></div>
+          <p role="note">{logoutWarning.pendingReportCount === 1 ? "One report has" : `${logoutWarning.pendingReportCount} reports have`} unsynchronized changes. Logging out will immediately remove readable access from this browser.</p>
+          <p className="feedback-warning"><strong>Recovery deadline:</strong> {logoutWarning.recoveryDeadline
+            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(logoutWarning.recoveryDeadline))
+            : "Unavailable"}. Sign in as the same clinician before this deadline to recover the encrypted work.</p>
+          <div className="note-dialog-actions">
+            <button type="button" disabled={lockingSession} onClick={() => setLogoutWarning(null)}>Stay signed in</button>
+            <button type="button" disabled={lockingSession} onClick={() => void logOut()}>{lockingSession ? "Locking…" : "Log out and lock work"}</button>
+          </div>
+        </section>
+      </div>}
       {modeMessage && <p className="admin-entry-blocked" role="alert">{modeMessage}</p>}
         {shouldShowClinicalDemoBanner({ authenticated: true, capabilities: session.capabilities,
         presentationMode, online, requestMode: browserRequestConfiguration().mode }) && <ClinicalDemoBanner
@@ -295,9 +371,11 @@ export function ClinicianSessionGate({ children }: {
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
-          suppressedCallNumbers={completedCallNumbers} onOpened={(opened, call) => {
+          suppressedCallNumbers={completedCallNumbers} onOpened={async (opened, call) => {
           setCompletionNotice(null);
+          await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
+          await flushProtectedReport(opened.report.id);
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
