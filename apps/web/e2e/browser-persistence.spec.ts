@@ -67,6 +67,17 @@ async function installRoutes(page: Page) {
     expect(command.ciphertextSha256).toMatch(/^[a-f0-9]{64}$/);
     await route.fulfill({ json: command });
   });
+  await page.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, async (route) => {
+    const command = route.request().postDataJSON() as {
+      schemaVersion: number; recoveryHandle: string; ciphertextRevision: number; ciphertextSha256: string;
+    };
+    expect(command.schemaVersion).toBe(1);
+    expect(command.ciphertextRevision).toBeGreaterThan(0);
+    expect(command.ciphertextSha256).toMatch(/^[a-f0-9]{64}$/);
+    await route.fulfill({ status: 200, json: {
+      schemaVersion: 1, recoveryDeadline: "2099-09-18T12:00:00.000Z",
+    } });
+  });
   let revision = openedAssignment.report.revision;
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {
     const command = route.request().postDataJSON() as { expectedRevision: number };

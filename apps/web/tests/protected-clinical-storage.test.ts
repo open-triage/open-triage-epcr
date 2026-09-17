@@ -7,6 +7,7 @@ import {
   encryptProtectedPayload,
   evictionOrder,
   persistentStorageGranted,
+  protectedRecordExpired,
   restoreProtectedRecord,
   type ProtectedClinicalRecord,
 } from "../app/protected-clinical-storage";
@@ -113,4 +114,12 @@ test("corruption and incompatible payloads stay locked in their original authent
   assert.equal((await restoreProtectedRecord(key, corrupted, "handle", (_payload): _payload is unknown => true)).status, "locked");
   assert.equal(original.localRecordId, "report");
   assert.equal(original.ciphertextRevision, 2);
+});
+
+test("expiry cleanup decides from opaque deadline metadata without decrypting ciphertext", () => {
+  const now = new Date("2026-09-17T12:00:00.000Z");
+  assert.equal(protectedRecordExpired({ recoveryDeadline: "2026-09-17T11:59:59.999Z" }, now), true);
+  assert.equal(protectedRecordExpired({ recoveryDeadline: "2026-09-17T12:00:00.000Z" }, now), true);
+  assert.equal(protectedRecordExpired({ recoveryDeadline: "2026-09-17T12:00:00.001Z" }, now), false);
+  assert.equal(protectedRecordExpired({ recoveryDeadline: "not-a-timestamp" }, now), true);
 });
