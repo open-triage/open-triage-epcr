@@ -91,11 +91,18 @@ test("single-occurrence nested groups are flattened into their parent dialog", a
   await expect(etco2).toHaveValue("35");
 });
 
-test("removing the final required table row removes it and leaves scoped inline validation", async ({ page }) => {
+test("optional repeating rows activate child validation only while an occurrence exists", async ({ page }) => {
   await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(demoOpenAssignment),
   }));
+  await page.route(`**/api/reports/${demoOpenAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
+  await page.route(`**/api/reports/${demoOpenAssignment.report.id}/draft-changes`, (route) => {
+    const command = route.request().postDataJSON() as { expectedRevision: number };
+    return route.fulfill({ json: {
+      id: demoOpenAssignment.report.id, status: "draft", revision: command.expectedRevision + 1,
+    } });
+  });
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
@@ -106,16 +113,17 @@ test("removing the final required table row removes it and leaves scoped inline 
   await page.getByRole("button", { name: "Open call", exact: true }).click();
 
   const procedures = page.locator('[data-group-id="eProcedures.ProcedureGroup"]');
+  await expect(procedures).not.toHaveClass(/stationary-validation-state/);
+  await expect(procedures.locator(".stationary-validation-messages")).toHaveCount(0);
   await procedures.getByRole("button", { name: "Add Procedure" }).click();
   await page.getByRole("dialog", { name: "Add Procedure" }).getByRole("button", { name: "Add row" }).click();
   await expect(procedures.locator("tbody tr")).toHaveCount(1);
+  await expect(procedures).toHaveClass(/stationary-validation-state error/);
+  await expect(procedures.locator(".stationary-validation-messages")).toContainText("requires at least 1 value");
   await procedures.getByRole("button", { name: "Remove Procedure row" }).click();
   await expect(procedures.locator("tbody tr")).toHaveCount(0);
-  await expect(procedures).toHaveClass(/stationary-validation-state error/);
-  const message = procedures.getByText(/ProcedureGroup requires at least 1 occurrence/);
-  await expect(message).toBeVisible();
-  await expect(procedures.locator(".stationary-validation-messages")).toContainText("ProcedureGroup requires at least 1 occurrence");
-  await expect(procedures.locator(".stationary-table-scroll ~ .stationary-validation-messages")).toHaveCount(1);
+  await expect(procedures).not.toHaveClass(/stationary-validation-state/);
+  await expect(procedures.locator(".stationary-validation-messages")).toHaveCount(0);
 });
 
 test("nested repeating rows remain scoped to their originating parent workflow", async ({ page }) => {
