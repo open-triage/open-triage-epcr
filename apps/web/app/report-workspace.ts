@@ -49,6 +49,7 @@ const NO_PROTECTED_REPORT_STATUS = { mode: "online-only", explanation: null } as
 export interface ReportWorkspace {
   readonly restored: boolean;
   readonly recoveryNotice: string | null;
+  readonly recoveryNoticeHeading: string;
   readonly syncStatus: DraftSyncStatus;
   readonly revision: MutableRefObject<number>;
   readonly dispatchConflicts: ReadonlyArray<DispatchConflict>;
@@ -443,6 +444,9 @@ export function useReportWorkspace({
   return {
     restored,
     recoveryNotice: recoveryNotice ?? protectedStatus.explanation,
+    recoveryNoticeHeading: recoveryNotice || protectedStatus.mode !== "online-only"
+      ? "Saved data needs recovery"
+      : "Offline storage unavailable",
     syncStatus,
     revision,
     dispatchConflicts,

@@ -445,7 +445,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
   if (browserRequestConfiguration().mode !== "server") return false;
   if (contexts.has(reportId)) return true;
   if (!("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request || !(await persistentStorageGranted())) {
-    publishStatus(reportId, { mode: "online-only", explanation: "Offline editing is unavailable because this browser did not grant persistent protected storage." });
+    publishStatus(reportId, { mode: "online-only", explanation: "This browser did not grant persistent protected storage. Online editing and server saves remain available, but offline editing is unavailable." });
     return false;
   }
   const releaseLock = await acquireEditLock(reportId);

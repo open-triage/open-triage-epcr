@@ -107,7 +107,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
-    restored, recoveryNotice, syncStatus, revision, dispatchConflicts, dispatchCancellation,
+    restored, recoveryNotice, recoveryNoticeHeading, syncStatus, revision, dispatchConflicts, dispatchCancellation,
     conflictError, editingBlocked, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
@@ -351,7 +351,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
-      {recoveryNotice && <aside className="safety-notice" role="alert"><strong>Saved data needs recovery</strong><span>{recoveryNotice}</span></aside>}
+      {recoveryNotice && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
