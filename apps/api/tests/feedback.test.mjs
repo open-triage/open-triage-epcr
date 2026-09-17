@@ -12,7 +12,7 @@ const context = {
 const featureDiagnostics = { status: "available", payload: context };
 const bugDiagnostics = { status: "available", payload: { ...context, screen: "encounter", structure: {
   nodes: [{ kind: "main", depth: 1 }, { kind: "button", depth: 2 }], truncated: false
-}, interactions: ["feedback.opened", "session.refresh.requested"], requestFailures: [{
+}, interactions: ["feedback.opened", "session.refresh.requested", "draft-sync.server-conflict", "draft-sync.retry-exhausted"], requestFailures: [{
   timestamp: "2026-09-16T10:00:00.000Z", method: "GET", endpointPattern: "/api/reports/{value}?cursor={value}",
   status: 503, durationMs: 42
 }] } };
