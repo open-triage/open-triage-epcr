@@ -3,6 +3,9 @@ kind: Ingress
 metadata:
   name: {{ include "open-triage.fullname" . }}
   labels: {{- include "open-triage.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   {{- with .Values.ingress.tls }}

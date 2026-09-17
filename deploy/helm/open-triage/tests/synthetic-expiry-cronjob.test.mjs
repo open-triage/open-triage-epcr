@@ -17,7 +17,7 @@ test("the server purge runs every minute with overlap forbidden", () => {
   const output = render(
     "--set-string", "api.image.repository=registry.example/open-triage-api",
     "--set-string", "api.image.tag=expiry-sha",
-    "--set", "secrets.existingSecret=clinical-database",
+    "--set", "secrets.retention.existingSecret=retention-database",
   );
   assert.match(output, /kind: CronJob/);
   assert.match(output, /name: open-triage-synthetic-expiry/);
@@ -25,7 +25,7 @@ test("the server purge runs every minute with overlap forbidden", () => {
   assert.match(output, /concurrencyPolicy: Forbid/);
   assert.match(output, /command: \["npm", "run", "purge:synthetic", "-w", "@open-triage\/database"\]/);
   assert.match(output, /image: "registry\.example\/open-triage-api:expiry-sha"/);
-  assert.match(output, /secretRef: \{ name: clinical-database \}/);
+  assert.match(output, /secretKeyRef: \{ name: retention-database, key: DATABASE_URL \}/);
 });
 
 test("the purge workload can be disabled independently", () => {

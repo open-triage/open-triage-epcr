@@ -137,12 +137,10 @@ test("every demo save rechecks the live capability and CSRF proof before report 
       correlationId: "demo:stationary-populate-v1:test" }] };
   const noDatabaseAccess = { transaction: async (_level, work) => work({ query: async () => { throw new Error("database touched"); } }) };
   const removedRole = new DraftReportService(noDatabaseAccess, {
-    get: async () => session,
     requireCapability: async () => { throw new UnauthorizedException("role removed"); },
   });
   await assert.rejects(removedRole.save("session", randomUUID(), command, "csrf-proof"), UnauthorizedException);
   const badCsrf = new DraftReportService(noDatabaseAccess, {
-    get: async () => session,
     requireCapability: async () => session,
     assertCsrf: async () => { throw new UnauthorizedException("bad csrf"); },
   });
@@ -195,7 +193,10 @@ test("a full 441-field form save uses bounded database batches instead of per-fi
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { transaction: async (_isolation, operation) => operation(manager) };
-  const sessions = { get: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
+  const sessions = { requireCapability: async (_token, capability) => {
+    assert.equal(capability, "clinical:document");
+    return { organization: { id: organizationId }, user: { id: userId } };
+  } };
   const service = new DraftReportService(dataSource, sessions);
 
   const saved = await service.save("session", reportId, {

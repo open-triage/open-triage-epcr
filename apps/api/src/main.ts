@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { validateAuthenticationThrottleConfiguration } from "./sessions/authentication-throttle.js";
+import { securityHeaders } from "./security-headers.js";
 
 async function bootstrap() {
   validateAuthenticationThrottleConfiguration();
@@ -13,6 +14,7 @@ async function bootstrap() {
     throw new Error("AUTH_TRUST_PROXY_HOPS must be an integer between 0 and 10");
   }
   app.set("trust proxy", trustProxyHops);
+  app.use(securityHeaders);
   // A fully populated canonical encounter currently produces a draft command
   // around 175 KB. Keep a bounded limit, but make it large enough for a whole
   // NEMSIS document mutation rather than Express's 100 KB default.

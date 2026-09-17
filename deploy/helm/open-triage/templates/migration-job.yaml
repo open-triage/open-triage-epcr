@@ -1,5 +1,5 @@
 {{- if .Values.migration.enabled }}
-{{- $secretName := required "secrets.existingSecret is required when migration.enabled is true; create the cluster-owned Secret before deploying" .Values.secrets.existingSecret }}
+{{- $secretName := required "secrets.migration.existingSecret is required when migration.enabled is true; create the cluster-owned Secret before deploying" .Values.secrets.migration.existingSecret }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -29,6 +29,8 @@ spec:
           {{- else }}
           command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
           {{- end }}
-          envFrom: [{ secretRef: { name: {{ $secretName }} } }]
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $secretName }}, key: DATABASE_URL } }
           resources: {{- toYaml .Values.migration.resources | nindent 12 }}
 {{- end }}

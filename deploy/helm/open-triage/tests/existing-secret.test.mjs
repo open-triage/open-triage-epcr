@@ -4,63 +4,56 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const chart = fileURLToPath(new URL("..", import.meta.url));
-
 function render(...args) {
-  return execFileSync("helm", ["template", "open-triage", chart, ...args], {
-    encoding: "utf8",
-  });
+  return execFileSync("helm", ["template", "open-triage", chart, ...args], { encoding: "utf8" });
 }
 
-test("existing-Secret mode references the cluster-owned Secret without rendering it", () => {
+test("existing-Secret mode mounts one database credential per workload", () => {
   const output = render();
-
-  assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)/);
-  assert.doesNotMatch(output, /stringData:/);
-  assert.equal(
-    output.match(/secretRef: \{ name: open-triage-database \}/g)?.length,
-    5,
-    "the migration, API, synthetic expiry, and both analytics workloads must reference the existing Secret",
-  );
+  assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|envFrom:/);
+  for (const name of [
+    "open-triage-api-database", "open-triage-migration-database",
+    "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
+    "open-triage-retention-database"
+  ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
+  assert.equal(output.match(/key: DATABASE_URL/g)?.length, 5);
 });
 
-test("secret input changes cannot alter an existing Secret during an upgrade", () => {
-  const before = render("--set-string", "secrets.databaseUrl=before-upgrade");
-  const after = render(
-    "--set-string",
-    "secrets.databaseUrl=after-upgrade",
-    "--set-string",
-    "secrets.supabaseSecretKey=replacement-value",
-  );
-
-  assert.equal(after, before, "managed secret values must be ignored in existing-Secret mode");
-  assert.doesNotMatch(after, /before-upgrade|after-upgrade|replacement-value/);
-});
-
-test("an explicitly named existing Secret is used by every workload", () => {
-  const output = render("--set", "secrets.existingSecret=installation-database");
-
-  assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|stringData:/);
-  assert.equal(output.match(/secretRef: \{ name: installation-database \}/g)?.length, 5);
-});
-
-test("managed-Secret mode remains available", () => {
+test("each workload can select a different existing Secret", () => {
   const output = render(
-    "--set",
-    "migration.enabled=false",
-    "--set",
-    "secrets.existingSecret=",
-    "--set-string",
-    "secrets.databaseUrl=managed-database-url",
-    "--set-string",
-    "secrets.patientKeyInstallationId=managed-installation",
-    "--set-string",
-    "secrets.patientKeySecretBase64=managed-key",
-    "--set-string",
-    "secrets.authRateLimitSecretBase64=managed-auth-rate-limit-key",
+    "--set", "secrets.api.existingSecret=api-db",
+    "--set", "secrets.migration.existingSecret=migration-db",
+    "--set", "secrets.analyticsProjector.existingSecret=projector-db",
+    "--set", "secrets.analyticsHealth.existingSecret=health-db",
+    "--set", "secrets.retention.existingSecret=retention-db",
   );
+  for (const name of ["api-db", "migration-db", "projector-db", "health-db", "retention-db"]) {
+    assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
+  }
+});
 
-  assert.match(output, /kind: Secret(?:\n|\r\n)/);
-  assert.match(output, /name: open-triage-database/);
-  assert.match(output, /DATABASE_URL: \"managed-database-url\"/);
-  assert.match(output, /AUTH_RATE_LIMIT_SECRET_BASE64: \"managed-auth-rate-limit-key\"/);
+test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
+  const output = render(
+    "--set", "migration.enabled=false",
+    "--set", "secrets.api.existingSecret=",
+    "--set-string", "secrets.api.databaseUrl=api-url",
+    "--set-string", "secrets.api.patientKeyInstallationId=installation",
+    "--set-string", "secrets.api.patientKeySecretBase64=patient-key",
+    "--set-string", "secrets.api.authRateLimitSecretBase64=auth-rate-limit-key",
+    "--set", "secrets.analyticsProjector.existingSecret=",
+    "--set-string", "secrets.analyticsProjector.databaseUrl=projector-url",
+    "--set", "secrets.analyticsHealth.existingSecret=",
+    "--set-string", "secrets.analyticsHealth.databaseUrl=health-url",
+    "--set", "secrets.retention.existingSecret=",
+    "--set-string", "secrets.retention.databaseUrl=retention-url",
+    "--set", "secrets.operationalAudit.existingSecret=",
+    "--set-string", "secrets.operationalAudit.databaseUrl=audit-url",
+  );
+  assert.equal(output.match(/kind: Secret/g)?.length, 5);
+  for (const [name, url] of [
+    ["api", "api-url"], ["analytics-projector", "projector-url"],
+    ["analytics-health", "health-url"], ["retention", "retention-url"],
+    ["operational-audit", "audit-url"]
+  ]) assert.match(output, new RegExp(`name: open-triage-${name}-database[\\s\\S]*?DATABASE_URL: "${url}"`));
+  assert.match(output, /AUTH_RATE_LIMIT_SECRET_BASE64: "auth-rate-limit-key"/);
 });
