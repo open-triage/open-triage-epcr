@@ -6,9 +6,9 @@
 {{- if .Values.fullnameOverride }}{{ .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}{{ else }}{{ include "open-triage.name" . }}{{ end }}
 {{- end }}
 
-{{/* Use a cluster-owned database Secret when one is configured. */}}
-{{- define "open-triage.databaseSecretName" -}}
-{{- default (printf "%s-database" (include "open-triage.fullname" .)) .Values.secrets.existingSecret -}}
+{{/* Resolve a workload-specific cluster-owned or Helm-managed Secret. */}}
+{{- define "open-triage.workloadSecretName" -}}
+{{- default (printf "%s-%s-database" (include "open-triage.fullname" .root) .workload) .config.existingSecret -}}
 {{- end }}
 
 {{- define "open-triage.labels" -}}
