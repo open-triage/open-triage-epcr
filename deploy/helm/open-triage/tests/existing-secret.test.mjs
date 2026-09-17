@@ -39,6 +39,7 @@ test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
     "--set-string", "secrets.api.databaseUrl=api-url",
     "--set-string", "secrets.api.patientKeyInstallationId=installation",
     "--set-string", "secrets.api.patientKeySecretBase64=patient-key",
+    "--set-string", "secrets.api.authRateLimitSecretBase64=auth-rate-limit-key",
     "--set", "secrets.analyticsProjector.existingSecret=",
     "--set-string", "secrets.analyticsProjector.databaseUrl=projector-url",
     "--set", "secrets.analyticsHealth.existingSecret=",
@@ -54,4 +55,5 @@ test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
     ["analytics-health", "health-url"], ["retention", "retention-url"],
     ["operational-audit", "audit-url"]
   ]) assert.match(output, new RegExp(`name: open-triage-${name}-database[\\s\\S]*?DATABASE_URL: "${url}"`));
+  assert.match(output, /AUTH_RATE_LIMIT_SECRET_BASE64: "auth-rate-limit-key"/);
 });

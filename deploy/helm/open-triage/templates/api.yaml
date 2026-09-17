@@ -26,6 +26,8 @@ spec:
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           ports: [{ name: http, containerPort: 3001 }]
           env:
+            - name: NODE_ENV
+              value: "production"
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: DATABASE_URL } }
             - name: SUPABASE_URL
@@ -38,8 +40,12 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_VERSION } }
             - name: PATIENT_KEY_SECRET_BASE64
               valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: PATIENT_KEY_SECRET_BASE64 } }
+            - name: AUTH_RATE_LIMIT_SECRET_BASE64
+              valueFrom: { secretKeyRef: { name: {{ include "open-triage.workloadSecretName" (dict "root" . "workload" "api" "config" .Values.secrets.api) }}, key: AUTH_RATE_LIMIT_SECRET_BASE64 } }
             - name: PORT
               value: "3001"
+            - name: AUTH_TRUST_PROXY_HOPS
+              value: {{ .Values.api.trustProxyHops | quote }}
             - name: WEB_ORIGIN
               value: "https://{{ .Values.web.host }}"
           readinessProbe:

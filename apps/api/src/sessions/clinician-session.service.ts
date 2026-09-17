@@ -6,16 +6,18 @@ import { SYNTHETIC_DEMO_FIXTURE, type ChangePasswordCommand, type ClinicianSessi
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { createPasswordVerifier, verifyPassword } from "../identity/password.js";
+import { beginAuthenticationAttempt, finishAuthenticationAttempt } from "./authentication-throttle.js";
 
 export const DEMO_CLINICIAN_USERNAME = SYNTHETIC_DEMO_FIXTURE.username;
 export const DEMO_CLINICIAN_PASSWORD = SYNTHETIC_DEMO_FIXTURE.password;
 
 type CredentialRow = {
   user_id: string; display_name: string; organization_id: string; organization_name: string;
+  username: string;
   shift_session_duration_hours: number; password_verifier: string; must_change_password: boolean;
   temporary_password_expires_at: Date | string | null; credential_version: string; active: boolean;
 };
-type SessionRow = Omit<CredentialRow, "password_verifier"> & {
+type SessionRow = Omit<CredentialRow, "password_verifier" | "username"> & {
   session_id: string; created_at: Date | string; expires_at: Date | string; csrf_sha256: string;
   session_credential_version: string; revoked_at: Date | string | null;
 };
@@ -39,12 +41,15 @@ export function coarseDeviceLabel(userAgent: string | undefined): string {
 export class ClinicianSessionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async create(command: CreateClinicianSessionCommand, now = new Date(), userAgent?: string): Promise<CreatedSession> {
+  async create(command: CreateClinicianSessionCommand, now = new Date(), userAgent?: string,
+    networkSource?: string): Promise<CreatedSession> {
     const username = command.username.trim().toLowerCase();
+    const throttle = await beginAuthenticationAttempt(this.dataSource.manager, username, networkSource, now);
+    if (!throttle) throw new UnauthorizedException("The username or password is incorrect");
     const rows = await this.dataSource.query<CredentialRow[]>(`
       select u.id as user_id, u.display_name, u.active, o.id as organization_id,
              o.name as organization_name, o.shift_session_duration_hours,
-             c.password_verifier, c.must_change_password, c.temporary_password_expires_at, c.credential_version
+             c.username, c.password_verifier, c.must_change_password, c.temporary_password_expires_at, c.credential_version
       from app_identity.local_credential c
       join app_identity.app_user u on u.id = c.user_id
       join app_identity.organization o on o.id = u.organization_id
@@ -55,9 +60,11 @@ export class ClinicianSessionService {
     const temporaryExpired = account?.must_change_password && (!account.temporary_password_expires_at ||
       timestamp(account.temporary_password_expires_at) <= now.getTime());
     if (!account || !passwordMatches || !account.active || temporaryExpired) {
+      await finishAuthenticationAttempt(this.dataSource.manager, throttle, false, now);
       await this.audit(this.dataSource.manager, account, "authentication.sign_in", "failed");
       throw new UnauthorizedException("The username or password is incorrect");
     }
+    await finishAuthenticationAttempt(this.dataSource.manager, throttle, true, now);
     const sessionToken = randomBytes(32).toString("base64url");
     const csrfToken = randomBytes(32).toString("base64url");
     const normalExpiry = new Date(now.getTime() + account.shift_session_duration_hours * 60 * 60 * 1_000);
@@ -112,13 +119,14 @@ export class ClinicianSessionService {
     if (!rows[0] || rows[0].csrf_sha256 !== digest(csrfToken)) throw new UnauthorizedException("A valid CSRF token is required");
   }
 
-  async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date(), userAgent?: string): Promise<CreatedSession> {
+  async changePassword(sessionToken: string, command: ChangePasswordCommand, now = new Date(), userAgent?: string,
+    networkSource?: string): Promise<CreatedSession> {
     const passwordVerifier = await createPasswordVerifier(command.newPassword);
     const result = await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, command.csrfToken, manager);
       const current = await this.get(sessionToken, now, true, manager);
       const rows = await manager.query<CredentialRow[]>(`
-        select c.password_verifier, c.credential_version, c.must_change_password,
+        select c.password_verifier, c.username, c.credential_version, c.must_change_password,
                c.temporary_password_expires_at,
                u.id as user_id, u.display_name, u.active, u.organization_id,
                o.name as organization_name, o.shift_session_duration_hours
@@ -127,10 +135,14 @@ export class ClinicianSessionService {
         for update of c
       `, [current.user.id]);
       const account = rows[0];
+      const throttle = await beginAuthenticationAttempt(manager, account?.username ?? current.user.id, networkSource, now);
+      if (!throttle) return undefined;
       if (!account || !await verifyPassword(command.currentPassword, account.password_verifier)) {
+        await finishAuthenticationAttempt(manager, throttle, false, now);
         await this.audit(manager, account, "authentication.password_change", "failed");
         return undefined;
       }
+      await finishAuthenticationAttempt(manager, throttle, true, now);
       const credentials = mutationRows<{ credential_version: string }>(await manager.query(`update app_identity.local_credential set password_verifier = $2,
         must_change_password = false, temporary_password_expires_at = null,
         credential_version = credential_version + 1,
@@ -185,12 +197,12 @@ export class ClinicianSessionService {
   }
 
   async reauthenticate(sessionToken: string, csrfToken: string | undefined, currentPassword: string,
-    now = new Date()): Promise<ReauthenticationResult> {
+    now = new Date(), networkSource?: string): Promise<ReauthenticationResult> {
     const verified = await this.dataSource.transaction(async (manager) => {
       await this.assertCsrf(sessionToken, csrfToken, manager);
       const session = await this.get(sessionToken, now, false, manager);
       const rows = await manager.query<CredentialRow[]>(`
-        select c.password_verifier, c.credential_version, c.must_change_password,
+        select c.password_verifier, c.username, c.credential_version, c.must_change_password,
           c.temporary_password_expires_at, u.id as user_id, u.display_name, u.active,
           u.organization_id, o.name as organization_name, o.shift_session_duration_hours
         from app_identity.local_credential c
@@ -199,10 +211,14 @@ export class ClinicianSessionService {
         where u.id = $1 for update of c
       `, [session.user.id]);
       const account = rows[0];
+      const throttle = await beginAuthenticationAttempt(manager, account?.username ?? session.user.id, networkSource, now);
+      if (!throttle) return false;
       if (!account || !await verifyPassword(currentPassword, account.password_verifier)) {
+        await finishAuthenticationAttempt(manager, throttle, false, now);
         await this.audit(manager, account, "authentication.reauthenticate", "failed");
         return false;
       }
+      await finishAuthenticationAttempt(manager, throttle, true, now);
       await manager.query(`update app_identity.app_session set reauthenticated_at = $2
         where token_sha256 = $1 and revoked_at is null`, [digest(sessionToken), now]);
       await this.audit(manager, account, "authentication.reauthenticate", "succeeded");
