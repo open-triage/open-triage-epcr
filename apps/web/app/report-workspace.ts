@@ -50,6 +50,7 @@ export interface ReportWorkspace {
   readonly restored: boolean;
   readonly recoveryNotice: string | null;
   readonly recoveryNoticeHeading: string;
+  readonly bestEffortNoticeInDemoBanner: boolean;
   readonly syncStatus: DraftSyncStatus;
   readonly revision: MutableRefObject<number>;
   readonly dispatchConflicts: ReadonlyArray<DispatchConflict>;
@@ -451,6 +452,8 @@ export function useReportWorkspace({
         : protectedStatus.mode === "online-only"
           ? "Offline storage unavailable"
           : "Saved data needs recovery",
+    bestEffortNoticeInDemoBanner: !recoveryNotice && protectedStatus.mode === "best-effort" && online &&
+      browserRequestConfiguration().mode === "server" && session.capabilities?.includes("clinical:demo") === true,
     syncStatus,
     revision,
     dispatchConflicts,

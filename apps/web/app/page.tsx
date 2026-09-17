@@ -107,7 +107,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
-    restored, recoveryNotice, recoveryNoticeHeading, syncStatus, revision, dispatchConflicts, dispatchCancellation,
+    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision, dispatchConflicts, dispatchCancellation,
     conflictError, editingBlocked, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
@@ -116,8 +116,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     onReportCompleted,
   });
   useEffect(() => {
-    onErrorStateChange(reviewErrors.length > 0 || Boolean(recoveryNotice || signError || conflictError));
-  }, [conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
+    onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError));
+  }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
   const validationClear = reviewErrors.length === 0 && reviewWarnings.length === 0;
   const eventValidationStatuses = useMemo(() => {
     const statuses = new Map<string, "warning" | "error">();
@@ -351,7 +351,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
-      {recoveryNotice && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
+      {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
         <strong>Dispatch canceled this response</strong>
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>

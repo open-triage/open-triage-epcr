@@ -1,7 +1,7 @@
 "use client";
 
 import type { ClinicianSession, SyntheticCallGenerationContext } from "@open-triage/contracts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { fetchSyntheticCallGenerationContext, generateSyntheticCall } from "../app/assigned-calls";
 import { sessionRequestToken } from "../app/clinician-session";
 import { canGenerateSyntheticCall, canUseClinicalDemoDraftActions, selectedClinicalDemoUnit } from "../app/clinical-demo";
@@ -10,6 +10,9 @@ import { deleteDraftReport } from "../app/draft-report";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "../app/demo-provenance";
 import { clearShellState } from "../app/local-persistence";
 import { removeOfflineReport } from "../app/offline-reports";
+import { protectedStorageStatus, subscribeProtectedStorageStatus } from "../app/protected-clinical-storage";
+
+const NO_PROTECTED_REPORT_STATUS = { mode: "online-only", explanation: null } as const;
 
 export function ClinicalDemoBanner({
   session,
@@ -30,6 +33,13 @@ export function ClinicalDemoBanner({
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const protectedStatus = useSyncExternalStore(
+    useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
+      if (reportId === activeReport?.id) changed();
+    }), [activeReport?.id]),
+    useCallback(() => activeReport ? protectedStorageStatus(activeReport.id) : NO_PROTECTED_REPORT_STATUS, [activeReport]),
+    () => NO_PROTECTED_REPORT_STATUS,
+  );
 
   useEffect(() => {
     let current = true;
@@ -89,6 +99,9 @@ export function ClinicalDemoBanner({
 
   return <aside className="safety-notice clinical-demo-banner" role="note" aria-label="Clinical Demo tools">
     <strong>Clinical Demo</strong>
+    {protectedStatus.mode === "best-effort" && <span className="demo-storage-note"
+      aria-label={`Best-effort offline storage. ${protectedStatus.explanation ?? ""}`}
+      title={protectedStatus.explanation ?? undefined}>Best-effort offline storage</span>}
     {canGenerate && context.eligibleUnits.length === 0 && <span>No eligible active unit is assigned.</span>}
     {canGenerate && multipleUnits && <label className="clinical-demo-unit">
       Unit
