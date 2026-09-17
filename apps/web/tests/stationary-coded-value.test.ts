@@ -146,6 +146,32 @@ test("ordinary and exceptional selections replace one another without changing o
   assert.equal(encounterDocumentDiagnostics(ordinary).length, 0);
 });
 
+test("removing the final coded or exceptional value drops its element and emits a tombstone", () => {
+  const document = structuredClone(synthetic) as EncounterDocument;
+  const persisted = encounterDocumentToDraftMutations(reportId, document);
+  const exceptional = editStationaryCodedValue(
+    document,
+    patientTarget,
+    exceptionalSelection(stationaryCodedField(patientTarget.elementId), "not-value:7701003")!,
+  );
+  const removed = editStationaryCodedValue(exceptional, patientTarget, undefined);
+
+  const patient = removed.groups.find(({ id }) => id === patientTarget.groupId)!.instances
+    .find(({ instanceId }) => instanceId === patientTarget.instanceId)!;
+  assert.equal(patient.elements.find(({ id }) => id === patientTarget.elementId), undefined);
+  assert.deepEqual(encounterDocumentDiagnostics(removed), []);
+
+  const mutations = encounterDocumentToDraftMutations(reportId, removed, persisted);
+  const original = persisted.occurrences.find(({ elementId }) => elementId === patientTarget.elementId)!;
+  assert.deepEqual(mutations.occurrences.find(({ id }) => id === original.id), {
+    id: original.id,
+    elementId: original.elementId,
+    groupInstanceId: original.groupInstanceId,
+    ordinal: original.ordinal,
+    tombstone: true,
+  });
+});
+
 test("adding repeatable coded values appends instead of replacing an existing occurrence", () => {
   const document = structuredClone(synthetic) as EncounterDocument;
   const target = { groupId: "ePatientSection", instanceId: "synthetic-patient-1", elementId: "ePatient.14" } as const;

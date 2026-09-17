@@ -188,7 +188,8 @@ export function editStationaryCodedValue(
     else values.push(value);
   } else if (existingValue) values.splice(valueIndex, 1);
   const elements = [...instance.elements];
-  if (existingElement) elements[elementIndex] = { ...existingElement, values };
+  if (existingElement && values.length === 0) elements.splice(elementIndex, 1);
+  else if (existingElement) elements[elementIndex] = { ...existingElement, values };
   else if (selection) elements.push({ id: target.elementId, values });
   const instances = [...group.instances];
   instances[instanceIndex] = { ...instance, attributes: clinicianOwnedAttributes(instance.attributes), elements };

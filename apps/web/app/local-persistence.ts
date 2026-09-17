@@ -1,6 +1,6 @@
 import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 import type { EncounterDefinition } from "./encounter-definition";
-import { EncounterDocumentError, loadEncounterDocument } from "./encounter-document";
+import { EncounterDocumentError, loadEncounterDocument, normalizeEmptyEncounterElements } from "./encounter-document";
 import { saveCanonicalEvent } from "./canonical-events";
 import { DEMO_FALLBACK_DATE } from "./demo-provenance";
 import { bundledEncounterDefinition, type EncounterEvent, type ShellState } from "./standard-encounter";
@@ -40,8 +40,9 @@ export type ShellStateLoadResult =
   | { readonly status: "restored"; readonly state: ShellState; readonly migrated: boolean };
 
 export function saveShellState(storage: LocalStoragePort, state: ShellState, reportId?: string): void {
+  const normalized = normalizeEmptyEncounterElements(state.encounter.document).document as ShellState["encounter"]["document"];
   const document = {
-    ...state.encounter.document,
+    ...normalized,
     [ENCOUNTER_EXTENSION_KEY]: {
       version: ENCOUNTER_EXTENSION_VERSION,
       acknowledgedWarnings: state.acknowledgedWarnings,
@@ -104,7 +105,7 @@ export function loadShellStateResult(
     if (!isCurrentEnvelope && !isPreviousEnvelope) {
       return { status: "invalid", reason: `saved persistence version ${String(record.persistenceVersion)} is not supported`, recoveryKey: preserveForRecovery(storage, serialized, key) };
     }
-    const currentDocument = record.document as Record<string, unknown>;
+    let currentDocument = record.document as Record<string, unknown>;
     const candidate = record.workflow as Partial<ShellState>;
     const extension = currentDocument?.[ENCOUNTER_EXTENSION_KEY] as Record<string, unknown> | undefined;
     if (!extension || extension.version !== ENCOUNTER_EXTENSION_VERSION) {
@@ -125,7 +126,9 @@ export function loadShellStateResult(
     if (candidate.noteDraft !== null && candidate.noteDraft !== undefined && typeof candidate.noteDraft.summary !== "string") return { status: "invalid", reason: "saved note draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
     if (candidate.medicationDraft !== null && candidate.medicationDraft !== undefined && typeof candidate.medicationDraft.label !== "string") return { status: "invalid", reason: "saved medication draft is invalid", recoveryKey: preserveForRecovery(storage, serialized, key) };
 
-    const migrated = !isCurrentEnvelope;
+    const normalization = reportId ? normalizeEmptyEncounterElements(currentDocument) : { document: currentDocument, removedEmptyElementCount: 0 };
+    currentDocument = normalization.document as Record<string, unknown>;
+    const migrated = !isCurrentEnvelope || normalization.removedEmptyElementCount > 0;
     let document = loadEncounterDocument(currentDocument, {
       formProfiles: { [pinnedProfile.id]: [pinnedProfile.version] },
       catalogFields: pinnedProfile.catalogFields,
