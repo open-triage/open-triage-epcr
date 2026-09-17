@@ -34,8 +34,10 @@ docker build -f deploy/docker/api.Dockerfile \
 
 Create the Secret outside Helm before the first install (or retain the existing
 one when upgrading). It must contain `DATABASE_URL`, `SUPABASE_URL`,
-`SUPABASE_SECRET_KEY`, `PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`, and
-`PATIENT_KEY_SECRET_BASE64`. Keep the sensitive values in a private input file:
+`SUPABASE_SECRET_KEY`, `PATIENT_KEY_INSTALLATION_ID`, `PATIENT_KEY_VERSION`,
+`PATIENT_KEY_SECRET_BASE64`, and `AUTH_RATE_LIMIT_SECRET_BASE64`. The
+authentication rate-limit secret must be a distinct random value of at least 32
+bytes, shared by every API replica. Keep the sensitive values in a private input file:
 
 ```sh
 kubectl create secret generic open-triage-database \

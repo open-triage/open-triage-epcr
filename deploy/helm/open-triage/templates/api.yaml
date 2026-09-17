@@ -27,8 +27,12 @@ spec:
           ports: [{ name: http, containerPort: 3001 }]
           envFrom: [{ secretRef: { name: {{ include "open-triage.databaseSecretName" . }} } }]
           env:
+            - name: NODE_ENV
+              value: "production"
             - name: PORT
               value: "3001"
+            - name: AUTH_TRUST_PROXY_HOPS
+              value: {{ .Values.api.trustProxyHops | quote }}
             - name: WEB_ORIGIN
               value: "https://{{ .Values.web.host }}"
           readinessProbe:

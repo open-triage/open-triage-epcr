@@ -18,6 +18,7 @@ api:
     pullPolicy: IfNotPresent
   replicas: 1
   host: api.demo.opentriage.org
+  trustProxyHops: 1
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
@@ -55,6 +56,10 @@ imagePullSecrets: []
 ingress:
   className: nginx
   tls: []
+  authenticationRateLimit:
+    enabled: true
+    requestsPerSecond: 10
+    burstMultiplier: 3
 
 secrets:
   # The demo Secret is cluster-owned. When this is set, the chart only
@@ -66,3 +71,4 @@ secrets:
   patientKeyInstallationId: ""
   patientKeyVersion: "1"
   patientKeySecretBase64: ""
+  authRateLimitSecretBase64: ""

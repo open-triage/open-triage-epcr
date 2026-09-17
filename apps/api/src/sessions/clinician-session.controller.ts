@@ -4,7 +4,11 @@ import { ClinicianSessionService } from "./clinician-session.service.js";
 import { validateChangePassword, validateCreateClinicianSession, validateReauthenticate } from "./clinician-session.validation.js";
 
 export const SESSION_COOKIE = "open_triage_session";
-type RequestLike = { headers: { cookie?: string; "user-agent"?: string } };
+type RequestLike = {
+  headers: { cookie?: string; "user-agent"?: string };
+  ip?: string;
+  socket?: { remoteAddress?: string };
+};
 export type SessionCookieResponse = { cookie(name: string, value: string, options: Record<string, unknown>): void; clearCookie(name: string, options: Record<string, unknown>): void };
 
 export function bearerToken(authorization: string | undefined, cookie?: string): string {
@@ -17,6 +21,11 @@ export function bearerToken(authorization: string | undefined, cookie?: string):
 
 export function sessionToken(request: RequestLike, authorization?: string): string {
   return bearerToken(authorization, request.headers.cookie);
+}
+
+export function requestNetworkSource(request: RequestLike): string | undefined {
+  const address = request.ip ?? request.socket?.remoteAddress;
+  return address?.startsWith("::ffff:") ? address.slice(7) : address;
 }
 
 function cookieOptions(expiresAt?: string): Record<string, unknown> {
@@ -32,9 +41,10 @@ export class ClinicianSessionController {
   constructor(private readonly sessions: ClinicianSessionService) {}
 
   @Post()
-  async create(@Body() body: unknown, @Res({ passthrough: true }) response: SessionCookieResponse,
+  async create(@Req() request: RequestLike, @Body() body: unknown, @Res({ passthrough: true }) response: SessionCookieResponse,
     @Headers("user-agent") userAgent?: string): Promise<ClinicianSession> {
-    const created = await this.sessions.create(validateCreateClinicianSession(body), new Date(), userAgent);
+    const created = await this.sessions.create(validateCreateClinicianSession(body), new Date(), userAgent,
+      requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
   }
@@ -52,7 +62,7 @@ export class ClinicianSessionController {
     @Headers("authorization") authorization?: string
   ): Promise<ClinicianSession> {
     const created = await this.sessions.changePassword(sessionToken(request, authorization), validateChangePassword(body),
-      new Date(), request.headers["user-agent"]);
+      new Date(), request.headers["user-agent"], requestNetworkSource(request));
     response.cookie(SESSION_COOKIE, created.sessionToken, cookieOptions(created.session.expiresAt));
     return created.session;
   }
@@ -65,7 +75,8 @@ export class ClinicianSessionController {
     @Headers("authorization") authorization?: string
   ): Promise<ReauthenticationResult> {
     const command = validateReauthenticate(body);
-    return this.sessions.reauthenticate(sessionToken(request, authorization), csrfToken, command.currentPassword);
+    return this.sessions.reauthenticate(sessionToken(request, authorization), csrfToken, command.currentPassword,
+      new Date(), requestNetworkSource(request));
   }
 
   @Delete("current")
