@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { parseKeyring, rewrap, rotateOfflineRecoveryKeys } from "../scripts/rotate-offline-recovery-keys.mjs";
 
-const migration = await readFile(new URL("../../../supabase/migrations/20260917110000_rotate_recovery_secrets_and_audit_key_release_operations.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../../supabase/migrations/20260917113000_rotate_recovery_secrets_and_audit_key_release_operations.sql", import.meta.url), "utf8");
 const runbook = await readFile(new URL("../../../docs/runbooks/database-operations.md", import.meta.url), "utf8");
 
 test("the keyring requires separate exact-length versioned secrets", () => {
