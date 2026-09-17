@@ -3,9 +3,11 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
+import { securityHeaders } from "./security-headers.js";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  app.use(securityHeaders);
   // A fully populated canonical encounter currently produces a draft command
   // around 175 KB. Keep a bounded limit, but make it large enough for a whole
   // NEMSIS document mutation rather than Express's 100 KB default.

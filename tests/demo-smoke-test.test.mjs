@@ -6,11 +6,23 @@ import productionSettings from "../packages/contracts/config/installation.produc
 
 const sessionCookie = "open_triage_session=sensitive-session-token";
 const sensitiveCallNumber = "PRIVATE-CALL-123";
+const securityHeaders = {
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "x-frame-options": "DENY",
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+};
+
+function htmlResponse(value, status = 200, headers = {}) {
+  return new Response(value, { status, headers: { ...securityHeaders, ...headers } });
+}
 
 function jsonResponse(value, status = 200, headers = {}) {
   return new Response(JSON.stringify(value), {
     status,
-    headers: { "content-type": "application/json", ...headers },
+    headers: { ...securityHeaders, "content-type": "application/json", ...headers },
   });
 }
 
@@ -20,7 +32,7 @@ test("verifies HTTPS routing, health, login, and an authenticated read", async (
   const fetchImpl = async (url, init = {}) => {
     requests.push({ url: String(url), init });
     const path = new URL(url).pathname;
-    if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
+    if (path === "/") return htmlResponse("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
     if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
     if (path === "/api/sessions") return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
@@ -67,11 +79,56 @@ test("requires HTTPS before sending credentials", async () => {
   assert.equal(calls, 0);
 });
 
+test("fails before login when either public surface loses a required security header", async () => {
+  let calls = 0;
+  const fetchImpl = async (url) => {
+    calls += 1;
+    const path = new URL(url).pathname;
+    if (path === "/") return htmlResponse("<title>OpenTriage synthetic encounter</title>");
+    return jsonResponse({ status: "ok", service: "open-triage-api" }, 200, {
+      "strict-transport-security": "",
+    });
+  };
+
+  await assert.rejects(
+    verifyPublicDemo({
+      frontendUrl: "https://demo.opentriage.org",
+      apiUrl: "https://api.demo.opentriage.org",
+      readinessAttempts: 1,
+      readinessDelayMilliseconds: 0,
+    }, { fetchImpl, log() {} }),
+    /API health returned an invalid Strict-Transport-Security policy/,
+  );
+  assert.equal(calls, 2);
+});
+
+test("rejects a permissive CSP even when it prevents framing", async () => {
+  let calls = 0;
+  await assert.rejects(
+    verifyPublicDemo({
+      frontendUrl: "https://demo.opentriage.org",
+      apiUrl: "https://api.demo.opentriage.org",
+      readinessAttempts: 1,
+      readinessDelayMilliseconds: 0,
+    }, {
+      fetchImpl: async () => {
+        calls += 1;
+        return htmlResponse("<title>OpenTriage synthetic encounter</title>", 200, {
+          "content-security-policy": "default-src *; frame-ancestors 'none'",
+        });
+      },
+      log() {},
+    }),
+    /invalid Content-Security-Policy/,
+  );
+  assert.equal(calls, 1);
+});
+
 test("supports an upgraded demo whose administered legacy fixture identity is preserved", async () => {
   const attemptedCredentials = [];
   const fetchImpl = async (url, init = {}) => {
     const path = new URL(url).pathname;
-    if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
+    if (path === "/") return htmlResponse("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
     if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
     if (path === "/api/sessions") {
@@ -102,7 +159,7 @@ test("fails on an unsuccessful authenticated read without logging its body", asy
   const output = [];
   const fetchImpl = async (url) => {
     const path = new URL(url).pathname;
-    if (path === "/") return new Response("<title>OpenTriage synthetic encounter</title>");
+    if (path === "/") return htmlResponse("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
     if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
     if (path === "/api/sessions") return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
