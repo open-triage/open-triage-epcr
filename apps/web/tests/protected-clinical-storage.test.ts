@@ -8,6 +8,7 @@ import {
   evictionOrder,
   persistentStorageGranted,
   protectedRecordExpired,
+  retainedProtectedRecords,
   restoreProtectedRecord,
   type ProtectedClinicalRecord,
 } from "../app/protected-clinical-storage";
@@ -95,6 +96,18 @@ test("quota pressure chooses expired then synchronized ciphertext and never unsy
     record("active", 2, 2, "2026-09-22T00:00:00.000Z", "2026-09-17T00:00:00.000Z"),
   ];
   assert.deepEqual(evictionOrder(records, new Date("2026-09-17T00:00:00.000Z")).map(({ localRecordId }) => localRecordId), ["expired", "synchronized-current", "active"]);
+});
+
+test("logout retention keeps only unexpired unsynchronized ciphertext without extending its deadline", () => {
+  const records = [
+    record("pending", 9, 8, "2026-09-18T12:00:00.000Z"),
+    record("synchronized", 5, 5, "2026-09-20T00:00:00.000Z"),
+    record("expired-pending", 3, 2, "2026-09-17T12:00:00.000Z"),
+  ];
+  const retained = retainedProtectedRecords(records, new Date("2026-09-17T12:00:00.000Z"));
+  assert.deepEqual(retained.map(({ localRecordId }) => localRecordId), ["pending"]);
+  assert.equal(retained[0]!.recoveryDeadline, "2026-09-18T12:00:00.000Z");
+  assert.equal(retained[0], records[0]);
 });
 
 test("corruption and incompatible payloads stay locked in their original authenticated envelope", async () => {

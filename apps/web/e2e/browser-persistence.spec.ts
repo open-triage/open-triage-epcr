@@ -16,6 +16,11 @@ const session = {
   capabilities: ["clinical:document"],
   workspaceAvailable: true,
 };
+const otherSession = {
+  ...session,
+  csrfToken: "other-user-csrf",
+  user: { id: "42000000-0000-4000-8000-000000000099", displayName: "Different Clinician" },
+};
 
 async function installRoutes(page: Page) {
   let opened = false;
@@ -23,6 +28,7 @@ async function installRoutes(page: Page) {
   let recoveryHandle = "";
   let reportKeyBase64 = "";
   let grantConsumed = false;
+  let currentSession = session;
   await page.addInitScript((stored) => {
     Object.defineProperties(navigator.storage, {
       persisted: { configurable: true, value: async () => true },
@@ -34,14 +40,21 @@ async function installRoutes(page: Page) {
   }, session);
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
   await page.route("**/api/sessions/current", async (route) => {
+    if (route.request().method() === "DELETE") return route.fulfill({ status: 204 });
     if (restarted) await new Promise((resolve) => setTimeout(resolve, 750));
-    return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: session });
+    return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: currentSession });
+  });
+  await page.route("**/api/sessions", async (route) => {
+    const command = route.request().postDataJSON() as { username?: string };
+    currentSession = command.username === "other" ? otherSession : session;
+    return route.fulfill({ headers: { "cache-control": "no-store, private" }, json: currentSession });
   });
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
-    assignedCalls: [assignedCall], canceledAssignmentIds: [], refreshedAt: new Date().toISOString(),
+    assignedCalls: currentSession.user.id === session.user.id ? [assignedCall] : [],
+    canceledAssignmentIds: [], refreshedAt: new Date().toISOString(),
   } }));
   await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
-    openCalls: opened ? [{
+    openCalls: opened && currentSession.user.id === session.user.id ? [{
       reportId,
       callNumber: assignedCall.callNumber,
       lastSavedAt: new Date().toISOString(),
@@ -193,4 +206,43 @@ test("one online-opened report remains editable through connection loss using on
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
+});
+
+test("logout locks pending ciphertext, reveals nothing to another user, and lets only the original user recover it", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Retained only for the original clinician");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+
+  await page.getByRole("button", { name: "Log out" }).click();
+  const warning = page.getByRole("alertdialog", { name: "Log out and lock this work?" });
+  await expect(warning).toContainText("One report has unsynchronized changes");
+  await expect(warning).toContainText("Sep 18, 2099");
+  await warning.getByRole("button", { name: "Log out and lock work" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
+  expect(await encryptedRecords(page)).toHaveLength(1);
+
+  await context.setOffline(false);
+  await page.getByLabel("Username").fill("other");
+  await page.getByLabel("Password").fill("irrelevant-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("Different Clinician", { exact: true })).toBeVisible();
+  await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reopen report" })).toHaveCount(0);
+  await expect(page.getByText(/recover/i)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByLabel("Username").fill("original");
+  await page.getByLabel("Password").fill("irrelevant-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Reopen report" }).click();
+  await expect(page.getByText("Retained only for the original clinician", { exact: true })).toBeVisible();
 });

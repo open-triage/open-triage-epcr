@@ -21,6 +21,10 @@ export interface ProtectedClinicalRecord {
 type ProtectedClinicalPayload = { readonly schemaVersion: 1; readonly report?: unknown; readonly shellState?: unknown };
 export type ProtectedStorageMode = "active" | "online-only" | "read-only" | "locked";
 export interface ProtectedStorageStatus { readonly mode: ProtectedStorageMode; readonly explanation: string | null }
+export interface ProtectedLogoutSummary {
+  readonly pendingReportCount: number;
+  readonly recoveryDeadline: string | null;
+}
 
 export function protectedRecordExpired(
   record: Pick<ProtectedClinicalRecord, "recoveryDeadline">,
@@ -41,6 +45,8 @@ type RuntimeContext = {
   synchronizedRevision: number;
   pending: Promise<void>;
   failure: Error | null;
+  locking: boolean;
+  receiptRequest: AbortController | null;
 };
 
 export type RecoveredProtectedPayload = {
@@ -63,6 +69,21 @@ const DEFAULT_STORAGE_STATUS: ProtectedStorageStatus = {
   mode: "online-only",
   explanation: "Offline editing is unavailable until protected persistent storage is prepared.",
 };
+
+function payloadHasPendingWork(payload: ProtectedClinicalPayload): boolean {
+  const report = payload.report as { queuedChanges?: unknown } | undefined;
+  return Array.isArray(report?.queuedChanges) && report.queuedChanges.length > 0;
+}
+
+/** Only active-session state is inspected; locked records are deliberately undiscoverable. */
+export function protectedLogoutSummary(): ProtectedLogoutSummary {
+  const pending = [...contexts.values()].filter((context) =>
+    context.synchronizedRevision < context.revision || payloadHasPendingWork(context.payload));
+  return {
+    pendingReportCount: pending.length,
+    recoveryDeadline: pending.map(({ envelope }) => envelope.recoveryDeadline).sort()[0] ?? null,
+  };
+}
 
 function publishStatus(reportId: string, status: ProtectedStorageStatus): void {
   statuses.set(reportId, status);
@@ -155,6 +176,37 @@ async function deleteRecords(localRecordIds: ReadonlyArray<string>): Promise<voi
     localRecordIds.forEach((id) => store.delete(id));
     await transactionComplete(transaction);
   } finally { database.close(); }
+}
+
+export function retainedProtectedRecords(
+  records: ReadonlyArray<ProtectedClinicalRecord>,
+  now = new Date(),
+): ProtectedClinicalRecord[] {
+  return records.filter((record) =>
+    record.synchronizedRevision < record.ciphertextRevision && !protectedRecordExpired(record, now));
+}
+
+/**
+ * Ends readable access before changing browser identity. Pending writes settle
+ * first, then all keys/decrypted payloads and disposable ciphertext are removed.
+ */
+export async function lockProtectedClinicalStorage(now = new Date()): Promise<void> {
+  const active = [...contexts.entries()];
+  for (const [, context] of active) {
+    context.locking = true;
+    context.receiptRequest?.abort();
+  }
+  await Promise.allSettled(active.map(([, context]) => context.pending));
+  for (const [reportId, context] of active) {
+    contexts.delete(reportId);
+    statuses.delete(reportId);
+    context.payload = { schemaVersion: PROTECTED_ENVELOPE_SCHEMA };
+    context.releaseLock();
+  }
+  if (!("indexedDB" in globalThis)) return;
+  const records = await allRecords();
+  const retainedIds = new Set(retainedProtectedRecords(records, now).map(({ localRecordId }) => localRecordId));
+  await deleteRecords(records.filter(({ localRecordId }) => !retainedIds.has(localRecordId)).map(({ localRecordId }) => localRecordId));
 }
 
 export function evictionOrder(records: ReadonlyArray<ProtectedClinicalRecord>, now = new Date(), excludedLocalRecordId?: string): ProtectedClinicalRecord[] {
@@ -268,17 +320,25 @@ async function persist(reportId: string): Promise<void> {
   await storeWithPressureRecovery(record);
 
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
-  if (url && navigator.onLine) {
-    const response = await fetch(url, browserRequestInit({
-      method: "POST",
-      headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
-      body: JSON.stringify({
-        schemaVersion: 1,
-        recoveryHandle: context.envelope.recoveryHandle,
-        ciphertextRevision: revision,
-        ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
-      }),
-    }));
+  if (url && navigator.onLine && !context.locking) {
+    const receiptRequest = new AbortController();
+    context.receiptRequest = receiptRequest;
+    let response: Response;
+    try {
+      response = await fetch(url, browserRequestInit({
+        method: "POST",
+        headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          recoveryHandle: context.envelope.recoveryHandle,
+          ciphertextRevision: revision,
+          ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
+        }),
+        signal: receiptRequest.signal,
+      }));
+    } finally {
+      if (context.receiptRequest === receiptRequest) context.receiptRequest = null;
+    }
     if (response.status === 404 || response.status === 410) {
       contexts.delete(reportId);
       statuses.delete(reportId);
@@ -301,7 +361,7 @@ async function checkpointProtectedCiphertext(reportId: string, context: RuntimeC
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", ciphertext));
   const ciphertextSha256 = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-checkpoint`);
-  if (!url) return;
+  if (!url || context.locking) return;
   try {
     const response = await fetch(url, browserRequestInit({
       method: "POST",
@@ -385,7 +445,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
-    contexts.set(reportId, { key, localRecordId: crypto.randomUUID(), envelope, csrfToken, payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0, pending: Promise.resolve(), failure: null, releaseLock });
+    contexts.set(reportId, { key, localRecordId: crypto.randomUUID(), envelope, csrfToken, payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0, pending: Promise.resolve(), failure: null, locking: false, receiptRequest: null, releaseLock });
     publishStatus(reportId, { mode: "active", explanation: null });
     return true;
   } catch (error) {
@@ -463,6 +523,8 @@ export async function recoverProtectedReport(
       synchronizedRevision: record.synchronizedRevision,
       pending: Promise.resolve(),
       failure: null,
+      locking: false,
+      receiptRequest: null,
     });
     activated = true;
     publishStatus(reportId, { mode: "active", explanation: null });
