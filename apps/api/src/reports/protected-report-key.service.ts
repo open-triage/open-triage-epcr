@@ -55,6 +55,7 @@ type RecoveryGrantRow = {
   recovery_handle: string | null;
   grant_id: string | null;
   expires_at: Date | string | null;
+  report_status: "draft" | "signed" | null;
 };
 
 type ConsumedRecoveryGrantRow = {
@@ -206,7 +207,8 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
       if (created?.result === "reauthentication_required") {
         throw new HttpException("Recent password reauthentication is required", HttpStatus.PRECONDITION_REQUIRED);
       }
-      if (created?.result !== "created" || !created.recovery_handle || !created.expires_at) {
+      if (created?.result !== "created" || !created.recovery_handle || !created.expires_at ||
+          (created.report_status !== "draft" && created.report_status !== "signed")) {
         throw new NotFoundException("Protected report recovery is unavailable");
       }
       return {
@@ -215,6 +217,7 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
         recoveryHandle: created.recovery_handle,
         grant,
         expiresAt: new Date(created.expires_at).toISOString(),
+        reportStatus: created.report_status,
       };
     });
   }

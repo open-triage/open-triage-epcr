@@ -135,7 +135,7 @@ test("recovery grants are opaque, expire after sixty seconds, and bind every aut
   const queries = [];
   const manager = { query: async (sql, parameters) => {
     queries.push({ sql: sql.replace(/\s+/g, " ").trim(), parameters });
-    return [{ result: "created", recovery_handle: recoveryHandle, grant_id: randomUUID(), expires_at: "2026-09-17T12:01:00.000Z" }];
+    return [{ result: "created", recovery_handle: recoveryHandle, grant_id: randomUUID(), expires_at: "2026-09-17T12:01:00.000Z", report_status: "draft" }];
   } };
   const service = new ProtectedReportKeyService(
     { transaction: async (work) => work(manager) },
@@ -147,6 +147,7 @@ test("recovery grants are opaque, expire after sixty seconds, and bind every aut
   const result = await service.createRecoveryGrant("session-secret", reportId,
     { schemaVersion: 1, envelopeVersion: 1 }, "csrf");
   assert.equal(result.recoveryHandle, recoveryHandle);
+  assert.equal(result.reportStatus, "draft");
   assert.match(result.grant, /^[A-Za-z0-9_-]{43}$/);
   const call = queries[0];
   assert.match(call.sql, /create_report_recovery_grant/);

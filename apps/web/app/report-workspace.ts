@@ -39,7 +39,7 @@ import { bundledEncounterDefinition, type ShellAction, type ShellState } from ".
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
-import { protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
+import { markProtectedReportCompleted, protectedStorageStatus, subscribeProtectedStorageStatus } from "./protected-clinical-storage";
 
 const NO_PROTECTED_REPORT_STATUS = { mode: "online-only", explanation: null } as const;
 
@@ -189,7 +189,12 @@ export function useReportWorkspace({
         try {
           const saved = await saveDraftReport(csrfToken, report.id, queued.command);
           if (saved.status === "signed") {
-            completeReport();
+            acceptDraftChange(window.localStorage, report.id, queued.command.commandId, saved);
+            persistedDraft.current = applyDraftMutationDelta(persistedDraft.current, queued.command);
+            if (!nextDraftChange(window.localStorage, report.id)) {
+              completeReport();
+              return;
+            }
             return;
           }
           revision.current = saved.revision;
@@ -204,7 +209,8 @@ export function useReportWorkspace({
             return;
           }
           if (reason === "completed") {
-            completeReport();
+            markProtectedReportCompleted(report.id);
+            setSyncStatus("Pending sync");
             return;
           }
           if (reason === "purged") {
@@ -360,7 +366,14 @@ export function useReportWorkspace({
       } catch (error) {
         if (!(error instanceof Error)) return;
         if (error.message === "session") onSessionEnded();
-        else if (error.message === "completed") completeReport();
+        else if (error.message === "completed") {
+          markProtectedReportCompleted(report.id);
+          if (nextDraftChange(window.localStorage, report.id)) {
+            setSyncStatus("Pending sync");
+            void flushSave();
+          } else completeReport();
+        }
+        else if (error.message === "purged") completeReport();
         else if (recoverConflictingQueue.current) setSyncStatus("Conflict");
       }
     };
@@ -382,7 +395,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, onSessionEnded, report, restored]);
+  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;

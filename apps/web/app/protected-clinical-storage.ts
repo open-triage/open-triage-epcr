@@ -7,6 +7,7 @@ export const PROTECTED_ENVELOPE_SCHEMA = 1 as const;
 
 export interface ProtectedClinicalRecord {
   readonly localRecordId: string;
+  readonly reportId?: string;
   readonly schemaVersion: 1;
   readonly algorithm: "AES-256-GCM";
   readonly recoveryHandle: string;
@@ -209,6 +210,11 @@ export async function lockProtectedClinicalStorage(now = new Date()): Promise<vo
   await deleteRecords(records.filter(({ localRecordId }) => !retainedIds.has(localRecordId)).map(({ localRecordId }) => localRecordId));
 }
 
+async function deleteRecordsForReport(reportId: string): Promise<void> {
+  const matching = (await allRecords()).filter((record) => record.reportId === reportId);
+  await deleteRecords(matching.map(({ localRecordId }) => localRecordId));
+}
+
 export function evictionOrder(records: ReadonlyArray<ProtectedClinicalRecord>, now = new Date(), excludedLocalRecordId?: string): ProtectedClinicalRecord[] {
   const candidates = records.filter((record) => record.localRecordId !== excludedLocalRecordId && record.synchronizedRevision >= record.ciphertextRevision);
   const expired = candidates.filter((record) => Date.parse(record.recoveryDeadline) <= now.getTime())
@@ -313,7 +319,7 @@ async function persist(reportId: string): Promise<void> {
   const revision = context.revision + 1;
   const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, structuredClone(context.payload));
   const record: ProtectedClinicalRecord = {
-    localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
+    localRecordId: context.localRecordId, reportId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
   };
@@ -470,11 +476,15 @@ export async function recoverProtectedReport(
     body: JSON.stringify({ schemaVersion: 1, envelopeVersion: 1 }),
   }));
   if (grantResponse.status === 428) throw new RecoveryReauthenticationRequiredError();
-  if (grantResponse.status === 404) return null;
+  if (grantResponse.status === 404 || grantResponse.status === 410) {
+    await deleteRecordsForReport(reportId);
+    return null;
+  }
   if (!grantResponse.ok) throw new Error(grantResponse.status === 401
     ? "Your shift session has ended." : "Protected report recovery is unavailable.");
   const grant = await grantResponse.json() as {
     schemaVersion: 1; envelopeVersion: 1; recoveryHandle: string; grant: string; expiresAt: string;
+    reportStatus: "draft" | "signed";
   };
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
   if (!record || record.schemaVersion !== 1 || record.algorithm !== "AES-256-GCM" ||
@@ -527,7 +537,9 @@ export async function recoverProtectedReport(
       receiptRequest: null,
     });
     activated = true;
-    publishStatus(reportId, { mode: "active", explanation: null });
+    publishStatus(reportId, grant.reportStatus === "signed"
+      ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
+      : { mode: "active", explanation: null });
     return protectedPayload;
   } finally {
     raw?.fill(0);
@@ -566,6 +578,15 @@ export function removeProtectedReport(reportId: string): void {
   statuses.delete(reportId);
   context.releaseLock();
   void context.pending.catch(() => undefined).then(() => deleteRecords([context.localRecordId])).catch(() => undefined);
+}
+
+/** Locks editing immediately while retaining the key until queued late work is acknowledged. */
+export function markProtectedReportCompleted(reportId: string): void {
+  if (!contexts.has(reportId)) return;
+  publishStatus(reportId, {
+    mode: "locked",
+    explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note.",
+  });
 }
 
 export const LEGACY_CLINICAL_STORAGE_KEYS = ["open-triage:offline-reports-v1", "open-triage:standard-encounter-v1", "open-triage:standard-encounter-v1:recovery", "open-triage:adult-chest-pain-v2"] as const;
