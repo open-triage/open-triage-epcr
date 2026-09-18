@@ -54,7 +54,17 @@
       "properties": {
         "kind": { "type": "string" },
         "occurrenceId": { "$ref": "#/$defs/nonEmptyString" },
-        "attributes": { "$ref": "#/$defs/attributes" }
+        "attributes": { "$ref": "#/$defs/attributes" },
+        "notValue": { "$ref": "#/$defs/absenceMetadata" },
+        "pertinentNegative": { "$ref": "#/$defs/absenceMetadata" }
+      }
+    },
+    "absenceMetadata": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "$ref": "#/$defs/nonEmptyString" },
+        "display": { "type": "string" }
       }
     },
     "absentValue": {
@@ -69,14 +79,7 @@
         {
           "properties": {
             "kind": { "const": "null" },
-            "notValue": {
-              "type": "object",
-              "required": ["code"],
-              "properties": {
-                "code": { "$ref": "#/$defs/nonEmptyString" },
-                "display": { "type": "string" }
-              }
-            }
+            "notValue": { "$ref": "#/$defs/absenceMetadata" }
           }
         }
       ]

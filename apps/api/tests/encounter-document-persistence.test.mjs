@@ -150,6 +150,8 @@ test("stored scalar values rehydrate lexical, precision, offset, binary, and sou
     value_date: null, value_datetime: "2026-09-04T16:30:45.120Z", value_time: null, value_duration: null,
     value_binary: null, value_lexical: null, value_utc_offset_minutes: -240, value_precision: "fractional-3",
     code: null, code_system: null, code_display: null, absence_code: null, absence_display: null,
+    not_value_code: null, not_value_display: null,
+    pertinent_negative_code: null, pertinent_negative_display: null,
     source_attributes: { source: "monitor" }, provenance_kind: "clinician", provenance_detail: null,
   };
   assert.deepEqual(storedEncounterValue(common), {
@@ -186,4 +188,12 @@ test("stored scalar values rehydrate lexical, precision, offset, binary, and sou
     ...common, value_kind: "binary", value_datetime: null, value_binary: "AAEC/w==",
     value_utc_offset_minutes: null, value_precision: null,
   }).value, "AAEC/w==");
+  assert.deepEqual(storedEncounterValue({
+    ...common, value_kind: "integer", value_datetime: null, value_integer: "118",
+    value_utc_offset_minutes: null, value_precision: null,
+    pertinent_negative_code: "8801019", pertinent_negative_display: "Denied",
+  }), {
+    kind: "scalar", occurrenceId: common.id, value: 118, attributes: { source: "monitor" },
+    pertinentNegative: { code: "8801019", display: "Denied" },
+  });
 });

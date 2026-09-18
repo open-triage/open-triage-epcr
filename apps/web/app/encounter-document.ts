@@ -91,6 +91,21 @@ function validateStandardValue(
   path: string,
   configured?: ClinicalFormConfiguration["catalogFields"][string],
 ): void {
+  if (value.notValue !== undefined) {
+    const notValue = requireRecord(list, value.notValue, `${path}.notValue`);
+    if (!element.nillable) diagnostic(list, `${path}.notValue`, `${element.id} does not support Not Values in NEMSIS ${NEMSIS_DATA_MODEL.release}`);
+    if (requireString(list, notValue.code, `${path}.notValue.code`)
+      && !element.permittedNotValues.some(({ code }) => code === notValue.code)) {
+      diagnostic(list, `${path}.notValue.code`, `code ${notValue.code} is not permitted for ${element.id}`);
+    }
+  }
+  if (value.pertinentNegative !== undefined) {
+    const pn = requireRecord(list, value.pertinentNegative, `${path}.pertinentNegative`);
+    if (requireString(list, pn.code, `${path}.pertinentNegative.code`)
+      && !element.permittedPertinentNegatives.some(({ code }) => code === pn.code)) {
+      diagnostic(list, `${path}.pertinentNegative.code`, `code ${pn.code} is not a permitted pertinent negative for ${element.id}`);
+    }
+  }
   if (value.kind === "null") {
     if (!element.nillable) diagnostic(list, `${path}.kind`, `${element.id} is not nillable in NEMSIS ${NEMSIS_DATA_MODEL.release}`);
     if (value.notValue !== undefined) {
@@ -154,6 +169,12 @@ function validateValue(
   const value = requireRecord(list, candidate, path);
   requireString(list, value.occurrenceId, `${path}.occurrenceId`);
   validateAttributes(list, value.attributes, `${path}.attributes`);
+  for (const key of ["notValue", "pertinentNegative"] as const) {
+    if (value[key] === undefined) continue;
+    const metadata = requireRecord(list, value[key], `${path}.${key}`);
+    requireString(list, metadata.code, `${path}.${key}.code`);
+    if (metadata.display !== undefined && typeof metadata.display !== "string") diagnostic(list, `${path}.${key}.display`, "must be a string");
+  }
   if (!kinds.has(String(value.kind))) {
     diagnostic(list, `${path}.kind`, "must be absent, null, pertinent-negative, coded, or scalar");
     return;

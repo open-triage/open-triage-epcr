@@ -1,4 +1,4 @@
-import type { EncounterDocument } from "./index.js";
+import { encounterValueFacets, type EncounterDocument } from "./index.js";
 
 export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
@@ -122,7 +122,10 @@ export function evaluateValidationBundle(
     instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId }))));
   return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget)).flatMap((rule) => {
     const matches = elements.filter(({ element }) => element.id === rule.assertion.elementId);
-    const present = matches.some(({ element }) => element.values.some((value) => value.kind !== "absent"));
+    const present = matches.some(({ element }) => element.values.some((value) => {
+      const facets = encounterValueFacets(value);
+      return facets.hasValue || facets.hasNotValue || facets.hasPertinentNegative;
+    }));
     if (present) return [];
     return [{
       validationVersionId: bundle.validationVersionId,

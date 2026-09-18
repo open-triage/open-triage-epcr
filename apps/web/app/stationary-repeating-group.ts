@@ -277,8 +277,10 @@ export function moveRepeatingGroupOccurrence(
 }
 
 export function encounterValueSummary(value: EncounterValue): string {
-  if (value.kind === "scalar") return value.lexical ?? String(value.value);
-  if (value.kind === "coded") return value.display ?? value.code;
+  const pn = value.pertinentNegative
+    ? ` — ${value.pertinentNegative.display ?? `Pertinent negative (${value.pertinentNegative.code})`}` : "";
+  if (value.kind === "scalar") return `${value.lexical ?? String(value.value)}${pn}`;
+  if (value.kind === "coded") return `${value.display ?? value.code}${pn}`;
   if (value.kind === "pertinent-negative") return value.display ?? `Pertinent negative (${value.code})`;
   if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "No value";
   return "Not recorded";

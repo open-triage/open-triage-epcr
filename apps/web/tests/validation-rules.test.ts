@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileValidationRule, evaluateValidationBundle, type CompiledValidationBundle,
+import { compileValidationRule, encounterValueFacets, evaluateValidationBundle, type CompiledValidationBundle,
   type EncounterDocument, type ValidationRuleSource } from "@open-triage/contracts";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
 
@@ -47,4 +47,14 @@ test("browser and server targets produce the same targeted finding and clear whe
   assert.equal(live[0]?.ruleId, rule.id);
   assert.equal(live[0]?.inputFingerprint, sign[0]?.inputFingerprint);
   assert.deepEqual(evaluateValidationBundle(bundle, syntheticEncounter as EncounterDocument, "sign"), []);
+});
+
+test("rule inputs expose ordinary value, Not Value, Pertinent Negative, and emptiness independently", () => {
+  assert.deepEqual(encounterValueFacets({ kind: "scalar", occurrenceId: "combined", value: "present",
+    notValue: { code: "7701003" }, pertinentNegative: { code: "8801019" } }), {
+    hasValue: true, hasNotValue: true, hasPertinentNegative: true, empty: false,
+  });
+  assert.deepEqual(encounterValueFacets({ kind: "absent", occurrenceId: "empty" }), {
+    hasValue: false, hasNotValue: false, hasPertinentNegative: false, empty: true,
+  });
 });

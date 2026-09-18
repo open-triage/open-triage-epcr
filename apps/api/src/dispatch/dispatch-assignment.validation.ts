@@ -187,6 +187,15 @@ function valueError(element: DispatchCatalogElement, value: unknown, catalog: Di
   const allowedBase = new Set(["kind", "occurrenceId", "attributes"]);
   const attributeError = attributesError(element, value.attributes);
   if (attributeError) return attributeError;
+  for (const [key, options] of [["notValue", element.permittedNotValues], ["pertinentNegative", element.permittedPertinentNegatives]] as const) {
+    if (value[key] === undefined) continue;
+    allowedBase.add(key);
+    const metadata = value[key];
+    if (!record(metadata) || typeof metadata.code !== "string") return `${key} requires a code`;
+    const option = options.find(({ code }) => code === metadata.code);
+    if (!option) return `${String(metadata.code)} is not a permitted ${key} code`;
+    if (metadata.display !== undefined && metadata.display !== option.label) return `${key} display does not match the pinned catalog`;
+  }
 
   if (value.kind === "null") {
     allowedBase.add("notValue");

@@ -28,9 +28,11 @@ function valuesFor(document: EncounterDocument, groupId: string, elementId: stri
 
 function displayValue(value: EncounterValue | undefined): string {
   if (!value) return "";
-  if (value.kind === "scalar") return String(value.value);
+  const pn = value.pertinentNegative ? ` — ${value.pertinentNegative.display ?? value.pertinentNegative.code}` : "";
+  if (value.kind === "scalar") return `${String(value.value)}${pn}`;
   if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "";
-  if (value.kind === "coded" || value.kind === "pertinent-negative") return value.display ?? value.code;
+  if (value.kind === "coded") return `${value.display ?? value.code}${pn}`;
+  if (value.kind === "pertinent-negative") return value.display ?? value.code;
   return "";
 }
 

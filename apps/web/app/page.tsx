@@ -650,11 +650,12 @@ export default function Home() {
 
 function conflictValue(value: EncounterValue | null): string {
   if (value === null) return "Retracted by dispatch";
-  if (value.kind === "coded") return value.display ?? value.code;
+  const pn = value.pertinentNegative ? ` — ${value.pertinentNegative.display ?? value.pertinentNegative.code}` : "";
+  if (value.kind === "coded") return `${value.display ?? value.code}${pn}`;
   if (value.kind === "pertinent-negative") return value.display ?? value.code;
   if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "Null";
   if (value.kind === "absent") return "Not documented";
-  return String(value.value);
+  return `${String(value.value)}${pn}`;
 }
 
 function DispatchConflictList({ conflicts, onDispose }: {

@@ -66,6 +66,21 @@ test("absent, null, pertinent-negative, coded, scalar, and repeating values rema
   assert.equal(validateSchema(document), true, JSON.stringify(validateSchema.errors));
 });
 
+test("an ordinary value retains independent Not Value and Pertinent Negative metadata", () => {
+  const candidate = withVitals() as unknown as {
+    groups: Array<{ id: string; instances: Array<{ elements: Array<{ id: string; values: Array<Record<string, unknown>> }> }> }>;
+  };
+  const systolic = candidate.groups.find(({ id }) => id === "eVitals.VitalGroup")!
+    .instances[0]!.elements.find(({ id }) => id === "eVitals.06")!.values[0]!;
+  systolic.pertinentNegative = { code: "8801019", display: "Refused" };
+  const document = loadEncounterDocument(candidate);
+  const restored = document.groups.find(({ id }) => id === "eVitals.VitalGroup")!
+    .instances[0]!.elements[0]!.values[0]!;
+  assert.equal(restored.kind, "scalar");
+  assert.equal(restored.pertinentNegative?.code, "8801019");
+  assert.equal(validateSchema(document), true, JSON.stringify(validateSchema.errors));
+});
+
 test("repeating NEMSIS groups retain stable group and occurrence identities plus attributes", () => {
   const document = loadEncounterDocument(withVitals());
   const vitals = document.groups.find(({ id }) => id === "eVitals.VitalGroup")!;
