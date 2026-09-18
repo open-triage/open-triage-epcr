@@ -184,7 +184,9 @@ async function ensureDemoUnit(client, userId, formVersionId) {
 
 async function ensureFoundation(client) {
   const migrations = await readMigrations(path.join(repoRoot, "supabase/migrations"));
-  return (await applyMigrations(client, migrations, console)) > 0;
+  return (await applyMigrations(client, migrations, {
+    info(message) { console.error(message); },
+  })) > 0;
 }
 
 const client = new pg.Client({ connectionString: databaseUrl });

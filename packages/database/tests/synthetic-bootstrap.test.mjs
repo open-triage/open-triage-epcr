@@ -72,6 +72,11 @@ test("requires an existing organization and reports owner readiness without crea
   assert.doesNotMatch(bootstrap, /insert into app_identity\.installation_owner/);
 });
 
+test("keeps progress diagnostics off the machine-readable JSON output", () => {
+  assert.match(bootstrap, /info\(message\) \{ console\.error\(message\); \}/);
+  assert.match(bootstrap, /console\.log\(JSON\.stringify\(/);
+});
+
 test("records fixture provisioning without exposing credential material to audit", () => {
   assert.match(bootstrap, /'account\.provision'/);
   assert.match(bootstrap, /'demonstration-fixture'/);
