@@ -719,6 +719,28 @@ export interface ValidationActivation {
   previousValidationVersionId: string | null;
 }
 
+export interface ValidationReviewFailure {
+  validationVersionId: string;
+  ruleId: string;
+  executionTarget: "review";
+  code: "integrity" | "compatibility" | "resource-limit" | "runtime";
+  message: string;
+}
+
+/** Immutable result of evaluating one current report with one selected published version. */
+export interface ValidationReviewEvaluation {
+  id: string;
+  reportId: string;
+  reportRevision: number;
+  validationVersionId: string;
+  validationCompiledSha256: string;
+  evaluatedBy: string;
+  outcome: "passed" | "findings" | "failed";
+  findings: import("./validation-rules.js").ValidationFinding[];
+  failures: ValidationReviewFailure[];
+  evaluatedAt: string;
+}
+
 export interface FormDraftRule {
   kind: "visibility" | "requiredness";
   expression: Record<string, unknown>;
