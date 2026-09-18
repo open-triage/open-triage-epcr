@@ -387,6 +387,16 @@ jobs:
           --set-string api.image.tag="${{ steps.images.outputs.api-tag }}"
           --set-string web.image.repository="${{ steps.images.outputs.web-repository }}"
           --set-string web.image.tag="${{ steps.images.outputs.web-tag }}"
+      - name: Diagnose failed atomic deployment
+        if: failure()
+        env:
+          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
+        run: |
+          kubectl get jobs,pods --namespace open-triage --output wide || true
+          kubectl describe job open-triage-migration --namespace open-triage || true
+          kubectl logs job/open-triage-migration --namespace open-triage --all-containers=true || true
+          kubectl get events --namespace open-triage \
+            --sort-by='.metadata.creationTimestamp' --output wide | tail -80 || true
       - name: Verify the public HTTPS deployment
         env:
           DEMO_WEB_URL: https://demo.opentriage.org
