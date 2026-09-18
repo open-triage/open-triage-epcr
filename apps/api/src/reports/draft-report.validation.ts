@@ -58,6 +58,15 @@ export function validateDraftValue(value: unknown, path: string, findings: strin
     findings.push(`${path} must be a typed value`);
     return false;
   }
+  for (const key of ["notValue", "pertinentNegative"] as const) {
+    if (value[key] === undefined) continue;
+    const metadata = value[key];
+    if (!isRecord(metadata)) findings.push(`${path}.${key} must be an object`);
+    else {
+      if (typeof metadata.code !== "string" || !metadata.code.length) findings.push(`${path}.${key}.code is required`);
+      optionalString(metadata.display, `${path}.${key}.display`, findings);
+    }
+  }
   switch (value.kind) {
     case "text":
     case "uri":

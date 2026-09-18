@@ -65,6 +65,8 @@ type ElementMetadata = {
   analytical_repeatable: boolean;
   identifying: boolean;
   allowed_absence_states: string[];
+  supports_not_values: boolean;
+  supports_pertinent_negatives: boolean;
   max_occurs: number | null;
 };
 
@@ -134,12 +136,16 @@ const DEMO_GENERATOR = "stationary-populate-v1";
 const DEMO_GROUP_PREFIX = `demo:${DEMO_GENERATOR}:`;
 
 function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftValue {
-  if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display, ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
+  const metadata = {
+    ...(value.notValue ? { notValue: value.notValue } : {}),
+    ...(value.pertinentNegative ? { pertinentNegative: value.pertinentNegative } : {}),
+  };
+  if (value.kind === "coded") return { kind: "coded", code: value.code, codeSystem: value.system, display: value.display, ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}), ...metadata };
   if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, display: value.display };
   if (value.kind === "null") return value.notValue
     ? { kind: "null", absenceCode: value.notValue.code, display: value.notValue.display }
     : { kind: "absent" };
-  if (value.kind === "absent") return { kind: "absent" };
+  if (value.kind === "absent") return { kind: "absent", ...metadata };
   if (typeof value.value === "boolean") return { kind: "boolean", value: value.value };
   if (typeof value.value === "number") return Number.isInteger(value.value)
     ? { kind: "integer", value: value.value } : { kind: "numeric", value: value.value };
@@ -147,7 +153,7 @@ function conflictDraftValue(value: EncounterValue, baseDatatype: string): DraftV
     string: "text", anyURI: "uri", integer: "integer", decimal: "numeric", boolean: "boolean",
     date: "date", dateTime: "datetime", time: "time", duration: "duration", binary: "binary"
   };
-  return { kind: scalarKind[baseDatatype] ?? "text", value: value.value } as DraftValue;
+  return { kind: scalarKind[baseDatatype] ?? "text", value: value.value, ...metadata } as DraftValue;
 }
 
 @Injectable()
@@ -1224,6 +1230,10 @@ export class DraftReportService {
         terminology_version: columns.terminologyVersion,
         absence_code: columns.absenceCode,
         absence_display: columns.absenceDisplay,
+        not_value_code: columns.notValueCode,
+        not_value_display: columns.notValueDisplay,
+        pertinent_negative_code: columns.pertinentNegativeCode,
+        pertinent_negative_display: columns.pertinentNegativeDisplay,
         source_attributes: occurrence.sourceAttributes ?? null,
         correlation_id: occurrence.correlationId ?? null,
         provenance_kind: occurrence.provenanceKind === "demo" ? "demo" : "clinician",
@@ -1242,7 +1252,8 @@ export class DraftReportService {
          value_text, value_integer, value_numeric, value_boolean, value_date, value_datetime,
          value_time, value_duration, value_binary, value_lexical, value_utc_offset_minutes,
          value_precision, code, code_system, code_display, terminology_version, absence_code,
-         absence_display, source_attributes, correlation_id, provenance_kind, provenance_detail,
+         absence_display, not_value_code, not_value_display, pertinent_negative_code,
+         pertinent_negative_display, source_attributes, correlation_id, provenance_kind, provenance_detail,
          documented_time, documented_utc_offset_minutes, documented_precision, author_id)
       select incoming.id, $1, $2, incoming.group_instance_id, incoming.element_identity_id,
              incoming.element_id, incoming.form_field_id, incoming.ordinal,
@@ -1254,6 +1265,8 @@ export class DraftReportService {
              incoming.value_lexical, incoming.value_utc_offset_minutes, incoming.value_precision,
              incoming.code, incoming.code_system, incoming.code_display,
              incoming.terminology_version, incoming.absence_code, incoming.absence_display,
+             incoming.not_value_code, incoming.not_value_display,
+             incoming.pertinent_negative_code, incoming.pertinent_negative_display,
              incoming.source_attributes, incoming.correlation_id, incoming.provenance_kind,
              incoming.provenance_detail, incoming.documented_time,
              incoming.documented_utc_offset_minutes, incoming.documented_precision, $3
@@ -1265,6 +1278,8 @@ export class DraftReportService {
         value_duration interval, value_binary text, value_lexical text,
         value_utc_offset_minutes smallint, value_precision text, code text, code_system text,
         code_display text, terminology_version text, absence_code text, absence_display text,
+        not_value_code text, not_value_display text,
+        pertinent_negative_code text, pertinent_negative_display text,
         source_attributes jsonb, correlation_id text, provenance_kind text, provenance_detail jsonb,
         documented_time timestamptz, documented_utc_offset_minutes smallint,
         documented_precision text)
@@ -1280,7 +1295,11 @@ export class DraftReportService {
         value_precision = excluded.value_precision, code = excluded.code,
         code_system = excluded.code_system, code_display = excluded.code_display,
         terminology_version = excluded.terminology_version, absence_code = excluded.absence_code,
-        absence_display = excluded.absence_display, source_attributes = excluded.source_attributes,
+        absence_display = excluded.absence_display, not_value_code = excluded.not_value_code,
+        not_value_display = excluded.not_value_display,
+        pertinent_negative_code = excluded.pertinent_negative_code,
+        pertinent_negative_display = excluded.pertinent_negative_display,
+        source_attributes = excluded.source_attributes,
         correlation_id = excluded.correlation_id, provenance_kind = excluded.provenance_kind,
         provenance_detail = coalesce(clinical.element_occurrence.provenance_detail, '{}'::jsonb) || excluded.provenance_detail,
         documented_time = excluded.documented_time,
@@ -1306,6 +1325,7 @@ export class DraftReportService {
     const elementIds = [...new Set(occurrences.map(({ elementId }) => elementId))];
     const standard = await manager.query<ElementMetadata[]>(`
       select e.element_id, e.element_identity_id, e.base_datatype, e.max_occurs,
+             e.supports_not_values, e.supports_pertinent_negatives,
              (m.analytical_location = 'repeatable') as analytical_repeatable,
              m.identifying,
              array(select o.source_kind || ':' || o.code from catalog.element_option o
@@ -1320,6 +1340,8 @@ export class DraftReportService {
         select ff.id as form_field_id, ced.namespace || '.' || ced.slug as element_id,
                coalesce(ff.catalog_element_identity_id, ff.custom_element_definition_id) as element_identity_id,
                ced.base_datatype, null::integer as max_occurs,
+               (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
+               (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
                ff.analytical_repeatable, ced.identifying,
                array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff
@@ -1359,6 +1381,18 @@ export class DraftReportService {
         throw new UnprocessableEntityException(`${value.absenceCode} is not a supported ${value.kind} for ${elementId}`);
       }
     }
+    const notValue = value.notValue ?? (value.kind === "null" ? { code: value.absenceCode, display: value.display } : undefined);
+    const pertinentNegative = value.pertinentNegative ?? (value.kind === "pertinent-negative" ? { code: value.absenceCode, display: value.display } : undefined);
+    if (notValue && (!metadata.supports_not_values ||
+        (!metadata.allowed_absence_states.includes(`not-value:${notValue.code}`) &&
+         !metadata.allowed_absence_states.includes(`form:${notValue.code}`)))) {
+      throw new UnprocessableEntityException(`${notValue.code} is not a supported not-value for ${elementId}`);
+    }
+    if (pertinentNegative && (!metadata.supports_pertinent_negatives ||
+        (!metadata.allowed_absence_states.includes(`pertinent-negative:${pertinentNegative.code}`) &&
+         !metadata.allowed_absence_states.includes(`form:${pertinentNegative.code}`)))) {
+      throw new UnprocessableEntityException(`${pertinentNegative.code} is not a supported pertinent-negative for ${elementId}`);
+    }
   }
 
   private valueColumns(value: DraftValue): Record<string, unknown> {
@@ -1367,7 +1401,9 @@ export class DraftReportService {
       valueDate: null, valueDatetime: null, valueTime: null, valueDuration: null,
       valueBinary: null, valueLexical: null, valueUtcOffsetMinutes: null,
       valuePrecision: null, code: null, codeSystem: null, codeDisplay: null,
-      terminologyVersion: null, absenceCode: null, absenceDisplay: null
+      terminologyVersion: null, absenceCode: null, absenceDisplay: null,
+      notValueCode: null, notValueDisplay: null,
+      pertinentNegativeCode: null, pertinentNegativeDisplay: null
     };
     switch (value.kind) {
       case "text": case "uri": result.valueText = value.value; break;
@@ -1389,6 +1425,12 @@ export class DraftReportService {
       case "null": case "pertinent-negative": case "absent":
         result.absenceCode = value.absenceCode ?? null; result.absenceDisplay = value.display ?? null; break;
     }
+    const notValue = value.notValue ?? (value.kind === "null" ? { code: value.absenceCode, display: value.display } : undefined);
+    const pertinentNegative = value.pertinentNegative ?? (value.kind === "pertinent-negative" ? { code: value.absenceCode, display: value.display } : undefined);
+    result.notValueCode = notValue?.code ?? null;
+    result.notValueDisplay = notValue?.display ?? null;
+    result.pertinentNegativeCode = pertinentNegative?.code ?? null;
+    result.pertinentNegativeDisplay = pertinentNegative?.display ?? null;
     return result;
   }
 

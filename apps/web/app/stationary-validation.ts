@@ -99,6 +99,12 @@ function scalarInput(value: Extract<EncounterValue, { kind: "scalar" }>): string
 function valueFindings(element: NemsisDataElement, groupInstanceId: string, value: EncounterValue,
   configured?: ClinicalFormConfiguration["catalogFields"][string]): StationaryValidationFinding[] {
   const target = { groupId: element.groupPath.at(-1)!, groupInstanceId, occurrenceId: value.occurrenceId, fieldId: element.id };
+  if (value.notValue && !element.permittedNotValues.some(({ code }) => code === value.notValue!.code)) {
+    return [finding("value.nv", `${value.notValue.code} is not a permitted not-value for ${element.id}.`, target, element.name)];
+  }
+  if (value.pertinentNegative && !element.permittedPertinentNegatives.some(({ code }) => code === value.pertinentNegative!.code)) {
+    return [finding("value.pn", `${value.pertinentNegative.code} is not a permitted pertinent-negative for ${element.id}.`, target, element.name)];
+  }
   if (value.kind === "scalar") {
     return validateScalarInput(element, scalarInput(value), value.occurrenceId).map((invalid) =>
       finding(`value.${invalid.code}`, invalid.message, target, element.name));

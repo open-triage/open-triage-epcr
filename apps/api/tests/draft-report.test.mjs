@@ -71,6 +71,7 @@ test("draft changes accept each sparse typed value and explicit incomplete state
     { kind: "binary", value: "AQID" },
     { kind: "uri", value: "https://example.test/value" },
     { kind: "coded", code: "A", codeSystem: "urn:test", display: "Alpha" },
+    { kind: "text", value: "ordinary", pertinentNegative: { code: "8801019", display: "Denied" } },
     { kind: "null", absenceCode: "7701003", display: "Not recorded" },
     { kind: "pertinent-negative", absenceCode: "8801005", display: "Denied" },
     { kind: "absent" }
@@ -86,6 +87,26 @@ test("draft changes accept each sparse typed value and explicit incomplete state
   assert.equal(validateSaveDraftReportCommand({ ...command, demoAction: "populate" }).demoAction, "populate");
   assert.throws(() => validateSaveDraftReportCommand({ ...command, demoAction: "erase" }),
     (error) => error instanceof DraftReportValidationError && error.findings.some((finding) => /demoAction/.test(finding)));
+});
+
+test("ordinary payload and absence metadata are validated and stored independently", () => {
+  const service = new DraftReportService({}, {});
+  const value = { kind: "text", value: "Patient reports pain",
+    pertinentNegative: { code: "8801019", display: "Denied" } };
+  const metadata = { base_datatype: "string", analytical_repeatable: false, identifying: false,
+    allowed_absence_states: ["pertinent-negative:8801019"], supports_not_values: false,
+    supports_pertinent_negatives: true };
+  assert.doesNotThrow(() => service.validateDatatype(value, metadata, "eNarrative.01"));
+  assert.deepEqual(service.valueColumns(value), {
+    valueText: "Patient reports pain", valueInteger: null, valueNumeric: null, valueBoolean: null,
+    valueDate: null, valueDatetime: null, valueTime: null, valueDuration: null, valueBinary: null,
+    valueLexical: null, valueUtcOffsetMinutes: null, valuePrecision: null, code: null,
+    codeSystem: null, codeDisplay: null, terminologyVersion: null, absenceCode: null,
+    absenceDisplay: null, notValueCode: null, notValueDisplay: null,
+    pertinentNegativeCode: "8801019", pertinentNegativeDisplay: "Denied",
+  });
+  assert.throws(() => service.validateDatatype(value, { ...metadata, supports_pertinent_negatives: false }, "eNarrative.01"),
+    /not a supported pertinent-negative/);
 });
 
 test("demo mutation boundaries reject ordinary, signed, unprovenanced, and forged targets", async () => {

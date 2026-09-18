@@ -158,6 +158,52 @@ test("Forms readers, authors, and publishers receive only their permitted contro
   await expect(page.getByRole("button", { name: "Publish immutable form" })).toBeVisible();
 });
 
+test("Validation readers can inspect drafts while write and publish controls follow dedicated authority", async ({ page }) => {
+  const validationDraft = {
+    id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog-id", revision: 3,
+    displayName: "Agency required fields", updatedAt: new Date().toISOString(),
+    rule: { id: "52000000-0000-4000-8000-000000000001", name: "Require incident number",
+      enabled: true, severity: "error", executionTargets: ["live", "sign"],
+      primaryTargetElementId: "eResponse.03", message: "Incident number is required",
+      source: 'assert present("eResponse.03")' }
+  };
+  await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify({ settings: productionSettings }) }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  let resolvedCapabilities = ["validation:read"];
+  await page.route("**/api/admin/context", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+    owner: { id: "owner-id", displayName: "Installation Owner" }, organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["validation"], capabilities: resolvedCapabilities,
+    activeConfiguration: { catalog: { id: "catalog-id", name: "NEMSIS 3.5.1", standard: "NEMSIS", version: "3.5.1" },
+      stationaryForm: { id: "version-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard: null
+  }) }));
+  await page.route("**/api/admin/validation-draft", (route) => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify(validationDraft) }));
+
+  await signInAsCombinedOwner(page, ["validation:read", "validation:write", "validation:publish"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await expect(page.getByRole("button", { name: "Validation", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
+  await expect(page.getByLabel("Validation version display name")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Validate rule" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save Validation draft" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toHaveCount(0);
+
+  resolvedCapabilities = ["validation:read", "validation:write"];
+  await signInAsCombinedOwner(page, resolvedCapabilities);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
+  await expect(page.getByLabel("Validation version display name")).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save Validation draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toHaveCount(0);
+
+  resolvedCapabilities = ["validation:read", "validation:write", "validation:publish"];
+  await signInAsCombinedOwner(page, resolvedCapabilities);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toBeVisible();
+});
+
 test("combined owners start clinically and can enter only server-authorized Admin panels by keyboard", async ({ page }) => {
   await page.setViewportSize({ width: 1048, height: 1008 });
   await page.route("**/demo-assigned-calls.json", assignedCalls);

@@ -32,10 +32,14 @@ export type StationaryCodedField = {
   readonly exceptionalChoices: ReadonlyArray<StationaryExceptionalChoice>;
 };
 
-export type StationaryCodedSelection =
+export type StationaryCodedSelection = ({
+  readonly notValue?: { readonly code: string; readonly display?: string };
+  readonly pertinentNegative?: { readonly code: string; readonly display?: string };
+} & (
   | { readonly kind: "coded"; readonly code: string; readonly display?: string; readonly system?: string; readonly terminologyVersion?: string }
   | { readonly kind: "null"; readonly code?: string; readonly display?: string }
-  | { readonly kind: "pertinent-negative"; readonly code: string; readonly display?: string };
+  | { readonly kind: "pertinent-negative"; readonly code: string; readonly display?: string }
+));
 
 /** Compiles catalog-owned coded and absence semantics into a presentation contract. */
 export function stationaryCodedField(elementOrId: NemsisDataElement | string): StationaryCodedField {
@@ -96,6 +100,12 @@ export function configuredStationaryCodedField(
 
 /** Rejects values that a generated control must never persist for this element. */
 export function validateStationaryCodedSelection(field: StationaryCodedField, selection: StationaryCodedSelection): void {
+  if (selection.notValue && !field.exceptionalChoices.some((choice) => choice.key === `not-value:${selection.notValue!.code}`)) {
+    throw new Error(`not-value:${selection.notValue.code} is not permitted for ${field.elementId}`);
+  }
+  if (selection.pertinentNegative && !field.exceptionalChoices.some((choice) => choice.key === `pertinent-negative:${selection.pertinentNegative!.code}`)) {
+    throw new Error(`pertinent-negative:${selection.pertinentNegative.code} is not permitted for ${field.elementId}`);
+  }
   if (selection.kind === "coded") {
     if (!selection.code.trim()) throw new Error(`${field.elementId} requires a code`);
     if (field.exhaustive && !field.options.some(({ code }) => code === selection.code)) {
@@ -136,7 +146,9 @@ export function repeatableExceptionalChoices(field: StationaryCodedField, values
 }
 
 function canonicalValue(selection: StationaryCodedSelection, occurrenceId: string, attributes?: EncounterValue["attributes"]): EncounterValue {
-  const common = { occurrenceId, ...(attributes ? { attributes } : {}) };
+  const common = { occurrenceId, ...(attributes ? { attributes } : {}),
+    ...(selection.notValue ? { notValue: selection.notValue } : {}),
+    ...(selection.pertinentNegative ? { pertinentNegative: selection.pertinentNegative } : {}) };
   if (selection.kind === "null") return { ...common, kind: "null", ...(selection.code ? { notValue: { code: selection.code, ...(selection.display ? { display: selection.display } : {}) } } : {}) };
   if (selection.kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: selection.code, ...(selection.display ? { display: selection.display } : {}) };
   return { ...common, kind: "coded", code: selection.code, ...(selection.system ? { system: selection.system } : {}), ...(selection.display ? { display: selection.display } : {}), ...(selection.terminologyVersion ? { terminologyVersion: selection.terminologyVersion } : {}) } as CodedEncounterValue;
@@ -146,7 +158,8 @@ function compatibleValueExtensions(value: EncounterValue | undefined): Readonly<
   if (!value) return {};
   const { kind: _kind, occurrenceId: _occurrenceId, attributes: _attributes, code: _code,
     display: _display, system: _system, terminologyVersion: _terminologyVersion,
-    notValue: _notValue, value: _value, lexical: _lexical, precision: _precision,
+    notValue: _notValue, pertinentNegative: _pertinentNegative,
+    value: _value, lexical: _lexical, precision: _precision,
     utcOffsetMinutes: _utcOffsetMinutes, ...extensions } = value;
   return extensions;
 }

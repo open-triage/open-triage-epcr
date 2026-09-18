@@ -1,4 +1,4 @@
-import type { EncounterDocument, EncounterValue } from "./index.js";
+import { encounterValueFacets, type EncounterDocument, type EncounterValue } from "./index.js";
 
 export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
@@ -352,7 +352,10 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
   if (expression.operator === "any") return expression.operands.some((operand) => evaluateExpression(operand, elements));
   if (expression.operator === "not") return !evaluateExpression(expression.operand, elements);
   const values = elements.filter(({ element }) => element.id === expression.elementId).flatMap(({ element }) => element.values);
-  if (expression.operator === "present") return values.some((value) => value.kind !== "absent");
+  if (expression.operator === "present") return values.some((value) => {
+    const facets = encounterValueFacets(value);
+    return facets.hasValue || facets.hasNotValue || facets.hasPertinentNegative;
+  });
   if (expression.operator === "coded") return values.some((value) => value.kind === "coded" && value.code === expression.code
     && (value.system ?? "") === expression.codeSystem);
   return values.some((value) => value.kind === "scalar" && value.value === expression.value);

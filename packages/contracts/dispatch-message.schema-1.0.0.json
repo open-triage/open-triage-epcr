@@ -64,7 +64,9 @@
           "description": "Stable, opaque identity for this value occurrence across revisions, including repeated values.",
           "$ref": "#/$defs/opaqueIdentity"
         },
-        "attributes": { "$ref": "#/$defs/attributes" }
+        "attributes": { "$ref": "#/$defs/attributes" },
+        "notValue": { "$ref": "#/$defs/code" },
+        "pertinentNegative": { "$ref": "#/$defs/code" }
       }
     },
     "scalarValue": {
@@ -78,7 +80,9 @@
             "kind": { "const": "scalar" },
             "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
             "value": { "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }] },
-            "attributes": { "$ref": "#/$defs/attributes" }
+            "attributes": { "$ref": "#/$defs/attributes" },
+            "notValue": { "$ref": "#/$defs/code" },
+            "pertinentNegative": { "$ref": "#/$defs/code" }
           }
         }
       ]
@@ -97,7 +101,9 @@
             "display": { "type": "string", "minLength": 1 },
             "system": { "type": "string", "minLength": 1 },
             "terminologyVersion": { "type": "string", "minLength": 1 },
-            "attributes": { "$ref": "#/$defs/attributes" }
+            "attributes": { "$ref": "#/$defs/attributes" },
+            "notValue": { "$ref": "#/$defs/code" },
+            "pertinentNegative": { "$ref": "#/$defs/code" }
           }
         }
       ]
@@ -113,6 +119,7 @@
             "kind": { "const": "null" },
             "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
             "notValue": { "$ref": "#/$defs/code" },
+            "pertinentNegative": { "$ref": "#/$defs/code" },
             "attributes": { "$ref": "#/$defs/attributes" }
           }
         }
@@ -130,6 +137,8 @@
             "occurrenceId": { "$ref": "#/$defs/opaqueIdentity" },
             "code": { "type": "string", "minLength": 1 },
             "display": { "type": "string", "minLength": 1 },
+            "notValue": { "$ref": "#/$defs/code" },
+            "pertinentNegative": { "$ref": "#/$defs/code" },
             "attributes": { "$ref": "#/$defs/attributes" }
           }
         }

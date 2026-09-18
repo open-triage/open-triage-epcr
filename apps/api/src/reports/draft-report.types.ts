@@ -11,7 +11,13 @@ export interface CreateDraftReportCommand {
   patientIdentityState: PatientIdentityState;
 }
 
-export type DraftValue =
+export type DraftAbsenceMetadata = { code: string; display?: string };
+
+export type DraftValue = ({
+  /** Additive NEMSIS attributes; neither changes the ordinary value kind. */
+  notValue?: DraftAbsenceMetadata;
+  pertinentNegative?: DraftAbsenceMetadata;
+} & (
   | { kind: "text" | "uri"; value: string }
   | { kind: "integer" | "numeric"; value: string | number; lexical?: string }
   | { kind: "boolean"; value: boolean }
@@ -21,7 +27,8 @@ export type DraftValue =
   | { kind: "binary"; value: string }
   | { kind: "coded"; code: string; codeSystem?: string; display?: string; terminologyVersion?: string }
   | { kind: "null" | "pertinent-negative"; absenceCode: string; display?: string }
-  | { kind: "absent"; absenceCode?: string; display?: string };
+  | { kind: "absent"; absenceCode?: string; display?: string }
+));
 
 export interface DraftGroupMutation {
   id: string;

@@ -56,7 +56,7 @@ export class ValidationAuthoringService {
     private readonly sessions: ClinicianSessionService) {}
 
   async current(token: string): Promise<ValidationDraft | null> {
-    const session = await this.sessions.requireCapability(token, "catalog:read");
+    const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(`
       select * from validation.version where organization_id=$1 and status='draft' limit 1
     `, [session.organization.id]);
@@ -64,7 +64,7 @@ export class ValidationAuthoringService {
   }
 
   async create(token: string, input: unknown): Promise<ValidationDraft> {
-    const session = await this.sessions.requireCapability(token, "catalog:write");
+    const session = await this.sessions.requireCapability(token, "validation:write");
     const body = record(input);
     const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
     const displayName = requiredText(body.displayName, "displayName", 120);
@@ -101,7 +101,7 @@ export class ValidationAuthoringService {
   }
 
   async save(token: string, id: string, input: unknown): Promise<ValidationDraft> {
-    const session = await this.sessions.requireCapability(token, "catalog:write");
+    const session = await this.sessions.requireCapability(token, "validation:write");
     const body = record(input);
     if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
@@ -117,7 +117,7 @@ export class ValidationAuthoringService {
   }
 
   async validate(token: string, id: string): Promise<ValidationDraftResult> {
-    const session = await this.sessions.requireCapability(token, "catalog:read");
+    const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(
       "select * from validation.version where id=$1 and organization_id=$2", [id, session.organization.id]);
     if (!rows[0]) throw new NotFoundException(`Validation draft ${id} was not found`);
@@ -125,7 +125,7 @@ export class ValidationAuthoringService {
   }
 
   async publish(token: string, id: string, input: unknown): Promise<PublishedValidationVersion> {
-    const session = await this.sessions.requireCapability(token, "catalog:publish");
+    const session = await this.sessions.requireCapability(token, "validation:publish");
     const body = record(input);
     const changeNote = requiredText(body.changeNote, "changeNote");
     const displayName = requiredText(body.displayName, "displayName", 120);
@@ -159,7 +159,7 @@ export class ValidationAuthoringService {
   }
 
   async activate(token: string, id: string, input: unknown): Promise<ValidationActivation> {
-    const session = await this.sessions.requireCapability(token, "catalog:publish");
+    const session = await this.sessions.requireCapability(token, "validation:publish");
     const changeNote = requiredText(record(input).changeNote, "changeNote");
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);

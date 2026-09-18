@@ -41,8 +41,8 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   readonly catalogReleaseId: string;
   readonly onActivated?: () => void;
 }) {
-  const canWrite = capabilities.includes("catalog:write");
-  const canPublish = capabilities.includes("catalog:publish");
+  const canWrite = capabilities.includes("validation:write");
+  const canPublish = capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<ValidationDraft | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [dirty, setDirty] = useState(false);

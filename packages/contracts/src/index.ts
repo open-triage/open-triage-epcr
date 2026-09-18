@@ -911,6 +911,10 @@ type EncounterValueBase = {
   readonly occurrenceId: string;
   /** XML-style NEMSIS attributes and compatible extension attributes. */
   readonly attributes?: EncounterAttributes;
+  /** NEMSIS Not Value metadata is independent of the ordinary payload. */
+  readonly notValue?: { readonly code: string; readonly display?: string; readonly [extension: string]: unknown };
+  /** NEMSIS Pertinent Negative metadata may accompany an ordinary payload. */
+  readonly pertinentNegative?: { readonly code: string; readonly display?: string; readonly [extension: string]: unknown };
   readonly [extension: string]: unknown;
 };
 
@@ -920,7 +924,6 @@ export type AbsentEncounterValue = EncounterValueBase & { readonly kind: "absent
 /** A genuine null value, optionally carrying the NEMSIS NV code that explains it. */
 export type NullEncounterValue = EncounterValueBase & {
   readonly kind: "null";
-  readonly notValue?: { readonly code: string; readonly display?: string; readonly [extension: string]: unknown };
 };
 
 export type PertinentNegativeEncounterValue = EncounterValueBase & {
@@ -955,6 +958,22 @@ export type EncounterValue =
   | PertinentNegativeEncounterValue
   | CodedEncounterValue
   | ScalarEncounterValue;
+
+/** Independent facets exposed to validation rules without interpreting metadata as a value kind. */
+export interface EncounterValueFacets {
+  readonly hasValue: boolean;
+  readonly hasNotValue: boolean;
+  readonly hasPertinentNegative: boolean;
+  readonly empty: boolean;
+}
+
+export function encounterValueFacets(value: EncounterValue): EncounterValueFacets {
+  const hasValue = value.kind === "coded" || value.kind === "scalar";
+  const hasNotValue = value.notValue !== undefined || value.kind === "null";
+  const hasPertinentNegative = value.pertinentNegative !== undefined || value.kind === "pertinent-negative";
+  return { hasValue, hasNotValue, hasPertinentNegative,
+    empty: !hasValue && !hasNotValue && !hasPertinentNegative };
+}
 
 export type EncounterElement = {
   /** Stable NEMSIS element id (e.g. eVitals.06) or namespaced custom id. */
