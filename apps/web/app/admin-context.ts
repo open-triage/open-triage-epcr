@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -64,6 +64,10 @@ export const searchFormCatalog = (id: string, query: string) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
 
 export const loadValidationDraft = () => catalogRequest<ValidationDraft | null>("validation-draft", undefined, undefined, { value: null });
+export type ValidationRuleQuery = { search?: string; element?: string; source?: string; severity?: string;
+  executionTarget?: string; enabled?: string; validity?: string; cursor?: string; limit?: number };
+export const loadValidationRules = (query: ValidationRuleQuery = {}) =>
+  catalogRequest<ValidationRulePage>(`validation-rules${queryString(query as Record<string, string | number | undefined>)}`);
 export const createValidationDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) =>
   catalogRequest<ValidationDraft>("validation-drafts", csrfToken, {
     method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
@@ -71,6 +75,14 @@ export const createValidationDraft = (csrfToken: string, catalogReleaseId: strin
 export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}`, csrfToken, {
     method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rules: draft.rules })
+  });
+export const createValidationRule = (csrfToken: string, draft: ValidationDraft, rule: Omit<ValidationRuleSource, "id">) =>
+  catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}/rules`, csrfToken, {
+    method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, ...rule })
+  });
+export const setValidationRuleEnabled = (csrfToken: string, draft: ValidationDraft, ruleId: string, enabled: boolean) =>
+  catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}/rules/${ruleId}/${enabled ? "restore" : "disable"}`, csrfToken, {
+    method: "POST", body: JSON.stringify({ expectedRevision: draft.revision })
   });
 export const validateValidationDraft = (csrfToken: string, id: string) =>
   catalogRequest<ValidationDraftResult>(`validation-drafts/${id}/validate`, csrfToken, { method: "POST" });

@@ -241,6 +241,10 @@ input, select, textarea { touch-action: manipulation; }
 .code-list-add { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; }
 .code-list-order { display: flex; gap: 6px; }
 .form-empty, .form-editor { display: grid; gap: 14px; padding: 18px; }
+.validation-library { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.validation-library-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
+.validation-library-filters label { display: grid; gap: 4px; color: var(--muted); font-size: var(--text-caption); font-weight: 750; }
+.validation-library-filters input, .validation-library-filters select { min-height: 38px; padding: 7px 8px; border: 1px solid #aeb9b0; border-radius: 6px; background: #fff; }
 .form-picker { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(280px, 2fr); gap: 8px 12px; align-items: center; }
 .form-picker input, .form-picker select { border: 1px solid #87928a; border-radius: 5px; padding: 8px; font: inherit; }
 .form-picker-results { grid-column: 1 / -1; display: grid; gap: 8px; max-height: 360px; margin: 0; padding: 0; overflow: auto; list-style: none; }

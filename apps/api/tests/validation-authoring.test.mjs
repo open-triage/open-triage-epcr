@@ -146,12 +146,112 @@ test("server compiles independently persisted minimum and maximum policies for a
   assert.equal(result.compiledBundle.rules[1].scope.groupId, "ePatient.PatientGroup");
 });
 
+test("rule library applies organization-scoped filters, stable pagination, provenance, and advisory diagnostics", async () => {
+  const secondId = randomUUID();
+  const rules = [sourceRule, { ...sourceRule, id: secondId, name: "Imported incident warning", severity: "warning",
+    sourceKind: "nemsis", provenance: [{ standard: "NEMSIS", dataset: "EMS", sourceIdentity: "nemSch_1",
+      sourceRelease: "3.5.1", originalExpression: "not(eResponse.03)", originalMessage: "Incident number required" }] }];
+  const parameters = [];
+  const manager = { query: async (sql, values = []) => {
+    parameters.push(values);
+    if (sql.includes("from validation.version")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 1, display_name: "Library", source_rule: rules,
+      status: "draft", version: null, compiled_bundle: null, compiled_sha256: null, created_at: new Date(),
+      updated_at: new Date(), published_at: null }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident Number", base_datatype: "string" }];
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const first = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1 });
+  assert.equal(first.total, 2);
+  assert.equal(first.items.length, 1);
+  assert.ok(first.nextCursor);
+  const second = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1, cursor: first.nextCursor });
+  assert.equal(second.items.length, 1);
+  assert.notEqual(second.items[0].rule.id, first.items[0].rule.id);
+  const imported = await subject.library("session", { source: "nemsis", search: "nemSch_1" });
+  assert.equal(imported.items[0].rule.provenance[0].originalExpression, "not(eResponse.03)");
+  assert.ok(imported.items[0].diagnostics.some(({ code }) => code === "possible-conflict"));
+  assert.ok(parameters.every((values) => !values.length || values[0] === organizationId || values[0] === "catalog"),
+    "library lookup is constrained to the authenticated organization and its catalog");
+});
+
+test("disabled invalid rules remain authored but do not block publication or enter the executable bundle", async () => {
+  const disabled = { ...sourceRule, id: randomUUID(), name: "Incomplete imported rule", enabled: false,
+    source: "require unknownConstruct()", sourceKind: "nemsis" };
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from validation.version")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 1, display_name: "Draft", source_rule: [sourceRule, disabled],
+      status: "draft", version: null, compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident Number", base_datatype: "string" }];
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const result = await service(manager).validate("session", versionId);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.compiledBundle.rules.map(({ ruleId }) => ruleId), [ruleId]);
+  assert.ok(result.diagnostics.some(({ ruleId: diagnosticRule, severity }) => diagnosticRule === disabled.id && severity === "warning"));
+});
+
+test("editing an imported normalized copy retains immutable provenance", async () => {
+  const provenance = [{ standard: "NEMSIS", dataset: "EMS", sourceIdentity: "nemSch_e001",
+    sourceRelease: "3.5.1", originalExpression: "official xpath", originalMessage: "Official message" }];
+  const imported = { ...sourceRule, sourceKind: "nemsis", provenance };
+  let persisted;
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("select * from validation.version")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 3, display_name: "Imported", source_rule: [imported],
+      status: "draft", version: null, compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null }];
+    if (sql.includes("from validation.rule_identity")) return [{ id: ruleId }];
+    if (sql.includes("with updated as")) {
+      persisted = JSON.parse(parameters[4]);
+      return [{ id: versionId, organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
+        revision: 4, display_name: parameters[3], source_rule: persisted, status: "draft", version: null,
+        compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null }];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const updated = await service(manager).save("session", versionId, { expectedRevision: 3, displayName: "Agency copy",
+    rules: [{ ...imported, name: "Agency-adjusted NEMSIS rule", source: 'require present("eResponse.03")', provenance: [] }] });
+  assert.equal(updated.rules[0].name, "Agency-adjusted NEMSIS rule");
+  assert.deepEqual(persisted[0].provenance, provenance);
+  assert.equal(persisted[0].sourceKind, "nemsis");
+});
+
+test("disablement and restoration preserve rule identity while changing execution state", async () => {
+  let row = { id: versionId, organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
+    revision: 1, display_name: "Rules", source_rule: [sourceRule], status: "draft", version: null,
+    compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null };
+  const sqlStatements = [];
+  const manager = { query: async (sql, parameters = []) => {
+    sqlStatements.push(sql);
+    if (sql.includes("select * from validation.version")) return [row];
+    if (sql.includes("with updated as")) {
+      row = { ...row, revision: row.revision + 1, source_rule: JSON.parse(parameters[2]), updated_at: new Date() };
+      return [row];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const subject = service(manager);
+  const disabled = await subject.setRuleEnabled("session", versionId, ruleId, false, { expectedRevision: 1 });
+  assert.equal(disabled.rules[0].id, ruleId);
+  assert.equal(disabled.rules[0].enabled, false);
+  const restored = await subject.setRuleEnabled("session", versionId, ruleId, true, { expectedRevision: 2 });
+  assert.equal(restored.rules[0].id, ruleId);
+  assert.equal(restored.rules[0].enabled, true);
+  assert.ok(sqlStatements.every((sql) => !/delete\s+from\s+validation/i.test(sql)));
+});
+
 test("every Validation endpoint independently authorizes before reading or mutating data", async () => {
   const attempts = [
     { name: "current", required: "validation:read", invoke: (subject) => subject.current("session") },
+    { name: "library", required: "validation:read", invoke: (subject) => subject.library("session", {}) },
     { name: "validate", required: "validation:read", invoke: (subject) => subject.validate("session", versionId) },
     { name: "create", required: "validation:write", invoke: (subject) => subject.create("session", {}) },
     { name: "save", required: "validation:write", invoke: (subject) => subject.save("session", versionId, {}) },
+    { name: "createRule", required: "validation:write", invoke: (subject) => subject.createRule("session", versionId, {}) },
+    { name: "setRuleEnabled", required: "validation:write", invoke: (subject) => subject.setRuleEnabled("session", versionId, ruleId, false, {}) },
     { name: "publish", required: "validation:publish", invoke: (subject) => subject.publish("session", versionId, {}) },
     { name: "activate", required: "validation:publish", invoke: (subject) => subject.activate("session", versionId, {}) },
   ];

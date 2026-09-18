@@ -24,6 +24,8 @@ export {
   type ValidationExecutionTarget,
   type ValidationFinding,
   type ValidationRuleSource,
+  type ValidationRuleProvenance,
+  type ValidationRuleSourceKind,
   type ValidationSeverity,
   ValidationCompatibilityError,
   ValidationResourceLimitError,
@@ -645,6 +647,19 @@ export interface ValidationDraftResult {
   explanation?: string;
   compiledBundle?: import("./validation-rules.js").CompiledValidationBundle;
   compiledSha256?: string;
+}
+
+export interface ValidationRuleLibraryItem {
+  rule: import("./validation-rules.js").ValidationRuleSource;
+  source: import("./validation-rules.js").ValidationRuleSourceKind;
+  validity: "valid" | "invalid";
+  diagnostics: import("./validation-rules.js").ValidationDiagnostic[];
+}
+
+export interface ValidationRulePage {
+  items: ValidationRuleLibraryItem[];
+  nextCursor: string | null;
+  total: number;
 }
 
 export interface PublishedValidationVersion {
