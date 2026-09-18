@@ -43,7 +43,7 @@ import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
-import { flushProtectedReport } from "./protected-clinical-storage";
+import { holdProtectedReportForCompletion } from "./protected-clinical-storage";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 
@@ -320,15 +320,17 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     if (!report || !canFinish || signing) return;
     setSigning(true);
     setSignError(null);
+    let releaseProtectedHold: () => void = () => undefined;
     try {
       await flushSave();
-      await flushProtectedReport(report.id);
+      releaseProtectedHold = await holdProtectedReportForCompletion(report.id);
     } catch {
       setSignError("The record must finish protected storage before it can be signed.");
       setSigning(false);
       return;
     }
     if (!navigator.onLine || nextDraftChange(window.localStorage, report.id)) {
+      releaseProtectedHold();
       setSignError("The record must finish syncing before it can be signed.");
       setSigning(false);
       return;
@@ -339,6 +341,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     } catch (error) {
       setSignError(error instanceof Error ? error.message : "The record could not be signed.");
     } finally {
+      releaseProtectedHold();
       setSigning(false);
     }
   }
@@ -384,7 +387,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </>}
         {report && <div className="draft-actions">
           <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
-          {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => dispatch(shell.view === "review" ? { type: "view-selected", view: "timeline" } : { type: "review-opened" })}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
+          {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => {
+            if (shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
+            else {
+              dispatch({ type: "review-opened" });
+              void flushSave();
+            }
+          }}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
           <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
         </div>}
       </header>

@@ -297,6 +297,10 @@ export function nextDraftChange(storage: StoragePort, reportId: string): QueuedD
   return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges[0] ?? null;
 }
 
+export function queuedDraftChanges(storage: StoragePort, reportId: string): ReadonlyArray<QueuedDraftChange> {
+  return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges ?? [];
+}
+
 export function markDraftChangeAttempted(storage: StoragePort, reportId: string, commandId: string): void {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   if (!cached) return;

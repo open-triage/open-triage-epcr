@@ -7,6 +7,7 @@ import {
   deleteLegacyClinicalStorage,
   encryptProtectedPayload,
   evictionOrder,
+  LatestProtectedWriteQueue,
   offlineEditingAvailable,
   persistentStorageGranted,
   protectedRecordExpired,
@@ -14,6 +15,12 @@ import {
   restoreProtectedRecord,
   type ProtectedClinicalRecord,
 } from "../app/protected-clinical-storage";
+
+function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 function record(id: string, revision: number, synchronizedRevision: number, deadline: string, updatedAt = deadline): ProtectedClinicalRecord {
   return {
@@ -33,6 +40,52 @@ test("protected clinical payloads round-trip with a fresh 96-bit nonce for every
   assert.deepEqual(await decryptProtectedPayload(key, {
     schemaVersion: 1, recoveryHandle: "opaque-handle", ciphertextRevision: 1, ...first,
   }), { clinical: "sensitive" });
+});
+
+test("protected persistence collapses an in-flight burst to one latest follow-up write", async () => {
+  const first = deferred();
+  const second = deferred();
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async (value) => {
+    writes.push(value);
+    await (writes.length === 1 ? first.promise : second.promise);
+  });
+
+  queue.request(1);
+  queue.request(2);
+  queue.request(3);
+  queue.request(4);
+  assert.deepEqual(writes, [1]);
+
+  first.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(writes, [1, 4]);
+  second.resolve();
+  await queue.flush();
+  assert.deepEqual(writes, [1, 4]);
+});
+
+test("completion hold snapshots prior writes, blocks later writes, and resumes only the latest payload", async () => {
+  const first = deferred();
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async (value) => {
+    writes.push(value);
+    if (writes.length === 1) await first.promise;
+  });
+
+  queue.request(1);
+  queue.request(2);
+  const held = queue.holdAfterFlush();
+  queue.request(3);
+  queue.request(4);
+  first.resolve();
+  const release = await held;
+  await queue.flush();
+  assert.deepEqual(writes, [1, 2], "the completion boundary must persist only its own latest snapshot");
+
+  release();
+  await queue.flush();
+  assert.deepEqual(writes, [1, 2, 4], "all changes made while held collapse to one latest write");
 });
 
 test("schema, opaque recovery handle, revision, and authentication tag are all authenticated", async () => {

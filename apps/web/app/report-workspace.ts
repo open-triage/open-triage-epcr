@@ -33,6 +33,7 @@ import {
   reconcileCachedActiveReport,
   removeSignedOfflineReport,
   queueDraftChange,
+  queuedDraftChanges,
   saveCachedValidationErrorCount,
 } from "./offline-reports";
 import { pendingDraftTargets, reconcileActiveReportDocument } from "./active-report-reconciliation";
@@ -266,10 +267,18 @@ export function useReportWorkspace({
     saveShellState(window.localStorage, shell, report?.id);
     if (!report) return;
     cacheLocalReportDocument(window.localStorage, report.id, shell.encounter.document);
-    const projected = shellStateToDraftMutations(report.id, shell, persistedDraft.current);
+  }, [restored, shell, report]);
+
+  useEffect(() => {
+    if (!restored || completed.current || !report) return;
+    const projected = shellStateToDraftMutations(report.id, shellRef.current, persistedDraft.current);
+    const optimisticDraft = queuedDraftChanges(window.localStorage, report.id).reduce(
+      (baseline, queued) => applyDraftMutationDelta(baseline, queued.command),
+      persistedDraft.current,
+    );
     const unscopedMutations = queueInitialSnapshot.current ? projected : draftMutationDelta(
       projected,
-      persistedDraft.current,
+      optimisticDraft,
     );
     if (skipReconciledQueue.current) {
       skipReconciledQueue.current = false;
@@ -286,7 +295,7 @@ export function useReportWorkspace({
     const existing = nextDraftChange(window.localStorage, report.id);
     const demoAction = pendingDemoAction.current ?? existing?.command.demoAction;
     const mutations = demoAction
-      ? demoActionMutationDelta(demoAction, unscopedMutations, persistedDraft.current)
+      ? demoActionMutationDelta(demoAction, unscopedMutations, optimisticDraft)
       : unscopedMutations;
     if (!mutations.groups.length && !mutations.occurrences.length) {
       pendingDemoAction.current = null;
@@ -309,7 +318,7 @@ export function useReportWorkspace({
     queueMicrotask(() => setSyncStatus(navigator.onLine ? "Saving" : "Pending sync"));
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
     if (navigator.onLine) saveTimer.current = window.setTimeout(() => void flushSave(), DRAFT_SAVE_DEBOUNCE_MS);
-  }, [flushSave, restored, shell, report, session.user.id]);
+  }, [flushSave, restored, shell.encounter.document, report, session.user.id]);
 
   useEffect(() => {
     if (report) saveReportSyncStatus(window.localStorage, report.id, syncStatus);

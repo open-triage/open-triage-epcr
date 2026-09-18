@@ -399,7 +399,10 @@ test("workspace mutation deltas include only changed targets and advance the acc
 
   assert.deepEqual(delta.groups.map(({ groupId }) => groupId), ["eNarrativeSection"]);
   assert.deepEqual(delta.occurrences.map(({ elementId }) => elementId), ["eNarrative.01"]);
-  assert.deepEqual(applyDraftMutationDelta(baseline, delta), current);
+  const optimistic = applyDraftMutationDelta(baseline, delta);
+  assert.deepEqual(optimistic, current);
+  assert.deepEqual(draftMutationDelta(current, optimistic), { groups: [], occurrences: [] },
+    "a UI-only update during an active save must not queue the same clinical mutation again");
 });
 
 test("removing a persisted timeline event emits explicit group and occurrence tombstones", () => {

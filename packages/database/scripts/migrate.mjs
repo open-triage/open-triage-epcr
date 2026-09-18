@@ -13,6 +13,24 @@ const compatibleMigrationChecksums = new Map([
       "a94e7492463a45e29089d56e0e1d8c46a31f544efe9af4ea93eabf7e60feeeed",
     ],
   ])],
+  ["20260917113000", new Map([
+    [
+      "68fd47193095252e953fbeff93b5d55b1ee4aae2de95ee0f73809bd06792c926",
+      "2e238c1a9b0a60e0d0bda9fb770953cbd5b8d5eda7cd0294233eae1b93e03979",
+    ],
+  ])],
+  ["20260917210000", new Map([
+    [
+      "14062abc56f142bf24325219351bb72c58f8bf7e1ed2788af10c93a45d484a02",
+      "28fa73f4c42fd059e2a7158eb307a128587cb45bb41038ce6a794969b9682b6d",
+    ],
+  ])],
+  ["20260917220000", new Map([
+    [
+      "08938dfa65fa27d4995a63b410c6aefe821c352177a41e52d7a90c6af1e2d2b3",
+      "ac4d01e02e24bcc04d8f4399cd9b5ab8247e39a83fa745a16b09bc3f48b22d67",
+    ],
+  ])],
 ]);
 
 function isCompatibleMigrationChecksum(version, recordedChecksum, currentChecksum) {
