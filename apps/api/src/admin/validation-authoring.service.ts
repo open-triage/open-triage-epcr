@@ -13,6 +13,10 @@ import {
   type ValidationDraft,
   type ValidationDraftResult,
   type ValidationRuleSource,
+  type ValidationDiagnostic,
+  type ValidationRulePage,
+  type ValidationRuleProvenance,
+  type ValidationRuleSourceKind,
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
@@ -51,6 +55,41 @@ function draft(row: VersionRow): ValidationDraft {
     displayName: row.display_name, rules, updatedAt: new Date(row.updated_at).toISOString() };
 }
 
+const RULE_SOURCES = new Set<ValidationRuleSourceKind>(["agency", "nemsis", "catalog", "form", "platform"]);
+
+function sourceKind(rule: ValidationRuleSource): ValidationRuleSourceKind {
+  return rule.sourceKind ?? (rule.provenance?.length ? "nemsis" : "agency");
+}
+
+function canonicalRule(rule: ValidationRuleSource): string {
+  return JSON.stringify([rule.enabled, rule.severity, [...rule.executionTargets].sort(), rule.primaryTargetElementId,
+    rule.message.trim(), rule.source.trim().replace(/\s+/g, " ")]);
+}
+
+function ruleAdvisories(rules: ValidationRuleSource[]): Map<string, ValidationDiagnostic[]> {
+  const diagnostics = new Map<string, ValidationDiagnostic[]>();
+  const add = (rule: ValidationRuleSource, code: ValidationDiagnostic["code"], message: string) => {
+    const items = diagnostics.get(rule.id) ?? [];
+    items.push({ severity: "warning", code, message, ruleId: rule.id });
+    diagnostics.set(rule.id, items);
+  };
+  for (let left = 0; left < rules.length; left += 1) for (let right = left + 1; right < rules.length; right += 1) {
+    const first = rules[left]!; const second = rules[right]!;
+    if (canonicalRule(first) === canonicalRule(second)) {
+      add(first, "exact-duplicate", `Exact duplicate of ${second.name}; it will execute only once.`);
+      add(second, "exact-duplicate", `Exact duplicate of ${first.name}; it will execute only once.`);
+    } else if (first.primaryTargetElementId === second.primaryTargetElementId) {
+      add(first, "similar-rule", `Similar non-identical rule ${second.name} targets the same element.`);
+      add(second, "similar-rule", `Similar non-identical rule ${first.name} targets the same element.`);
+      if (first.enabled && second.enabled && first.severity !== second.severity) {
+        add(first, "possible-conflict", `Possible conflict with ${second.name}: enabled rules use different severities.`);
+        add(second, "possible-conflict", `Possible conflict with ${first.name}: enabled rules use different severities.`);
+      }
+    }
+  }
+  return diagnostics;
+}
+
 @Injectable()
 export class ValidationAuthoringService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource,
@@ -62,6 +101,57 @@ export class ValidationAuthoringService {
       select * from validation.version where organization_id=$1 and status='draft' limit 1
     `, [session.organization.id]);
     return rows[0] ? draft(rows[0]) : null;
+  }
+
+  async library(token: string, query: Record<string, unknown>): Promise<ValidationRulePage> {
+    const session = await this.sessions.requireCapability(token, "validation:read");
+    const rows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
+      where organization_id=$1 and status='draft' limit 1`, [session.organization.id]);
+    const row = rows[0];
+    if (!row) return { items: [], nextCursor: null, total: 0 };
+    const catalog = await this.validationCatalog(this.dataSource.manager, row.catalog_release_id);
+    const rules = this.rowRules(row);
+    const advisories = ruleAdvisories(rules);
+    const analyzed = rules.map((rule) => {
+      const result = compileValidationRule(rule, row.id, catalog);
+      return { rule, source: sourceKind(rule), validity: result.compiled ? "valid" as const : "invalid" as const,
+        diagnostics: [...result.diagnostics, ...(advisories.get(rule.id) ?? [])] };
+    });
+    const search = typeof query.search === "string" ? query.search.trim().toLocaleLowerCase() : "";
+    const element = typeof query.element === "string" ? query.element.trim() : "";
+    const wantedSource = typeof query.source === "string" ? query.source : "";
+    const severity = typeof query.severity === "string" ? query.severity : "";
+    const executionTarget = typeof query.executionTarget === "string" ? query.executionTarget : "";
+    const enabled = typeof query.enabled === "string" ? query.enabled : "";
+    const validity = typeof query.validity === "string" ? query.validity : "";
+    const filtered = analyzed.filter((item) => {
+      const haystack = [item.rule.name, item.rule.message, item.rule.source, item.rule.primaryTargetElementId,
+        ...(item.rule.provenance ?? []).flatMap((source) => [source.sourceIdentity, source.originalExpression, source.originalMessage])]
+        .join(" ").toLocaleLowerCase();
+      return (!search || haystack.includes(search))
+        && (!element || item.rule.primaryTargetElementId === element || item.rule.source.includes(`"${element}"`))
+        && (!wantedSource || item.source === wantedSource)
+        && (!severity || item.rule.severity === severity)
+        && (!executionTarget || item.rule.executionTargets.includes(executionTarget as never))
+        && (!enabled || String(item.rule.enabled) === enabled)
+        && (!validity || item.validity === validity);
+    }).sort((first, second) => first.rule.name.localeCompare(second.rule.name) || first.rule.id.localeCompare(second.rule.id));
+    const requestedLimit = Number(query.limit ?? 25);
+    const limit = Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 25;
+    let start = 0;
+    if (typeof query.cursor === "string" && query.cursor) {
+      try {
+        const [name, id] = JSON.parse(Buffer.from(query.cursor, "base64url").toString("utf8")) as [string, string];
+        const following = filtered.findIndex((item) => item.rule.name.localeCompare(name) > 0
+          || (item.rule.name === name && item.rule.id.localeCompare(id) > 0));
+        start = following < 0 ? filtered.length : following;
+      } catch { throw new UnprocessableEntityException("cursor is invalid"); }
+    }
+    const items = filtered.slice(start, start + limit);
+    const last = items.at(-1);
+    const nextCursor = start + items.length < filtered.length && last
+      ? Buffer.from(JSON.stringify([last.rule.name, last.rule.id])).toString("base64url") : null;
+    return { items, nextCursor, total: filtered.length };
   }
 
   async create(token: string, input: unknown): Promise<ValidationDraft> {
@@ -94,11 +184,13 @@ export class ValidationAuthoringService {
         const scope = element.group_repeating ? element.group_id : undefined;
         const minimum = element.min_occurs > 0 ? [{ id: randomUUID(), name: `${element.name} documented minimum`, enabled: true,
           severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
+          sourceKind: "catalog" as const,
           primaryTargetElementId: element.element_id,
           message: `${element.name} requires at least ${element.min_occurs} documented occurrence(s)`,
           source: formatOccurrenceSource(element.element_id, "minimum", element.min_occurs, scope) }] : [];
         const maximum = element.max_occurs !== null ? [{ id: randomUUID(), name: `${element.name} documented maximum`, enabled: true,
           severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
+          sourceKind: "catalog" as const,
           primaryTargetElementId: element.element_id,
           message: `${element.name} permits at most ${element.max_occurs} documented occurrence(s)`,
           source: formatOccurrenceSource(element.element_id, "maximum", element.max_occurs, scope) }] : [];
@@ -106,7 +198,7 @@ export class ValidationAuthoringService {
       });
       if (!rules.length) {
         const element = elements[0]!;
-        rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error",
+        rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error", sourceKind: "catalog",
           executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
           message: `${element.name} has no documented minimum`, source: formatOccurrenceSource(element.element_id, "minimum", 0) });
       }
@@ -128,7 +220,18 @@ export class ValidationAuthoringService {
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     }
     if (!Array.isArray(body.rules) || !body.rules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
-    const rules = body.rules.map((rule) => this.rule(rule));
+    const existingRows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
+      where id=$1 and organization_id=$2 and status='draft'`, [id, session.organization.id]);
+    const existing = existingRows[0];
+    if (!existing) throw new NotFoundException(`Validation draft ${id} was not found`);
+    const existingRules = new Map(this.rowRules(existing).map((rule) => [rule.id, rule]));
+    const rules = body.rules.map((value) => {
+      const parsed = this.rule(value);
+      const prior = existingRules.get(parsed.id);
+      const { provenance: _provenance, sourceKind: _source, ...editable } = parsed;
+      return prior ? { ...editable, sourceKind: sourceKind(prior),
+        ...(prior.provenance ? { provenance: prior.provenance } : {}) } : parsed;
+    });
     if (new Set(rules.map(({ id }) => id)).size !== rules.length) throw new UnprocessableEntityException("Rule identities must be unique");
     const displayName = requiredText(body.displayName, "displayName", 120);
     const identities = await this.dataSource.query<Array<{ id: string }>>(
@@ -141,6 +244,50 @@ export class ValidationAuthoringService {
     [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rules)]));
     if (!rows[0]) throw new ConflictException("Validation draft revision is stale or the draft is no longer editable");
     return draft(rows[0]);
+  }
+
+  async createRule(token: string, id: string, input: unknown): Promise<ValidationDraft> {
+    const session = await this.sessions.requireCapability(token, "validation:write");
+    const body = record(input);
+    const expectedRevision = Number(body.expectedRevision);
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    }
+    const candidate = this.rule({ ...body, provenance: undefined, id: randomUUID(), sourceKind: "agency" });
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      const rows = await manager.query<VersionRow[]>(`select * from validation.version
+        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+      const row = rows[0];
+      if (!row || Number(row.revision) !== expectedRevision) throw new ConflictException("Validation draft revision is stale or unavailable");
+      await manager.query("insert into validation.rule_identity(id,organization_id,created_by) values ($1,$2,$3)",
+        [candidate.id, session.organization.id, session.user.id]);
+      const rules = [...this.rowRules(row), candidate];
+      const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
+        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 returning *) select * from updated`,
+      [id, session.organization.id, JSON.stringify(rules)]));
+      return draft(updated[0]!);
+    });
+  }
+
+  async setRuleEnabled(token: string, id: string, ruleId: string, enabled: boolean, input: unknown): Promise<ValidationDraft> {
+    const session = await this.sessions.requireCapability(token, "validation:write");
+    const expectedRevision = Number(record(input).expectedRevision);
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    }
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      const rows = await manager.query<VersionRow[]>(`select * from validation.version
+        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+      const row = rows[0];
+      if (!row || Number(row.revision) !== expectedRevision) throw new ConflictException("Validation draft revision is stale or unavailable");
+      let found = false;
+      const rules = this.rowRules(row).map((rule) => rule.id === ruleId ? (found = true, { ...rule, enabled }) : rule);
+      if (!found) throw new NotFoundException(`Validation rule ${ruleId} was not found`);
+      const updated = mutationRows<VersionRow>(await manager.query(`with updated as (update validation.version
+        set revision=revision+1,source_rule=$3::jsonb,updated_at=now() where id=$1 and organization_id=$2 returning *) select * from updated`,
+      [id, session.organization.id, JSON.stringify(rules)]));
+      return draft(updated[0]!);
+    });
   }
 
   async validate(token: string, id: string): Promise<ValidationDraftResult> {
@@ -231,11 +378,22 @@ export class ValidationAuthoringService {
   private async validateRow(manager: Pick<EntityManager, "query">, row: VersionRow): Promise<ValidationDraftResult> {
     const catalog = await this.validationCatalog(manager, row.catalog_release_id);
     const results = this.rowRules(row).map((rule) => compileValidationRule(rule, row.id, catalog));
-    const diagnostics = results.flatMap(({ diagnostics }) => diagnostics);
-    if (results.some(({ compiled }) => !compiled)) return { valid: false, diagnostics };
+    const rules = this.rowRules(row);
+    const advisories = ruleAdvisories(rules);
+    const diagnostics = results.flatMap(({ diagnostics }, index) => diagnostics.map((item) =>
+      rules[index]!.enabled ? item : { ...item, severity: "warning" as const,
+        message: `Disabled rule: ${item.message}` })).concat([...advisories.values()].flat());
+    if (results.some(({ compiled }, index) => rules[index]!.enabled && !compiled)) return { valid: false, diagnostics };
+    const seen = new Set<string>();
+    const compiledRules = results.flatMap(({ compiled }, index) => {
+      if (!compiled) return [];
+      const key = canonicalRule(rules[index]!);
+      if (seen.has(key)) return [];
+      seen.add(key); return [compiled];
+    });
     const compiledBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
-      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: results.map(({ compiled }) => compiled!) };
-    return { valid: true, diagnostics, explanation: results.map(({ compiled }) => explainValidationRule(compiled!, catalog)).join("\n"), compiledBundle,
+      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: compiledRules };
+    return { valid: true, diagnostics, explanation: results.flatMap(({ compiled }) => compiled ? [explainValidationRule(compiled, catalog)] : []).join("\n"), compiledBundle,
       compiledSha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex") };
   }
 
@@ -280,11 +438,26 @@ export class ValidationAuthoringService {
       throw new UnprocessableEntityException("Invalid execution target");
     }
     if (typeof body.enabled !== "boolean") throw new UnprocessableEntityException("rule.enabled must be a boolean");
+    const kind = body.sourceKind === undefined ? undefined : String(body.sourceKind);
+    if (kind && !RULE_SOURCES.has(kind as ValidationRuleSourceKind)) throw new UnprocessableEntityException("Invalid rule source");
+    let provenance: ValidationRuleProvenance[] | undefined;
+    if (body.provenance !== undefined) {
+      if (!Array.isArray(body.provenance)) throw new UnprocessableEntityException("rule.provenance must be an array");
+      provenance = body.provenance.map((item) => {
+        const value = record(item);
+        return { ...value, standard: requiredText(value.standard, "rule.provenance.standard", 100),
+          sourceIdentity: requiredText(value.sourceIdentity, "rule.provenance.sourceIdentity", 500),
+          sourceRelease: requiredText(value.sourceRelease, "rule.provenance.sourceRelease", 100),
+          originalExpression: requiredText(value.originalExpression, "rule.provenance.originalExpression", 20_000),
+          originalMessage: requiredText(value.originalMessage, "rule.provenance.originalMessage", 20_000) } as ValidationRuleProvenance;
+      });
+    }
     return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", 120),
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
       executionTargets: targets as ValidationRuleSource["executionTargets"],
       primaryTargetElementId: requiredText(body.primaryTargetElementId, "rule.primaryTargetElementId", 200),
-      message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000) };
+      message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000),
+      ...(kind ? { sourceKind: kind as ValidationRuleSourceKind } : {}), ...(provenance ? { provenance } : {}) };
   }
 
   private rowRules(row: Pick<VersionRow, "source_rule">): ValidationRuleSource[] {

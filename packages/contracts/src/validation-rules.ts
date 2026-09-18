@@ -5,6 +5,24 @@ export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
 
 export type ValidationSeverity = "error" | "warning" | "information";
 export type ValidationExecutionTarget = "live" | "sign" | "review";
+export type ValidationRuleSourceKind = "agency" | "nemsis" | "catalog" | "form" | "platform";
+
+export interface ValidationRuleProvenance {
+  standard: string;
+  dataset?: string;
+  sourceIdentity: string;
+  sourceRelease: string;
+  sourceBuild?: string;
+  sourceSha256?: string;
+  patternIdentity?: string;
+  ruleIdentity?: string;
+  context?: string;
+  originalExpression: string;
+  originalMessage: string;
+  originalRole?: string;
+  targetExpression?: string;
+  subject?: string;
+}
 
 export interface ValidationRuleSource {
   id: string;
@@ -16,6 +34,9 @@ export interface ValidationRuleSource {
   message: string;
   /** `when <boolean>` is optional; `require <boolean>` is mandatory. */
   source: string;
+  /** Origin metadata is retained when the editable normalized copy changes. */
+  sourceKind?: ValidationRuleSourceKind;
+  provenance?: ValidationRuleProvenance[];
 }
 
 export interface ValidationCatalogElement {
@@ -50,7 +71,8 @@ export interface ValidationCatalog {
 
 export interface ValidationDiagnostic {
   severity: "error" | "warning";
-  code: "syntax" | "compatibility" | "resource-limit" | "catalog-reference" | "datatype" | "primary-target" | "execution-target" | "scope" | "occurrence-bound";
+  code: "syntax" | "compatibility" | "resource-limit" | "catalog-reference" | "datatype" | "primary-target" | "execution-target" | "scope" | "occurrence-bound"
+    | "exact-duplicate" | "similar-rule" | "possible-conflict";
   message: string;
   ruleId: string;
   line?: number;

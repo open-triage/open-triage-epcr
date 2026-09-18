@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ClinicianSession } from "@open-triage/contracts";
-import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, createValidationRule, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, loadValidationRules, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, setValidationRuleEnabled, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
@@ -13,7 +13,7 @@ import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSecti
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
-import { ValidationReferenceAssistance } from "../components/validation-authoring";
+import { ValidationReferenceAssistance, ValidationRuleFilterControls } from "../components/validation-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -84,6 +84,46 @@ test("directory requests encode server-side filters and pagination", async (t) =
   await loadAdminRoles("all");
   assert.match(requests[0]!, /users\?search=Alex\+Smith&state=disabled&roleId=role-id&cursor=opaque&limit=50$/);
   assert.match(requests[1]!, /roles\?state=all$/);
+});
+
+test("Validation library requests expose all filters and revisioned create, disable, and restore commands", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", revision: 4,
+    displayName: "Rules", rules: [], updatedAt: "2026-09-18T00:00:00Z" };
+  globalThis.fetch = async (input, init) => {
+    requests.push({ input: String(input), init });
+    return Response.json(requests.length === 1 ? { items: [], nextCursor: null, total: 0 } : { ...draft, revision: draft.revision + requests.length });
+  };
+  await loadValidationRules({ search: "incident number", element: "eResponse.03", source: "nemsis", severity: "warning",
+    executionTarget: "sign", enabled: "false", validity: "invalid", cursor: "opaque", limit: 25 });
+  const rule = { name: "Agency incident rule", enabled: false, severity: "warning" as const,
+    executionTargets: ["live" as const], primaryTargetElementId: "eResponse.03", message: "Review incident number",
+    source: 'require present("eResponse.03")', sourceKind: "agency" as const };
+  await createValidationRule("csrf-proof", draft, rule);
+  await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", false);
+  await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", true);
+  assert.match(requests[0]!.input, /validation-rules\?search=incident\+number&element=eResponse\.03&source=nemsis&severity=warning&executionTarget=sign&enabled=false&validity=invalid&cursor=opaque&limit=25$/);
+  assert.match(requests[1]!.input, /validation-drafts\/51000000-0000-4000-8000-000000000001\/rules$/);
+  assert.equal(JSON.parse(String(requests[1]!.init?.body)).expectedRevision, 4);
+  assert.match(requests[2]!.input, /\/disable$/);
+  assert.match(requests[3]!.input, /\/restore$/);
+  assert.ok(requests.slice(1).every(({ init }) => (init?.headers as Record<string, string>)["x-csrf-token"] === "csrf-proof"));
+});
+
+test("Validation rule-library filters expose an accessible search landmark and every supported facet", () => {
+  const markup = renderToStaticMarkup(createElement(ValidationRuleFilterControls, { value: {
+    search: "", element: "", source: "", severity: "", executionTarget: "", enabled: "", validity: "",
+  }, onChange() {} }));
+  assert.match(markup, /role="search" aria-label="Filter Validation rules"/);
+  for (const label of ["Search", "Element", "Source", "Severity", "Target", "State", "Validity"]) {
+    assert.match(markup, new RegExp(`>${label}(?:<| )`));
+  }
+  assert.match(markup, /type="search"/);
+  assert.match(markup, />NEMSIS<\/option>/);
+  assert.match(markup, />Disabled<\/option>/);
+  assert.match(markup, />Invalid<\/option>/);
 });
 
 test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {

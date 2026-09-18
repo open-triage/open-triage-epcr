@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, ValidationActivation, ValidationDraft, ValidationDraftResult } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -267,6 +267,12 @@ export class AdminController {
     return this.validations.current(sessionToken(request, authorization));
   }
 
+  @Get("validation-rules")
+  validationRules(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationRulePage> {
+    return this.validations.library(sessionToken(request, authorization), query);
+  }
+
   @Post("validation-drafts")
   createValidation(@Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
@@ -277,6 +283,26 @@ export class AdminController {
   saveValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
     return this.validations.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("validation-drafts/:id/rules")
+  createValidationRule(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
+    return this.validations.createRule(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("validation-drafts/:id/rules/:ruleId/disable")
+  disableValidationRule(@Param("id", new ParseUUIDPipe()) id: string,
+    @Param("ruleId", new ParseUUIDPipe()) ruleId: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
+    return this.validations.setRuleEnabled(sessionToken(request, authorization), id, ruleId, false, body);
+  }
+
+  @Post("validation-drafts/:id/rules/:ruleId/restore")
+  restoreValidationRule(@Param("id", new ParseUUIDPipe()) id: string,
+    @Param("ruleId", new ParseUUIDPipe()) ruleId: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
+    return this.validations.setRuleEnabled(sessionToken(request, authorization), id, ruleId, true, body);
   }
 
   @Post("validation-drafts/:id/validate")
