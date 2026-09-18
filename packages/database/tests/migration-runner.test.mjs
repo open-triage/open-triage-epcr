@@ -64,12 +64,18 @@ test("migrations run in version order before rollout", async () => {
     "202608300002_second.sql": "select 'second migration';",
   });
   const client = new FakeClient();
+  const messages = [];
 
-  await applyMigrations(client, migrations, silentLog);
+  await applyMigrations(client, migrations, { info(message) { messages.push(message); } });
 
   const executed = client.queries.map(({ sql }) => sql).filter((sql) => sql.includes("migration';"));
   assert.deepEqual(executed, ["select 'first migration';", "select 'second migration';", "select 'third migration';"]);
   assert.deepEqual([...client.applied.keys()], ["202608300001", "202608300002", "202608300003"]);
+  assert.deepEqual(messages.slice(0, 3), [
+    "Waiting for the deployment migration lock",
+    "Acquired the deployment migration lock",
+    "Applying migration 202608300001_first",
+  ]);
 });
 
 test("a failed migration rolls back, is not recorded, and stops later migrations", async () => {

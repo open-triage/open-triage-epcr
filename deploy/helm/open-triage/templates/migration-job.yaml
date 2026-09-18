@@ -32,5 +32,9 @@ spec:
           env:
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: {{ $secretName }}, key: DATABASE_URL } }
+            {{- if .Values.migration.pgOptions }}
+            - name: PGOPTIONS
+              value: {{ .Values.migration.pgOptions | quote }}
+            {{- end }}
           resources: {{- toYaml .Values.migration.resources | nindent 12 }}
 {{- end }}

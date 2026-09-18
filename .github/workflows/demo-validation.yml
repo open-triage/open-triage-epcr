@@ -373,20 +373,51 @@ jobs:
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: >-
-          helm upgrade --install open-triage deploy/helm/open-triage
-          --values deploy/helm/open-triage/demo-reference.values.yaml
-          --namespace open-triage
-          --create-namespace
-          --atomic
-          --cleanup-on-fail
-          --wait
-          --timeout 10m
-          --history-max 10
-          --set-string api.image.repository="${{ steps.images.outputs.api-repository }}"
-          --set-string api.image.tag="${{ steps.images.outputs.api-tag }}"
-          --set-string web.image.repository="${{ steps.images.outputs.web-repository }}"
-          --set-string web.image.tag="${{ steps.images.outputs.web-tag }}"
+        run: |
+          previous_migration_pod="$(kubectl get pods --namespace open-triage \
+            --selector app.kubernetes.io/component=migration \
+            --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          monitor_migration() {
+            local previous_pod="$1"
+            local pod=""
+            for _ in {1..120}; do
+              pod="$(kubectl get pods --namespace open-triage \
+                --selector app.kubernetes.io/component=migration \
+                --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+              [[ -n "$pod" && "$pod" != "$previous_pod" ]] && break
+              sleep 2
+            done
+            [[ -n "$pod" && "$pod" != "$previous_pod" ]] || return 0
+            echo "Monitoring migration pod $pod"
+            kubectl get pod "$pod" --namespace open-triage --output wide --watch &
+            local watch_pid=$!
+            kubectl logs "$pod" --namespace open-triage --all-containers=true \
+              --follow --pod-running-timeout=9m || true
+            kill "$watch_pid" 2>/dev/null || true
+            wait "$watch_pid" 2>/dev/null || true
+          }
+
+          monitor_migration "$previous_migration_pod" &
+          monitor_pid=$!
+          set +e
+          helm upgrade --install open-triage deploy/helm/open-triage \
+            --values deploy/helm/open-triage/demo-reference.values.yaml \
+            --namespace open-triage \
+            --create-namespace \
+            --atomic \
+            --cleanup-on-fail \
+            --wait \
+            --timeout 10m \
+            --history-max 10 \
+            --set-string api.image.repository="${{ steps.images.outputs.api-repository }}" \
+            --set-string api.image.tag="${{ steps.images.outputs.api-tag }}" \
+            --set-string web.image.repository="${{ steps.images.outputs.web-repository }}" \
+            --set-string web.image.tag="${{ steps.images.outputs.web-tag }}"
+          helm_status=$?
+          set -e
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          exit "$helm_status"
       - name: Diagnose failed atomic deployment
         if: failure()
         env:

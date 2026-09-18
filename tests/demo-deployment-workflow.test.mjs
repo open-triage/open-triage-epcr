@@ -65,6 +65,9 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   assert.match(deploy, /--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/);
   assert.match(deploy, /api\.image\.tag="\$\{\{ steps\.images\.outputs\.api-tag \}\}"/);
   assert.match(deploy, /web\.image\.tag="\$\{\{ steps\.images\.outputs\.web-tag \}\}"/);
+  assert.match(deploy, /kubectl logs "\$pod"[\s\S]*--follow --pod-running-timeout=9m/);
+  assert.match(deploy, /helm_status=\$\?/);
+  assert.match(deploy, /exit "\$helm_status"/);
 });
 
 test("Helm validation uses the same committed values as the demo deployment", async () => {

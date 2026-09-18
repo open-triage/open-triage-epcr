@@ -46,7 +46,9 @@ export async function readMigrations(migrationsDirectory) {
 }
 
 export async function applyMigrations(client, migrations, log = console) {
+  log.info("Waiting for the deployment migration lock");
   await client.query("select pg_advisory_lock(hashtext($1))", [lockName]);
+  log.info("Acquired the deployment migration lock");
   try {
     await client.query(`
       create schema if not exists supabase_migrations;
@@ -92,6 +94,7 @@ export async function applyMigrations(client, migrations, log = console) {
         continue;
       }
 
+      log.info(`Applying migration ${migration.version}_${migration.name}`);
       await client.query("begin");
       try {
         await client.query(migration.sql);

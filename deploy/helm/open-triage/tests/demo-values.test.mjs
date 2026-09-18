@@ -49,6 +49,6 @@ test("demo batch workloads remain schedulable on the single-node cluster", () =>
     output.indexOf("name: open-triage-analytics-health"),
   );
 
-  assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 128Mi/);
+  assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 64Mi/);
   assert.match(projector, /requests:\n\s+cpu: 25m\n\s+memory: 128Mi/);
 });
