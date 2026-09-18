@@ -346,11 +346,12 @@ export class CatalogAuthoringService {
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
-        const requirednessSeverity = prior.requirednessSeverity === null || prior.requirednessSeverity === "warning" ||
-          prior.requirednessSeverity === "error" ? prior.requirednessSeverity :
-          prior.agencyRequired === true ? "error" : prior.agencyRequired === false ? null : element.requirednessSeverity;
-        return { ...prior, label: typeof prior.label === "string" && prior.label.trim() ? prior.label : element.label,
-          requirednessSeverity };
+        // Catalog authoring owns labels and vocabulary. Requiredness and documented
+        // occurrence policy are migrated to Validation and cannot be changed here.
+        return { ...prior,
+          label: typeof prior.label === "string" && prior.label.trim() ? prior.label : element.label,
+          requirednessSeverity: element.requirednessSeverity,
+          constraints: { ...prior.constraints, minOccurs: element.constraints.minOccurs, maxOccurs: element.constraints.maxOccurs } };
       }),
       codeLists: baseline.codeLists.map((list) => {
         const prior = existingLists.get(list.listId);
@@ -398,9 +399,10 @@ export class CatalogAuthoringService {
       if (constraints && ((!base.nillable && constraints.nillable) || (!base.supports_not_values && constraints.supportsNotValues) ||
           (!base.supports_pertinent_negatives && constraints.supportsPertinentNegatives)))
         findings.push(`${element.elementId} cannot enable unsupported null or absence semantics`);
-      if (!(element.requirednessSeverity === null || element.requirednessSeverity === "warning" ||
-          element.requirednessSeverity === "error"))
-        findings.push(`${element.elementId}.requirednessSeverity must be optional, warning, or error`);
+      if (element.requirednessSeverity !== (base.agency_required_severity ??
+          (["Mandatory", "Required"].includes(base.usage) ? "error" : null)) ||
+          constraints?.minOccurs !== base.min_occurs || constraints?.maxOccurs !== base.max_occurs)
+        findings.push(`${element.elementId} requiredness and documented occurrence policy must be authored in Validation`);
     }
     if (seen.size !== source.length) findings.push("The draft must retain every stable element identity from the source catalog");
     const sourceLists = await this.sourceCodeLists(manager, sourceReleaseId);

@@ -35,6 +35,24 @@ type VersionRow = {
   updated_at: Date | string; published_at: Date | string | null;
 };
 
+type MigratedForm = {
+  id: string;
+  canonical_definition: {
+    sections?: Array<{ fields?: Array<{
+      key?: string;
+      source?: { kind?: string; elementId?: string };
+      required?: boolean;
+      rules?: Array<{ kind?: string; expression?: unknown }>;
+    }> }>;
+  };
+};
+
+type FormExpression =
+  | { operator: "exists"; field: string }
+  | { operator: "equals"; field: string; value: string | number | boolean | null }
+  | { operator: "not"; condition: FormExpression }
+  | { operator: "and" | "or"; conditions: FormExpression[] };
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new UnprocessableEntityException("Request body must be an object");
   return value as Record<string, unknown>;
@@ -78,6 +96,37 @@ function sourceKind(rule: ValidationRuleSource): ValidationRuleSourceKind {
 function canonicalRule(rule: ValidationRuleSource): string {
   return JSON.stringify([rule.enabled, rule.severity, [...rule.executionTargets].sort(), rule.primaryTargetElementId,
     rule.message.trim(), rule.source.trim().replace(/\s+/g, " ")]);
+}
+
+function literal(value: string | number | boolean): string {
+  return typeof value === "string" ? JSON.stringify(value) : String(value);
+}
+
+/** Converts the bounded legacy Form predicate language into the Validation rule language. */
+export function migrateFormExpression(expression: FormExpression,
+  elementByField: ReadonlyMap<string, string>): string | null {
+  switch (expression.operator) {
+    case "exists": {
+      const elementId = elementByField.get(expression.field);
+      return elementId ? `present(${JSON.stringify(elementId)})` : null;
+    }
+    case "equals": {
+      const elementId = elementByField.get(expression.field);
+      if (!elementId || expression.value === null) return null;
+      return `equals(${JSON.stringify(elementId)}, ${literal(expression.value)})`;
+    }
+    case "not": {
+      const condition = migrateFormExpression(expression.condition, elementByField);
+      return condition ? `not(${condition})` : null;
+    }
+    case "and":
+    case "or": {
+      const conditions = expression.conditions.map((condition) => migrateFormExpression(condition, elementByField));
+      if (conditions.some((condition) => condition === null)) return null;
+      const operation = expression.operator === "and" ? "all" : "any";
+      return `${operation}(${conditions.join(", ")})`;
+    }
+  }
 }
 
 function ruleChanges(before: ValidationRuleSource[], after: ValidationRuleSource[]): ValidationRuleChanges {
@@ -213,16 +262,29 @@ export class ValidationAuthoringService {
       `, [session.organization.id, catalogReleaseId]);
       if (!catalogs[0]) throw new UnprocessableEntityException("Validation drafts must bind to a published catalog available to the organization");
       const elements = await manager.query<Array<{ element_id: string; name: string; min_occurs: number;
-        max_occurs: number | null; group_id: string; group_repeating: boolean }>>(`
-        select e.element_id,e.name,e.min_occurs,e.max_occurs,e.group_path[array_length(e.group_path,1)] as group_id,
+        max_occurs: number | null; group_id: string; group_repeating: boolean;
+        agency_required: boolean | null; agency_required_severity: "warning" | "error" | null }>>(`
+        select e.element_id,e.name,e.min_occurs,e.max_occurs,e.agency_required,e.agency_required_severity,
+          e.group_path[array_length(e.group_path,1)] as group_id,
           coalesce(g.repeating,false) as group_repeating
         from catalog.element_definition e left join catalog.group_definition g
           on g.release_id=e.release_id and g.group_id=e.group_path[array_length(e.group_path,1)]
         where e.release_id=$1 order by e.element_id`, [catalogReleaseId]);
       if (!elements.length) throw new UnprocessableEntityException("The selected catalog has no elements");
+      const forms = await manager.query<MigratedForm[]>(`select fv.id,fv.canonical_definition
+        from forms.form_version fv join forms.form f on f.id=fv.form_id
+        join forms.agency_stationary_default active on active.organization_id=f.organization_id
+          and active.form_version_id=fv.id
+        where f.organization_id=$1 and fv.catalog_release_id=$2 and fv.status='published' limit 1`,
+      [session.organization.id, catalogReleaseId]);
       const versionId = randomUUID();
       const rules: ValidationRuleSource[] = elements.flatMap((element) => {
         const scope = element.group_repeating ? element.group_id : undefined;
+        const required = element.agency_required === true ? [{ id: randomUUID(), name: `${element.name} agency required`, enabled: true,
+          severity: element.agency_required_severity ?? "error" as const,
+          executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"], sourceKind: "catalog" as const,
+          primaryTargetElementId: element.element_id, message: `${element.name} is required by agency policy`,
+          source: formatOccurrenceSource(element.element_id, "minimum", 1) }] : [];
         const minimum = element.min_occurs > 0 ? [{ id: randomUUID(), name: `${element.name} documented minimum`, enabled: true,
           severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
           sourceKind: "catalog" as const,
@@ -235,8 +297,33 @@ export class ValidationAuthoringService {
           primaryTargetElementId: element.element_id,
           message: `${element.name} permits at most ${element.max_occurs} documented occurrence(s)`,
           source: formatOccurrenceSource(element.element_id, "maximum", element.max_occurs, scope) }] : [];
-        return [...minimum, ...maximum];
+        return [...required, ...minimum, ...maximum];
       });
+      const form = forms[0];
+      if (form) {
+        const fields = form.canonical_definition?.sections?.flatMap((section) => section.fields ?? []) ?? [];
+        const elementByField = new Map(fields.flatMap((field) => field.key && field.source?.kind === "nemsis" && field.source.elementId
+          ? [[field.key, field.source.elementId] as const] : []));
+        for (const field of fields) {
+          if (!field.key || field.source?.kind !== "nemsis" || !field.source.elementId) continue;
+          const element = elements.find(({ element_id }) => element_id === field.source!.elementId);
+          if (!element) continue;
+          if (field.required) rules.push({ id: randomUUID(), name: `${element.name} form required`, enabled: true,
+            severity: "error", executionTargets: ["live", "sign"], sourceKind: "form",
+            primaryTargetElementId: element.element_id, message: `${element.name} is required by the form`,
+            source: formatOccurrenceSource(element.element_id, "minimum", 1) });
+          for (const legacyRule of field.rules ?? []) {
+            if (legacyRule.kind !== "requiredness" || !legacyRule.expression) continue;
+            const condition = migrateFormExpression(legacyRule.expression as FormExpression, elementByField);
+            if (!condition) continue;
+            rules.push({ id: randomUUID(), name: `${element.name} conditional form requirement`, enabled: true,
+              severity: "error", executionTargets: ["live", "sign"], sourceKind: "form",
+              primaryTargetElementId: element.element_id,
+              message: `${element.name} is required by its current form condition`,
+              source: `when ${condition}\nrequire present(${JSON.stringify(element.element_id)})` });
+          }
+        }
+      }
       if (!rules.length) {
         const element = elements[0]!;
         rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error", sourceKind: "catalog",

@@ -360,15 +360,15 @@ export class SignReportService {
       // reference, but it is supplied by the pinned configuration rather than
       // stored as clinician-authored element occurrences on the report.
       if (!field.clinically_stored) continue;
-      if (field.required && values.length === 0) {
+      if (!report.validation_version_id && field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
       }
-      if (field.agency_required === true && values.length === 0) {
+      if (!report.validation_version_id && field.agency_required === true && values.length === 0) {
         findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
           `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
-      if (field.min_occurs !== null && values.length < field.min_occurs) {
+      if (!report.validation_version_id && field.min_occurs !== null && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
           `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
       }
@@ -376,7 +376,7 @@ export class SignReportService {
     for (const rule of rules) {
       const applies = this.evaluateRule(rule.expression, byField);
       const target = byField.get(rule.target_key) ?? [];
-      if (rule.rule_kind === "requiredness" && applies && target.length === 0) {
+      if (!report.validation_version_id && rule.rule_kind === "requiredness" && applies && target.length === 0) {
         findings.push(this.finding("form.conditional-required", `$.fields.${rule.target_key}`,
           `Field ${rule.target_key} is required by its current form condition`));
       }
@@ -490,7 +490,7 @@ export class SignReportService {
     }
     for (const values of byElementAndParent.values()) {
       const first = values[0]!;
-      if (first.max_occurs !== null && values.length > first.max_occurs) {
+      if (!report.validation_version_id && first.max_occurs !== null && values.length > first.max_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.elements.${first.element_id}`,
           `${first.element_id} permits at most ${first.max_occurs} occurrence(s) in this group; found ${values.length}`));
       }
