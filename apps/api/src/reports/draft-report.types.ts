@@ -73,6 +73,7 @@ export interface DraftReportResult {
   agencyDemographicVersionId: string;
   formVersionId: string;
   catalogReleaseId: string;
+  validationVersionId?: string;
   documentingUserId: string;
 }
 

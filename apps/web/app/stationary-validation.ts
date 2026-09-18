@@ -1,4 +1,4 @@
-import type { ClinicalFormConfiguration, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import { evaluateValidationBundle, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
 import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
@@ -199,6 +199,20 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         seenOccurrences.add(value.occurrenceId);
         findings.push(...valueFindings(element, instance.instanceId, value, configured));
       }
+    }
+  }
+  if (clinicalForm?.validation) {
+    for (const authored of evaluateValidationBundle(clinicalForm.validation.bundle, document, "live")) {
+      const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
+      const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
+      findings.push(finding(
+        `validation.${authored.validationVersionId}.${authored.ruleId}`,
+        authored.message,
+        { groupId, ...(authored.primaryTarget.groupInstanceId ? { groupInstanceId: authored.primaryTarget.groupInstanceId } : {}),
+          fieldId: authored.primaryTarget.elementId },
+        element?.name ?? authored.primaryTarget.elementId,
+        authored.severity === "information" ? "warning" : authored.severity,
+      ));
     }
   }
   return findings;

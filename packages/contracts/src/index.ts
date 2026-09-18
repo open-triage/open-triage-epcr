@@ -3,6 +3,21 @@ export interface HealthResponse {
   service: "open-triage-api";
 }
 
+export {
+  VALIDATION_COMPILED_SCHEMA_VERSION,
+  VALIDATION_LANGUAGE_VERSION,
+  compileValidationRule,
+  evaluateValidationBundle,
+  formatRequiredElementSource,
+  type CompiledValidationBundle,
+  type CompiledValidationRule,
+  type ValidationDiagnostic,
+  type ValidationExecutionTarget,
+  type ValidationFinding,
+  type ValidationRuleSource,
+  type ValidationSeverity,
+} from "./validation-rules.js";
+
 export type FeedbackSubmissionType = "bug" | "feature";
 
 export type FeedbackDiagnosticMode = "mobile" | "stationary" | "admin";
@@ -235,7 +250,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation";
 
 export interface AdminRoleSummary {
   id: string;
@@ -581,6 +596,43 @@ export interface PublishedCatalog {
   projectionsVerified: true;
 }
 
+export interface ValidationDraft {
+  id: string;
+  catalogReleaseId: string;
+  revision: number;
+  displayName: string;
+  rule: import("./validation-rules.js").ValidationRuleSource;
+  updatedAt: string;
+}
+
+export interface ValidationDraftResult {
+  valid: boolean;
+  diagnostics: import("./validation-rules.js").ValidationDiagnostic[];
+  compiledBundle?: import("./validation-rules.js").CompiledValidationBundle;
+  compiledSha256?: string;
+}
+
+export interface PublishedValidationVersion {
+  id: string;
+  organizationId: string;
+  catalogReleaseId: string;
+  version: number;
+  displayName: string;
+  status: "published";
+  ruleId: string;
+  compiledSha256: string;
+  publishedAt: string;
+}
+
+export interface ValidationActivation {
+  organizationId: string;
+  validationVersionId: string;
+  catalogReleaseId: string;
+  formVersionId: string;
+  activatedAt: string;
+  previousValidationVersionId: string | null;
+}
+
 export interface FormDraftRule {
   kind: "visibility" | "requiredness";
   expression: Record<string, unknown>;
@@ -620,6 +672,11 @@ export interface ClinicalFormConfiguration {
       terminologyVersion?: string;
     }>;
   }>;
+  /** Immutable live-validation bundle pinned with the report. */
+  validation?: {
+    versionId: string;
+    bundle: import("./validation-rules.js").CompiledValidationBundle;
+  };
 }
 
 export interface FormCloneDiagnostic {
@@ -736,6 +793,7 @@ export interface OpenAssignmentResponse {
     documentingUserId: string;
     formVersionId: string;
     catalogReleaseId: string;
+    validationVersionId?: string;
     /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
     clinicalForm?: ClinicalFormConfiguration;
     revision: number;

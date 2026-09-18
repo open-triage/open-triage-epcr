@@ -53,6 +53,7 @@ type ReportRow = {
   documenting_user_id: string;
   form_version_id: string;
   catalog_release_id: string;
+  validation_version_id: string | null;
   revision: string | number;
   status: "draft" | "signed";
   synthetic: boolean;
@@ -335,12 +336,17 @@ export class AssignedCallsService {
           return { assignment, reportId: assignment.report_id, replacement: null };
         }
 
-        const versions = await manager.query<Array<{ id: string; catalog_release_id: string }>>(`
-          select fv.id, fv.catalog_release_id
+        const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string | null }>>(`
+          select fv.id, fv.catalog_release_id, vv.id as validation_version_id
           from forms.form_version fv
           join forms.form f on f.id = fv.form_id
           join forms.agency_stationary_default active on active.form_version_id = fv.id
             and active.organization_id = f.organization_id
+          left join validation.active_version av on av.organization_id=f.organization_id
+            and av.form_version_id=fv.id
+          left join validation.version vv on vv.id=av.validation_version_id
+            and vv.organization_id=f.organization_id and vv.catalog_release_id=fv.catalog_release_id
+            and vv.status='published'
           where f.organization_id = $1 and fv.status = 'published'
           limit 1
         `, [session.organization.id]);
@@ -367,11 +373,11 @@ export class AssignedCallsService {
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-             form_version_id, catalog_release_id, documenting_user_id, synthetic,
+             form_version_id, catalog_release_id, documenting_user_id, validation_version_id, synthetic,
              synthetic_generated_by, synthetic_source_assignment_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11)
         `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
-          version.id, version.catalog_release_id, session.user.id,
+          version.id, version.catalog_release_id, session.user.id, version.validation_version_id,
           assignment.synthetic_generated_by, assignment.synthetic_generated_by ? assignment.id : null]);
         const receipts = assignment.dispatch_receipt_id
           ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
@@ -492,7 +498,7 @@ export class AssignedCallsService {
   ): Promise<OpenAssignmentResponse> {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
-        select id, documenting_user_id, form_version_id, catalog_release_id, revision, status, synthetic,
+        select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id, revision, status, synthetic,
                expires_at,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -502,7 +508,8 @@ export class AssignedCallsService {
       if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
       const document = await encounterDocument(manager, report.id);
       const conflicts = await dispatchConflicts(manager, report.id);
-      const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id);
+      const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id,
+        report.validation_version_id);
       return {
         assignmentId: assignment.id,
         report: {
@@ -510,6 +517,7 @@ export class AssignedCallsService {
           documentingUserId: report.documenting_user_id,
           formVersionId: report.form_version_id,
           catalogReleaseId: report.catalog_release_id,
+          ...(report.validation_version_id ? { validationVersionId: report.validation_version_id } : {}),
           clinicalForm,
           revision: Number(report.revision),
           status: "draft" as const,

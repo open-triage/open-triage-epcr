@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ClinicianSession } from "@open-triage/contracts";
-import { acceptOwnershipTransfer, activateStationaryForm, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
@@ -468,6 +468,31 @@ test("form review summarizes structure and publication stays separate from activ
   assert.equal(paths.length, 1, "publication did not activate the form");
   await activateStationaryForm("csrf-proof", "draft-id", "Deploy");
   assert.match(paths[1]!, /form-versions\/draft-id\/activate$/);
+});
+
+test("Validation publication and activation are separate browser commands", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const paths: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    paths.push(String(input));
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    if (String(input).includes("/validation-drafts/")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 3, displayName: "Agency required fields", changeNote: "Reviewed" });
+      return Response.json({ id: "51000000-0000-4000-8000-000000000001", status: "published" });
+    }
+    assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Activate reviewed rule" });
+    return Response.json({ validationVersionId: "51000000-0000-4000-8000-000000000001" });
+  };
+  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", revision: 3,
+    displayName: "Agency required fields", rule: { id: "52000000-0000-4000-8000-000000000001",
+      name: "Require incident number", enabled: true, severity: "error" as const,
+      executionTargets: ["live" as const, "sign" as const], primaryTargetElementId: "eResponse.03",
+      message: "Incident number is required", source: 'assert present("eResponse.03")' }, updatedAt: new Date().toISOString() };
+  await publishValidationDraft("csrf-proof", draft, "Reviewed");
+  assert.equal(paths.length, 1);
+  await activateValidationVersion("csrf-proof", draft.id, "Activate reviewed rule");
+  assert.match(paths[1]!, /validation-versions\/.*\/activate$/);
 });
 
 test("form catalog picker is searchable, labels duplicates, and exposes an add control", () => {

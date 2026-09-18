@@ -6,6 +6,7 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
+import { evaluateValidationBundle, type CompiledValidationBundle } from "@open-triage/contracts";
 import {
   evaluateQualityAndNormalization,
   NORMALIZATION_RULE_VERSION,
@@ -13,6 +14,7 @@ import {
 } from "@open-triage/contracts/quality-rules";
 import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
+import { encounterDocument } from "./encounter-document.persistence.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import type {
   SignedReportResult,
@@ -38,6 +40,7 @@ type ReportRow = {
   agency_demographic_version_id: string;
   form_version_id: string;
   catalog_release_id: string;
+  validation_version_id: string | null;
   documenting_user_id: string;
   reporting_date: string | null;
 };
@@ -161,6 +164,7 @@ export class SignReportService {
         }
 
         const findings = await this.validateSemantics(manager, report);
+        findings.push(...await this.validateAuthoredRules(manager, report));
         const unresolvedDispatch = await manager.query<Array<{ id: string; element_id: string }>>(`
           select id, element_id from clinical.dispatch_conflict
           where report_id = $1 and disposition is null order by created_at, id
@@ -169,14 +173,24 @@ export class SignReportService {
         await manager.query("delete from clinical.validation_finding where report_id = $1", [report.id]);
         if (findings.length) {
           await manager.query(`insert into clinical.validation_finding
-            (report_id, revision, severity, code, path, message, rule_version)
+            (report_id, revision, severity, code, path, message, rule_version,
+             validation_version_id, validation_rule_id, execution_target, target_element_id, input_fingerprint)
             select $1, $2, incoming.severity, incoming.code, incoming.path,
-                   incoming.message, incoming.rule_version
+                   incoming.message, incoming.rule_version, incoming.validation_version_id,
+                   incoming.validation_rule_id, incoming.execution_target, incoming.target_element_id,
+                   incoming.input_fingerprint
             from jsonb_to_recordset($3::jsonb) as incoming(
-              severity text, code text, path text, message text, rule_version text)`,
+              severity text, code text, path text, message text, rule_version text,
+              validation_version_id uuid, validation_rule_id uuid, execution_target text,
+              target_element_id text, input_fingerprint text)`,
           [report.id, revision, JSON.stringify(findings.map((finding) => ({
             severity: finding.severity, code: finding.code, path: finding.path,
             message: finding.message, rule_version: finding.ruleVersion,
+            validation_version_id: finding.validationVersionId ?? null,
+            validation_rule_id: finding.ruleId ?? null,
+            execution_target: finding.executionTarget ?? null,
+            target_element_id: finding.targetElementId ?? null,
+            input_fingerprint: finding.inputFingerprint ?? null,
           })))]);
         }
         if (findings.some((finding) => finding.severity === "error")) return { findings };
@@ -193,13 +207,13 @@ export class SignReportService {
           where id = $1 and status = 'draft'`,
         [report.id, reporting.date, reporting.source, signedAt]);
         await manager.query(`insert into clinical.signed_snapshot
-          (id, report_id, signed_revision, form_version_id, catalog_release_id, signer_id,
+          (id, report_id, signed_revision, form_version_id, catalog_release_id, validation_version_id, signer_id,
            signed_at, canonical_sha256, attestation, warning_acknowledgements,
            quality_rule_version, normalization_rule_version, quality_findings, derived_values)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
-                  $11, $12, $13::jsonb, $14::jsonb)`,
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
+                  $12, $13, $14::jsonb, $15::jsonb)`,
         [snapshotId, report.id, revision, report.form_version_id, report.catalog_release_id,
-          command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
+          report.validation_version_id, command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
           JSON.stringify(command.warningAcknowledgements ?? {}), QUALITY_RULE_VERSION,
           NORMALIZATION_RULE_VERSION, JSON.stringify(quality.qualityFindings),
           JSON.stringify(quality.derivedValues)]);
@@ -215,6 +229,7 @@ export class SignReportService {
           signedAt,
           formVersionId: report.form_version_id,
           catalogReleaseId: report.catalog_release_id,
+          ...(report.validation_version_id ? { validationVersionId: report.validation_version_id } : {}),
           reportingDate: reporting.date,
           reportingDateSource: reporting.source,
           qualityRuleVersion: QUALITY_RULE_VERSION,
@@ -268,6 +283,31 @@ export class SignReportService {
       valueNumeric: row.value_numeric,
       sourceAttributes: row.source_attributes
     })));
+  }
+
+  private async validateAuthoredRules(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
+    if (!report.validation_version_id) return [];
+    const versions = await manager.query<Array<{ compiled_bundle: CompiledValidationBundle }>>(`
+      select compiled_bundle from validation.version
+      where id=$1 and organization_id=$2 and catalog_release_id=$3 and status='published'
+    `, [report.validation_version_id, report.organization_id, report.catalog_release_id]);
+    if (!versions[0]) return [{ severity: "error", code: "validation.runtime-unavailable",
+      path: "$.validationVersionId", message: "The pinned validation bundle is unavailable",
+      ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
+      executionTarget: "sign" }];
+    const document = await encounterDocument(manager, report.id);
+    return evaluateValidationBundle(versions[0].compiled_bundle, document, "sign").map((finding) => ({
+      severity: finding.severity === "information" ? "warning" : finding.severity,
+      code: "validation.required-element",
+      path: `$.elements.${finding.primaryTarget.elementId}`,
+      message: finding.message,
+      ruleVersion: finding.validationVersionId,
+      validationVersionId: finding.validationVersionId,
+      ruleId: finding.ruleId,
+      executionTarget: finding.executionTarget,
+      targetElementId: finding.primaryTarget.elementId,
+      inputFingerprint: finding.inputFingerprint,
+    }));
   }
 
   private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
