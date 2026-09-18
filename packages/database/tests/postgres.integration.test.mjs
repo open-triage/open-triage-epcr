@@ -148,7 +148,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
       "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
-      "sessions:read", "sessions:revoke", "users:read", "users:write"
+      "sessions:read", "sessions:revoke", "users:read", "users:write",
+      "validation:publish", "validation:read", "validation:write"
     ]);
     assert.equal(capabilityKeys.includes("installation:administer"), false);
     assert.equal(capabilityKeys.includes("reports:document"), false);
@@ -178,11 +179,12 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal(protectedRoles.rows.length, 3);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
-      assert.equal(administrator.capabilities.length, 16);
+      assert.equal(administrator.capabilities.length, 19);
+      assert.equal(administrator.capabilities.includes("validation:publish"), true);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
       assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
         "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-        "forms:read", "forms:write", "roles:read", "users:read"
+        "forms:read", "forms:write", "roles:read", "users:read", "validation:read", "validation:write"
       ] });
       await client.query(`insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by, note)
@@ -192,6 +194,12 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       await client.query(`insert into app_identity.installation_owner
         (organization_id, user_id, established_by_operator_id) values ($1, $2, 'integration-test')`,
       [organizationId, ownerUserId]);
+      for (const capability of ["validation:read", "validation:write", "validation:publish"]) {
+        assert.equal((await client.query(
+          "select app_identity.user_has_capability($1, $2, $3) allowed",
+          [ownerUserId, organizationId, capability]
+        )).rows[0].allowed, true, `installation owner is missing ${capability}`);
+      }
       const immutableVersionId = (await client.query(`select current_version_id from app_identity.role
         where organization_id = $1 and system_key = 'clinician'`, [organizationId])).rows[0].current_version_id;
       await rejectsSql(client, "update app_identity.role_version set note = 'changed' where id = $1",
@@ -225,6 +233,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       [organizationId, userId, roleId]);
       assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'catalog:read') allowed",
         [userId, organizationId])).rows[0].allowed, true);
+      assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'validation:read') allowed",
+        [userId, organizationId])).rows[0].allowed, false,
+        "existing custom roles do not inherit newly registered Validation capabilities");
       await client.query("update app_identity.role set current_version_id = $2 where id = $1", [roleId, versionTwoId]);
       assert.equal((await client.query("select app_identity.user_has_capability($1, $2, 'catalog:read') allowed",
         [userId, organizationId])).rows[0].allowed, false);
