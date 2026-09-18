@@ -70,12 +70,10 @@ export class UserLifecycleService {
 
         const before = { username: target.username, displayName: target.display_name, active: target.active,
           roleIds: currentRoleIds, revision: Number(target.revision) };
-        await manager.query(`update app_identity.local_credential set username = $2
-          where user_id = $1 and username <> $2`, [target.id, command.username]);
-        await manager.query(`update app_identity.app_user set display_name = $2, active = $3,
-          deactivated_at = case when $3 then null else coalesce(deactivated_at, $4) end,
-          revision = revision + 1 where id = $1`, [target.id, command.displayName, command.active, now]);
 
+        // Count and revoke sessions before changing the account row. The
+        // database containment trigger is a defense-in-depth backstop for
+        // updates outside this service and will otherwise revoke them first.
         let sessionsRevoked = 0;
         if (target.active && !command.active) {
           const revoked = mutationRows<{ id: string }>(await manager.query(`update app_identity.app_session
@@ -83,6 +81,11 @@ export class UserLifecycleService {
             where user_id = $1 and revoked_at is null returning id`, [target.id, now]));
           sessionsRevoked = revoked.length;
         }
+        await manager.query(`update app_identity.local_credential set username = $2
+          where user_id = $1 and username <> $2`, [target.id, command.username]);
+        await manager.query(`update app_identity.app_user set display_name = $2, active = $3,
+          deactivated_at = case when $3 then null else coalesce(deactivated_at, $4) end,
+          revision = revision + 1 where id = $1`, [target.id, command.displayName, command.active, now]);
         const action = target.active && !command.active ? "account.disable"
           : !target.active && command.active ? "account.reactivate"
             : "account.identity_change";

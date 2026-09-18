@@ -1362,6 +1362,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       accessToken: integrationAccessToken,
       user: { id: userId, displayName: "Clinician" },
       organization: { id: organizationId, name: "Draft API" },
+      capabilities: ["clinical:document"],
       startedAt: "2026-09-03T08:00:00.000Z",
       expiresAt: "2026-09-03T22:00:00.000Z"
     };
