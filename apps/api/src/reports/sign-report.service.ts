@@ -95,6 +95,7 @@ type CodedValidationRow = {
 };
 
 const RULE_VERSION = "signing-1.0.0";
+const SIGNING_TRANSACTION_ATTEMPTS = 3;
 
 export function unresolvedDispatchConflictFindings(
   conflicts: ReadonlyArray<{ id: string; element_id: string }>
@@ -127,9 +128,7 @@ export class SignReportService {
       throw error;
     }
     const digest = commandSha256(command);
-    let attempt: SigningAttempt;
-    try {
-      attempt = await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+    const signTransaction = () => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
         const rows = await manager.query<ReportRow[]>(`
           select * from clinical.report
@@ -228,10 +227,21 @@ export class SignReportService {
           values ($1, $2, 'sign-report', $3, 201, $4::jsonb)`,
         [command.commandId, report.id, digest, JSON.stringify(result)]);
         return { result };
-      });
-    } catch (error) {
-      this.rethrowDatabaseConflict(error);
+    });
+    let attempt: SigningAttempt | undefined;
+    for (let transactionAttempt = 1; transactionAttempt <= SIGNING_TRANSACTION_ATTEMPTS; transactionAttempt += 1) {
+      try {
+        attempt = await signTransaction();
+        break;
+      } catch (error) {
+        if (transactionAttempt < SIGNING_TRANSACTION_ATTEMPTS && this.retryableTransactionError(error)) {
+          await new Promise((resolve) => setTimeout(resolve, 25 * transactionAttempt));
+          continue;
+        }
+        this.rethrowDatabaseConflict(error);
+      }
     }
+    if (!attempt) throw new ConflictException("The signing transaction could not be completed");
     if (attempt.findings) {
       throw new UnprocessableEntityException({ message: "Report validation failed", findings: attempt.findings });
     }
@@ -576,5 +586,12 @@ export class SignReportService {
       throw new ConflictException("The signing command conflicts with existing clinical data");
     }
     throw error;
+  }
+
+  private retryableTransactionError(error: unknown): boolean {
+    if (typeof error !== "object" || error === null) return false;
+    const candidate = error as { code?: unknown; driverError?: { code?: unknown } };
+    const code = candidate.driverError?.code ?? candidate.code;
+    return code === "40001" || code === "40P01";
   }
 }

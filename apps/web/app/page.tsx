@@ -43,6 +43,7 @@ import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
+import { flushProtectedReport } from "./protected-clinical-storage";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 
@@ -319,7 +320,14 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     if (!report || !canFinish || signing) return;
     setSigning(true);
     setSignError(null);
-    await flushSave();
+    try {
+      await flushSave();
+      await flushProtectedReport(report.id);
+    } catch {
+      setSignError("The record must finish protected storage before it can be signed.");
+      setSigning(false);
+      return;
+    }
     if (!navigator.onLine || nextDraftChange(window.localStorage, report.id)) {
       setSignError("The record must finish syncing before it can be signed.");
       setSigning(false);

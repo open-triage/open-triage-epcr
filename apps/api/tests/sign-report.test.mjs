@@ -36,6 +36,38 @@ test("unresolved dispatch differences block signing until disposition", () => {
   assert.deepEqual(unresolvedDispatchConflictFindings([]), []);
 });
 
+test("signing retries a transient PostgreSQL serialization failure", async () => {
+  const signerId = randomUUID();
+  const organizationId = randomUUID();
+  const reportId = randomUUID();
+  const signed = {
+    id: reportId,
+    status: "signed",
+    signedRevision: 7,
+  };
+  let transactions = 0;
+  const service = new SignReportService({
+    transaction: async () => {
+      transactions += 1;
+      if (transactions === 1) throw { driverError: { code: "40001" } };
+      return { result: signed };
+    },
+  }, {
+    requireCapability: async () => ({
+      organization: { id: organizationId },
+      user: { id: signerId },
+    }),
+  });
+
+  const result = await service.sign("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 7, signerId,
+    attestation: { meaning: "clinician approval" },
+  });
+
+  assert.equal(transactions, 2);
+  assert.equal(result, signed);
+});
+
 test("signing does not require report occurrences for read-only configuration metadata", async () => {
   let fieldQuery = "";
   const manager = { query: async (sql) => {

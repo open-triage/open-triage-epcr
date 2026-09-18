@@ -29,6 +29,7 @@ import { OwnershipTransferService } from "../dist/admin/ownership-transfer.servi
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
+import { SignReportService } from "../dist/reports/sign-report.service.js";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -1941,7 +1942,23 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   { status: "draft", snapshots: 0, audits: 0, events: 0, receipts: 0 });
 
   signCommand.deviceId = "unit-7";
-  const signed = await sign(signCommand);
+  const signingService = app.get(SignReportService);
+  const signingDataSource = signingService.dataSource;
+  let signingTransactions = 0;
+  signingService.dataSource = {
+    transaction: async (...args) => {
+      signingTransactions += 1;
+      if (signingTransactions === 1) throw { driverError: { code: "40001" } };
+      return signingDataSource.transaction(...args);
+    },
+  };
+  let signed;
+  try {
+    signed = await sign(signCommand);
+  } finally {
+    signingService.dataSource = signingDataSource;
+  }
+  assert.equal(signingTransactions, 2);
   assert.equal(signed.response.status, 201, JSON.stringify(signed.payload));
   assert.equal(signed.payload.status, "signed");
   assert.equal(signed.payload.signedRevision, 8);
