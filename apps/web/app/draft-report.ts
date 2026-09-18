@@ -352,7 +352,15 @@ export async function signDraftReport(
   reportId: string,
   expectedRevision: number,
   signerId: string,
-  warningAcknowledgements: ReadonlyArray<string>,
+  warningAcknowledgements: ReadonlyArray<string | { readonly id: string; readonly acknowledgement?: {
+    readonly validationVersionId: string;
+    readonly ruleId: string;
+    readonly targetElementId: string;
+    readonly targetGroupInstanceId?: string;
+    readonly targetOccurrenceId?: string;
+    readonly inputFingerprint: string;
+  } }>,
+  evaluationTimestamp = new Date().toISOString(),
 ): Promise<void> {
   const configuration = browserRequestConfiguration();
   if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) return;
@@ -367,9 +375,10 @@ export async function signDraftReport(
         expectedRevision,
         signerId,
         attestation: { meaning: "clinician approval" },
-        warningAcknowledgements: Object.fromEntries(warningAcknowledgements.map((id) => [id, true])),
+        warningAcknowledgements: Object.fromEntries(warningAcknowledgements.map((item) => typeof item === "string"
+          ? [item, true] : [item.id, item.acknowledgement ?? true])),
         deviceId: `web:${reportId}`,
-        clientTime: new Date().toISOString(),
+        clientTime: evaluationTimestamp,
       }),
     }));
   } catch {

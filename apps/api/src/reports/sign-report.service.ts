@@ -19,7 +19,8 @@ import { commandSha256 } from "./draft-report.validation.js";
 import type {
   SignedReportResult,
   SigningFinding,
-  SignReportCommand
+  SignReportCommand,
+  WarningAcknowledgement
 } from "./sign-report.types.js";
 import { SignReportValidationError, validateSignReportCommand } from "./sign-report.validation.js";
 
@@ -113,6 +114,35 @@ export function unresolvedDispatchConflictFindings(
   }));
 }
 
+export function validationFindingAcknowledgementId(finding: Pick<SigningFinding, "validationVersionId" | "ruleId" |
+  "targetElementId" | "targetGroupInstanceId" | "targetOccurrenceId" | "inputFingerprint">): string | null {
+  if (!finding.validationVersionId || !finding.ruleId || !finding.targetElementId || !finding.inputFingerprint) return null;
+  return ["validation", finding.validationVersionId, finding.ruleId, finding.targetElementId,
+    finding.targetGroupInstanceId ?? "root", finding.targetOccurrenceId ?? "none", finding.inputFingerprint]
+    .map(encodeURIComponent).join(":");
+}
+
+export function acknowledgementMatchesFinding(acknowledgement: WarningAcknowledgement | undefined,
+  finding: SigningFinding): boolean {
+  return !!acknowledgement && acknowledgement.validationVersionId === finding.validationVersionId
+    && acknowledgement.ruleId === finding.ruleId
+    && acknowledgement.targetElementId === finding.targetElementId
+    && (acknowledgement.targetGroupInstanceId ?? undefined) === (finding.targetGroupInstanceId ?? undefined)
+    && (acknowledgement.targetOccurrenceId ?? undefined) === (finding.targetOccurrenceId ?? undefined)
+    && acknowledgement.inputFingerprint === finding.inputFingerprint;
+}
+
+export function blockingSigningFindings(findings: readonly SigningFinding[],
+  acknowledgements: SignReportCommand["warningAcknowledgements"] = {}): SigningFinding[] {
+  return findings.filter((finding) => {
+    if (finding.severity === "error") return true;
+    if (finding.severity === "information") return false;
+    const id = validationFindingAcknowledgementId(finding);
+    const candidate = id === null ? undefined : acknowledgements?.[id];
+    return id === null || candidate === true || !acknowledgementMatchesFinding(candidate, finding);
+  });
+}
+
 @Injectable()
 export class SignReportService {
   constructor(
@@ -176,26 +206,39 @@ export class SignReportService {
         if (findings.length) {
           await manager.query(`insert into clinical.validation_finding
             (report_id, revision, severity, code, path, message, rule_version,
-             validation_version_id, validation_rule_id, execution_target, target_element_id, input_fingerprint)
+             validation_version_id, validation_rule_id, execution_target, target_element_id,
+             target_group_instance_id, target_occurrence_id, input_fingerprint, acknowledged_by, acknowledged_at)
             select $1, $2, incoming.severity, incoming.code, incoming.path,
                    incoming.message, incoming.rule_version, incoming.validation_version_id,
                    incoming.validation_rule_id, incoming.execution_target, incoming.target_element_id,
-                   incoming.input_fingerprint
+                   incoming.target_group_instance_id, incoming.target_occurrence_id, incoming.input_fingerprint,
+                   incoming.acknowledged_by, case when incoming.acknowledged_by is null then null else $4::timestamptz end
             from jsonb_to_recordset($3::jsonb) as incoming(
               severity text, code text, path text, message text, rule_version text,
               validation_version_id uuid, validation_rule_id uuid, execution_target text,
-              target_element_id text, input_fingerprint text)`,
+              target_element_id text, target_group_instance_id uuid, target_occurrence_id uuid,
+              input_fingerprint text, acknowledged_by uuid)`,
           [report.id, revision, JSON.stringify(findings.map((finding) => ({
+            ...(() => {
+              const id = validationFindingAcknowledgementId(finding);
+              const candidate = id === null ? undefined : command.warningAcknowledgements?.[id];
+              const acknowledged = finding.severity === "warning" && candidate !== true
+                && acknowledgementMatchesFinding(candidate, finding);
+              return { acknowledged_by: acknowledged ? command.signerId : null };
+            })(),
             severity: finding.severity, code: finding.code, path: finding.path,
             message: finding.message, rule_version: finding.ruleVersion,
             validation_version_id: finding.validationVersionId ?? null,
             validation_rule_id: finding.ruleId ?? null,
             execution_target: finding.executionTarget ?? null,
             target_element_id: finding.targetElementId ?? null,
+            target_group_instance_id: finding.targetGroupInstanceId ?? null,
+            target_occurrence_id: finding.targetOccurrenceId ?? null,
             input_fingerprint: finding.inputFingerprint ?? null,
-          })))]);
+          }))), evaluationTimestamp]);
         }
-        if (findings.some((finding) => finding.severity === "error")) return { findings };
+        const blockingFindings = blockingSigningFindings(findings, command.warningAcknowledgements);
+        if (blockingFindings.length) return { findings: blockingFindings };
 
         const payload = await this.canonicalPayload(manager, report, revision);
         const quality = await this.evaluateQuality(manager, report.id);
@@ -309,15 +352,19 @@ export class SignReportService {
     const evaluated = evaluateValidationBundleSafely(versions[0].compiled_bundle, document, "sign",
       { timestamp: evaluationTimestamp });
     return [...evaluated.findings.map((finding) => ({
-      severity: finding.severity === "information" ? "warning" : finding.severity,
+      severity: finding.severity,
       code: "validation.required-element",
-      path: `$.elements.${finding.primaryTarget.elementId}`,
+      path: finding.primaryTarget.occurrenceId ? `$.occurrences.${finding.primaryTarget.occurrenceId}`
+        : finding.primaryTarget.groupInstanceId ? `$.groups.${finding.primaryTarget.groupInstanceId}.elements.${finding.primaryTarget.elementId}`
+          : `$.elements.${finding.primaryTarget.elementId}`,
       message: finding.message,
       ruleVersion: finding.validationVersionId,
       validationVersionId: finding.validationVersionId,
       ruleId: finding.ruleId,
       executionTarget: finding.executionTarget,
       targetElementId: finding.primaryTarget.elementId,
+      targetGroupInstanceId: finding.primaryTarget.groupInstanceId,
+      targetOccurrenceId: finding.primaryTarget.occurrenceId,
       inputFingerprint: finding.inputFingerprint,
     } satisfies SigningFinding)), ...evaluated.failures.map((failure) => ({
       severity: "error" as const, code: `validation.${failure.code}`, path: `$.validationRules.${failure.ruleId}`,

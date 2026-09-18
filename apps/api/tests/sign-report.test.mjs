@@ -7,8 +7,11 @@ import {
   validateSignReportCommand
 } from "../dist/reports/sign-report.validation.js";
 import {
+  acknowledgementMatchesFinding,
+  blockingSigningFindings,
   SignReportService,
-  unresolvedDispatchConflictFindings
+  unresolvedDispatchConflictFindings,
+  validationFindingAcknowledgementId,
 } from "../dist/reports/sign-report.service.js";
 
 test("sign commands require a revision, signer, and explicit attestation", () => {
@@ -35,6 +38,45 @@ test("unresolved dispatch differences block signing until disposition", () => {
     severity: "error", code: "dispatch.unresolved-conflict", path: "dispatchConflicts.conflict-1"
   }]);
   assert.deepEqual(unresolvedDispatchConflictFindings([]), []);
+});
+
+test("signing enforces errors, finding-specific warnings, and non-blocking information", () => {
+  const validationVersionId = randomUUID();
+  const ruleId = randomUUID();
+  const targetGroupInstanceId = randomUUID();
+  const targetOccurrenceId = randomUUID();
+  const warning = { severity: "warning", code: "validation.rule", path: "$.occurrences.target",
+    message: "Review this value", ruleVersion: validationVersionId, validationVersionId, ruleId,
+    executionTarget: "sign", targetElementId: "eVitals.06", targetGroupInstanceId, targetOccurrenceId,
+    inputFingerprint: "fnv1a32:12345678" };
+  const acknowledgement = { validationVersionId, ruleId, targetElementId: "eVitals.06", targetGroupInstanceId,
+    targetOccurrenceId, inputFingerprint: warning.inputFingerprint };
+  const id = validationFindingAcknowledgementId(warning);
+  assert.ok(id);
+  assert.equal(acknowledgementMatchesFinding(acknowledgement, warning), true);
+  assert.deepEqual(blockingSigningFindings([warning], {}), [warning]);
+  assert.deepEqual(blockingSigningFindings([warning], { [id]: acknowledgement }), []);
+
+  const changed = { ...warning, inputFingerprint: "fnv1a32:87654321" };
+  assert.equal(validationFindingAcknowledgementId(changed) === id, false);
+  assert.deepEqual(blockingSigningFindings([changed], { [id]: acknowledgement }), [changed],
+    "changing relevant inputs invalidates the prior acknowledgement");
+  const information = { ...warning, severity: "information", message: "For awareness" };
+  const error = { ...warning, severity: "error", message: "Must resolve" };
+  assert.deepEqual(blockingSigningFindings([information], {}), []);
+  assert.deepEqual(blockingSigningFindings([error], { [id]: acknowledgement }), [error]);
+});
+
+test("sign command validation accepts complete acknowledgement evidence and rejects partial evidence", () => {
+  const command = { commandId: randomUUID(), expectedRevision: 1, signerId: randomUUID(),
+    attestation: { meaning: "clinician approval" } };
+  const id = "finding-id";
+  const acknowledgement = { validationVersionId: randomUUID(), ruleId: randomUUID(), targetElementId: "eVitals.06",
+    targetGroupInstanceId: randomUUID(), targetOccurrenceId: randomUUID(), inputFingerprint: "fnv1a32:12345678" };
+  assert.deepEqual(validateSignReportCommand({ ...command, warningAcknowledgements: { [id]: acknowledgement } })
+    .warningAcknowledgements, { [id]: acknowledgement });
+  assert.throws(() => validateSignReportCommand({ ...command, warningAcknowledgements: { [id]: { ...acknowledgement,
+    inputFingerprint: "" } } }), SignReportValidationError);
 });
 
 test("signing retries a transient PostgreSQL serialization failure", async () => {

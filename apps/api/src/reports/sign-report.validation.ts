@@ -1,4 +1,4 @@
-import type { SignReportCommand } from "./sign-report.types.js";
+import type { SignReportCommand, WarningAcknowledgement } from "./sign-report.types.js";
 
 export class SignReportValidationError extends Error {
   constructor(readonly findings: readonly string[]) {
@@ -19,6 +19,25 @@ function optionalString(value: unknown, path: string, findings: string[]): void 
   }
 }
 
+function validateAcknowledgement(value: unknown, path: string, findings: string[]): value is WarningAcknowledgement {
+  if (!isRecord(value)) {
+    findings.push(`${path} must be an object`);
+    return false;
+  }
+  for (const key of ["validationVersionId", "ruleId"] as const) {
+    if (typeof value[key] !== "string" || !uuidV4Pattern.test(value[key])) findings.push(`${path}.${key} must be a UUIDv4`);
+  }
+  for (const key of ["targetElementId", "inputFingerprint"] as const) {
+    if (typeof value[key] !== "string" || !value[key].trim()) findings.push(`${path}.${key} must be a non-empty string`);
+  }
+  for (const key of ["targetGroupInstanceId", "targetOccurrenceId"] as const) {
+    if (value[key] !== undefined && (typeof value[key] !== "string" || !uuidV4Pattern.test(value[key]))) {
+      findings.push(`${path}.${key} must be a UUIDv4`);
+    }
+  }
+  return true;
+}
+
 export function validateSignReportCommand(value: unknown): SignReportCommand {
   if (!isRecord(value)) throw new SignReportValidationError(["request body must be an object"]);
   const findings: string[] = [];
@@ -31,8 +50,12 @@ export function validateSignReportCommand(value: unknown): SignReportCommand {
   if (!isRecord(value.attestation) || Object.keys(value.attestation).length === 0) {
     findings.push("attestation must be a non-empty object");
   }
-  if (value.warningAcknowledgements !== undefined && !isRecord(value.warningAcknowledgements)) {
-    findings.push("warningAcknowledgements must be an object");
+  if (value.warningAcknowledgements !== undefined) {
+    if (!isRecord(value.warningAcknowledgements)) findings.push("warningAcknowledgements must be an object");
+    else for (const [key, acknowledgement] of Object.entries(value.warningAcknowledgements)) {
+      if (!key.trim()) findings.push("warningAcknowledgements keys must be non-empty");
+      if (acknowledgement !== true) validateAcknowledgement(acknowledgement, `warningAcknowledgements.${key}`, findings);
+    }
   }
   optionalString(value.actorPersona, "actorPersona", findings);
   optionalString(value.sessionId, "sessionId", findings);

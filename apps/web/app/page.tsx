@@ -38,7 +38,7 @@ import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
 import { DEMO_CLEAR_EVENT, DEMO_FALLBACK_DATE, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
-import { stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
+import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
@@ -62,6 +62,12 @@ const quickActionText: Record<QuickActionId, string> = {
 function localClinicalTime(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+function validationTimestampFor(document: unknown, clinicalForm: unknown): string {
+  void document;
+  void clinicalForm;
+  return new Date().toISOString();
 }
 
 function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
@@ -99,11 +105,15 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const medicationDefinition = bundledEncounterDefinition.events.medication;
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
+  const validationEvaluationTimestamp = useMemo(() => validationTimestampFor(encounter.document, report?.clinicalForm),
+    [encounter.document, report?.clinicalForm]);
   const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm,
-    new Date().toISOString()), [encounter.document, report?.clinicalForm]);
+    validationEvaluationTimestamp), [encounter.document, report?.clinicalForm, validationEvaluationTimestamp]);
   const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
-    () => [...stationaryFindings, ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
-    [report?.clinicalForm, reviewFindings, stationaryFindings],
+    () => [...stationaryFindings.map((finding) => ({ ...finding,
+      acknowledged: finding.severity === "warning" && shell.acknowledgedWarnings.includes(finding.id),
+    })), ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
+    [report?.clinicalForm, reviewFindings, shell.acknowledgedWarnings, stationaryFindings],
   );
   const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
@@ -140,6 +150,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
   const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
   const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
+    ? { severity: editingFinding.severity, message: editingFinding.message }
+    : undefined;
 
   useEffect(() => {
     if (presentationMode === "mobile" && shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
@@ -337,7 +350,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     try {
-      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id, shell.acknowledgedWarnings);
+      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id,
+        reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
+          id: finding.id,
+          acknowledgement: "acknowledgement" in finding ? finding.acknowledgement : undefined,
+        })), validationEvaluationTimestamp);
       completeWorkspaceReport();
     } catch (error) {
       setSignError(error instanceof Error ? error.message : "The record could not be signed.");
@@ -428,7 +445,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <div hidden={shell.view === "review"}>
           <StationaryRecord
             document={encounter.document}
-            findings={configuredStationaryFindings}
+            findings={actionableStationaryFindings(configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding => !("eventType" in finding)))}
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
@@ -569,7 +586,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                 value={shell.noteDraft.summary}
                 onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
               />
-              <DialogValidationMessage finding={noteSummaryFindingActive ? editingFinding : undefined} />
+              <DialogValidationMessage finding={noteSummaryFindingActive ? editingActionableFinding : undefined} />
             </label>
             <div className="note-dialog-actions">
               <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
@@ -580,7 +597,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingActionableFinding : undefined} />}
 
       {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
 
@@ -592,7 +609,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
             <TimePicker className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
-            <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingFinding : undefined} />
+            <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
@@ -630,7 +647,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                       </div>
                     )}
                   </div>
-                  <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingFinding : undefined} />
+                  <DialogValidationMessage finding={vitalFindingActive && editingVitalField === field ? editingActionableFinding : undefined} />
                 </div>
               );})}
             </div>
@@ -708,6 +725,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
 
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
+      <FindingGroup title="Information" empty="No informational findings." findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
 
       <div className="review-actions">
         <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
