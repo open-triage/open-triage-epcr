@@ -1356,7 +1356,8 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
 
   const app = await NestFactory.create(AppModule, { logger: false });
   const integrationAccessToken = "draft-api-owner-token";
-  app.get(ClinicianSessionService).get = (token) => {
+  const clinicianSessions = app.get(ClinicianSessionService);
+  clinicianSessions.get = (token) => {
     assert.equal(token, integrationAccessToken);
     return {
       accessToken: integrationAccessToken,
@@ -1367,6 +1368,11 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
       expiresAt: "2026-09-03T22:00:00.000Z"
     };
   };
+  const integrationCsrfToken = "draft-api-csrf-token";
+  clinicianSessions.assertCsrf = async (token, csrfToken) => {
+    assert.equal(token, integrationAccessToken);
+    assert.equal(csrfToken, integrationCsrfToken);
+  };
   app.setGlobalPrefix("api");
   await app.listen(0, "127.0.0.1");
   t.after(() => app.close());
@@ -1376,6 +1382,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     const response = await fetch(`${baseUrl}${path}`, {
       method, headers: {
         authorization: `Bearer ${integrationAccessToken}`,
+        "x-csrf-token": integrationCsrfToken,
         ...(body ? { "content-type": "application/json" } : {})
       },
       body: body ? JSON.stringify(body) : undefined
@@ -1395,6 +1402,15 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(created.payload.formVersionId, formVersionId);
   assert.equal(created.payload.agencyDemographicVersionId, agencyVersionId);
   assert.equal(created.payload.catalogReleaseId, releaseId);
+
+  const recoveryHandle = randomUUID();
+  const registeredEnvelope = await request(`/reports/${reportId}/protected-key-envelope`, "POST", {
+    schemaVersion: 1,
+    recoveryHandle,
+    reportKeyBase64: Buffer.alloc(32, 0x41).toString("base64")
+  });
+  assert.equal(registeredEnvelope.response.status, 201, JSON.stringify(registeredEnvelope.payload));
+  assert.equal(registeredEnvelope.payload.recoveryHandle, recoveryHandle);
 
   const createRetry = await request("/reports", "POST", createCommand);
   assert.equal(createRetry.response.status, 201);
@@ -1864,6 +1880,26 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     { status: "draft", revision: "8" });
   await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
 
+  const protectedCiphertextSha256 = "9".repeat(64);
+  const ciphertextReceipt = await request(`/reports/${reportId}/protected-ciphertext-receipt`, "POST", {
+    schemaVersion: 1,
+    recoveryHandle,
+    ciphertextRevision: 8,
+    ciphertextSha256: protectedCiphertextSha256
+  });
+  assert.equal(ciphertextReceipt.response.status, 200, JSON.stringify(ciphertextReceipt.payload));
+  const ciphertextCheckpoint = await request(`/reports/${reportId}/protected-ciphertext-checkpoint`, "POST", {
+    schemaVersion: 1,
+    recoveryHandle,
+    ciphertextRevision: 8,
+    ciphertextSha256: protectedCiphertextSha256
+  });
+  assert.equal(ciphertextCheckpoint.response.status, 200, JSON.stringify(ciphertextCheckpoint.payload));
+  assert.deepEqual(ciphertextCheckpoint.payload, {
+    ciphertextRevision: 8,
+    ciphertextSha256: protectedCiphertextSha256
+  });
+
   const temperatureOccurrenceId = randomUUID();
   const temperatureDefinition = (await client.query(`select m.element_identity_id,
       (m.analytical_location = 'repeatable') as analytical_repeatable, m.identifying
@@ -1946,6 +1982,13 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.equal(signedState.normalization_rule_version, signed.payload.normalizationRuleVersion);
   assert.deepEqual(signedState.quality_findings, signed.payload.qualityFindings);
   assert.deepEqual(signedState.derived_values, signed.payload.derivedValues);
+  assert.deepEqual((await client.query(`select state, ciphertext_revision, synchronized_revision,
+      ciphertext_sha256 from offline_recovery.report_key_envelope where report_id = $1`, [reportId])).rows[0], {
+    state: "completed",
+    ciphertext_revision: "8",
+    synchronized_revision: "8",
+    ciphertext_sha256: protectedCiphertextSha256
+  });
   const signRetry = await sign(signCommand);
   assert.equal(signRetry.response.status, 201);
   assert.deepEqual(signRetry.payload, signed.payload);

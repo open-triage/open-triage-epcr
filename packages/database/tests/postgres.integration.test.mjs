@@ -751,6 +751,71 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
   });
 
+  await t.test("lets the API discard an authorized synthetic draft without retention authority", async () => {
+    await client.query("begin");
+    try {
+      const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
+      const userId = SYNTHETIC_DEMO_FIXTURE.userId;
+      const unitId = randomUUID();
+      const incidentId = randomUUID();
+      const assignmentId = randomUUID();
+      const patientId = randomUUID();
+      const reportId = randomUUID();
+      const releaseId = (await client.query(
+        "select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
+      )).rows[0].id;
+
+      await client.query(`insert into app_identity.operational_unit
+        (id, organization_id, call_sign, name, default_form_id, synthetic)
+        values ($1, $2, 'DELETE-TEST', 'Deletion test unit',
+          '32000000-0000-4000-8000-000000000012', true)`, [unitId, organizationId]);
+      await client.query(`insert into clinical.incident
+        (id, organization_id, operational_state, synthetic)
+        values ($1, $2, 'assigned', true)`, [incidentId, organizationId]);
+      await client.query(`insert into clinical.call_assignment
+        (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
+         status, synthetic, synthetic_generated_by)
+        values ($1, $2, $3, $4, 'DELETE-TEST', now(), 'assigned', true, $5)`,
+      [assignmentId, organizationId, unitId, incidentId, userId]);
+      await client.query(`insert into clinical.patient
+        (id, organization_id, identity_state, pseudonymous_key)
+        values ($1, $2, 'unknown', $3)`, [patientId, organizationId, "d".repeat(64)]);
+      await client.query(`insert into clinical.report
+        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+         form_version_id, catalog_release_id, documenting_user_id, synthetic,
+         synthetic_generated_by, synthetic_source_assignment_id)
+        values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
+          '32000000-0000-4000-8000-000000000011', $5, $6, true, $6, $7)`,
+      [reportId, organizationId, incidentId, patientId, releaseId, userId, assignmentId]);
+      await client.query(`update clinical.call_assignment
+        set status = 'opened', report_id = $2 where id = $1`, [assignmentId, reportId]);
+      await client.query(`insert into clinical.report_change
+        (report_id, revision, idempotency_key, author_id, changes)
+        values ($1, 1, $2, $3, '[]')`, [reportId, randomUUID(), userId]);
+
+      const privileges = (await client.query(`select
+        has_function_privilege('open_triage_api_runtime',
+          'retention.report_id_for_deleted_row(text,text,jsonb)', 'execute') as row_mapper,
+        has_function_privilege('open_triage_api_runtime',
+          'retention.deletion_is_authorized(uuid)', 'execute') as retention_authorizer`)).rows[0];
+      assert.deepEqual(privileges, { row_mapper: true, retention_authorizer: false });
+
+      await client.query("set local role open_triage_api_runtime");
+      await client.query("select set_config('open_triage.prototype_delete_report', $1, true)", [reportId]);
+      assert.equal((await client.query(
+        "delete from clinical.report_change where report_id = $1", [reportId]
+      )).rowCount, 1);
+      assert.equal((await client.query(
+        "delete from clinical.call_assignment where report_id = $1", [reportId]
+      )).rowCount, 1);
+      assert.equal((await client.query(
+        "delete from clinical.report where id = $1", [reportId]
+      )).rowCount, 1);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("activation cannot rewrite an older report's configuration pins", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";
     const original = (await client.query(`select organization_id, incident_id, patient_id,

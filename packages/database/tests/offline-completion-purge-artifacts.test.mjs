@@ -6,6 +6,18 @@ const migration = await readFile(new URL(
   "../../../supabase/migrations/20260917210000_reconcile_offline_completion_and_purge.sql",
   import.meta.url,
 ), "utf8");
+const hotfix = await readFile(new URL(
+  "../../../supabase/migrations/20260918151111_fix_offline_checkpoint_and_demo_deletion.sql",
+  import.meta.url,
+), "utf8");
+const apiIntegration = await readFile(new URL(
+  "../../../apps/api/tests/postgres.integration.test.mjs",
+  import.meta.url,
+), "utf8");
+const databaseWorkflow = await readFile(new URL(
+  "../../../.github/workflows/database-postgresql.yml",
+  import.meta.url,
+), "utf8");
 
 test("signing locks protected recovery while preserving only unsynchronized late work", () => {
   assert.match(migration, /synchronized_revision bigint not null default 0/);
@@ -31,4 +43,15 @@ test("purge records only bounded non-clinical facts", () => {
   assert.match(tombstone, /report_id uuid primary key/);
   assert.match(tombstone, /organization_id uuid not null/);
   assert.match(tombstone, /reason_code text not null/);
+});
+
+test("checkpoint and demo deletion regressions stay covered by executable PostgreSQL CI", () => {
+  assert.match(hotfix, /greatest\(envelope\.ciphertext_revision, candidate_ciphertext_revision\)/);
+  assert.match(hotfix, /where envelope\.report_id = candidate_report_id/);
+  assert.match(hotfix,
+    /open_triage\.prototype_delete_report[\s\S]*return old;[\s\S]*end if;[\s\S]*if retention\.deletion_is_authorized\(candidate_report_id\)/);
+  assert.match(apiIntegration,
+    /protected-ciphertext-checkpoint[\s\S]*const signed = await sign\(signCommand\)[\s\S]*state: "completed"/);
+  assert.match(databaseWorkflow,
+    /Run database integration tests[\s\S]*Run API integration tests/);
 });
