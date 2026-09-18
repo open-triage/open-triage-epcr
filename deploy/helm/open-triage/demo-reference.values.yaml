@@ -26,3 +26,16 @@ secrets:
 
 migration:
   bootstrapSynthetic: true
+  # The public demo runs on a single small node. Keep the pre-upgrade hook
+  # schedulable while the existing minute-level maintenance jobs wind down;
+  # the container may still burst to the chart's 500m CPU limit.
+  resources:
+    requests:
+      cpu: 10m
+
+analytics:
+  # Avoid starving future hooks when the projector overlaps the health and
+  # synthetic-retention jobs on the single-node demo cluster.
+  resources:
+    requests:
+      cpu: 25m

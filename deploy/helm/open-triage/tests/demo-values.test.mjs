@@ -38,3 +38,17 @@ test("demo values preserve public TLS and workload-specific cluster-owned databa
   assert.doesNotMatch(output, /envFrom:/);
   assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|stringData:/);
 });
+
+test("demo batch workloads remain schedulable on the single-node cluster", () => {
+  const output = renderDemo();
+  const migration = output.slice(
+    output.indexOf("# Source: open-triage/templates/migration-job.yaml"),
+  );
+  const projector = output.slice(
+    output.indexOf("name: open-triage-analytics-projector"),
+    output.indexOf("name: open-triage-analytics-health"),
+  );
+
+  assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 128Mi/);
+  assert.match(projector, /requests:\n\s+cpu: 25m\n\s+memory: 128Mi/);
+});

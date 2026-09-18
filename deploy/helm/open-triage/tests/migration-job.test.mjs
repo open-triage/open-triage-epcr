@@ -39,6 +39,7 @@ test("demo deployment restores its idempotent synthetic installation before roll
   const job = output.slice(output.indexOf("# Source: open-triage/templates/migration-job.yaml"));
 
   assert.match(job, /command: \["npm", "run", "bootstrap:synthetic:runtime", "-w", "@open-triage\/database"\]/);
+  assert.match(job, /requests:\n\s+cpu: 10m\n\s+memory: 128Mi/);
 });
 
 test("migration gate requires a pre-existing cluster-owned Secret", () => {
