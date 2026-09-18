@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { compiledValidationBundleSha256 } from "@open-triage/contracts";
 import {
   SignReportValidationError,
   validateSignReportCommand
@@ -147,10 +148,11 @@ test("authoritative signing evaluates the report's pinned required-element bundl
       ruleId, validationVersionId, name: "Require patient name", enabled: true, severity: "error",
       executionTargets: ["live", "sign"], primaryTarget: { elementId: "ePatient.02" },
       message: "Patient name is required", assertion: { operator: "present", elementId: "ePatient.02" } }] };
+  const compiledSha256 = compiledValidationBundleSha256(bundle);
   let valuePresent = false;
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
-    if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle }];
+    if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
     if (normalized.includes("from clinical.report r join forms.form_version")) return [{
       id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
       catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -168,7 +170,7 @@ test("authoritative signing evaluates the report's pinned required-element bundl
   const service = new SignReportService({}, {});
   const findings = await service.validateAuthoredRules(manager, {
     id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
-    validation_version_id: validationVersionId
+    validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256
   });
   assert.deepEqual(findings.map(({ severity, ruleId: id, targetElementId }) => ({ severity, id, targetElementId })), [{
     severity: "error", id: ruleId, targetElementId: "ePatient.02"
@@ -176,6 +178,35 @@ test("authoritative signing evaluates the report's pinned required-element bundl
   valuePresent = true;
   assert.deepEqual(await service.validateAuthoredRules(manager, {
     id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
-    validation_version_id: validationVersionId
+    validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256
   }), []);
+});
+
+test("signing blocks tampered artifacts and identifies a rule that fails at runtime", async () => {
+  const validationVersionId = randomUUID();
+  const ruleId = randomUUID();
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId,
+    catalogReleaseId: "catalog-release", rules: [{ schemaVersion: 1, languageVersion: "1.0.0",
+      ruleId, validationVersionId, name: "Broken sign rule", enabled: true, severity: "error",
+      executionTargets: ["sign"], primaryTarget: { elementId: "ePatient.02" }, message: "Broken",
+      assertion: { operator: "future-operator" }, references: { elementIds: ["ePatient.02"], codes: [] } }] };
+  const compiledSha256 = compiledValidationBundleSha256(bundle);
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (normalized.includes("from clinical.report r join forms.form_version")) return [{
+      id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
+      catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+    }];
+    if (normalized.includes("from clinical.group_instance") || normalized.includes("from clinical.element_occurrence")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new SignReportService({}, {});
+  const report = { id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
+    validation_version_id: validationVersionId, validation_compiled_sha256: compiledSha256 };
+  const runtime = await service.validateAuthoredRules(manager, report, "2026-01-01T00:00:00.000Z");
+  assert.deepEqual(runtime.map(({ code, ruleId: id }) => ({ code, id })), [{ code: "validation.compatibility", id: ruleId }]);
+  const tampered = await service.validateAuthoredRules(manager, { ...report, validation_compiled_sha256: "0".repeat(64) },
+    "2026-01-01T00:00:00.000Z");
+  assert.deepEqual(tampered.map(({ code, ruleId: id }) => ({ code, id })), [{ code: "validation.integrity", id: "bundle" }]);
 });

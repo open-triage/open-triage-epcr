@@ -6,7 +6,7 @@ import {
   UnprocessableEntityException
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import { evaluateValidationBundle, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type CompiledValidationBundle } from "@open-triage/contracts";
 import {
   evaluateQualityAndNormalization,
   NORMALIZATION_RULE_VERSION,
@@ -41,6 +41,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id: string | null;
+  validation_compiled_sha256: string | null;
   documenting_user_id: string;
   reporting_date: string | null;
 };
@@ -131,6 +132,7 @@ export class SignReportService {
       throw error;
     }
     const digest = commandSha256(command);
+    const evaluationTimestamp = new Date().toISOString();
     const signTransaction = () => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [command.commandId]);
         const rows = await manager.query<ReportRow[]>(`
@@ -164,7 +166,7 @@ export class SignReportService {
         }
 
         const findings = await this.validateSemantics(manager, report);
-        findings.push(...await this.validateAuthoredRules(manager, report));
+        findings.push(...await this.validateAuthoredRules(manager, report, evaluationTimestamp));
         const unresolvedDispatch = await manager.query<Array<{ id: string; element_id: string }>>(`
           select id, element_id from clinical.dispatch_conflict
           where report_id = $1 and disposition is null order by created_at, id
@@ -285,19 +287,28 @@ export class SignReportService {
     })));
   }
 
-  private async validateAuthoredRules(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {
+  private async validateAuthoredRules(manager: EntityManager, report: ReportRow,
+    evaluationTimestamp = new Date().toISOString()): Promise<SigningFinding[]> {
     if (!report.validation_version_id) return [];
-    const versions = await manager.query<Array<{ compiled_bundle: CompiledValidationBundle }>>(`
-      select compiled_bundle from validation.version
+    const versions = await manager.query<Array<{ compiled_bundle: CompiledValidationBundle; compiled_sha256: string }>>(`
+      select compiled_bundle,compiled_sha256 from validation.version
       where id=$1 and organization_id=$2 and catalog_release_id=$3 and status='published'
     `, [report.validation_version_id, report.organization_id, report.catalog_release_id]);
     if (!versions[0]) return [{ severity: "error", code: "validation.runtime-unavailable",
       path: "$.validationVersionId", message: "The pinned validation bundle is unavailable",
       ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
       executionTarget: "sign" }];
+    if (!report.validation_compiled_sha256 || versions[0].compiled_sha256 !== report.validation_compiled_sha256
+      || compiledValidationBundleSha256(versions[0].compiled_bundle) !== report.validation_compiled_sha256) {
+      return [{ severity: "error", code: "validation.integrity", path: "$.validationVersionId",
+        message: "The pinned validation bundle failed its integrity check",
+        ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
+        ruleId: "bundle", executionTarget: "sign" }];
+    }
     const document = await encounterDocument(manager, report.id);
-    return evaluateValidationBundle(versions[0].compiled_bundle, document, "sign",
-      { timestamp: new Date().toISOString() }).map((finding) => ({
+    const evaluated = evaluateValidationBundleSafely(versions[0].compiled_bundle, document, "sign",
+      { timestamp: evaluationTimestamp });
+    return [...evaluated.findings.map((finding) => ({
       severity: finding.severity === "information" ? "warning" : finding.severity,
       code: "validation.required-element",
       path: `$.elements.${finding.primaryTarget.elementId}`,
@@ -308,7 +319,11 @@ export class SignReportService {
       executionTarget: finding.executionTarget,
       targetElementId: finding.primaryTarget.elementId,
       inputFingerprint: finding.inputFingerprint,
-    }));
+    } satisfies SigningFinding)), ...evaluated.failures.map((failure) => ({
+      severity: "error" as const, code: `validation.${failure.code}`, path: `$.validationRules.${failure.ruleId}`,
+      message: `${failure.message} (rule ${failure.ruleId})`, ruleVersion: failure.validationVersionId,
+      validationVersionId: failure.validationVersionId, ruleId: failure.ruleId, executionTarget: "sign" as const,
+    }))];
   }
 
   private async validateSemantics(manager: EntityManager, report: ReportRow): Promise<SigningFinding[]> {

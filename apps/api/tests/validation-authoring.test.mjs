@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { evaluateValidationBundle } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
 import { UnauthorizedException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -364,7 +364,7 @@ test("activation atomically selects and audits one compatible Form, Catalog, and
       severity: "error", executionTargets: ["live", "sign"], primaryTarget: { elementId: "eResponse.03" },
       message: sourceRule.message, scope: { kind: "report" }, assertion: { operator: "present", elementId: "eResponse.03" },
       references: { elementIds: ["eResponse.03"], groupIds: [], codeReferences: [] } }] };
-  const compiledSha256 = createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex");
+  const compiledSha256 = compiledValidationBundleSha256(compiledBundle);
   const formSha256 = canonicalDefinitionSha256(formDefinition);
   const catalogSha256 = "c".repeat(64);
   const calls = [];
@@ -414,7 +414,7 @@ test("failed bundle compatibility and reference checks occur before active state
       if (sql.includes("select vv.*")) return failure === "binding" ? [] : [{ id: versionId,
         organization_id: organizationId, catalog_release_id: catalogReleaseId, rule_id: ruleId,
         source_rule: [sourceRule], status: "published", compiled_bundle: compiledBundle,
-        compiled_sha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex"),
+        compiled_sha256: compiledValidationBundleSha256(compiledBundle),
         form_definition: formDefinition, form_definition_sha256: canonicalDefinitionSha256(formDefinition),
         catalog_artifact_sha256: "c".repeat(64), catalog_sealed: true }];
       if (sql.includes("from forms.form_field")) return [];

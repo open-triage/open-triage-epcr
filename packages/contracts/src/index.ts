@@ -7,7 +7,9 @@ export {
   VALIDATION_COMPILED_SCHEMA_VERSION,
   VALIDATION_LANGUAGE_VERSION,
   compileValidationRule,
+  compiledValidationBundleSha256,
   evaluateValidationBundle,
+  evaluateValidationBundleSafely,
   explainValidationRule,
   formatOccurrenceSource,
   formatRequiredElementSource,
@@ -23,6 +25,8 @@ export {
   type ValidationEvaluationContext,
   type ValidationExecutionTarget,
   type ValidationFinding,
+  type ValidationEvaluationResult,
+  type ValidationRuntimeFailure,
   type ValidationRuleSource,
   type ValidationRuleProvenance,
   type ValidationRuleSourceKind,
@@ -757,6 +761,7 @@ export interface ClinicalFormConfiguration {
   /** Immutable live-validation bundle pinned with the report. */
   validation?: {
     versionId: string;
+    compiledSha256: string;
     bundle: import("./validation-rules.js").CompiledValidationBundle;
   };
 }

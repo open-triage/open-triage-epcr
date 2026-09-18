@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { ConflictException, UnauthorizedException } from "@nestjs/common";
-import { SYNTHETIC_DEMO_FIXTURE, compileValidationRule } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, compileValidationRule, compiledValidationBundleSha256 } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -1560,7 +1560,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   });
   const validationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId,
     catalogReleaseId: releaseId, rules: compiledRules };
-  const validationDigest = "e".repeat(64);
+  const validationDigest = compiledValidationBundleSha256(validationBundle);
   const catalogDigest = (await client.query("select artifact_sha256 from catalog.release where id=$1", [releaseId])).rows[0].artifact_sha256;
   await client.query(`insert into validation.rule_identity(id,organization_id,created_by)
     values ($1,$4,$5),($2,$4,$5),($3,$4,$5)`,
@@ -2056,13 +2056,13 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   const requiredSaved = await request(`/reports/${reportId}/draft-changes`, "POST", {
     commandId: randomUUID(), expectedRevision: 5, authorId: userId,
     occurrences: [{ id: requiredOccurrenceId, elementId: requiredElement.element_id,
-      formFieldId: requiredFieldId, ordinal: 0, value: { kind: "text", value: "required" } }]
+      formFieldId: requiredFieldId, groupInstanceId, ordinal: 0, value: { kind: "text", value: "required" } }]
   });
   assert.equal(requiredSaved.response.status, 201, JSON.stringify(requiredSaved.payload));
   const duplicateSaved = await request(`/reports/${reportId}/draft-changes`, "POST", {
     commandId: randomUUID(), expectedRevision: 6, authorId: userId,
     occurrences: [{ id: secondRequiredOccurrenceId, elementId: requiredElement.element_id,
-      formFieldId: requiredFieldId, ordinal: 1, value: { kind: "text", value: "duplicate" } }]
+      formFieldId: requiredFieldId, groupInstanceId, ordinal: 1, value: { kind: "text", value: "duplicate" } }]
   });
   assert.equal(duplicateSaved.response.status, 201, JSON.stringify(duplicateSaved.payload));
   const invalidCardinality = await sign({
@@ -2105,14 +2105,6 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.deepEqual((await client.query("select status, revision from clinical.report where id = $1", [reportId])).rows[0],
     { status: "draft", revision: "8" });
   await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
-
-  // The remainder of this legacy transaction test exercises signing rollback,
-  // not authored rules. Retire its fixture-only policy without changing the
-  // report's immutable version pin.
-  await client.query("alter table validation.version disable trigger validation_version_immutable");
-  await client.query("update validation.version set compiled_bundle=jsonb_set(compiled_bundle,'{rules}','[]'::jsonb) where id=$1",
-    [validationVersionId]);
-  await client.query("alter table validation.version enable trigger validation_version_immutable");
 
   const protectedCiphertextSha256 = "9".repeat(64);
   const ciphertextReceipt = await request(`/reports/${reportId}/protected-ciphertext-receipt`, "POST", {

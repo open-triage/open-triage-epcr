@@ -1,4 +1,4 @@
-import type { ClinicalFormConfiguration, CompiledValidationBundle, FormDraftDefinition } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type FieldRow = {
@@ -26,6 +26,7 @@ export async function clinicalFormConfiguration(
   formVersionId: string,
   catalogReleaseId: string,
   validationVersionId?: string | null,
+  validationCompiledSha256?: string | null,
 ): Promise<ClinicalFormConfiguration> {
   const versions = await manager.query<Array<{ canonical_definition: FormDraftDefinition }>>(`
     select canonical_definition from forms.form_version
@@ -36,15 +37,22 @@ export async function clinicalFormConfiguration(
   const elementIds = [...new Set(versions[0].canonical_definition.sections.flatMap((section) =>
     section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
 
-  const validation = validationVersionId ? await manager.query<Array<{ compiled_bundle: CompiledValidationBundle }>>(`
-    select compiled_bundle from validation.version
+  const validation = validationVersionId ? await manager.query<Array<{ compiled_bundle: CompiledValidationBundle; compiled_sha256: string }>>(`
+    select compiled_bundle,compiled_sha256 from validation.version
     where id=$1 and catalog_release_id=$2 and status='published'
   `, [validationVersionId, catalogReleaseId]) : [];
   if (validationVersionId && !validation[0]) throw new Error("The report's pinned validation configuration is unavailable");
+  if (validation[0] && (!validationCompiledSha256 || validation[0].compiled_sha256 !== validationCompiledSha256
+    || compiledValidationBundleSha256(validation[0].compiled_bundle) !== validationCompiledSha256)) {
+    throw new Error("The report's pinned validation configuration failed its integrity check");
+  }
+  const liveBundle = validation[0] ? { ...validation[0].compiled_bundle,
+    rules: validation[0].compiled_bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("live")) } : undefined;
   return {
     definition: versions[0].canonical_definition,
     catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
-    ...(validation[0] ? { validation: { versionId: validationVersionId!, bundle: validation[0].compiled_bundle } } : {}),
+    ...(liveBundle ? { validation: { versionId: validationVersionId!,
+      compiledSha256: compiledValidationBundleSha256(liveBundle), bundle: liveBundle } } : {}),
   };
 }
 

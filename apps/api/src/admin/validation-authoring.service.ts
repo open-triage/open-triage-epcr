@@ -3,6 +3,7 @@ import { ConflictException, Injectable, NotFoundException, UnprocessableEntityEx
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule,
+  compiledValidationBundleSha256,
   evaluateValidationBundle,
   explainValidationRule,
   formatOccurrenceSource,
@@ -569,10 +570,11 @@ export class ValidationAuthoringService {
       if (canonicalDefinitionSha256(version.form_definition) !== version.form_definition_sha256) {
         throw new UnprocessableEntityException("The published Form artifact digest does not match its content");
       }
-      // Published Validation rows and their compiled artifacts are database-immutable;
-      // matching the selected digest to that row is therefore the integrity check.
       if (!version.compiled_bundle || !version.compiled_sha256) {
         throw new UnprocessableEntityException("The published Validation artifact is incomplete");
+      }
+      if (compiledValidationBundleSha256(version.compiled_bundle) !== version.compiled_sha256) {
+        throw new UnprocessableEntityException("The published Validation artifact digest does not match its content");
       }
       const ruleElements = [...new Set(version.compiled_bundle!.rules
         .filter((rule) => rule.enabled && rule.executionTargets.some((target) => target === "live" || target === "sign"))
@@ -695,7 +697,7 @@ export class ValidationAuthoringService {
     }
     if (diagnostics.some(({ severity }) => severity === "error")) return { valid: false, diagnostics };
     return { valid: true, diagnostics, explanation: results.flatMap(({ compiled }) => compiled ? [explainValidationRule(compiled, catalog)] : []).join("\n"), compiledBundle,
-      compiledSha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex") };
+      compiledSha256: compiledValidationBundleSha256(compiledBundle) };
   }
 
   private async validationCatalog(manager: Pick<EntityManager, "query">, releaseId: string): Promise<ValidationCatalog> {
