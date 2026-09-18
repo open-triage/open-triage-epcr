@@ -3,11 +3,13 @@ import { ConflictException, Injectable, NotFoundException, UnprocessableEntityEx
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule,
+  explainValidationRule,
   formatRequiredElementSource,
   type ClinicianSession,
   type CompiledValidationBundle,
   type PublishedValidationVersion,
   type ValidationActivation,
+  type ValidationCatalog,
   type ValidationDraft,
   type ValidationDraftResult,
   type ValidationRuleSource,
@@ -174,13 +176,16 @@ export class ValidationAuthoringService {
       if (!active[0] || active[0].catalog_release_id !== version.catalog_release_id) {
         throw new UnprocessableEntityException("The published validation version must bind to the active form's catalog");
       }
-      const ruleElement = version.compiled_bundle!.rules[0]!.primaryTarget.elementId;
-      const available = await manager.query<Array<{ present: boolean }>>(`select exists(
-        select 1 from forms.form_field ff join catalog.element_definition e
+      const ruleElements = [...new Set(version.compiled_bundle!.rules.flatMap((rule) =>
+        [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])]))];
+      const exposed = await manager.query<Array<{ element_id: string }>>(`select distinct e.element_id
+        from forms.form_field ff join catalog.element_definition e
           on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id
-        where ff.form_version_id=$1 and e.element_id=$3) as present`,
-      [active[0].form_version_id, version.catalog_release_id, ruleElement]);
-      if (!available[0]?.present) throw new UnprocessableEntityException(`Active form does not expose required element ${ruleElement}`);
+        where ff.form_version_id=$1 and e.element_id=any($3::text[])`,
+      [active[0].form_version_id, version.catalog_release_id, ruleElements]);
+      const exposedIds = new Set(exposed.map(({ element_id }) => element_id));
+      const missing = ruleElements.filter((elementId) => !exposedIds.has(elementId));
+      if (missing.length) throw new UnprocessableEntityException(`Active form does not expose referenced element${missing.length === 1 ? "" : "s"} ${missing.join(", ")}`);
       const previous = await manager.query<Array<{ validation_version_id: string }>>(
         "select validation_version_id from validation.active_version where organization_id=$1", [session.organization.id]);
       const activated = mutationRows<{ activated_at: Date | string }>(await manager.query(`insert into validation.active_version
@@ -197,14 +202,37 @@ export class ValidationAuthoringService {
   }
 
   private async validateRow(manager: Pick<EntityManager, "query">, row: VersionRow): Promise<ValidationDraftResult> {
-    const elements = await manager.query<Array<{ element_id: string }>>(
-      "select element_id from catalog.element_definition where release_id=$1", [row.catalog_release_id]);
-    const result = compileValidationRule(row.source_rule, row.id, new Set(elements.map(({ element_id }) => element_id)));
+    const catalog = await this.validationCatalog(manager, row.catalog_release_id);
+    const result = compileValidationRule(row.source_rule, row.id, catalog);
     if (!result.compiled) return { valid: false, diagnostics: result.diagnostics };
     const compiledBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
       validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: [result.compiled] };
-    return { valid: true, diagnostics: result.diagnostics, compiledBundle,
+    return { valid: true, diagnostics: result.diagnostics, explanation: explainValidationRule(result.compiled, catalog), compiledBundle,
       compiledSha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex") };
+  }
+
+  private async validationCatalog(manager: Pick<EntityManager, "query">, releaseId: string): Promise<ValidationCatalog> {
+    const elements = await manager.query<Array<{ element_id: string; name?: string; base_datatype?: string }>>(
+      "select element_id,name,base_datatype from catalog.element_definition where release_id=$1", [releaseId]);
+    const codes = await manager.query<Array<{ element_id: string; code: string; code_system: string; label: string; enabled: boolean }>>(`
+      select e.element_id,e.code,e.code_system,e.label,e.enabled from (
+        select o.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) as enabled
+        from catalog.element_option o left join catalog.element_option_configuration c
+          on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
+          and c.code_system=o.code_system and c.code=o.code where o.release_id=$1
+        union all
+        select vse.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) as enabled
+        from catalog.value_set_element vse join catalog.value_set_option o
+          on o.release_id=vse.release_id and o.value_set_id=vse.value_set_id
+        left join catalog.value_set_option_configuration c
+          on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
+        where vse.release_id=$1
+      ) e`, [releaseId]);
+    return { elements: elements.map(({ element_id, name, base_datatype }) => ({
+      elementId: element_id, label: name ?? element_id, baseDatatype: base_datatype ?? "string",
+    })), codes: codes.map(({ element_id, code, code_system, label, enabled }) => ({
+      elementId: element_id, code, codeSystem: code_system, label, enabled,
+    })) };
   }
 
   private rule(value: unknown): ValidationRuleSource {
@@ -220,6 +248,6 @@ export class ValidationAuthoringService {
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
       executionTargets: targets as ValidationRuleSource["executionTargets"],
       primaryTargetElementId: requiredText(body.primaryTargetElementId, "rule.primaryTargetElementId", 200),
-      message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 500) };
+      message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000) };
   }
 }

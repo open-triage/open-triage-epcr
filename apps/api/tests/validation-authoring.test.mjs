@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
+import { evaluateValidationBundle } from "@open-triage/contracts";
 import { UnauthorizedException } from "@nestjs/common";
 import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 
@@ -28,6 +29,7 @@ test("validation uses read authority and compiles a catalog-bound draft", async 
       source_rule: sourceRule, status: "draft", version: null, compiled_bundle: null, compiled_sha256: null,
       created_at: new Date(), updated_at: new Date(), published_at: null }];
     if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03" }];
+    if (sql.includes("from catalog.element_option")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const result = await service(manager, capabilities).validate("session", versionId);
@@ -44,11 +46,45 @@ test("validation reports a structured diagnostic for a reference outside the bou
       source_rule: sourceRule, status: "draft", version: null, compiled_bundle: null, compiled_sha256: null,
       created_at: new Date(), updated_at: new Date(), published_at: null }];
     if (sql.includes("from catalog.element_definition")) return [];
+    if (sql.includes("from catalog.element_option")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const result = await service(manager).validate("session", versionId);
   assert.equal(result.valid, false);
   assert.equal(result.diagnostics[0].code, "catalog-reference");
+});
+
+test("server validation compiles and evaluates the same nested conditional semantics used by the browser", async () => {
+  const nestedRule = { ...sourceRule, source: `when all(
+    coded("eSituation.13", "SNOMED-CT", "267036007"),
+    not(equals("eVitals.06", 0))
+  )
+  require any(present("eResponse.03"), equals("eVitals.06", 200))` };
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from validation.version")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 2, display_name: "Conditional checks",
+      source_rule: nestedRule, status: "draft", version: null, compiled_bundle: null, compiled_sha256: null,
+      created_at: new Date(), updated_at: new Date(), published_at: null }];
+    if (sql.includes("from catalog.element_definition")) return [
+      { element_id: "eResponse.03", name: "Incident Number", base_datatype: "string" },
+      { element_id: "eSituation.13", name: "Primary Symptom", base_datatype: "string" },
+      { element_id: "eVitals.06", name: "Systolic Blood Pressure", base_datatype: "integer" },
+    ];
+    if (sql.includes("from catalog.element_option")) return [
+      { element_id: "eSituation.13", code: "267036007", code_system: "SNOMED-CT", label: "Dyspnea", enabled: true },
+    ];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const result = await service(manager).validate("session", versionId);
+  assert.equal(result.valid, true);
+  assert.match(result.explanation, /Applies when/);
+  const document = { groups: [{ instances: [{ instanceId: "encounter", elements: [
+    { id: "eSituation.13", values: [{ kind: "coded", occurrenceId: "symptom", code: "267036007", system: "SNOMED-CT" }] },
+    { id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "bp", value: 120 }] },
+  ] }] }] };
+  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign").length, 1);
+  document.groups[0].instances[0].elements[1].values[0].value = 200;
+  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign").length, 0);
 });
 
 test("every Validation endpoint independently authorizes before reading or mutating data", async () => {

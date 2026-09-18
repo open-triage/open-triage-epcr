@@ -13,6 +13,7 @@ import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSecti
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
+import { ValidationReferenceAssistance } from "../components/validation-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -493,6 +494,20 @@ test("Validation publication and activation are separate browser commands", asyn
   assert.equal(paths.length, 1);
   await activateValidationVersion("csrf-proof", draft.id, "Activate reviewed rule");
   assert.match(paths[1]!, /validation-versions\/.*\/activate$/);
+});
+
+test("Validation reference assistance shows mutable labels while retaining stable element and code identifiers", () => {
+  const markup = renderToStaticMarkup(createElement(ValidationReferenceAssistance, { elementId: "eSituation.13",
+    onElementIdChange() {}, catalog: { elements: [
+      { elementId: "eSituation.13", label: "Primary Symptom", baseDatatype: "string" },
+    ], codes: [
+      { elementId: "eSituation.13", codeSystem: "SNOMED-CT", code: "267036007", label: "Dyspnea", enabled: true },
+    ] } }));
+  assert.match(markup, /value="eSituation\.13"/);
+  assert.match(markup, /Primary Symptom/);
+  assert.match(markup, /value="SNOMED-CT\|267036007"/);
+  assert.match(markup, /Dyspnea/);
+  assert.match(markup, /stores stable element IDs, code systems, and codes/);
 });
 
 test("form catalog picker is searchable, labels duplicates, and exposes an add control", () => {
