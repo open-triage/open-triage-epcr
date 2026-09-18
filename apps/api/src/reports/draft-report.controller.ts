@@ -1,13 +1,15 @@
 import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Res } from "@nestjs/common";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, OpenCallsResponse,
   ProtectedCiphertextReceipt, ProtectedReportCheckpoint, ProtectedReportKeyEnvelope,
-  ProtectedReportRecoveryGrant, RecoveredProtectedReportKey, ReopenOpenCallResponse } from "@open-triage/contracts";
+  ProtectedReportRecoveryGrant, RecoveredProtectedReportKey, ReopenOpenCallResponse,
+  ValidationReviewEvaluation } from "@open-triage/contracts";
 import { bearerToken } from "../sessions/clinician-session.controller.js";
 import { DraftReportService } from "./draft-report.service.js";
 import type { DraftReportResult, SaveDraftReportResult } from "./draft-report.types.js";
 import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
+import { ReviewValidationService } from "./review-validation.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -18,6 +20,7 @@ export class DraftReportController {
     private readonly reports: DraftReportService,
     private readonly signing: SignReportService,
     private readonly protectedKeys: ProtectedReportKeyService,
+    private readonly reviewValidation: ReviewValidationService,
   ) {}
 
   @Post()
@@ -172,6 +175,17 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string
   ): Promise<SignedReportResult> {
     return this.signing.sign(bearerToken(authorization, cookie), id, body);
+  }
+
+  @Post(":id/review-evaluations")
+  @Header("Cache-Control", "no-store, private")
+  evaluateReview(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ): Promise<ValidationReviewEvaluation> {
+    return this.reviewValidation.evaluate(bearerToken(authorization, cookie), id, body);
   }
 
   @Get(":id")

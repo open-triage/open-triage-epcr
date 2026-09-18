@@ -299,7 +299,7 @@ test("publication persists source and compiled integrity with a complete actor-a
   const addedId = randomUUID();
   const baselineRule = { ...sourceRule, executionTargets: ["live", "sign"] };
   const changedRule = { ...sourceRule, name: "Historical incident number", enabled: false, executionTargets: ["review"] };
-  const addedRule = { ...sourceRule, id: addedId, name: "Require disposition" };
+  const addedRule = { ...sourceRule, id: addedId, name: "Review disposition", executionTargets: ["review"] };
   const baseline = { id: randomUUID(), organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
     cloned_from_id: null, revision: 1, display_name: "Baseline", source_rule: [baselineRule], status: "published",
     version: 1, source_sha256: "a".repeat(64), compiled_bundle: { rules: [] }, compiled_sha256: "b".repeat(64),
@@ -308,14 +308,18 @@ test("publication persists source and compiled integrity with a complete actor-a
     source_rule: [changedRule, addedRule], status: "draft", version: null, source_sha256: null,
     compiled_bundle: null, compiled_sha256: null, published_at: null };
   let audit;
+  let publishedBundle;
   const manager = { query: async (sql, parameters = []) => {
     if (sql.includes("for update")) return [row];
     if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident", base_datatype: "string" }];
     if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
-    if (sql.includes("status='published'")) return [baseline];
     if (sql.includes("next_version")) return [{ next_version: 2 }];
-    if (sql.includes("with updated as")) return [{ ...row, status: "published", version: 2,
-      source_sha256: parameters[6], compiled_sha256: parameters[8], published_at: new Date("2026-09-18T12:00:00Z") }];
+    if (sql.includes("with updated as")) {
+      publishedBundle = JSON.parse(parameters[7]);
+      return [{ ...row, status: "published", version: 2,
+        source_sha256: parameters[6], compiled_sha256: parameters[8], published_at: new Date("2026-09-18T12:00:00Z") }];
+    }
+    if (sql.includes("status='published'")) return [baseline];
     if (sql.includes("insert into validation.change_event")) { audit = parameters; return []; }
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
@@ -325,13 +329,14 @@ test("publication persists source and compiled integrity with a complete actor-a
   assert.match(result.sourceSha256, /^[a-f0-9]{64}$/);
   assert.match(result.compiledSha256, /^[a-f0-9]{64}$/);
   const changes = JSON.parse(audit[6]);
-  assert.deepEqual(changes.additions, [{ ruleId: addedId, name: "Require disposition" }]);
+  assert.deepEqual(changes.additions, [{ ruleId: addedId, name: "Review disposition" }]);
   assert.deepEqual(changes.disablements, [{ ruleId }]);
   assert.deepEqual(changes.executionTargetChanges, [{ ruleId, before: ["live", "sign"], after: ["review"] }]);
   assert.ok(changes.modifications[0].fields.includes("name"));
   assert.equal(audit[0], organizationId);
   assert.equal(audit[2], baseline.id);
   assert.equal(audit[5], "Reviewed policy changes");
+  assert.deepEqual(publishedBundle.rules.find(({ ruleId: id }) => id === addedId).executionTargets, ["review"]);
 });
 
 test("Validation history is organization isolated and exposes immutable lifecycle evidence", async () => {

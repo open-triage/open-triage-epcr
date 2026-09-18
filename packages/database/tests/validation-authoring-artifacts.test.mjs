@@ -6,6 +6,7 @@ const sql = await readFile(new URL("../../../supabase/migrations/20260918170000_
 const capabilitySql = await readFile(new URL("../../../supabase/migrations/20260918183807_validation_capabilities_and_default_grants.sql", import.meta.url), "utf8");
 const lifecycleSql = await readFile(new URL("../../../supabase/migrations/20260918190000_validation_version_lifecycle.sql", import.meta.url), "utf8");
 const rolloutSql = await readFile(new URL("../../../supabase/migrations/20260918210000_mark_legacy_unversioned_validation_artifacts.sql", import.meta.url), "utf8");
+const reviewSql = await readFile(new URL("../../../supabase/migrations/20260918211904_expose_review_target_server_evaluation.sql", import.meta.url), "utf8");
 const seedScript = await readFile(new URL("../scripts/seed-initial-validation-versions.mjs", import.meta.url), "utf8");
 const resetScript = await readFile(new URL("../scripts/reset-unsigned-clinical-work.mjs", import.meta.url), "utf8");
 
@@ -44,6 +45,17 @@ test("finding persistence carries canonical authored-rule evidence", () => {
   for (const field of ["validation_version_id", "validation_rule_id", "execution_target", "target_element_id", "input_fingerprint"]) {
     assert.ok(sql.includes(field), `missing ${field}`);
   }
+});
+
+test("review results are organization-scoped, append-only, and separate from signing findings", () => {
+  assert.match(reviewSql, /create table clinical\.validation_review_evaluation/);
+  assert.match(reviewSql, /foreign key \(organization_id, report_id\)/);
+  assert.match(reviewSql, /foreign key \(organization_id, validation_version_id\)/);
+  assert.match(reviewSql, /validation_review_evaluation_append_only/);
+  assert.match(reviewSql, /outcome in \('passed', 'findings', 'failed'\)/);
+  assert.match(reviewSql, /outcome = 'failed' and jsonb_array_length\(failures\) > 0/);
+  assert.match(reviewSql, /grant select, insert on table clinical\.validation_review_evaluation/);
+  assert.doesNotMatch(reviewSql, /insert into clinical\.validation_finding/);
 });
 
 test("published Validation sources carry clone provenance and immutable integrity metadata", () => {
