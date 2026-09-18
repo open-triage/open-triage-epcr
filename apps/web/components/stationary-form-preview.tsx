@@ -5,7 +5,7 @@ import React, { useMemo, useState } from "react";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
-import { validateStationaryRecord, type StationaryValidationFinding } from "../app/stationary-validation";
+import { actionableStationaryFindings, validateStationaryRecord, type StationaryValidationFinding } from "../app/stationary-validation";
 import { StationaryRecord } from "./stationary-record";
 
 /** Creates a detached document; preview edits can never reach report persistence. */
@@ -46,7 +46,7 @@ export function StationaryFormPreview({ draft, onReturn }: {
         <button type="button" onClick={onReturn}>Return to form draft</button>
       </div>
     </header>
-    <StationaryRecord document={document} findings={findings} formDefinition={draft.definition}
+    <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
       catalogFields={draft.catalogFields} onDocumentChange={setDocument} />
   </section>;
 }

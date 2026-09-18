@@ -157,7 +157,7 @@ test("authored repeated-group findings retain the exact row and occurrence used 
     schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-version", catalogReleaseId: "catalog",
     rules: [{ schemaVersion: 1, languageVersion: "1.0.0", ruleId: "systolic-rule",
       validationVersionId: "validation-version", name: "Unusual systolic", enabled: true, severity: "warning",
-      executionTargets: ["live"], primaryTarget: { elementId: "eVitals.06" },
+      executionTargets: ["live", "sign"], primaryTarget: { elementId: "eVitals.06" },
       scope: { groupId: "eVitals.VitalGroup", iteration: "each" }, message: "Review systolic",
       assertion: { operator: "equals", elementId: "eVitals.06", value: 999 },
       references: { elementIds: ["eVitals.06"], codes: [] } }],
@@ -173,6 +173,34 @@ test("authored repeated-group findings retain the exact row and occurrence used 
     fieldId: authored.target.fieldId }, {
     groupInstanceId: "pressure-authored", occurrenceId: "systolic-authored", fieldId: "eVitals.06",
   });
+  assert.deepEqual(authored.acknowledgement, { validationVersionId: "validation-version", ruleId: "systolic-rule",
+    targetElementId: "eVitals.06", targetGroupInstanceId: "pressure-authored",
+    targetOccurrenceId: "systolic-authored", inputFingerprint: authored.acknowledgement?.inputFingerprint });
+  const changed = structuredClone(document);
+  const changedValue = changed.groups.find(({ id }) => id === "eVitals.BloodPressureGroup")!.instances[0]!
+    .elements.find(({ id }) => id === "eVitals.06")!.values[0]!;
+  Object.assign(changedValue, { value: 121 });
+  const changedFinding = validateStationaryRecord(changed, clinicalForm, evaluationTimestamp)
+    .find(({ id }) => id.includes("systolic-rule"));
+  assert.ok(changedFinding);
+  assert.notEqual(changedFinding.id, authored.id, "the relevant-input fingerprint invalidates the acknowledged instance");
+});
+
+test("sign-only informational findings are visible but never require acknowledgement", () => {
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [{
+      schemaVersion: 1, languageVersion: "1.0.0", ruleId: "information-rule", validationVersionId: "validation-version",
+      name: "Information", enabled: true, severity: "information", executionTargets: ["sign"],
+      primaryTarget: { elementId: "ePatient.02" }, message: "For awareness",
+      assertion: { operator: "present", elementId: "element-that-is-not-present" },
+      references: { elementIds: ["element-that-is-not-present"], codes: [] },
+    }] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {},
+    validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+  const finding = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp)
+    .find(({ id }) => id.includes("information-rule"));
+  assert.equal(finding?.severity, "information");
+  assert.equal(finding?.acknowledged, false);
 });
 
 test("a broken live rule reports an attributable engine error while the form remains evaluable", () => {

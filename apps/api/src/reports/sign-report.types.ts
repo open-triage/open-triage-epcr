@@ -3,15 +3,24 @@ export interface SignReportCommand {
   expectedRevision: number;
   signerId: string;
   attestation: Record<string, unknown>;
-  warningAcknowledgements?: Record<string, unknown>;
+  warningAcknowledgements?: Record<string, WarningAcknowledgement | true>;
   actorPersona?: string;
   sessionId?: string;
   deviceId?: string;
   clientTime?: string;
 }
 
+export interface WarningAcknowledgement {
+  validationVersionId: string;
+  ruleId: string;
+  targetElementId: string;
+  targetGroupInstanceId?: string;
+  targetOccurrenceId?: string;
+  inputFingerprint: string;
+}
+
 export interface SigningFinding {
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "information";
   code: string;
   path: string;
   message: string;
@@ -20,6 +29,8 @@ export interface SigningFinding {
   ruleId?: string;
   executionTarget?: "live" | "sign" | "review";
   targetElementId?: string;
+  targetGroupInstanceId?: string;
+  targetOccurrenceId?: string;
   inputFingerprint?: string;
 }
 

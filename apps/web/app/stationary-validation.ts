@@ -17,14 +17,30 @@ export type StationaryFindingTarget = {
 
 export type StationaryValidationFinding = {
   readonly id: string;
-  readonly severity: "error" | "warning";
+  readonly severity: "error" | "warning" | "information";
   readonly category: string;
   readonly title: string;
   readonly reference: string;
   readonly message: string;
   readonly target: StationaryFindingTarget;
   readonly acknowledged: boolean;
+  readonly acknowledgement?: {
+    readonly validationVersionId: string;
+    readonly ruleId: string;
+    readonly targetElementId: string;
+    readonly targetGroupInstanceId?: string;
+    readonly targetOccurrenceId?: string;
+    readonly inputFingerprint: string;
+  };
 };
+
+export type StationaryActionableFinding = Omit<StationaryValidationFinding, "severity"> & {
+  readonly severity: "error" | "warning";
+};
+
+export function actionableStationaryFindings(findings: ReadonlyArray<StationaryValidationFinding>): ReadonlyArray<StationaryActionableFinding> {
+  return findings.filter((finding): finding is StationaryActionableFinding => finding.severity !== "information");
+}
 
 type ClinicalReviewFinding = {
   readonly severity: "error" | "warning";
@@ -71,6 +87,7 @@ function finding(
   target: Omit<StationaryFindingTarget, "sectionId" | "instanceId" | "elementId">,
   title: string,
   severity: StationaryValidationFinding["severity"] = "error",
+  authored?: NonNullable<StationaryValidationFinding["acknowledgement"]>,
 ): StationaryValidationFinding {
   const fieldId = target.fieldId;
   const completeTarget: StationaryFindingTarget = {
@@ -80,7 +97,10 @@ function finding(
     ...(fieldId ? { elementId: fieldId } : {}),
   };
   return {
-    id: `stationary:${code}:${idPart(target.groupId)}:${idPart(target.groupInstanceId)}:${idPart(target.occurrenceId)}:${idPart(fieldId)}`,
+    id: authored ? ["validation", authored.validationVersionId, authored.ruleId, authored.targetElementId,
+      authored.targetGroupInstanceId ?? "root", authored.targetOccurrenceId ?? "none", authored.inputFingerprint]
+      .map(encodeURIComponent).join(":")
+      : `stationary:${code}:${idPart(target.groupId)}:${idPart(target.groupInstanceId)}:${idPart(target.occurrenceId)}:${idPart(fieldId)}`,
     severity,
     category: "Complete record",
     title,
@@ -88,6 +108,7 @@ function finding(
     message,
     target: completeTarget,
     acknowledged: false,
+    ...(authored ? { acknowledgement: authored } : {}),
   };
 }
 
@@ -217,8 +238,12 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         { groupId: "PatientCareReportGroup" }, "Rule engine"));
       return findings;
     }
-    const evaluated = evaluateValidationBundleSafely(clinicalForm.validation.bundle, document, "live", { timestamp: evaluationTimestamp });
-    for (const authored of evaluated.findings) {
+    const evaluations = (["live", "sign"] as const).map((target) =>
+      evaluateValidationBundleSafely(clinicalForm.validation!.bundle, document, target, { timestamp: evaluationTimestamp }));
+    const authoredFindings = new Map(evaluations.flatMap(({ findings: evaluatedFindings }) => evaluatedFindings).map((authored) => [
+      JSON.stringify([authored.validationVersionId, authored.ruleId, authored.primaryTarget, authored.inputFingerprint]), authored,
+    ]));
+    for (const authored of authoredFindings.values()) {
       const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
       const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
       findings.push(finding(
@@ -228,10 +253,15 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
           ...(authored.primaryTarget.occurrenceId ? { occurrenceId: authored.primaryTarget.occurrenceId } : {}),
           fieldId: authored.primaryTarget.elementId },
         element?.name ?? authored.primaryTarget.elementId,
-        authored.severity === "information" ? "warning" : authored.severity,
+        authored.severity,
+        { validationVersionId: authored.validationVersionId, ruleId: authored.ruleId,
+          targetElementId: authored.primaryTarget.elementId,
+          ...(authored.primaryTarget.groupInstanceId ? { targetGroupInstanceId: authored.primaryTarget.groupInstanceId } : {}),
+          ...(authored.primaryTarget.occurrenceId ? { targetOccurrenceId: authored.primaryTarget.occurrenceId } : {}),
+          inputFingerprint: authored.inputFingerprint },
       ));
     }
-    for (const failure of evaluated.failures) findings.push(finding(
+    for (const failure of evaluations.flatMap(({ failures }) => failures)) findings.push(finding(
       `validation.runtime.${failure.validationVersionId}.${failure.ruleId}`,
       `${failure.message} (rule ${failure.ruleId}).`, { groupId: "PatientCareReportGroup" }, "Rule engine",
     ));

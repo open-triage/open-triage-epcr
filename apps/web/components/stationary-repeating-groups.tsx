@@ -23,13 +23,13 @@ import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryScalarControl } from "./stationary-scalar-control";
 import type { StationarySectionFinding } from "../app/stationary-record";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
-import { stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
+import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
 
 export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
   const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
   return [
-    ...validateStationaryRecord(document, clinicalForm, new Date().toISOString()),
+    ...actionableStationaryFindings(validateStationaryRecord(document, clinicalForm, new Date().toISOString())),
     ...stationaryReviewFindings(reviewFindings, clinicalForm),
   ];
 }
