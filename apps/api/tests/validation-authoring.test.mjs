@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { evaluateValidationBundle } from "@open-triage/contracts";
 import { UnauthorizedException } from "@nestjs/common";
-import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
+import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 
 const organizationId = randomUUID();
 const versionId = randomUUID();
@@ -30,6 +30,7 @@ test("new drafts persist documented minimum and maximum as separate rules withou
     if (sql.includes("select distinct cr.id")) return [{ id: "51000000-0000-4000-8000-000000000099" }];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [{ element_id: "eVitals.06", name: "Systolic Blood Pressure",
       min_occurs: 1, max_occurs: 2, group_id: "eVitals.VitalGroup", group_repeating: true }];
+    if (sql.includes("select fv.id,fv.canonical_definition")) return [];
     if (sql.includes("insert into validation.rule_identity")) return [];
     if (sql.includes("insert into validation.version")) {
       persistedRules = JSON.parse(parameters[5]);
@@ -48,6 +49,52 @@ test("new drafts persist documented minimum and maximum as separate rules withou
     'for each("eVitals.VitalGroup")\nrequire maximum("eVitals.06", 2)',
   ]);
   assert.notEqual(created.rules[0].id, created.rules[1].id);
+});
+
+test("new drafts migrate Catalog and Form requiredness into visible Validation rules", async () => {
+  let persistedRules;
+  const catalogReleaseId = "51000000-0000-4000-8000-000000000099";
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
+    if (sql.includes("select distinct cr.id")) return [{ id: catalogReleaseId }];
+    if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [
+      { element_id: "ePatient.01", name: "Patient", min_occurs: 0, max_occurs: null,
+        group_id: "ePatient.PatientGroup", group_repeating: false, agency_required: true, agency_required_severity: "warning" },
+      { element_id: "ePatient.02", name: "Last Name", min_occurs: 0, max_occurs: 1,
+        group_id: "ePatient.PatientGroup", group_repeating: false, agency_required: false, agency_required_severity: null },
+    ];
+    if (sql.includes("select fv.id,fv.canonical_definition")) return [{ id: "form-1", canonical_definition: {
+      sections: [{ fields: [
+        { key: "patient", source: { kind: "nemsis", elementId: "ePatient.01" } },
+        { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" }, required: true,
+          rules: [{ kind: "requiredness", expression: { operator: "exists", field: "patient" } }] },
+      ] }],
+    } }];
+    if (sql.includes("insert into validation.rule_identity")) return [];
+    if (sql.includes("insert into validation.version")) {
+      persistedRules = JSON.parse(parameters[5]);
+      return [{ id: parameters[0], organization_id: organizationId, catalog_release_id: parameters[2], rule_id: parameters[3],
+        revision: 1, display_name: parameters[4], source_rule: persistedRules, status: "draft", version: null,
+        compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null }];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  await service(manager).create("session", { catalogReleaseId, displayName: "Migrated policy" });
+  assert.deepEqual(persistedRules.map(({ sourceKind }) => sourceKind), ["catalog", "catalog", "form", "form"]);
+  assert.equal(persistedRules[0].severity, "warning");
+  assert.equal(persistedRules[2].source, 'require minimum("ePatient.02", 1)');
+  assert.equal(persistedRules[3].source,
+    'when present("ePatient.01")\nrequire present("ePatient.02")');
+});
+
+test("legacy nested Form predicates have a deterministic Validation-language migration", () => {
+  const fields = new Map([["present", "eResponse.03"], ["priority", "eDispatch.05"]]);
+  assert.equal(migrateFormExpression({ operator: "and", conditions: [
+    { operator: "exists", field: "present" },
+    { operator: "not", condition: { operator: "equals", field: "priority", value: "routine" } },
+  ] }, fields), 'all(present("eResponse.03"), not(equals("eDispatch.05", "routine")))');
+  assert.equal(migrateFormExpression({ operator: "exists", field: "custom" }, fields), null);
 });
 
 test("validation uses read authority and compiles a catalog-bound draft", async () => {

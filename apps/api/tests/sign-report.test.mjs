@@ -108,6 +108,37 @@ test("signing does not require report occurrences for read-only configuration me
   }]);
 });
 
+test("pinned Validation replaces legacy requiredness while Form visibility still protects hidden values", async () => {
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from forms.form_version")) return [{ status: "published", catalog_release_id: "catalog-release" }];
+    if (normalized.includes("from forms.form_field")) return [
+      { id: "required-field", stable_key: "required", required: true, clinically_stored: true,
+        catalog_element_identity_id: "required-identity", custom_element_definition_id: null,
+        min_occurs: 1, agency_required: true, agency_required_severity: "error" },
+      { id: "hidden-field", stable_key: "hidden", required: false, clinically_stored: true,
+        catalog_element_identity_id: "hidden-identity", custom_element_definition_id: null,
+        min_occurs: 0, agency_required: false, agency_required_severity: null },
+    ];
+    if (normalized.includes("from forms.form_rule")) return [
+      { target_field_id: "required-field", target_key: "required", rule_kind: "requiredness",
+        expression: { operator: "exists", field: "controller" } },
+      { target_field_id: "hidden-field", target_key: "hidden", rule_kind: "visibility",
+        expression: { operator: "exists", field: "controller" } },
+    ];
+    if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence", element_identity_id: "hidden-identity",
+      element_id: "ePatient.02", form_field_id: "hidden-field", group_instance_id: null, ordinal: 0,
+      value_kind: "text", scalar_value: "Hidden", code: null, code_system: null, absence_code: null,
+      base_datatype: "string", min_occurs: 0, max_occurs: 1 }];
+    if (normalized.includes("with incoming as")) return [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new SignReportService({}, {});
+  const findings = await service.validateSemantics(manager, { id: "report-id", form_version_id: "form-version",
+    catalog_release_id: "catalog-release", validation_version_id: "validation-version" });
+  assert.deepEqual(findings.map(({ code }) => code), ["form.conditional-hidden"]);
+});
+
 test("authoritative signing evaluates the report's pinned required-element bundle", async () => {
   const validationVersionId = randomUUID();
   const ruleId = randomUUID();

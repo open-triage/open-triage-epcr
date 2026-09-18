@@ -71,6 +71,23 @@ test("report-pinned form requiredness and configured choices define clinical val
     "fields removed from the form do not block completion");
 });
 
+test("a pinned Validation bundle is the sole owner of requiredness policy", () => {
+  const document = structuredClone(syntheticEncounter.document);
+  const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
+  Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
+  const clinicalForm = {
+    definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
+      { key: "sex", source: { kind: "nemsis" as const, elementId: "ePatient.25" }, required: true },
+    ] }] },
+    catalogFields: { "ePatient.25": { agencyRequired: true, requirednessSeverity: "error" as const,
+      minOccurs: 1, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: true } },
+    validation: { versionId: "validation-version", bundle: { schemaVersion: 1 as const,
+      languageVersion: "1.0.0" as const, validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [] } },
+  };
+  assert.deepEqual(validateStationaryRecord(document, clinicalForm, evaluationTimestamp), [],
+    "an element omitted from authored rules can be skipped even when legacy projections marked it required");
+});
+
 test("absent optional repeating records do not promote child minima to report-level findings", () => {
   const findings = validateStationaryRecord(syntheticEncounter.document, undefined, evaluationTimestamp);
   for (const groupId of ["eVitals.VitalGroup", "eMedications.MedicationGroup", "eProcedures.ProcedureGroup"]) {

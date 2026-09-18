@@ -561,9 +561,10 @@ export interface CatalogDraftElement {
     analyticalLocation: "wide" | "repeatable" | "unmapped";
     sqlType: string;
   };
-  /** Null is optional; otherwise controls whether a missing value blocks signing or produces an acknowledgement warning. */
+  /** @deprecated Read-only legacy projection. Requiredness is authored as a Validation rule. */
   requirednessSeverity: "warning" | "error" | null;
   constraints: {
+    /** Read-only intrinsic catalog structure. Documented occurrence policy is authored in Validation. */
     minOccurs: number;
     maxOccurs: number | null;
     nillable: boolean;

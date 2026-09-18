@@ -89,28 +89,19 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
     <label htmlFor="catalog-search">Find by identifier or label</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
     <div className="catalog-elements" aria-label={canEdit ? "Editable catalog elements" : "Catalog elements"}>
-      <p className="catalog-table-warning" role="note"><strong>Occurrence limit:</strong> a blank maximum means unbounded only when the source catalog supports it.</p>
+      <p className="catalog-table-warning" role="note">Requiredness and documented occurrence policy are managed in Validation. Intrinsic occurrence structure is shown here for reference.</p>
       <table>
         <colgroup><col className="catalog-element-column" /><col className="catalog-label-column" />
-          <col className="catalog-type-column" /><col className="catalog-requiredness-column" />
+          <col className="catalog-type-column" />
           <col className="catalog-occurrence-column" /><col className="catalog-occurrence-column" /></colgroup>
-        <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Requiredness</th><th>Minimum</th><th>Maximum</th></tr></thead>
+        <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Intrinsic minimum</th><th>Intrinsic maximum</th></tr></thead>
         <tbody>{visible.map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
         <td><label><span className="visually-hidden">Label for {element.elementId}</span><input disabled={!canEdit} value={element.label}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, label: event.target.value }))} /></label></td>
         <td>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</td>
-        <td><label><span className="visually-hidden">Requiredness for {element.elementId}</span><select disabled={!canEdit}
-          value={element.requirednessSeverity ?? "optional"} onChange={(event) => edit(element.elementId,
-            (value) => ({ ...value, requirednessSeverity: event.target.value === "optional" ? null : event.target.value as "warning" | "error" }))}>
-          <option value="optional">Optional</option><option value="warning">Warning</option><option value="error">Error</option>
-        </select></label></td>
-        <td><label><span className="visually-hidden">Minimum occurrences for {element.elementId}</span><input disabled={!canEdit} type="number" min={0} value={element.constraints.minOccurs}
-          onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
-            minOccurs: Number(event.target.value) } }))} /></label></td>
-        <td><label><span className="visually-hidden">Maximum occurrences for {element.elementId}</span><input disabled={!canEdit} type="number" min={1} value={element.constraints.maxOccurs ?? ""}
-          onChange={(event) => edit(element.elementId, (value) => ({ ...value, constraints: { ...value.constraints,
-            maxOccurs: event.target.value === "" ? null : Number(event.target.value) } }))} /></label></td>
+        <td>{element.constraints.minOccurs}</td>
+        <td>{element.constraints.maxOccurs ?? "Unbounded"}</td>
       </tr>)}</tbody></table>
     </div>
     </section>

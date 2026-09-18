@@ -60,6 +60,29 @@ test("saving normalizes legacy element labels and requiredness before validation
   assert.deepEqual(saved.definition, persisted);
 });
 
+test("Catalog saves discard attempted requiredness and documented occurrence policy edits", async () => {
+  let persisted;
+  const attempted = { ...definition, elements: [{ ...element, requirednessSeverity: "warning",
+    constraints: { ...element.constraints, minOccurs: 1, maxOccurs: null } }] };
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: 1, canonical_definition: definition,
+      definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("update catalog.authoring_draft")) {
+      persisted = JSON.parse(parameters[2]);
+      return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
+        canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: attempted });
+  assert.equal(persisted.elements[0].requirednessSeverity, null);
+  assert.deepEqual({ minOccurs: persisted.elements[0].constraints.minOccurs,
+    maxOccurs: persisted.elements[0].constraints.maxOccurs }, { minOccurs: 0, maxOccurs: 1 });
+});
+
 test("identity, datatype, storage, and unsupported constraint changes are rejected", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",

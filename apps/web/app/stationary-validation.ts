@@ -141,6 +141,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
 export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
   evaluationTimestamp: string): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
+  const authoredPolicy = clinicalForm?.validation !== undefined;
   const configuredFields = clinicalForm
     ? new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))
     : null;
@@ -165,7 +166,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const minimum = catalogGroup.repeating && !explicitlyRequired ? 0 : catalogGroup.occurrence.min;
     const parentIsRepeating = catalogGroup.parentId ? catalogGroups.get(catalogGroup.parentId)?.repeating === true : false;
     const validationParents = parents.length ? parents : explicitlyRequired && !parentIsRepeating ? [undefined] : [];
-    if (relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
+    if (!authoredPolicy && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
       const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
       if (count < minimum) findings.push(finding(
         "group.minimum", `${catalogGroup.name} requires at least ${minimum} occurrence(s); found ${count}.`,
@@ -193,11 +194,11 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     const requirednessSeverity = formRequired.has(element.id) ? "error" : configured?.requirednessSeverity ?? "error";
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
-      if (editable && values.length < minimum) findings.push(finding(
+      if (!authoredPolicy && editable && values.length < minimum) findings.push(finding(
         "field.minimum", `${element.name} requires at least ${minimum} value(s); found ${values.length}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
-      if (maximum !== "unbounded" && values.length > maximum) findings.push(finding(
+      if (!authoredPolicy && maximum !== "unbounded" && values.length > maximum) findings.push(finding(
         "field.maximum", `${element.name} permits at most ${maximum} value(s); found ${values.length}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name,
       ));
