@@ -18,7 +18,8 @@ export function stationaryPreviewFindings(document: EncounterDocument, draft: St
   const fields = new Map(draft.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
     field.source.kind === "nemsis" ? [[field.source.elementId, field] as const] : [])));
   const groups = new Set(configuredStationaryPreviewSections(draft.definition).flatMap((section) => [...section.groupIds]));
-  return validateStationaryRecord(document, { definition: draft.definition, catalogFields: draft.catalogFields ?? {} }).filter((finding) => {
+  return validateStationaryRecord(document, { definition: draft.definition, catalogFields: draft.catalogFields ?? {} },
+    new Date().toISOString()).filter((finding) => {
     const elementId = finding.target.fieldId ?? finding.target.elementId;
     if (!elementId) return groups.has(finding.target.groupId);
     const field = fields.get(elementId);

@@ -114,9 +114,9 @@ test("server validation compiles and evaluates the same nested conditional seman
     { id: "eSituation.13", values: [{ kind: "coded", occurrenceId: "symptom", code: "267036007", system: "SNOMED-CT" }] },
     { id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "bp", value: 120 }] },
   ] }] }] };
-  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign").length, 1);
+  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign", { timestamp: "2026-01-01T00:00:00Z" }).length, 1);
   document.groups[0].instances[0].elements[1].values[0].value = 200;
-  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign").length, 0);
+  assert.equal(evaluateValidationBundle(result.compiledBundle, document, "sign", { timestamp: "2026-01-01T00:00:00Z" }).length, 0);
 });
 
 test("server compiles independently persisted minimum and maximum policies for a repeating group", async () => {

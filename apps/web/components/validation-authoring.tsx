@@ -156,7 +156,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <label htmlFor="validation-source">Rule source</label>
       <textarea id="validation-source" spellCheck={false} value={selectedRule.source}
         onChange={(event) => changeRule((rule) => ({ ...rule, source: event.target.value }))} />
-      <small>Use optional <code>for each(&quot;group-id&quot;)</code> and <code>when</code> clauses followed by <code>require</code>. Boolean functions may nest; <code>minimum</code> and <code>maximum</code> express editable documented-occurrence policies.</small>
+      <small>Use optional <code>for each(&quot;group-id&quot;)</code> and <code>when</code> clauses followed by <code>require</code>. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.</small>
       <button type="button" onClick={() => {
         const formatted = formatValidationSource(selectedRule.source);
         if (formatted.formatted) changeRule((rule) => ({ ...rule, source: formatted.formatted! }));

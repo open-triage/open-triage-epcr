@@ -10,9 +10,12 @@ Later language features must remain backward-compatible or introduce a new
 
 ## Review surface
 
-- Source language v1 is exactly `assert present("<catalog element id>")` with an
-  optional trailing semicolon. It has no variables, calls, XPath, SQL, or implicit
-  applicability clause. Omitted applicability is unconditional.
+- Source language v1 retains `assert present("<catalog element id>")` and adds
+  domain functions for nested Boolean conditions, collection quantifiers,
+  membership, safe matching, cross-element and temporal comparison, bounded
+  temporal offsets, absence facets, repeated context, and occurrence order. It
+  has no variables, user-defined functions, XPath, SQL, network access, or
+  implicit applicability clause. Omitted applicability is unconditional.
 - The canonical compiled assertion is
   `{ "operator": "present", "elementId": "<stable id>" }`. A compiled rule also
   carries immutable validation-version and rule identities, severity, execution
@@ -24,7 +27,9 @@ Later language features must remain backward-compatible or introduce a new
   report for the stable element ID. Null/Not Value and Pertinent Negative are
   documented values and therefore satisfy this first rule.
 - The same evaluator runs in the browser for `live` and on the server for `sign`.
-  Signing fails closed when a pinned bundle cannot be loaded.
+  Every evaluation receives an explicit offset-aware timestamp. Signing fails
+  closed when a pinned bundle cannot be loaded or exceeds compatibility or
+  resource limits.
 
 ## Required human decisions
 
