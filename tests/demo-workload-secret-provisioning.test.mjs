@@ -21,6 +21,8 @@ test("the demo transition preserves keys and creates separate workload Secrets",
     "open-triage-retention-database", "open-triage-operational-audit-database",
   ]) assert.ok(script.includes(secret));
   assert.match(script, /Refusing to overwrite a partial credential transition/);
+  assert.match(script, /normalize_workload_secret/);
+  assert.match(script, /kubectl patch secret/);
 });
 
 test("the transition does not print or trace credential values", () => {

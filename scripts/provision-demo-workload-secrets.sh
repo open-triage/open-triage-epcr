@@ -31,12 +31,24 @@ require_value() {
 }
 
 database_url_for_login() {
-  DATABASE_URL_INPUT="$1" LOGIN_INPUT="$2" PASSWORD_INPUT="$3" node -e '
-    const url = new URL(process.env.DATABASE_URL_INPUT);
-    url.username = process.env.LOGIN_INPUT;
-    url.password = process.env.PASSWORD_INPUT;
-    process.stdout.write(url.toString());
-  '
+  DATABASE_URL_INPUT="$1" LOGIN_INPUT="$2" PASSWORD_INPUT="$3" \
+    node scripts/workload-database-url.mjs
+}
+
+normalize_workload_secret() {
+  local secret="$1"
+  local current_url normalized_url encoded_url
+  current_url="$(secret_value "$secret" DATABASE_URL)"
+  require_value "$current_url" "$secret.DATABASE_URL"
+  normalized_url="$(DATABASE_URL_INPUT="$legacy_database_url" \
+    WORKLOAD_DATABASE_URL_INPUT="$current_url" \
+    node scripts/workload-database-url.mjs --normalize)"
+  if [[ "$normalized_url" != "$current_url" ]]; then
+    encoded_url="$(printf '%s' "$normalized_url" | base64 | tr -d '\n')"
+    kubectl patch secret "$secret" --namespace "$namespace" --type merge \
+      --patch "{\"data\":{\"DATABASE_URL\":\"$encoded_url\"}}" >/dev/null
+    echo "Repaired database routing for $secret"
+  fi
 }
 
 if ! secret_exists "$legacy_secret"; then
@@ -58,7 +70,10 @@ for secret in "${workload_secrets[@]}"; do
   secret_exists "$secret" && existing_workload_secrets=$((existing_workload_secrets + 1))
 done
 if [[ "$existing_workload_secrets" -eq "${#workload_secrets[@]}" ]]; then
-  echo "Isolated demo workload Secrets already exist; preserving them"
+  for secret in "${workload_secrets[@]}"; do
+    normalize_workload_secret "$secret"
+  done
+  echo "Isolated demo workload Secrets already exist; preserved their credentials"
   exit 0
 fi
 if [[ "$existing_workload_secrets" -gt 0 ]] && ! secret_exists "$bootstrap_secret"; then
