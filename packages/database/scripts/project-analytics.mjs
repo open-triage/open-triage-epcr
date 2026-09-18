@@ -172,7 +172,11 @@ function valuePayload(row) {
     display: row.code_display,
     terminologyVersion: row.terminology_version,
     absenceCode: row.absence_code,
-    absenceDisplay: row.absence_display
+    absenceDisplay: row.absence_display,
+    notValueCode: row.not_value_code,
+    notValueDisplay: row.not_value_display,
+    pertinentNegativeCode: row.pertinent_negative_code,
+    pertinentNegativeDisplay: row.pertinent_negative_display
   };
 }
 
@@ -206,6 +210,10 @@ function amendedRow(base, corrected) {
     terminologyVersion: "terminology_version",
     absenceCode: "absence_code",
     absenceDisplay: "absence_display",
+    notValueCode: "not_value_code",
+    notValueDisplay: "not_value_display",
+    pertinentNegativeCode: "pertinent_negative_code",
+    pertinentNegativeDisplay: "pertinent_negative_display",
     sourceAttributes: "source_attributes",
     correlationId: "correlation_id",
     documentedTime: "documented_time",
@@ -455,15 +463,20 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
     if (!repeatable) {
       if (seenWide.has(element.element_id)) throw new Error(`Non-repeatable element ${element.element_id} occurs more than once`);
       seenWide.add(element.element_id);
-      if (["null", "pertinent-negative", "absent"].includes(element.value_kind)) {
+      if (["null", "pertinent-negative", "absent"].includes(element.value_kind)
+          || element.not_value_code || element.pertinent_negative_code) {
         statuses[element.element_id] = {
           kind: element.value_kind,
           code: element.absence_code,
-          display: element.absence_display
+          display: element.absence_display,
+          notValue: element.not_value_code ? { code: element.not_value_code, display: element.not_value_display } : null,
+          pertinentNegative: element.pertinent_negative_code
+            ? { code: element.pertinent_negative_code, display: element.pertinent_negative_display } : null
         };
-      } else if (mapping) {
+      }
+      if (!["null", "pertinent-negative", "absent"].includes(element.value_kind) && mapping) {
         Object.assign(wide, wideValues(element, mapping));
-      } else {
+      } else if (!["null", "pertinent-negative", "absent"].includes(element.value_kind)) {
         const target = element.identifying ? additionalIdentifying : additional;
         target[element.element_id] = valuePayload(element);
       }
@@ -522,6 +535,10 @@ async function projectReport(reportId, { onlyIfStale = false } = {}) {
       absence_kind: ["null", "pertinent-negative", "absent"].includes(element.value_kind) ? element.value_kind : null,
       absence_code: element.absence_code,
       absence_display: element.absence_display,
+      not_value_code: element.not_value_code,
+      not_value_display: element.not_value_display,
+      pertinent_negative_code: element.pertinent_negative_code,
+      pertinent_negative_display: element.pertinent_negative_display,
       clinical_time: timeElement?.value_datetime ?? null,
       clinical_time_element_id: timeElement?.element_id ?? null,
       clinical_utc_offset_minutes: timeElement?.value_utc_offset_minutes ?? null,

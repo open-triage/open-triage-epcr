@@ -24,10 +24,14 @@ function stable(value: unknown): unknown {
 function encounterValue(candidate: unknown): unknown {
   if (!record(candidate)) return candidate;
   const scalar = comparableScalar(candidate);
-  if (scalar) return scalar;
+  const metadata = {
+    ...(record(candidate.notValue) ? { notValue: { code: candidate.notValue.code } } : {}),
+    ...(record(candidate.pertinentNegative) ? { pertinentNegative: { code: candidate.pertinentNegative.code } } : {}),
+  };
+  if (scalar) return { ...scalar, ...metadata };
   if (candidate.kind === "coded") return {
     kind: "coded", code: candidate.code, system: candidate.system ?? candidate.codeSystem ?? null,
-    ...(candidate.display ? { display: candidate.display } : {})
+    ...(candidate.display ? { display: candidate.display } : {}), ...metadata
   };
   if (candidate.kind === "null") {
     const notValue = record(candidate.notValue) ? candidate.notValue : {};
@@ -39,7 +43,7 @@ function encounterValue(candidate: unknown): unknown {
     kind: "pertinent-negative", code: candidate.code ?? candidate.absenceCode,
     ...(candidate.display ? { display: candidate.display } : {})
   };
-  return { kind: candidate.kind };
+  return { kind: candidate.kind, ...metadata };
 }
 
 function equalValue(left: unknown, right: unknown): boolean {
@@ -101,7 +105,9 @@ function columns(value: JsonRecord, base: string): Record<string, unknown> {
     value_kind: value.kind, value_text: null, value_integer: null, value_numeric: null,
     value_boolean: null, value_date: null, value_datetime: null, value_time: null, value_duration: null,
     value_binary: null, value_lexical: null, value_utc_offset_minutes: null, value_precision: null,
-    code: null, code_system: null, code_display: null, absence_code: null, absence_display: null
+    code: null, code_system: null, code_display: null, absence_code: null, absence_display: null,
+    not_value_code: null, not_value_display: null,
+    pertinent_negative_code: null, pertinent_negative_display: null
   };
   if (value.kind === "coded") Object.assign(result, { code: value.code, code_system: value.system ?? null, code_display: value.display ?? null });
   else if (value.kind === "null") {
@@ -116,6 +122,13 @@ function columns(value: JsonRecord, base: string): Record<string, unknown> {
     if (["date", "dateTime", "time"].includes(base)) result.value_precision = value.precision ?? null;
     if (["dateTime", "time"].includes(base)) result.value_utc_offset_minutes = value.utcOffsetMinutes ?? null;
   }
+  const nv = record(value.notValue) ? value.notValue : value.kind === "null" && record(value.notValue) ? value.notValue : undefined;
+  const pn = record(value.pertinentNegative) ? value.pertinentNegative
+    : value.kind === "pertinent-negative" ? { code: value.code, display: value.display } : undefined;
+  Object.assign(result, {
+    not_value_code: nv?.code ?? null, not_value_display: nv?.display ?? null,
+    pertinent_negative_code: pn?.code ?? null, pertinent_negative_display: pn?.display ?? null,
+  });
   return result;
 }
 
@@ -174,8 +187,10 @@ export async function mergeDispatchEncounter(writer: DispatchReceiptWriter, inpu
        analytical_repeatable, identifying, value_kind, value_text, value_integer, value_numeric,
        value_boolean, value_date, value_datetime, value_time, value_duration, value_binary, value_lexical,
        value_utc_offset_minutes, value_precision, code, code_system, code_display,
-       absence_code, absence_display, source_attributes, provenance_kind, provenance_detail, author_id)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27::jsonb,'dispatch',$28::jsonb,$29)
+       absence_code, absence_display, not_value_code, not_value_display,
+       pertinent_negative_code, pertinent_negative_display,
+       source_attributes, provenance_kind, provenance_detail, author_id)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32::jsonb,'dispatch',$33::jsonb,$34)
       on conflict (id) do update set value_kind=excluded.value_kind, value_text=excluded.value_text,
        value_integer=excluded.value_integer, value_numeric=excluded.value_numeric, value_boolean=excluded.value_boolean,
        value_date=excluded.value_date, value_datetime=excluded.value_datetime, value_time=excluded.value_time,
@@ -184,6 +199,9 @@ export async function mergeDispatchEncounter(writer: DispatchReceiptWriter, inpu
        value_precision=excluded.value_precision,
        code=excluded.code, code_system=excluded.code_system, code_display=excluded.code_display,
        absence_code=excluded.absence_code, absence_display=excluded.absence_display,
+       not_value_code=excluded.not_value_code, not_value_display=excluded.not_value_display,
+       pertinent_negative_code=excluded.pertinent_negative_code,
+       pertinent_negative_display=excluded.pertinent_negative_display,
        source_attributes=excluded.source_attributes, provenance_detail=excluded.provenance_detail,
        ordinal=excluded.ordinal, tombstoned_at=null, updated_at=now()
       where clinical.element_occurrence.report_id=excluded.report_id and clinical.element_occurrence.provenance_kind='dispatch'`,
@@ -193,7 +211,9 @@ export async function mergeDispatchEncounter(writer: DispatchReceiptWriter, inpu
       value.value_integer, value.value_numeric, value.value_boolean, value.value_date, value.value_datetime,
       value.value_time, value.value_duration, value.value_binary, value.value_lexical,
       value.value_utc_offset_minutes, value.value_precision, value.code, value.code_system, value.code_display,
-      value.absence_code, value.absence_display, action.target.value.attributes ? JSON.stringify(action.target.value.attributes) : null,
+      value.absence_code, value.absence_display, value.not_value_code, value.not_value_display,
+      value.pertinent_negative_code, value.pertinent_negative_display,
+      action.target.value.attributes ? JSON.stringify(action.target.value.attributes) : null,
       JSON.stringify({ sourceOccurrenceId: action.target.value.occurrenceId, sourceValue: action.target.value,
         dispatchReceiptId: input.receiptId, dispatchRevision: input.dispatchRevision }), report.documenting_user_id]);
   }

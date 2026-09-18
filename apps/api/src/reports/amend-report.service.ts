@@ -33,6 +33,8 @@ type ElementMetadata = {
   analytical_repeatable: boolean;
   identifying: boolean;
   allowed_absence_states: string[];
+  supports_not_values: boolean;
+  supports_pertinent_negatives: boolean;
 };
 
 type StoredChange = {
@@ -197,13 +199,10 @@ export class AmendReportService {
     if (change.action === "replace") {
       const original = effective.get(change.targetElementOccurrenceId);
       if (!original) throw new UnprocessableEntityException(`Occurrence ${change.targetElementOccurrenceId} is not in the effective report`);
-      const metadata: ElementMetadata = {
-        element_identity_id: String(original.element_identity_id),
-        base_datatype: await this.baseDatatype(manager, report, String(original.element_id), original.form_field_id as string | null),
-        analytical_repeatable: Boolean(original.analytical_repeatable),
-        identifying: Boolean(original.identifying),
-        allowed_absence_states: await this.allowedAbsenceStates(manager, report, String(original.element_id), original.form_field_id as string | null)
-      };
+      const metadata = await this.elementMetadata(manager, report, {
+        id: String(original.id), elementId: String(original.element_id),
+        formFieldId: original.form_field_id as string | null, value: change.value
+      });
       await this.validateDatatype(manager, change.value, metadata, report, String(original.element_id));
       const corrected = { ...original, ...this.valueColumns(change.value), author_id: command.authorId,
         provenance_kind: "amendment", updated_at: signedAt };
@@ -276,6 +275,7 @@ export class AmendReportService {
     occurrence: Omit<DraftOccurrenceMutation, "tombstone">
   ): Promise<ElementMetadata> {
     const standard = await manager.query<ElementMetadata[]>(`select e.element_identity_id, e.base_datatype,
+        e.supports_not_values, e.supports_pertinent_negatives,
         (m.analytical_location = 'repeatable') as analytical_repeatable, m.identifying,
         array(select o.source_kind || ':' || o.code from catalog.element_option o
           where o.release_id = e.release_id and o.element_id = e.element_id) as allowed_absence_states
@@ -286,6 +286,8 @@ export class AmendReportService {
     if (!metadata && occurrence.formFieldId) {
       const custom = await manager.query<ElementMetadata[]>(`select ced.id as element_identity_id, ced.base_datatype,
           ff.analytical_repeatable, ced.identifying,
+          (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
+          (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
           array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
         where ff.id = $1 and ff.form_version_id = $2 and ced.namespace || '.' || ced.slug = $3`,
@@ -339,6 +341,18 @@ export class AmendReportService {
         throw new UnprocessableEntityException(`${value.absenceCode} is not a supported ${value.kind} for ${elementId}`);
       }
     }
+    const notValue = value.notValue ?? (value.kind === "null" ? { code: value.absenceCode, display: value.display } : undefined);
+    const pertinentNegative = value.pertinentNegative ?? (value.kind === "pertinent-negative" ? { code: value.absenceCode, display: value.display } : undefined);
+    if (notValue && (!metadata.supports_not_values ||
+        (!metadata.allowed_absence_states.includes(`not-value:${notValue.code}`) &&
+         !metadata.allowed_absence_states.includes(`form:${notValue.code}`)))) {
+      throw new UnprocessableEntityException(`${notValue.code} is not a supported not-value for ${elementId}`);
+    }
+    if (pertinentNegative && (!metadata.supports_pertinent_negatives ||
+        (!metadata.allowed_absence_states.includes(`pertinent-negative:${pertinentNegative.code}`) &&
+         !metadata.allowed_absence_states.includes(`form:${pertinentNegative.code}`)))) {
+      throw new UnprocessableEntityException(`${pertinentNegative.code} is not a supported pertinent-negative for ${elementId}`);
+    }
     if (value.kind === "coded") {
       const invalid = await manager.query<Array<{ invalid: boolean }>>(`select exists (
           select 1 from catalog.element_definition e where e.release_id = $1 and e.element_id = $2
@@ -358,7 +372,9 @@ export class AmendReportService {
       value_boolean: null, value_date: null, value_datetime: null, value_time: null,
       value_duration: null, value_binary: null, value_lexical: null,
       value_utc_offset_minutes: null, value_precision: null, code: null, code_system: null,
-      code_display: null, terminology_version: null, absence_code: null, absence_display: null
+      code_display: null, terminology_version: null, absence_code: null, absence_display: null,
+      not_value_code: null, not_value_display: null,
+      pertinent_negative_code: null, pertinent_negative_display: null
     };
     switch (value.kind) {
       case "text": case "uri": result.value_text = value.value; break;
@@ -373,6 +389,12 @@ export class AmendReportService {
       case "coded": result.code = value.code; result.code_system = value.codeSystem ?? null; result.code_display = value.display ?? null; result.terminology_version = value.terminologyVersion ?? null; break;
       case "null": case "pertinent-negative": case "absent": result.absence_code = value.absenceCode ?? null; result.absence_display = value.display ?? null; break;
     }
+    const notValue = value.notValue ?? (value.kind === "null" ? { code: value.absenceCode, display: value.display } : undefined);
+    const pertinentNegative = value.pertinentNegative ?? (value.kind === "pertinent-negative" ? { code: value.absenceCode, display: value.display } : undefined);
+    result.not_value_code = notValue?.code ?? null;
+    result.not_value_display = notValue?.display ?? null;
+    result.pertinent_negative_code = pertinentNegative?.code ?? null;
+    result.pertinent_negative_display = pertinentNegative?.display ?? null;
     return result;
   }
 

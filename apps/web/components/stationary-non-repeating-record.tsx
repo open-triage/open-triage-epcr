@@ -25,8 +25,10 @@ export type StationaryApplicability = {
 };
 
 function canonicalValueText(value: EncounterValue): string {
-  if (value.kind === "scalar") return String(value.lexical ?? value.value);
-  if (value.kind === "coded") return value.display ? `${value.display} (${value.code})` : value.code;
+  const pn = value.pertinentNegative
+    ? ` — ${value.pertinentNegative.display ?? `Pertinent negative (${value.pertinentNegative.code})`}` : "";
+  if (value.kind === "scalar") return `${String(value.lexical ?? value.value)}${pn}`;
+  if (value.kind === "coded") return `${value.display ? `${value.display} (${value.code})` : value.code}${pn}`;
   if (value.kind === "pertinent-negative") return value.display ? `${value.display} (${value.code})` : value.code;
   if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "No value";
   return "Collection attempted; value absent";

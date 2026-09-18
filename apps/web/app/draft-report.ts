@@ -70,7 +70,10 @@ export interface DraftGroupMutation {
   readonly tombstone?: boolean;
 }
 
-export type DraftValue =
+export type DraftValue = ({
+  readonly notValue?: { readonly code: string; readonly display?: string };
+  readonly pertinentNegative?: { readonly code: string; readonly display?: string };
+} & (
   | { readonly kind: "text" | "uri"; readonly value: string }
   | { readonly kind: "integer" | "numeric"; readonly value: string | number; readonly lexical?: string }
   | { readonly kind: "boolean"; readonly value: boolean }
@@ -80,7 +83,8 @@ export type DraftValue =
   | { readonly kind: "binary"; readonly value: string }
   | { readonly kind: "coded"; readonly code: string; readonly codeSystem?: string; readonly display?: string; readonly terminologyVersion?: string }
   | { readonly kind: "null" | "pertinent-negative"; readonly absenceCode: string; readonly display?: string }
-  | { readonly kind: "absent"; readonly absenceCode?: string; readonly display?: string };
+  | { readonly kind: "absent"; readonly absenceCode?: string; readonly display?: string }
+));
 
 export interface DraftOccurrenceMutation {
   readonly id: string;
@@ -126,33 +130,37 @@ function draftTargetId(reportId: string, targetKind: "group" | "occurrence", ide
 }
 
 function draftValue(elementId: string, value: EncounterValue): DraftValue {
-  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}), ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}) };
-  if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}) };
+  const metadata: Pick<DraftValue, "notValue" | "pertinentNegative"> = {
+    ...(value.notValue ? { notValue: value.notValue } : {}),
+    ...(value.pertinentNegative ? { pertinentNegative: value.pertinentNegative } : {}),
+  };
+  if (value.kind === "coded") return { kind: "coded", code: value.code, ...(value.system ? { codeSystem: value.system } : {}), ...(value.display ? { display: value.display } : {}), ...(typeof value.terminologyVersion === "string" ? { terminologyVersion: value.terminologyVersion } : {}), ...metadata };
+  if (value.kind === "pertinent-negative") return { kind: "pertinent-negative", absenceCode: value.code, ...(value.display ? { display: value.display } : {}), ...metadata };
   if (value.kind === "null") return value.notValue
-    ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}) }
-    : { kind: "absent" };
-  if (value.kind === "absent") return { kind: "absent" };
+    ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}), ...metadata }
+    : { kind: "absent", ...metadata };
+  if (value.kind === "absent") return { kind: "absent", ...metadata };
   const base = requireNemsisDataElement(elementId).datatype.base;
   if (base === "integer") {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
     return { kind: "integer", value: Number.isInteger(numeric) ? numeric : scalar,
-      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}), ...metadata };
   }
   if (["decimal", "double", "float"].includes(base)) {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
     return { kind: "numeric", value: Number.isFinite(numeric) ? numeric : scalar,
-      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
+      ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}), ...metadata };
   }
-  if (base === "boolean") return { kind: "boolean", value: Boolean(value.value) };
-  if (base === "date") return { kind: "date", value: String(value.value), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
-  if (base === "dateTime") return { kind: "datetime", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
-  if (base === "time") return { kind: "time", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}) };
-  if (base === "duration") return { kind: "duration", value: String(value.value), ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}) };
-  if (base === "anyURI") return { kind: "uri", value: String(value.value) };
-  if (base === "binary" || base === "base64Binary" || base === "hexBinary") return { kind: "binary", value: String(value.value) };
-  return { kind: "text", value: String(value.value) };
+  if (base === "boolean") return { kind: "boolean", value: Boolean(value.value), ...metadata };
+  if (base === "date") return { kind: "date", value: String(value.value), ...(typeof value.precision === "string" ? { precision: value.precision } : {}), ...metadata };
+  if (base === "dateTime") return { kind: "datetime", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}), ...metadata };
+  if (base === "time") return { kind: "time", value: String(value.value), ...(typeof value.utcOffsetMinutes === "number" ? { utcOffsetMinutes: value.utcOffsetMinutes } : {}), ...(typeof value.precision === "string" ? { precision: value.precision } : {}), ...metadata };
+  if (base === "duration") return { kind: "duration", value: String(value.value), ...(typeof value.lexical === "string" ? { lexical: value.lexical } : {}), ...metadata };
+  if (base === "anyURI") return { kind: "uri", value: String(value.value), ...metadata };
+  if (base === "binary" || base === "base64Binary" || base === "hexBinary") return { kind: "binary", value: String(value.value), ...metadata };
+  return { kind: "text", value: String(value.value), ...metadata };
 }
 
 export function encounterDocumentToDraftMutations(

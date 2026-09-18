@@ -66,6 +66,10 @@ type StoredOccurrenceRow = {
   terminology_version: string | null;
   absence_code: string | null;
   absence_display: string | null;
+  not_value_code: string | null;
+  not_value_display: string | null;
+  pertinent_negative_code: string | null;
+  pertinent_negative_display: string | null;
   source_attributes: JsonRecord | null;
   provenance_kind: string;
   provenance_detail: JsonRecord | null;
@@ -106,7 +110,7 @@ export function dispatchEntityId(reportId: string, identity: string): string {
 }
 
 function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
-  const empty = Array<unknown>(19).fill(null);
+  const empty = Array<unknown>(23).fill(null);
   const set = (kind: string, index: number, item: unknown): unknown[] => {
     empty[0] = kind;
     empty[index] = item;
@@ -119,19 +123,24 @@ function valueColumns(value: JsonRecord, baseDatatype: string): unknown[] {
   if (value.kind === "null") {
     const notValue = record(value.notValue) ? value.notValue : {};
     empty[0] = "null"; empty[17] = notValue.code ?? null; empty[18] = notValue.display ?? null;
-    return empty;
-  }
-  if (value.kind === "pertinent-negative") {
+  } else if (value.kind === "pertinent-negative") {
     empty[0] = "pertinent-negative"; empty[17] = value.code; empty[18] = value.display ?? null;
-    return empty;
+  } else if (value.kind === "absent") {
+    set("absent", 1, null);
+  } else {
+    const mapping = scalarDatabaseMapping(baseDatatype);
+    const columnIndex: Record<ScalarDatabaseColumn, number> = {
+      value_text: 1, value_integer: 2, value_numeric: 3, value_boolean: 4, value_date: 5,
+      value_datetime: 6, value_time: 7, value_duration: 8, value_binary: 9,
+    };
+    set(mapping.databaseKind, columnIndex[mapping.databaseColumn], scalarDatabaseValue(value.value, baseDatatype));
   }
-  if (value.kind === "absent") return set("absent", 1, null);
-  const mapping = scalarDatabaseMapping(baseDatatype);
-  const columnIndex: Record<ScalarDatabaseColumn, number> = {
-    value_text: 1, value_integer: 2, value_numeric: 3, value_boolean: 4, value_date: 5,
-    value_datetime: 6, value_time: 7, value_duration: 8, value_binary: 9,
-  };
-  return set(mapping.databaseKind, columnIndex[mapping.databaseColumn], scalarDatabaseValue(value.value, baseDatatype));
+  const notValue = record(value.notValue) ? value.notValue : undefined;
+  const pn = record(value.pertinentNegative) ? value.pertinentNegative
+    : value.kind === "pertinent-negative" ? { code: value.code, display: value.display } : undefined;
+  empty[19] = notValue?.code ?? null; empty[20] = notValue?.display ?? null;
+  empty[21] = pn?.code ?? null; empty[22] = pn?.display ?? null;
+  return empty;
 }
 
 /** Seeds a newly created report from the accepted dispatch snapshot exactly once. */
@@ -231,6 +240,8 @@ export async function seedDispatchEncounter(
           value_lexical: columns[10], value_utc_offset_minutes: columns[11], value_precision: columns[12],
           code: columns[13], code_system: columns[14], code_display: columns[15],
           terminology_version: columns[16], absence_code: columns[17], absence_display: columns[18],
+          not_value_code: columns[19], not_value_display: columns[20],
+          pertinent_negative_code: columns[21], pertinent_negative_display: columns[22],
           source_attributes: value.attributes ?? null,
           provenance_detail: { sourceOccurrenceId: value.occurrenceId, sourceValue: value },
         });
@@ -244,7 +255,8 @@ export async function seedDispatchEncounter(
          ordinal, analytical_repeatable, identifying, value_kind, value_text, value_integer, value_numeric,
          value_boolean, value_date, value_datetime, value_time, value_duration, value_binary,
          value_lexical, value_utc_offset_minutes, value_precision, code, code_system, code_display,
-         terminology_version, absence_code, absence_display, source_attributes,
+         terminology_version, absence_code, absence_display, not_value_code, not_value_display,
+         pertinent_negative_code, pertinent_negative_display, source_attributes,
          provenance_kind, provenance_detail, author_id)
       select incoming.id, $1, $2, incoming.group_instance_id, incoming.element_identity_id,
              incoming.element_id, incoming.ordinal, incoming.analytical_repeatable, incoming.identifying,
@@ -254,7 +266,9 @@ export async function seedDispatchEncounter(
                else decode(incoming.value_binary, 'base64') end,
              incoming.value_lexical, incoming.value_utc_offset_minutes, incoming.value_precision,
              incoming.code, incoming.code_system, incoming.code_display, incoming.terminology_version,
-             incoming.absence_code, incoming.absence_display, incoming.source_attributes,
+             incoming.absence_code, incoming.absence_display, incoming.not_value_code,
+             incoming.not_value_display, incoming.pertinent_negative_code,
+             incoming.pertinent_negative_display, incoming.source_attributes,
              'dispatch', incoming.provenance_detail, $3
       from jsonb_to_recordset($4::jsonb) as incoming(
         id uuid, group_instance_id uuid, element_identity_id uuid, element_id text,
@@ -263,15 +277,19 @@ export async function seedDispatchEncounter(
         value_date date, value_datetime timestamptz, value_time time, value_duration interval,
         value_binary text, value_lexical text, value_utc_offset_minutes smallint, value_precision text,
         code text, code_system text, code_display text, terminology_version text,
-        absence_code text, absence_display text, source_attributes jsonb, provenance_detail jsonb)
+        absence_code text, absence_display text, not_value_code text, not_value_display text,
+        pertinent_negative_code text, pertinent_negative_display text,
+        source_attributes jsonb, provenance_detail jsonb)
     `, [reportId, catalogReleaseId, authorId, JSON.stringify(occurrenceRows)]);
   }
 }
 
 export function storedEncounterValue(row: StoredOccurrenceRow): EncounterValue {
+  const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}),
+    ...(row.not_value_code ? { notValue: { code: row.not_value_code, ...(row.not_value_display ? { display: row.not_value_display } : {}) } } : {}),
+    ...(row.pertinent_negative_code ? { pertinentNegative: { code: row.pertinent_negative_code, ...(row.pertinent_negative_display ? { display: row.pertinent_negative_display } : {}) } } : {}) };
   const source = row.provenance_detail?.sourceValue;
-  if (record(source)) return { ...source, occurrenceId: row.id } as EncounterValue;
-  const common = { occurrenceId: row.id, ...(row.source_attributes ? { attributes: row.source_attributes } : {}) };
+  if (record(source)) return { ...source, ...common } as EncounterValue;
   if (row.value_kind === "coded") return { ...common, kind: "coded", code: row.code!, ...(row.code_system ? { system: row.code_system } : {}), ...(row.code_display ? { display: row.code_display } : {}), ...(row.terminology_version ? { terminologyVersion: row.terminology_version } : {}) } as EncounterValue;
   if (row.value_kind === "null") return { ...common, kind: "null", ...(row.absence_code ? { notValue: { code: row.absence_code, ...(row.absence_display ? { display: row.absence_display } : {}) } } : {}) } as EncounterValue;
   if (row.value_kind === "pertinent-negative") return { ...common, kind: "pertinent-negative", code: row.absence_code!, ...(row.absence_display ? { display: row.absence_display } : {}) } as EncounterValue;
@@ -316,7 +334,9 @@ export async function encounterDocument(manager: Queryable, reportId: string): P
            value_numeric, value_boolean, value_date, value_datetime, value_time, value_duration,
            encode(value_binary, 'base64') as value_binary, value_lexical, value_utc_offset_minutes,
            value_precision, code, code_system, code_display, terminology_version,
-           absence_code, absence_display, source_attributes, provenance_kind, provenance_detail
+           absence_code, absence_display, not_value_code, not_value_display,
+           pertinent_negative_code, pertinent_negative_display,
+           source_attributes, provenance_kind, provenance_detail
     from clinical.element_occurrence where report_id = $1 and tombstoned_at is null
     order by element_id, ordinal, id
   `, [reportId]);
