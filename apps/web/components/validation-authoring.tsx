@@ -8,7 +8,10 @@ import { activateValidationVersion, createValidationDraft, loadValidationDraft, 
   loadActiveCatalogDefinition, saveValidationDraft, validateValidationDraft } from "../app/admin-context";
 
 export function validationCatalog(definition: CatalogDefinitionView["definition"]): ValidationCatalog {
-  return { elements: definition.elements.map(({ elementId, label, baseDatatype }) => ({ elementId, label, baseDatatype })),
+  return { elements: definition.elements.map(({ elementId, label, baseDatatype, storageSemantics, constraints }) => ({
+      elementId, label, baseDatatype, groupPath: storageSemantics.groupPath,
+      intrinsicOccurrence: { min: constraints.minOccurs, max: constraints.maxOccurs ?? "unbounded" },
+    })),
     codes: definition.codeLists.flatMap((list) => list.elementIds.flatMap((elementId) => list.values.map((value) => ({
       elementId, code: value.code, codeSystem: value.codeSystem, label: value.label, enabled: value.enabled,
     })))) };
@@ -56,12 +59,13 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [published, setPublished] = useState<PublishedValidationVersion | null>(null);
   const [catalog, setCatalog] = useState<ValidationCatalog | null>(null);
   const [referenceElementId, setReferenceElementId] = useState("");
+  const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
 
   useEffect(() => {
     let current = true;
     Promise.all([loadValidationDraft(), loadActiveCatalogDefinition()]).then(([value, catalogDefinition]) => {
       if (current) {
-        setDraft(value); setReferenceElementId(value?.rule.primaryTargetElementId ?? "");
+        setDraft(value); setReferenceElementId(value?.rules[0]?.primaryTargetElementId ?? "");
         setCatalog(catalogDefinition ? validationCatalog(catalogDefinition.definition) : null);
       }
     })
@@ -78,8 +82,12 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   function change(update: (current: ValidationDraft) => ValidationDraft) {
     setDraft((current) => current ? update(current) : current); setDirty(true); setValidation(null); setStatus("Unsaved changes.");
   }
-  const inlineValidation = useMemo(() => draft && catalog
-    ? compileValidationRule(draft.rule, draft.id, catalog) : null, [draft, catalog]);
+  const selectedRule = draft?.rules[selectedRuleIndex] ?? null;
+  function changeRule(update: (rule: ValidationDraft["rules"][number]) => ValidationDraft["rules"][number]) {
+    change((current) => ({ ...current, rules: current.rules.map((rule, index) => index === selectedRuleIndex ? update(rule) : rule) }));
+  }
+  const inlineValidation = useMemo(() => draft && catalog && selectedRule
+    ? compileValidationRule(selectedRule, draft.id, catalog) : null, [draft, catalog, selectedRule]);
   const explanation = inlineValidation?.compiled && catalog ? explainValidationRule(inlineValidation.compiled, catalog) : null;
   if (!loaded) return <p role="status">Loading Validation draft…</p>;
   if (!draft) return <div className="form-empty">
@@ -97,7 +105,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
 
   if (published) return <div className="form-publication">
     <h3>Published {published.displayName}</h3>
-    <p>Version {published.version} and rule {published.ruleId} are immutable and bound to catalog {published.catalogReleaseId}.</p>
+    <p>Version {published.version} and its {published.ruleIds.length} rules are immutable and bound to catalog {published.catalogReleaseId}.</p>
     <label htmlFor="validation-activation-note">Activation note</label>
     <textarea id="validation-activation-note" value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
     <button type="button" disabled={busy || !canPublish || !activationNote.trim()} onClick={() => action(async () => {
@@ -111,28 +119,49 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     <label htmlFor="validation-display-name">Validation version display name</label>
     <input id="validation-display-name" disabled={!canWrite} value={draft.displayName}
       onChange={(event) => change((current) => ({ ...current, displayName: event.target.value }))} />
-    <fieldset disabled={!canWrite}>
+    <nav aria-label="Validation rules"><h3>Editable rules</h3><ul>{draft.rules.map((rule, index) => <li key={rule.id}>
+      <button type="button" aria-current={index === selectedRuleIndex ? "page" : undefined} onClick={() => {
+        setSelectedRuleIndex(index); setReferenceElementId(rule.primaryTargetElementId);
+      }}>{rule.name}{rule.enabled ? "" : " (disabled)"}</button>
+    </li>)}</ul></nav>
+    {selectedRule && <fieldset disabled={!canWrite}>
       <legend>Conditional validation rule</legend>
       <label htmlFor="validation-rule-name">Rule name</label>
-      <input id="validation-rule-name" value={draft.rule.name}
-        onChange={(event) => change((current) => ({ ...current, rule: { ...current.rule, name: event.target.value } }))} />
+      <input id="validation-rule-name" value={selectedRule.name}
+        onChange={(event) => changeRule((rule) => ({ ...rule, name: event.target.value }))} />
+      <label><input type="checkbox" checked={selectedRule.enabled}
+        onChange={(event) => changeRule((rule) => ({ ...rule, enabled: event.target.checked }))} /> Rule enabled</label>
+      <label htmlFor="validation-severity">Severity</label>
+      <select id="validation-severity" value={selectedRule.severity}
+        onChange={(event) => changeRule((rule) => ({ ...rule, severity: event.target.value as typeof rule.severity }))}>
+        <option value="error">Error</option><option value="warning">Warning</option><option value="information">Information</option>
+      </select>
+      <fieldset><legend>Execution targets</legend>{(["live", "sign", "review"] as const).map((target) => <label key={target}>
+        <input type="checkbox" checked={selectedRule.executionTargets.includes(target)} onChange={(event) => changeRule((rule) => ({
+          ...rule, executionTargets: event.target.checked ? [...new Set([...rule.executionTargets, target])] : rule.executionTargets.filter((item) => item !== target),
+        }))} /> {target}</label>)}</fieldset>
       <label htmlFor="validation-element-id">Primary target element ID</label>
-      <input id="validation-element-id" list="validation-element-references" value={draft.rule.primaryTargetElementId}
-        onChange={(event) => change((current) => ({ ...current, rule: { ...current.rule, primaryTargetElementId: event.target.value } }))} />
-      {catalog && <ValidationReferenceAssistance catalog={catalog} elementId={referenceElementId || draft.rule.primaryTargetElementId}
+      <input id="validation-element-id" list="validation-element-references" value={selectedRule.primaryTargetElementId}
+        onChange={(event) => changeRule((rule) => ({ ...rule, primaryTargetElementId: event.target.value }))} />
+      {catalog && <ValidationReferenceAssistance catalog={catalog} elementId={referenceElementId || selectedRule.primaryTargetElementId}
         onElementIdChange={setReferenceElementId} />}
+      {catalog?.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)?.intrinsicOccurrence && (() => {
+        const element = catalog.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)!;
+        return <p role="note"><strong>Intrinsic Catalog structure (read-only):</strong> {element.intrinsicOccurrence!.min}–{element.intrinsicOccurrence!.max} occurrence(s)
+          {element.groupPath?.length ? ` in ${element.groupPath.at(-1)}` : ""}. Validation policies may be disabled or relaxed, but cannot make unsupported occurrences structurally valid.</p>;
+      })()}
       <label htmlFor="validation-message">Finding message</label>
-      <input id="validation-message" value={draft.rule.message}
-        onChange={(event) => change((current) => ({ ...current, rule: { ...current.rule, message: event.target.value } }))} />
+      <input id="validation-message" value={selectedRule.message}
+        onChange={(event) => changeRule((rule) => ({ ...rule, message: event.target.value }))} />
       <label htmlFor="validation-source">Rule source</label>
-      <textarea id="validation-source" spellCheck={false} value={draft.rule.source}
-        onChange={(event) => change((current) => ({ ...current, rule: { ...current.rule, source: event.target.value } }))} />
-      <small>Use an optional <code>when</code> condition followed by <code>require</code>. Boolean functions may nest: <code>all</code>, <code>any</code>, <code>not</code>, <code>present</code>, <code>coded</code>, and <code>equals</code>. A blank or omitted <code>when</code> always applies.</small>
+      <textarea id="validation-source" spellCheck={false} value={selectedRule.source}
+        onChange={(event) => changeRule((rule) => ({ ...rule, source: event.target.value }))} />
+      <small>Use optional <code>for each(&quot;group-id&quot;)</code> and <code>when</code> clauses followed by <code>require</code>. Boolean functions may nest; <code>minimum</code> and <code>maximum</code> express editable documented-occurrence policies.</small>
       <button type="button" onClick={() => {
-        const formatted = formatValidationSource(draft.rule.source);
-        if (formatted.formatted) change((current) => ({ ...current, rule: { ...current.rule, source: formatted.formatted! } }));
+        const formatted = formatValidationSource(selectedRule.source);
+        if (formatted.formatted) changeRule((rule) => ({ ...rule, source: formatted.formatted! }));
       }}>Format rule source</button>
-    </fieldset>
+    </fieldset>}
     {inlineValidation && inlineValidation.diagnostics.length > 0 && <div role="alert" aria-label="Inline rule diagnostics"><ul>
       {inlineValidation.diagnostics.map((item, index) => <li key={`${item.code}:${index}`}>
         {item.line ? `Line ${item.line}, column ${item.column}: ` : ""}{item.message}</li>)}

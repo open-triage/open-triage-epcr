@@ -215,6 +215,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         `validation.${authored.validationVersionId}.${authored.ruleId}`,
         authored.message,
         { groupId, ...(authored.primaryTarget.groupInstanceId ? { groupInstanceId: authored.primaryTarget.groupInstanceId } : {}),
+          ...(authored.primaryTarget.occurrenceId ? { occurrenceId: authored.primaryTarget.occurrenceId } : {}),
           fieldId: authored.primaryTarget.elementId },
         element?.name ?? authored.primaryTarget.elementId,
         authored.severity === "information" ? "warning" : authored.severity,

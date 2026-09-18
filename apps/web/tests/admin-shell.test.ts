@@ -486,10 +486,10 @@ test("Validation publication and activation are separate browser commands", asyn
     return Response.json({ validationVersionId: "51000000-0000-4000-8000-000000000001" });
   };
   const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", revision: 3,
-    displayName: "Agency required fields", rule: { id: "52000000-0000-4000-8000-000000000001",
+    displayName: "Agency required fields", rules: [{ id: "52000000-0000-4000-8000-000000000001",
       name: "Require incident number", enabled: true, severity: "error" as const,
       executionTargets: ["live" as const, "sign" as const], primaryTargetElementId: "eResponse.03",
-      message: "Incident number is required", source: 'assert present("eResponse.03")' }, updatedAt: new Date().toISOString() };
+      message: "Incident number is required", source: 'assert present("eResponse.03")' }], updatedAt: new Date().toISOString() };
   await publishValidationDraft("csrf-proof", draft, "Reviewed");
   assert.equal(paths.length, 1);
   await activateValidationVersion("csrf-proof", draft.id, "Activate reviewed rule");
