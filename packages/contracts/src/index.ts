@@ -635,9 +635,12 @@ export interface PublishedCatalog {
 export interface ValidationDraft {
   id: string;
   catalogReleaseId: string;
+  clonedFromId: string | null;
   revision: number;
   displayName: string;
   rules: import("./validation-rules.js").ValidationRuleSource[];
+  /** Catalog-upgrade diagnostics are populated when cloning a published version. */
+  diagnostics?: import("./validation-rules.js").ValidationDiagnostic[];
   updatedAt: string;
 }
 
@@ -670,8 +673,31 @@ export interface PublishedValidationVersion {
   displayName: string;
   status: "published";
   ruleIds: string[];
+  sourceSha256: string;
   compiledSha256: string;
   publishedAt: string;
+}
+
+export interface ValidationRuleChanges {
+  additions: Array<{ ruleId: string; name: string }>;
+  modifications: Array<{ ruleId: string; fields: string[] }>;
+  disablements: Array<{ ruleId: string }>;
+  executionTargetChanges: Array<{ ruleId: string; before: import("./validation-rules.js").ValidationExecutionTarget[];
+    after: import("./validation-rules.js").ValidationExecutionTarget[] }>;
+}
+
+export interface ValidationHistoryEvent {
+  id: string;
+  actorId: string;
+  action: "validation.publish" | "validation.activate";
+  sourceVersionId: string | null;
+  destinationVersionId: string;
+  catalogReleaseId: string;
+  changeNote: string;
+  ruleChanges: ValidationRuleChanges;
+  sourceSha256: string | null;
+  compiledSha256: string;
+  occurredAt: string;
 }
 
 export interface ValidationActivation {

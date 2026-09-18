@@ -90,7 +90,7 @@ test("Validation library requests expose all filters and revisioned create, disa
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   const requests: Array<{ input: string; init?: RequestInit }> = [];
-  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", revision: 4,
+  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", clonedFromId: null, revision: 4,
     displayName: "Rules", rules: [], updatedAt: "2026-09-18T00:00:00Z" };
   globalThis.fetch = async (input, init) => {
     requests.push({ input: String(input), init });
@@ -525,7 +525,7 @@ test("Validation publication and activation are separate browser commands", asyn
     assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Activate reviewed rule" });
     return Response.json({ validationVersionId: "51000000-0000-4000-8000-000000000001" });
   };
-  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", revision: 3,
+  const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", clonedFromId: null, revision: 3,
     displayName: "Agency required fields", rules: [{ id: "52000000-0000-4000-8000-000000000001",
       name: "Require incident number", enabled: true, severity: "error" as const,
       executionTargets: ["live" as const, "sign" as const], primaryTargetElementId: "eResponse.03",

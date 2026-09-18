@@ -85,6 +85,25 @@ test("validation reports a structured diagnostic for a reference outside the bou
   assert.equal(result.diagnostics[0].code, "catalog-reference");
 });
 
+test("publication validation promotes structural-bound diagnostics to blocking errors for enabled rules", async () => {
+  const bounded = { ...sourceRule, primaryTargetElementId: "ePatient.18",
+    source: 'require maximum("ePatient.18", 3)' };
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from validation.version")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: "catalog", rule_id: ruleId, revision: 1, display_name: "Bounds", source_rule: bounded,
+      status: "draft", version: null, compiled_bundle: null, compiled_sha256: null,
+      created_at: new Date(), updated_at: new Date(), published_at: null }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "ePatient.18", name: "Phone",
+      base_datatype: "string", group_path: [], min_occurs: 0, max_occurs: 2 }];
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const result = await service(manager).validate("session", versionId);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.diagnostics.map(({ code, severity }) => ({ code, severity })),
+    [{ code: "occurrence-bound", severity: "error" }]);
+});
+
 test("server validation compiles and evaluates the same nested conditional semantics used by the browser", async () => {
   const nestedRule = { ...sourceRule, source: `when all(
     coded("eSituation.13", "SNOMED-CT", "267036007"),
@@ -194,6 +213,95 @@ test("disabled invalid rules remain authored but do not block publication or ent
   assert.ok(result.diagnostics.some(({ ruleId: diagnosticRule, severity }) => diagnosticRule === disabled.id && severity === "warning"));
 });
 
+test("a published version clones onto a same-or-newer published Catalog and returns upgrade diagnostics", async () => {
+  const targetCatalogId = randomUUID();
+  const published = { id: versionId, organization_id: organizationId, catalog_release_id: randomUUID(), rule_id: ruleId,
+    cloned_from_id: null, revision: 4, display_name: "Published policy", source_rule: [sourceRule], status: "published",
+    version: 1, source_sha256: "a".repeat(64), compiled_bundle: { rules: [] }, compiled_sha256: "b".repeat(64),
+    created_at: new Date(), updated_at: new Date(), published_at: new Date() };
+  let insertedSource;
+  const calls = [];
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("where id=$1") && sql.includes("status='published'")) return [published];
+    if (sql.includes("status='draft' for update")) return [];
+    if (sql.includes("select target.id from catalog.release")) return [{ id: targetCatalogId }];
+    if (sql.includes("insert into validation.version")) {
+      insertedSource = JSON.parse(parameters[5]);
+      return [{ ...published, id: parameters[0], catalog_release_id: targetCatalogId, cloned_from_id: versionId,
+        revision: 1, display_name: parameters[4], source_rule: insertedSource, status: "draft", version: null,
+        source_sha256: null, compiled_bundle: null, compiled_sha256: null, published_at: null }];
+    }
+    if (sql.includes("from catalog.element_definition") || sql.includes("from catalog.group_definition")
+      || sql.includes("from catalog.element_option")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const cloned = await service(manager).clone("session", versionId, {
+    catalogReleaseId: targetCatalogId, displayName: "Catalog upgrade policy",
+  });
+  assert.equal(cloned.clonedFromId, versionId);
+  assert.deepEqual(insertedSource, [sourceRule]);
+  assert.equal(cloned.diagnostics[0].code, "catalog-reference");
+  assert.ok(calls.some(({ sql, parameters }) => sql.includes("select target.id from catalog.release")
+    && parameters[1] === organizationId && parameters[2] === published.catalog_release_id));
+});
+
+test("publication persists source and compiled integrity with a complete actor-attributed rule diff", async () => {
+  const addedId = randomUUID();
+  const baselineRule = { ...sourceRule, executionTargets: ["live", "sign"] };
+  const changedRule = { ...sourceRule, name: "Historical incident number", enabled: false, executionTargets: ["review"] };
+  const addedRule = { ...sourceRule, id: addedId, name: "Require disposition" };
+  const baseline = { id: randomUUID(), organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
+    cloned_from_id: null, revision: 1, display_name: "Baseline", source_rule: [baselineRule], status: "published",
+    version: 1, source_sha256: "a".repeat(64), compiled_bundle: { rules: [] }, compiled_sha256: "b".repeat(64),
+    created_at: new Date(), updated_at: new Date(), published_at: new Date() };
+  const row = { ...baseline, id: versionId, cloned_from_id: baseline.id, revision: 3, display_name: "Draft",
+    source_rule: [changedRule, addedRule], status: "draft", version: null, source_sha256: null,
+    compiled_bundle: null, compiled_sha256: null, published_at: null };
+  let audit;
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("for update")) return [row];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident", base_datatype: "string" }];
+    if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
+    if (sql.includes("status='published'")) return [baseline];
+    if (sql.includes("next_version")) return [{ next_version: 2 }];
+    if (sql.includes("with updated as")) return [{ ...row, status: "published", version: 2,
+      source_sha256: parameters[6], compiled_sha256: parameters[8], published_at: new Date("2026-09-18T12:00:00Z") }];
+    if (sql.includes("insert into validation.change_event")) { audit = parameters; return []; }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const result = await service(manager).publish("session", versionId, {
+    expectedRevision: 3, displayName: "Published update", changeNote: "Reviewed policy changes",
+  });
+  assert.match(result.sourceSha256, /^[a-f0-9]{64}$/);
+  assert.match(result.compiledSha256, /^[a-f0-9]{64}$/);
+  const changes = JSON.parse(audit[6]);
+  assert.deepEqual(changes.additions, [{ ruleId: addedId, name: "Require disposition" }]);
+  assert.deepEqual(changes.disablements, [{ ruleId }]);
+  assert.deepEqual(changes.executionTargetChanges, [{ ruleId, before: ["live", "sign"], after: ["review"] }]);
+  assert.ok(changes.modifications[0].fields.includes("name"));
+  assert.equal(audit[0], organizationId);
+  assert.equal(audit[2], baseline.id);
+  assert.equal(audit[5], "Reviewed policy changes");
+});
+
+test("Validation history is organization isolated and exposes immutable lifecycle evidence", async () => {
+  const actorId = randomUUID();
+  const manager = { query: async (sql, parameters) => {
+    assert.match(sql, /from validation\.change_event where organization_id=\$1/);
+    assert.deepEqual(parameters, [organizationId]);
+    return [{ id: "7", actor_id: actorId, action: "validation.publish", source_version_id: null,
+      destination_version_id: versionId, catalog_release_id: "catalog", change_note: "Initial policy",
+      rule_changes: { additions: [], modifications: [], disablements: [], executionTargetChanges: [] },
+      source_sha256: "a".repeat(64), compiled_sha256: "b".repeat(64), occurred_at: "2026-09-18T12:00:00Z" }];
+  } };
+  const events = await service(manager).history("session");
+  assert.equal(events[0].actorId, actorId);
+  assert.equal(events[0].destinationVersionId, versionId);
+  assert.equal(events[0].occurredAt, "2026-09-18T12:00:00.000Z");
+});
+
 test("editing an imported normalized copy retains immutable provenance", async () => {
   const provenance = [{ standard: "NEMSIS", dataset: "EMS", sourceIdentity: "nemSch_e001",
     sourceRelease: "3.5.1", originalExpression: "official xpath", originalMessage: "Official message" }];
@@ -217,6 +325,39 @@ test("editing an imported normalized copy retains immutable provenance", async (
   assert.equal(updated.rules[0].name, "Agency-adjusted NEMSIS rule");
   assert.deepEqual(persisted[0].provenance, provenance);
   assert.equal(persisted[0].sourceKind, "nemsis");
+});
+
+test("a stale draft save reports a conflict without overwriting the newer revision", async () => {
+  let attemptedUpdate = false;
+  const current = { id: versionId, organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
+    revision: 5, display_name: "Newer work", source_rule: [sourceRule], status: "draft", version: null,
+    compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null };
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from validation.version")) return [current];
+    if (sql.includes("from validation.rule_identity")) return [{ id: ruleId }];
+    if (sql.includes("with updated as")) { attemptedUpdate = true; return []; }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  await assert.rejects(service(manager).save("session", versionId, {
+    expectedRevision: 4, displayName: "Stale work", rules: [sourceRule],
+  }), /revision is stale/);
+  assert.equal(attemptedUpdate, true);
+  assert.equal(current.display_name, "Newer work");
+  assert.equal(current.revision, 5);
+});
+
+test("draft saves preserve historical rule identities by requiring disablement instead of removal", async () => {
+  const second = { ...sourceRule, id: randomUUID(), name: "Historical rule" };
+  const current = { id: versionId, organization_id: organizationId, catalog_release_id: "catalog", rule_id: ruleId,
+    revision: 2, display_name: "History", source_rule: [sourceRule, second], status: "draft", version: null,
+    compiled_bundle: null, compiled_sha256: null, created_at: new Date(), updated_at: new Date(), published_at: null };
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from validation.version")) return [current];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  await assert.rejects(service(manager).save("session", versionId, {
+    expectedRevision: 2, displayName: "History", rules: [sourceRule],
+  }), /disabled rather than removed/);
 });
 
 test("disablement and restoration preserve rule identity while changing execution state", async () => {
@@ -249,11 +390,13 @@ test("every Validation endpoint independently authorizes before reading or mutat
     { name: "library", required: "validation:read", invoke: (subject) => subject.library("session", {}) },
     { name: "validate", required: "validation:read", invoke: (subject) => subject.validate("session", versionId) },
     { name: "create", required: "validation:write", invoke: (subject) => subject.create("session", {}) },
+    { name: "clone", required: "validation:write", invoke: (subject) => subject.clone("session", versionId, {}) },
     { name: "save", required: "validation:write", invoke: (subject) => subject.save("session", versionId, {}) },
     { name: "createRule", required: "validation:write", invoke: (subject) => subject.createRule("session", versionId, {}) },
     { name: "setRuleEnabled", required: "validation:write", invoke: (subject) => subject.setRuleEnabled("session", versionId, ruleId, false, {}) },
     { name: "publish", required: "validation:publish", invoke: (subject) => subject.publish("session", versionId, {}) },
     { name: "activate", required: "validation:publish", invoke: (subject) => subject.activate("session", versionId, {}) },
+    { name: "history", required: "validation:read", invoke: (subject) => subject.history("session") },
   ];
   for (const attempt of attempts) {
     let queried = false;

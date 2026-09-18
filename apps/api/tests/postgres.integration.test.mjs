@@ -933,10 +933,19 @@ integrationTest("a catalog-bound Validation draft publishes immutably and activa
   const sessions = { requireCapability: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
   const validations = new ValidationAuthoringService(database, sessions);
   const created = await validations.create("session", { catalogReleaseId: release.id, displayName: "Required fields" });
-  const checked = await validations.validate("session", created.id);
+  const authored = await validations.createRule("session", created.id, {
+    expectedRevision: created.revision, name: "Integration reference rule", enabled: true, severity: "error",
+    executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
+    message: "The integration element is required", source: `require present("${element.element_id}")`
+  });
+  const prepared = await validations.save("session", authored.id, {
+    expectedRevision: authored.revision, displayName: authored.displayName,
+    rules: authored.rules.map((rule) => rule.name === "Integration reference rule" ? rule : { ...rule, enabled: false })
+  });
+  const checked = await validations.validate("session", prepared.id);
   assert.equal(checked.valid, true);
-  const published = await validations.publish("session", created.id, {
-    expectedRevision: created.revision, displayName: created.displayName, changeNote: "Architecture-reviewed first rule"
+  const published = await validations.publish("session", prepared.id, {
+    expectedRevision: prepared.revision, displayName: prepared.displayName, changeNote: "Architecture-reviewed first rule"
   });
   const activated = await validations.activate("session", published.id, { changeNote: "Activate first required rule" });
   assert.equal(activated.formVersionId, formVersionId);
@@ -945,6 +954,53 @@ integrationTest("a catalog-bound Validation draft publishes immutably and activa
     /published validation versions are immutable/);
   assert.equal((await client.query("select validation_version_id from validation.active_version where organization_id=$1",
     [organizationId])).rows[0].validation_version_id, published.id);
+  assert.match(published.sourceSha256, /^[a-f0-9]{64}$/);
+
+  const cloned = await validations.clone("session", published.id, {
+    catalogReleaseId: release.id, displayName: "Revised required fields"
+  });
+  assert.equal(cloned.clonedFromId, published.id);
+  assert.equal(cloned.diagnostics.some(({ severity }) => severity === "error"), false);
+  const custom = cloned.rules.find(({ name }) => name === "Integration reference rule");
+  assert.ok(custom);
+  const revisedRules = cloned.rules.map((rule) => rule.id === custom.id
+    ? { ...rule, name: "Historical integration reference", enabled: false, executionTargets: ["review"] }
+    : rule);
+  const saved = await validations.save("session", cloned.id, {
+    expectedRevision: cloned.revision, displayName: cloned.displayName, rules: revisedRules
+  });
+  await assert.rejects(validations.save("session", cloned.id, {
+    expectedRevision: cloned.revision, displayName: cloned.displayName, rules: revisedRules
+  }), ConflictException);
+  const republished = await validations.publish("session", saved.id, {
+    expectedRevision: saved.revision, displayName: saved.displayName, changeNote: "Retire integration reference"
+  });
+  const immutable = await client.query(`select source_sha256,compiled_sha256,cloned_from_id
+    from validation.version where id=$1`, [republished.id]);
+  assert.deepEqual(immutable.rows[0], {
+    source_sha256: republished.sourceSha256, compiled_sha256: republished.compiledSha256, cloned_from_id: published.id
+  });
+  const history = await validations.history("session");
+  const revisionEvent = history.find(({ destinationVersionId, action }) =>
+    destinationVersionId === republished.id && action === "validation.publish");
+  assert.equal(revisionEvent.actorId, userId);
+  assert.equal(revisionEvent.changeNote, "Retire integration reference");
+  assert.deepEqual(revisionEvent.ruleChanges.disablements, [{ ruleId: custom.id }]);
+  assert.deepEqual(revisionEvent.ruleChanges.executionTargetChanges,
+    [{ ruleId: custom.id, before: ["live", "sign"], after: ["review"] }]);
+
+  const otherOrganizationId = randomUUID();
+  const otherUserId = randomUUID();
+  await client.query("insert into app_identity.organization(id,name,deployment_timezone) values ($1,'Other Validation integration','UTC')",
+    [otherOrganizationId]);
+  await client.query("insert into app_identity.app_user(id,organization_id,display_name) values ($1,$2,'Other administrator')",
+    [otherUserId, otherOrganizationId]);
+  const isolated = new ValidationAuthoringService(database, { requireCapability: async () =>
+    ({ organization: { id: otherOrganizationId }, user: { id: otherUserId } }) });
+  await assert.rejects(isolated.clone("session", published.id, {
+    catalogReleaseId: release.id, displayName: "Cross-organization clone"
+  }), /was not found/);
+  assert.deepEqual(await isolated.history("session"), []);
 });
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {
@@ -1304,7 +1360,7 @@ integrationTest("the idempotent demo installation authenticates with its exact r
   assert.equal(demo.status, 201);
   assert.deepEqual(demoSession.capabilities, [
     "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-    "forms:read", "forms:write", "roles:read", "users:read",
+    "forms:read", "forms:write", "roles:read", "users:read", "validation:read", "validation:write",
   ]);
   assert.equal(demoSession.passwordChangeRequired, false);
   assert.equal(demoSession.capabilities.includes("catalog:publish"), false);
