@@ -9,6 +9,7 @@ import {
   type ClinicianSession,
   type CompiledValidationBundle,
   type EncounterDocument,
+  type FormDraftDefinition,
   type PublishedValidationVersion,
   type ValidationActivation,
   type ValidationCatalog,
@@ -24,6 +25,7 @@ import {
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
+import { canonicalDefinitionSha256 } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 
 type VersionRow = {
@@ -539,21 +541,38 @@ export class ValidationAuthoringService {
 
   async activate(token: string, id: string, input: unknown): Promise<ValidationActivation> {
     const session = await this.sessions.requireCapability(token, "validation:publish");
-    const changeNote = requiredText(record(input).changeNote, "changeNote");
+    const body = record(input);
+    const changeNote = requiredText(body.changeNote, "changeNote");
+    const formVersionId = uuidText(body.formVersionId, "formVersionId");
+    const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${session.organization.id}`]);
-      const versions = await manager.query<VersionRow[]>(
-        "select * from validation.version where id=$1 and organization_id=$2 and status='published'", [id, session.organization.id]);
-      const version = versions[0];
-      if (!version) throw new NotFoundException(`Published validation version ${id} was not found`);
-      const active = await manager.query<Array<{ form_version_id: string; catalog_release_id: string }>>(`
-        select d.form_version_id,fv.catalog_release_id from forms.agency_stationary_default d
-        join forms.form_version fv on fv.id=d.form_version_id and fv.status='published'
-        join forms.form f on f.id=fv.form_id and f.organization_id=d.organization_id
-        where d.organization_id=$1 for update of d
-      `, [session.organization.id]);
-      if (!active[0] || active[0].catalog_release_id !== version.catalog_release_id) {
-        throw new UnprocessableEntityException("The published validation version must bind to the active form's catalog");
+      const targets = await manager.query<Array<VersionRow & {
+        form_id: string; form_definition: FormDraftDefinition; form_definition_sha256: string;
+        catalog_artifact_sha256: string; catalog_sealed: boolean;
+      }>>(`
+        select vv.*,fv.form_id,fv.canonical_definition as form_definition,
+          fv.definition_sha256 as form_definition_sha256,
+          cr.artifact_sha256 as catalog_artifact_sha256,cr.sealed as catalog_sealed
+        from validation.version vv
+        join catalog.release cr on cr.id=$4
+        join forms.form_version fv on fv.id=$3 and fv.catalog_release_id=cr.id and fv.status='published'
+        join forms.form f on f.id=fv.form_id and f.organization_id=vv.organization_id
+        where vv.id=$1 and vv.organization_id=$2 and vv.status='published'
+          and vv.catalog_release_id=cr.id
+      `, [id, session.organization.id, formVersionId, catalogReleaseId]);
+      const version = targets[0];
+      if (!version) {
+        throw new UnprocessableEntityException("Form, Catalog, and Validation must be published and bound to the same Catalog");
+      }
+      if (!version.catalog_sealed) throw new UnprocessableEntityException("The selected Catalog is not published");
+      if (canonicalDefinitionSha256(version.form_definition) !== version.form_definition_sha256) {
+        throw new UnprocessableEntityException("The published Form artifact digest does not match its content");
+      }
+      // Published Validation rows and their compiled artifacts are database-immutable;
+      // matching the selected digest to that row is therefore the integrity check.
+      if (!version.compiled_bundle || !version.compiled_sha256) {
+        throw new UnprocessableEntityException("The published Validation artifact is incomplete");
       }
       const ruleElements = [...new Set(version.compiled_bundle!.rules
         .filter((rule) => rule.enabled && rule.executionTargets.some((target) => target === "live" || target === "sign"))
@@ -561,22 +580,63 @@ export class ValidationAuthoringService {
       const exposed = await manager.query<Array<{ element_id: string }>>(`select distinct e.element_id
         from forms.form_field ff join catalog.element_definition e
           on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id
-        where ff.form_version_id=$1 and e.element_id=any($3::text[])`,
-      [active[0].form_version_id, version.catalog_release_id, ruleElements]);
+        where ff.form_version_id=$1 and e.element_id=any($3::text[])
+        union
+        select p.element_id from validation.platform_element_source p
+        where p.catalog_release_id=$2 and p.element_id=any($3::text[])`,
+      [formVersionId, catalogReleaseId, ruleElements]);
       const exposedIds = new Set(exposed.map(({ element_id }) => element_id));
       const missing = ruleElements.filter((elementId) => !exposedIds.has(elementId));
-      if (missing.length) throw new UnprocessableEntityException(`Active form does not expose referenced element${missing.length === 1 ? "" : "s"} ${missing.join(", ")}`);
-      const previous = await manager.query<Array<{ validation_version_id: string } & VersionRow>>(`
-        select active.validation_version_id,previous.* from validation.active_version active
+      if (missing.length) throw new UnprocessableEntityException(`Selected Form or platform cannot supply referenced element${missing.length === 1 ? "" : "s"} ${missing.join(", ")}`);
+      const previous = await manager.query<Array<{
+        form_version_id: string; catalog_release_id: string; validation_version_id: string;
+        source_rule: ValidationRuleSource | ValidationRuleSource[];
+      }>>(`select active.form_version_id,active.catalog_release_id,active.validation_version_id,previous.source_rule
+        from app_identity.active_configuration_bundle active
         join validation.version previous on previous.id=active.validation_version_id
-        where active.organization_id=$1`, [session.organization.id]);
-      const activated = mutationRows<{ activated_at: Date | string }>(await manager.query(`insert into validation.active_version
+        where active.organization_id=$1 for update of active`, [session.organization.id]);
+      const activated = mutationRows<{ activated_at: Date | string }>(await manager.query(`insert into app_identity.active_configuration_bundle
+        (organization_id,form_version_id,catalog_release_id,validation_version_id,
+         form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,
+         activated_by,change_note)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        on conflict (organization_id) do update set
+          form_version_id=excluded.form_version_id,catalog_release_id=excluded.catalog_release_id,
+          validation_version_id=excluded.validation_version_id,
+          form_definition_sha256=excluded.form_definition_sha256,
+          catalog_artifact_sha256=excluded.catalog_artifact_sha256,
+          validation_compiled_sha256=excluded.validation_compiled_sha256,
+          activated_by=excluded.activated_by,change_note=excluded.change_note,activated_at=now()
+        returning activated_at`, [session.organization.id, formVersionId, catalogReleaseId, id,
+        version.form_definition_sha256, version.catalog_artifact_sha256, version.compiled_sha256,
+        session.user.id, changeNote]));
+      await manager.query(`insert into forms.agency_stationary_default
+        (organization_id,form_version_id,activated_by) values ($1,$2,$3)
+        on conflict (organization_id) do update set form_version_id=excluded.form_version_id,
+          activated_by=excluded.activated_by,activated_at=now()`,
+      [session.organization.id, formVersionId, session.user.id]);
+      await manager.query(`insert into validation.active_version
         (organization_id,validation_version_id,form_version_id,activated_by,change_note)
         values ($1,$2,$3,$4,$5) on conflict (organization_id) do update set
           validation_version_id=excluded.validation_version_id,form_version_id=excluded.form_version_id,
           activated_by=excluded.activated_by,change_note=excluded.change_note,activated_at=now()
-        returning activated_at`, [session.organization.id, id, active[0].form_version_id, session.user.id, changeNote]));
+        `, [session.organization.id, id, formVersionId, session.user.id, changeNote]);
       const changes = ruleChanges(previous[0] ? this.rowRules(previous[0]) : [], this.rowRules(version));
+      await manager.query(`insert into app_identity.configuration_event
+        (organization_id,actor_id,action,result,form_version_id,catalog_release_id,validation_version_id,
+         previous_form_version_id,previous_catalog_release_id,previous_validation_version_id,
+         change_note,content_sha256,form_definition_sha256,catalog_artifact_sha256,
+         validation_compiled_sha256,details)
+        values ($1,$2,'configuration.activate','succeeded',$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13::jsonb)`,
+      [session.organization.id, session.user.id, formVersionId, catalogReleaseId, id,
+        previous[0]?.form_version_id ?? null, previous[0]?.catalog_release_id ?? null,
+        previous[0]?.validation_version_id ?? null, changeNote, version.form_definition_sha256,
+        version.catalog_artifact_sha256, version.compiled_sha256,
+        JSON.stringify({ transition: previous[0] ? "reactivation" : "initial-activation",
+          from: previous[0] ? { formVersionId: previous[0].form_version_id,
+            catalogReleaseId: previous[0].catalog_release_id,
+            validationVersionId: previous[0].validation_version_id } : null,
+          to: { formVersionId, catalogReleaseId, validationVersionId: id } })]);
       await manager.query(`insert into validation.change_event
         (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
          change_note,rule_changes,source_sha256,compiled_sha256)
@@ -584,8 +644,13 @@ export class ValidationAuthoringService {
       [session.organization.id, session.user.id, previous[0]?.validation_version_id ?? null, id,
         version.catalog_release_id, changeNote, JSON.stringify(changes), version.source_sha256, version.compiled_sha256]);
       return { organizationId: session.organization.id, validationVersionId: id,
-        catalogReleaseId: version.catalog_release_id, formVersionId: active[0].form_version_id,
+        catalogReleaseId, formVersionId,
+        formDefinitionSha256: version.form_definition_sha256,
+        catalogArtifactSha256: version.catalog_artifact_sha256,
+        validationCompiledSha256: version.compiled_sha256!,
         activatedAt: new Date(activated[0]!.activated_at).toISOString(),
+        previousFormVersionId: previous[0]?.form_version_id ?? null,
+        previousCatalogReleaseId: previous[0]?.catalog_release_id ?? null,
         previousValidationVersionId: previous[0]?.validation_version_id ?? null };
     });
   }

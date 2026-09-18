@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import { evaluateValidationBundle } from "@open-triage/contracts";
 import { UnauthorizedException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
+import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 
 const organizationId = randomUUID();
 const versionId = randomUUID();
@@ -347,6 +348,86 @@ test("Validation history is organization isolated and exposes immutable lifecycl
   assert.equal(events[0].actorId, actorId);
   assert.equal(events[0].destinationVersionId, versionId);
   assert.equal(events[0].occurredAt, "2026-09-18T12:00:00.000Z");
+});
+
+test("activation atomically selects and audits one compatible Form, Catalog, and Validation bundle", async () => {
+  const formVersionId = randomUUID();
+  const catalogReleaseId = randomUUID();
+  const previousFormVersionId = randomUUID();
+  const previousCatalogReleaseId = randomUUID();
+  const previousValidationVersionId = randomUUID();
+  const formDefinition = { schemaVersion: 1, sections: [{ key: "response", fields: [
+    { key: "incident", source: { kind: "nemsis", elementId: "eResponse.03" } }
+  ] }] };
+  const compiledBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+    catalogReleaseId, rules: [{ ruleId, ruleVersion: versionId, name: sourceRule.name, enabled: true,
+      severity: "error", executionTargets: ["live", "sign"], primaryTarget: { elementId: "eResponse.03" },
+      message: sourceRule.message, scope: { kind: "report" }, assertion: { operator: "present", elementId: "eResponse.03" },
+      references: { elementIds: ["eResponse.03"], groupIds: [], codeReferences: [] } }] };
+  const compiledSha256 = createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex");
+  const formSha256 = canonicalDefinitionSha256(formDefinition);
+  const catalogSha256 = "c".repeat(64);
+  const calls = [];
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select vv.*")) return [{ id: versionId, organization_id: organizationId,
+      catalog_release_id: catalogReleaseId, rule_id: ruleId, cloned_from_id: null, revision: 1,
+      display_name: "Published", source_rule: [sourceRule], status: "published", version: 2,
+      source_sha256: "s".repeat(64), compiled_bundle: compiledBundle, compiled_sha256: compiledSha256,
+      form_id: randomUUID(), form_definition: formDefinition, form_definition_sha256: formSha256,
+      catalog_artifact_sha256: catalogSha256, catalog_sealed: true }];
+    if (sql.includes("from forms.form_field")) return [{ element_id: "eResponse.03" }];
+    if (sql.includes("from app_identity.active_configuration_bundle active")) return [{
+      form_version_id: previousFormVersionId, catalog_release_id: previousCatalogReleaseId,
+      validation_version_id: previousValidationVersionId, source_rule: [] }];
+    if (sql.includes("insert into app_identity.active_configuration_bundle")) return [{ activated_at: "2026-09-18T18:00:00Z" }];
+    if (sql.includes("insert into forms.agency_stationary_default") || sql.includes("insert into validation.active_version")
+      || sql.includes("insert into app_identity.configuration_event") || sql.includes("insert into validation.change_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const activated = await service(manager).activate("session", versionId, {
+    formVersionId, catalogReleaseId, changeNote: "Restore reviewed configuration",
+  });
+  assert.deepEqual({ form: activated.formVersionId, catalog: activated.catalogReleaseId,
+    validation: activated.validationVersionId }, { form: formVersionId, catalog: catalogReleaseId, validation: versionId });
+  assert.equal(activated.formDefinitionSha256, formSha256);
+  assert.equal(activated.catalogArtifactSha256, catalogSha256);
+  assert.equal(activated.validationCompiledSha256, compiledSha256);
+  assert.equal(activated.previousFormVersionId, previousFormVersionId);
+  const audit = calls.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
+  assert.equal(audit.parameters[8], "Restore reviewed configuration");
+  assert.deepEqual(JSON.parse(audit.parameters[12]).to, { formVersionId, catalogReleaseId, validationVersionId: versionId });
+});
+
+test("failed bundle compatibility and reference checks occur before active state changes", async () => {
+  const formVersionId = randomUUID();
+  const catalogReleaseId = randomUUID();
+  for (const failure of ["binding", "reference"]) {
+    let mutated = false;
+    const formDefinition = { schemaVersion: 1, sections: [] };
+    const compiledBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
+      catalogReleaseId, rules: [{ enabled: true, executionTargets: ["sign"],
+        primaryTarget: { elementId: "eVitals.06" }, references: { elementIds: [] } }] };
+    const manager = { query: async (sql) => {
+      if (sql.includes("pg_advisory_xact_lock")) return [];
+      if (sql.includes("select vv.*")) return failure === "binding" ? [] : [{ id: versionId,
+        organization_id: organizationId, catalog_release_id: catalogReleaseId, rule_id: ruleId,
+        source_rule: [sourceRule], status: "published", compiled_bundle: compiledBundle,
+        compiled_sha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex"),
+        form_definition: formDefinition, form_definition_sha256: canonicalDefinitionSha256(formDefinition),
+        catalog_artifact_sha256: "c".repeat(64), catalog_sealed: true }];
+      if (sql.includes("from forms.form_field")) return [];
+      if (/insert into (app_identity\.active_configuration_bundle|forms\.agency_stationary_default|validation\.active_version)/.test(sql)) {
+        mutated = true;
+      }
+      return [];
+    } };
+    await assert.rejects(service(manager).activate("session", versionId, {
+      formVersionId, catalogReleaseId, changeNote: "Invalid candidate",
+    }), failure === "binding" ? /published and bound/ : /cannot supply/);
+    assert.equal(mutated, false, `${failure} failure changed active state`);
+  }
 });
 
 test("editing an imported normalized copy retains immutable provenance", async () => {

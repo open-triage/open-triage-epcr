@@ -336,18 +336,13 @@ export class AssignedCallsService {
           return { assignment, reportId: assignment.report_id, replacement: null };
         }
 
-        const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string | null }>>(`
-          select fv.id, fv.catalog_release_id, vv.id as validation_version_id
-          from forms.form_version fv
-          join forms.form f on f.id = fv.form_id
-          join forms.agency_stationary_default active on active.form_version_id = fv.id
-            and active.organization_id = f.organization_id
-          left join validation.active_version av on av.organization_id=f.organization_id
-            and av.form_version_id=fv.id
-          left join validation.version vv on vv.id=av.validation_version_id
-            and vv.organization_id=f.organization_id and vv.catalog_release_id=fv.catalog_release_id
-            and vv.status='published'
-          where f.organization_id = $1 and fv.status = 'published'
+        const versions = await manager.query<Array<{ id: string; catalog_release_id: string; validation_version_id: string;
+          form_definition_sha256: string; catalog_artifact_sha256: string; validation_compiled_sha256: string }>>(`
+          select active.form_version_id as id,active.catalog_release_id,active.validation_version_id,
+            active.form_definition_sha256,active.catalog_artifact_sha256,active.validation_compiled_sha256
+          from app_identity.active_configuration_bundle active
+          join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
+          where active.organization_id = $1
           limit 1
         `, [session.organization.id]);
         const version = versions[0];
@@ -374,11 +369,13 @@ export class AssignedCallsService {
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
              form_version_id, catalog_release_id, documenting_user_id, validation_version_id, synthetic,
-             synthetic_generated_by, synthetic_source_assignment_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11)
+             synthetic_generated_by, synthetic_source_assignment_id,form_definition_sha256,
+             catalog_artifact_sha256,validation_compiled_sha256)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12, $13, $14)
         `, [reportId, session.organization.id, assignment.incident_id, patientId, agencyVersion.id,
           version.id, version.catalog_release_id, session.user.id, version.validation_version_id,
-          assignment.synthetic_generated_by, assignment.synthetic_generated_by ? assignment.id : null]);
+          assignment.synthetic_generated_by, assignment.synthetic_generated_by ? assignment.id : null,
+          version.form_definition_sha256,version.catalog_artifact_sha256,version.validation_compiled_sha256]);
         const receipts = assignment.dispatch_receipt_id
           ? await manager.query<Array<{ source_payload: Record<string, unknown> }>>(`
               select source_payload from clinical.dispatch_receipt

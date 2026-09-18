@@ -195,22 +195,22 @@ export class DraftReportService {
           form_version_id: string;
           catalog_release_id: string;
           agency_demographic_version_id: string;
-          validation_version_id: string | null;
+          validation_version_id: string;
+          form_definition_sha256: string;
+          catalog_artifact_sha256: string;
+          validation_compiled_sha256: string;
         }>>(`
-          select fv.id as form_version_id, fv.catalog_release_id, vv.id as validation_version_id,
+          select active.form_version_id, active.catalog_release_id, active.validation_version_id,
+                 active.form_definition_sha256,active.catalog_artifact_sha256,
+                 active.validation_compiled_sha256,
                  (select adv.id from app_identity.agency_demographic_version adv
                   where adv.organization_id = f.organization_id
-                    and adv.catalog_release_id = fv.catalog_release_id
+                    and adv.catalog_release_id = active.catalog_release_id
                     and adv.effective_from <= now()
                   order by adv.effective_from desc, adv.version desc limit 1) as agency_demographic_version_id
-          from forms.agency_stationary_default active
-          join forms.form_version fv on fv.id = active.form_version_id and fv.status = 'published'
-          join forms.form f on f.id = fv.form_id and f.organization_id = active.organization_id
-          left join validation.active_version av on av.organization_id=f.organization_id
-            and av.form_version_id=fv.id
-          left join validation.version vv on vv.id=av.validation_version_id
-            and vv.organization_id=f.organization_id and vv.catalog_release_id=fv.catalog_release_id
-            and vv.status='published'
+          from app_identity.active_configuration_bundle active
+          join forms.form_version fv on fv.id=active.form_version_id and fv.status='published'
+          join forms.form f on f.id=fv.form_id and f.organization_id=active.organization_id
           where active.organization_id = $2 and f.id = $1
         `, [command.formId, command.organizationId]);
         if (!active[0]) throw new NotFoundException("No active published form version was found for the organization");
@@ -244,12 +244,15 @@ export class DraftReportService {
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-             form_version_id, catalog_release_id, validation_version_id, documenting_user_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
+             form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           on conflict (id) do nothing
         `, [command.reportId, command.organizationId, command.incidentId, command.patientId,
           active[0].agency_demographic_version_id, active[0].form_version_id,
-          active[0].catalog_release_id, active[0].validation_version_id, command.documentingUserId]);
+          active[0].catalog_release_id, active[0].validation_version_id, command.documentingUserId,
+          active[0].form_definition_sha256,active[0].catalog_artifact_sha256,
+          active[0].validation_compiled_sha256]);
         const result = await this.reportResult(manager, command.reportId);
         if (result.organizationId !== command.organizationId || result.incidentId !== command.incidentId ||
             result.patientId !== command.patientId || result.formVersionId !== active[0].form_version_id ||
