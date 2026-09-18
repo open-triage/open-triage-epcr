@@ -706,7 +706,12 @@ export interface ValidationActivation {
   validationVersionId: string;
   catalogReleaseId: string;
   formVersionId: string;
+  formDefinitionSha256: string;
+  catalogArtifactSha256: string;
+  validationCompiledSha256: string;
   activatedAt: string;
+  previousFormVersionId: string | null;
+  previousCatalogReleaseId: string | null;
   previousValidationVersionId: string | null;
 }
 

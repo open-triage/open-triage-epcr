@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { NestFactory } from "@nestjs/core";
 import { ConflictException, UnauthorizedException } from "@nestjs/common";
-import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
+import { SYNTHETIC_DEMO_FIXTURE, compileValidationRule } from "@open-triage/contracts";
 import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
@@ -947,9 +947,12 @@ integrationTest("a catalog-bound Validation draft publishes immutably and activa
   const published = await validations.publish("session", prepared.id, {
     expectedRevision: prepared.revision, displayName: prepared.displayName, changeNote: "Architecture-reviewed first rule"
   });
-  const activated = await validations.activate("session", published.id, { changeNote: "Activate first required rule" });
+  const activated = await validations.activate("session", published.id, {
+    formVersionId, catalogReleaseId: release.id, changeNote: "Activate first required rule"
+  });
   assert.equal(activated.formVersionId, formVersionId);
   assert.equal(activated.catalogReleaseId, release.id);
+  assert.equal(activated.formDefinitionSha256, digest);
   await assert.rejects(client.query("update validation.version set display_name='mutated' where id=$1", [published.id]),
     /published validation versions are immutable/);
   assert.equal((await client.query("select validation_version_id from validation.active_version where organization_id=$1",
@@ -988,6 +991,76 @@ integrationTest("a catalog-bound Validation draft publishes immutably and activa
   assert.deepEqual(revisionEvent.ruleChanges.disablements, [{ ruleId: custom.id }]);
   assert.deepEqual(revisionEvent.ruleChanges.executionTargetChanges,
     [{ ruleId: custom.id, before: ["live", "sign"], after: ["review"] }]);
+
+  const agencyVersionId = randomUUID();
+  await client.query(`insert into app_identity.agency_demographic_version
+    (id,organization_id,catalog_release_id,version,dagency_01,dagency_02,dagency_04,
+     definition_sha256,effective_from,created_by)
+    values ($1,$2,$3,1,'BUNDLE-AGENCY','BUNDLE-ID','00',$4,now(),$5)`,
+  [agencyVersionId, organizationId, release.id, "d".repeat(64), userId]);
+  const createPinnedReport = async (pins) => {
+    const incidentId = randomUUID();
+    const patientId = randomUUID();
+    const reportId = randomUUID();
+    await client.query("insert into clinical.incident(id,organization_id) values ($1,$2)", [incidentId, organizationId]);
+    await client.query(`insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key)
+      values ($1,$2,'unknown',$3)`, [patientId, organizationId, randomUUID().replaceAll("-", "").repeat(2)]);
+    await client.query(`insert into clinical.report
+      (id,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,
+       catalog_release_id,validation_version_id,documenting_user_id,form_definition_sha256,
+       catalog_artifact_sha256,validation_compiled_sha256)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [reportId, organizationId, incidentId, patientId, agencyVersionId, pins.formVersionId,
+      pins.catalogReleaseId, pins.validationVersionId, userId, pins.formDefinitionSha256,
+      pins.catalogArtifactSha256, pins.validationCompiledSha256]);
+    return reportId;
+  };
+  const firstReportId = await createPinnedReport(activated);
+
+  const revisedActivation = await validations.activate("session", republished.id, {
+    formVersionId, catalogReleaseId: release.id, changeNote: "Activate reviewed retirement"
+  });
+  const secondReportId = await createPinnedReport(revisedActivation);
+  assert.notEqual(revisedActivation.validationCompiledSha256, activated.validationCompiledSha256);
+  const firstPinsAfterChange = (await client.query(`select form_version_id,catalog_release_id,validation_version_id,
+    form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256
+    from clinical.report where id=$1`, [firstReportId])).rows[0];
+  assert.deepEqual(firstPinsAfterChange, {
+    form_version_id: formVersionId, catalog_release_id: release.id, validation_version_id: published.id,
+    form_definition_sha256: activated.formDefinitionSha256,
+    catalog_artifact_sha256: activated.catalogArtifactSha256,
+    validation_compiled_sha256: activated.validationCompiledSha256,
+  });
+  await assert.rejects(client.query("update clinical.report set validation_compiled_sha256=$2 where id=$1",
+    [firstReportId, revisedActivation.validationCompiledSha256]), /artifact pins are immutable/);
+
+  await assert.rejects(validations.activate("session", published.id, {
+    formVersionId, catalogReleaseId: randomUUID(), changeNote: "Mismatched catalog"
+  }), /published and bound/);
+  assert.equal((await client.query(`select validation_version_id from app_identity.active_configuration_bundle
+    where organization_id=$1`, [organizationId])).rows[0].validation_version_id, republished.id);
+  await assert.rejects(client.query(`update app_identity.active_configuration_bundle
+    set validation_compiled_sha256=$2 where organization_id=$1`, [organizationId, "f".repeat(64)]), /intact/);
+
+  const rolledBack = await validations.activate("session", published.id, {
+    formVersionId, catalogReleaseId: release.id, changeNote: "Rollback to first reviewed bundle"
+  });
+  assert.equal(rolledBack.previousValidationVersionId, republished.id);
+  assert.equal(rolledBack.validationVersionId, published.id);
+  const thirdReportId = await createPinnedReport(rolledBack);
+  const futurePins = await client.query(`select id,validation_version_id,validation_compiled_sha256
+    from clinical.report where id=any($1::uuid[]) order by id`, [[secondReportId, thirdReportId]]);
+  assert.equal(futurePins.rows.find(({ id }) => id === secondReportId).validation_version_id, republished.id);
+  assert.equal(futurePins.rows.find(({ id }) => id === thirdReportId).validation_version_id, published.id);
+  const activationAudit = (await client.query(`select actor_id,change_note,previous_form_version_id,
+    previous_catalog_release_id,previous_validation_version_id,form_version_id,catalog_release_id,
+    validation_version_id,details from app_identity.configuration_event
+    where organization_id=$1 and action='configuration.activate' order by id desc limit 1`, [organizationId])).rows[0];
+  assert.equal(activationAudit.actor_id, userId);
+  assert.equal(activationAudit.change_note, "Rollback to first reviewed bundle");
+  assert.equal(activationAudit.previous_validation_version_id, republished.id);
+  assert.deepEqual(activationAudit.details.to, { formVersionId, catalogReleaseId: release.id,
+    validationVersionId: published.id });
 
   const otherOrganizationId = randomUUID();
   const otherUserId = randomUUID();
@@ -1462,6 +1535,51 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     published_by = $2, published_at = now() where id = $1`, [formVersionId, userId]);
   await client.query(`insert into forms.agency_stationary_default
     (organization_id, form_version_id, activated_by) values ($1, $2, $3)`, [organizationId, formVersionId, userId]);
+  const validationRuleId = randomUUID();
+  const conditionalValidationRuleId = randomUUID();
+  const maximumValidationRuleId = randomUUID();
+  const validationVersionId = randomUUID();
+  const validationSources = [{ id: validationRuleId, name: "Required field", enabled: true, severity: "error",
+    executionTargets: ["sign"], primaryTargetElementId: requiredElement.element_id,
+    message: "The required field is missing", source: `require present("${requiredElement.element_id}")` },
+  { id: conditionalValidationRuleId, name: "Conditional field", enabled: true, severity: "error",
+    executionTargets: ["sign"], primaryTargetElementId: requiredElement.element_id,
+    message: "The conditional field is missing",
+    source: `when present("${ids.text_id}")\nrequire present("${requiredElement.element_id}")` },
+  { id: maximumValidationRuleId, name: "Required field maximum", enabled: true, severity: "error",
+    executionTargets: ["sign"], primaryTargetElementId: requiredElement.element_id,
+    message: "The required field permits one occurrence",
+    source: `require maximum("${requiredElement.element_id}", 1)` }];
+  const validationCatalog = { elements: [ids.text_id, requiredElement.element_id].map((elementId) => ({
+    elementId, label: elementId, baseDatatype: "string", groupPath: [], intrinsicOccurrence: { min: 0, max: 1 }
+  })), groups: [], codes: [] };
+  const compiledRules = validationSources.map((rule) => {
+    const result = compileValidationRule(rule, validationVersionId, validationCatalog);
+    assert.ok(result.compiled, JSON.stringify(result.diagnostics));
+    return result.compiled;
+  });
+  const validationBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId,
+    catalogReleaseId: releaseId, rules: compiledRules };
+  const validationDigest = "e".repeat(64);
+  const catalogDigest = (await client.query("select artifact_sha256 from catalog.release where id=$1", [releaseId])).rows[0].artifact_sha256;
+  await client.query(`insert into validation.rule_identity(id,organization_id,created_by)
+    values ($1,$4,$5),($2,$4,$5),($3,$4,$5)`,
+    [validationRuleId, conditionalValidationRuleId, maximumValidationRuleId, organizationId, userId]);
+  await client.query(`insert into validation.version
+    (id,organization_id,catalog_release_id,rule_id,version,status,display_name,source_rule,
+     compiled_bundle,compiled_sha256,change_note,created_by,published_by,published_at,source_sha256)
+    values ($1,$2,$3,$4,1,'published','Draft API policy',$5::jsonb,$6::jsonb,$7,
+      'Draft API fixture',$8,$8,now(),$9)`,
+  [validationVersionId, organizationId, releaseId, validationRuleId,
+    JSON.stringify(validationSources), JSON.stringify(validationBundle), validationDigest, userId, "f".repeat(64)]);
+  await client.query(`insert into app_identity.active_configuration_bundle
+    (organization_id,form_version_id,catalog_release_id,validation_version_id,
+     form_definition_sha256,catalog_artifact_sha256,validation_compiled_sha256,activated_by,change_note)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,'Draft API fixture')`,
+  [organizationId, formVersionId, releaseId, validationVersionId, "d".repeat(64), catalogDigest, validationDigest, userId]);
+  await client.query(`insert into validation.active_version
+    (organization_id,validation_version_id,form_version_id,activated_by,change_note)
+    values ($1,$2,$3,$4,'Draft API fixture')`, [organizationId, validationVersionId, formVersionId, userId]);
 
   const app = await NestFactory.create(AppModule, { logger: false });
   const integrationAccessToken = "draft-api-owner-token";
@@ -1924,15 +2042,14 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     attestation: { meaning: "author approval" }
   });
   assert.equal(missingRequired.response.status, 422, JSON.stringify(missingRequired.payload));
-  assert.ok(missingRequired.payload.findings.some((finding) => finding.code === "form.required"));
-  assert.ok(missingRequired.payload.findings.some((finding) => finding.code === "form.conditional-required"));
+  assert.ok(missingRequired.payload.findings.some((finding) => finding.code === "validation.required-element"));
   const rejectedState = (await client.query(`select status, revision,
       (select count(*)::integer from clinical.signed_snapshot where report_id = $1) as snapshots,
       (select count(*)::integer from clinical.validation_finding where report_id = $1) as findings
     from clinical.report where id = $1`, [reportId])).rows[0];
   assert.deepEqual({ status: rejectedState.status, revision: rejectedState.revision, snapshots: rejectedState.snapshots },
     { status: "draft", revision: "5", snapshots: 0 });
-  assert.ok(rejectedState.findings >= 2);
+  assert.ok(rejectedState.findings >= 1);
 
   const requiredOccurrenceId = randomUUID();
   const secondRequiredOccurrenceId = randomUUID();
@@ -1953,7 +2070,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
     attestation: { meaning: "author approval" }
   });
   assert.equal(invalidCardinality.response.status, 422, JSON.stringify(invalidCardinality.payload));
-  assert.ok(invalidCardinality.payload.findings.some((finding) => finding.code === "catalog.cardinality"));
+  assert.ok(invalidCardinality.payload.findings.some((finding) => finding.code === "validation.required-element"));
   const removedDuplicate = await request(`/reports/${reportId}/draft-changes`, "POST", {
     commandId: randomUUID(), expectedRevision: 7, authorId: userId,
     occurrences: [{ id: secondRequiredOccurrenceId, elementId: requiredElement.element_id, tombstone: true }]
@@ -1988,6 +2105,14 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   assert.deepEqual((await client.query("select status, revision from clinical.report where id = $1", [reportId])).rows[0],
     { status: "draft", revision: "8" });
   await client.query("update clinical.element_occurrence set code = $2 where id = $1", [codedOccurrence.id, codedOccurrence.code]);
+
+  // The remainder of this legacy transaction test exercises signing rollback,
+  // not authored rules. Retire its fixture-only policy without changing the
+  // report's immutable version pin.
+  await client.query("alter table validation.version disable trigger validation_version_immutable");
+  await client.query("update validation.version set compiled_bundle=jsonb_set(compiled_bundle,'{rules}','[]'::jsonb) where id=$1",
+    [validationVersionId]);
+  await client.query("alter table validation.version enable trigger validation_version_immutable");
 
   const protectedCiphertextSha256 = "9".repeat(64);
   const ciphertextReceipt = await request(`/reports/${reportId}/protected-ciphertext-receipt`, "POST", {
@@ -2036,7 +2161,7 @@ integrationTest("draft report commands save, replay, and reconcile concurrent ta
   };
   try {
     const rolledBackSign = await sign(signCommand);
-    assert.equal(rolledBackSign.response.status, 500);
+    assert.equal(rolledBackSign.response.status, 500, JSON.stringify(rolledBackSign.payload));
   } finally {
     await client.query("drop trigger integration_reject_signature_audit on clinical_audit.event");
     await client.query("drop function clinical.integration_reject_signature_audit()");

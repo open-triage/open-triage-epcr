@@ -249,9 +249,10 @@ test("opening and retrying one assignment creates one draft without an automatic
   const manager = { query: async (sql, parameters) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("for update of ca")) return [assignment];
-    if (normalized.includes("agency_stationary_default")) {
-      assert.match(normalized, /agency_stationary_default.*status = 'published'/s);
-      return [{ id: "latest-published-version", catalog_release_id: "catalog-release" }];
+    if (normalized.includes("active_configuration_bundle")) {
+      return [{ id: "latest-published-version", catalog_release_id: "catalog-release",
+        validation_version_id: "validation-version", form_definition_sha256: "a".repeat(64),
+        catalog_artifact_sha256: "b".repeat(64), validation_compiled_sha256: "c".repeat(64) }];
     }
     if (normalized.includes("select canonical_definition from forms.form_version")) return [{ canonical_definition: {
       schemaVersion: 1, sections: [{ key: "response", fields: [{ key: "record", source: { kind: "nemsis", elementId: "eRecord.01" }, required: true }] }]
