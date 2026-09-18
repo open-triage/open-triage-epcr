@@ -72,7 +72,7 @@ export interface ValidationCatalog {
 export interface ValidationDiagnostic {
   severity: "error" | "warning";
   code: "syntax" | "compatibility" | "resource-limit" | "catalog-reference" | "datatype" | "primary-target" | "execution-target" | "scope" | "occurrence-bound"
-    | "exact-duplicate" | "similar-rule" | "possible-conflict";
+    | "compile" | "smoke-evaluation" | "exact-duplicate" | "similar-rule" | "possible-conflict";
   message: string;
   ruleId: string;
   line?: number;
