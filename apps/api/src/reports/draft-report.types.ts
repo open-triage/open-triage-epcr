@@ -81,6 +81,7 @@ export interface DraftReportResult {
   formVersionId: string;
   catalogReleaseId: string;
   validationVersionId?: string;
+  validationCompiledSha256?: string;
   documentingUserId: string;
 }
 

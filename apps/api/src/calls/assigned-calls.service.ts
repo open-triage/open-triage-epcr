@@ -54,6 +54,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id: string | null;
+  validation_compiled_sha256: string | null;
   revision: string | number;
   status: "draft" | "signed";
   synthetic: boolean;
@@ -495,7 +496,8 @@ export class AssignedCallsService {
   ): Promise<OpenAssignmentResponse> {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
-        select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id, revision, status, synthetic,
+        select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
+               validation_compiled_sha256, revision, status, synthetic,
                expires_at,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -506,7 +508,7 @@ export class AssignedCallsService {
       const document = await encounterDocument(manager, report.id);
       const conflicts = await dispatchConflicts(manager, report.id);
       const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id,
-        report.validation_version_id);
+        report.validation_version_id, report.validation_compiled_sha256);
       return {
         assignmentId: assignment.id,
         report: {

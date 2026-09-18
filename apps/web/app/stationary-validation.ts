@@ -1,4 +1,4 @@
-import { evaluateValidationBundle, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
 import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
@@ -211,7 +211,14 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
   }
   if (clinicalForm?.validation) {
     if (!evaluationTimestamp) throw new TypeError("An explicit validation evaluation timestamp is required");
-    for (const authored of evaluateValidationBundle(clinicalForm.validation.bundle, document, "live", { timestamp: evaluationTimestamp })) {
+    if (compiledValidationBundleSha256(clinicalForm.validation.bundle) !== clinicalForm.validation.compiledSha256) {
+      findings.push(finding(`validation.integrity.${clinicalForm.validation.versionId}`,
+        "Live validation is unavailable because the pinned rule artifact failed its integrity check.",
+        { groupId: "PatientCareReportGroup" }, "Rule engine"));
+      return findings;
+    }
+    const evaluated = evaluateValidationBundleSafely(clinicalForm.validation.bundle, document, "live", { timestamp: evaluationTimestamp });
+    for (const authored of evaluated.findings) {
       const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
       const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
       findings.push(finding(
@@ -224,6 +231,10 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
         authored.severity === "information" ? "warning" : authored.severity,
       ));
     }
+    for (const failure of evaluated.failures) findings.push(finding(
+      `validation.runtime.${failure.validationVersionId}.${failure.ruleId}`,
+      `${failure.message} (rule ${failure.ruleId}).`, { groupId: "PatientCareReportGroup" }, "Rule engine",
+    ));
   }
   return findings;
 }

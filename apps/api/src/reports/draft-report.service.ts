@@ -50,6 +50,7 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id?: string | null;
+  validation_compiled_sha256?: string | null;
   documenting_user_id: string;
   synthetic?: boolean;
   demo_mutable?: boolean;
@@ -809,7 +810,8 @@ export class DraftReportService {
       const document = await encounterDocument(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
       const clinicalForm = await clinicalFormConfiguration(
-        manager, String(details.formVersionId), String(details.catalogReleaseId)
+        manager, String(details.formVersionId), String(details.catalogReleaseId),
+        details.validationVersionId, details.validationCompiledSha256
       );
       const calls = await manager.query<Array<{
         call_number: string;
@@ -862,6 +864,7 @@ export class DraftReportService {
           documentingUserId: String(details.documentingUserId),
           formVersionId: String(details.formVersionId),
           catalogReleaseId: String(details.catalogReleaseId),
+          ...(details.validationVersionId ? { validationVersionId: details.validationVersionId } : {}),
           clinicalForm,
           revision: Number(details.revision),
           status: "draft" as const,
@@ -1444,7 +1447,8 @@ export class DraftReportService {
     documentingUserId?: string
   ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
-      patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
+      patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id,
+      validation_compiled_sha256, documenting_user_id,
       expires_at
       from clinical.report where id = $1
         and ($2::uuid is null or organization_id = $2)
@@ -1466,6 +1470,7 @@ export class DraftReportService {
       agencyDemographicVersionId: row.agency_demographic_version_id,
       formVersionId: row.form_version_id, catalogReleaseId: row.catalog_release_id,
       ...(row.validation_version_id ? { validationVersionId: row.validation_version_id } : {}),
+      ...(row.validation_compiled_sha256 ? { validationCompiledSha256: row.validation_compiled_sha256 } : {}),
       documentingUserId: row.documenting_user_id
     };
   }

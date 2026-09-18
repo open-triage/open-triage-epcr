@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileValidationRule, encounterValueFacets, evaluateValidationBundle, explainValidationRule, formatValidationSource,
+import { compileValidationRule, compiledValidationBundleSha256, encounterValueFacets, evaluateValidationBundle,
+  evaluateValidationBundleSafely, explainValidationRule, formatValidationSource,
   type CompiledValidationBundle, type EncounterDocument, type ValidationCatalog,
   type ValidationRuleSource } from "@open-triage/contracts";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
@@ -267,4 +268,9 @@ test("evaluation clock, expression and traversal limits, safe regex, and compati
   const future = structuredClone(bundle);
   future.rules[0]!.assertion = { operator: "future-construct" } as never;
   assert.throws(() => evaluateValidationBundle(future, document, "live", evaluation), /Unsupported compiled validation operator/);
+  const safe = evaluateValidationBundleSafely(future, document, "live", evaluation);
+  assert.deepEqual(safe.findings, []);
+  assert.deepEqual(safe.failures.map(({ ruleId, code }) => ({ ruleId, code })), [{ ruleId: rule.id, code: "compatibility" }]);
+  assert.equal(compiledValidationBundleSha256(bundle), compiledValidationBundleSha256(structuredClone(bundle)));
+  assert.notEqual(compiledValidationBundleSha256(bundle), compiledValidationBundleSha256({ ...bundle, rules: [] }));
 });

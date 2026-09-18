@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { compiledValidationBundleSha256, type CompiledValidationBundle } from "@open-triage/contracts";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
 import { validateStationaryRecord } from "../app/stationary-validation";
@@ -75,14 +76,15 @@ test("a pinned Validation bundle is the sole owner of requiredness policy", () =
   const document = structuredClone(syntheticEncounter.document);
   const patient = document.groups.find(({ id }) => id === "ePatientSection")!.instances[0]!;
   Object.assign(patient, { elements: patient.elements.filter(({ id }) => id !== "ePatient.25") });
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [] };
   const clinicalForm = {
     definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
       { key: "sex", source: { kind: "nemsis" as const, elementId: "ePatient.25" }, required: true },
     ] }] },
     catalogFields: { "ePatient.25": { agencyRequired: true, requirednessSeverity: "error" as const,
       minOccurs: 1, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: true } },
-    validation: { versionId: "validation-version", bundle: { schemaVersion: 1 as const,
-      languageVersion: "1.0.0" as const, validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [] } },
+    validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle), bundle },
   };
   assert.deepEqual(validateStationaryRecord(document, clinicalForm, evaluationTimestamp), [],
     "an element omitted from authored rules can be skipped even when legacy projections marked it required");
@@ -151,22 +153,49 @@ test("authored repeated-group findings retain the exact row and occurrence used 
       { kind: "scalar" as const, occurrenceId: "systolic-authored", value: 120 },
     ] }] }] },
   ] };
+  const bundle: CompiledValidationBundle = {
+    schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-version", catalogReleaseId: "catalog",
+    rules: [{ schemaVersion: 1, languageVersion: "1.0.0", ruleId: "systolic-rule",
+      validationVersionId: "validation-version", name: "Unusual systolic", enabled: true, severity: "warning",
+      executionTargets: ["live"], primaryTarget: { elementId: "eVitals.06" },
+      scope: { groupId: "eVitals.VitalGroup", iteration: "each" }, message: "Review systolic",
+      assertion: { operator: "equals", elementId: "eVitals.06", value: 999 },
+      references: { elementIds: ["eVitals.06"], codes: [] } }],
+  };
   const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
     { key: "systolic", source: { kind: "nemsis" as const, elementId: "eVitals.06" } },
   ] }] }, catalogFields: { "eVitals.06": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
-    supportsNotValues: true, supportsPertinentNegatives: true } }, validation: { versionId: "validation-version", bundle: {
-    schemaVersion: 1 as const, languageVersion: "1.0.0" as const, validationVersionId: "validation-version", catalogReleaseId: "catalog",
-    rules: [{ schemaVersion: 1 as const, languageVersion: "1.0.0" as const, ruleId: "systolic-rule",
-      validationVersionId: "validation-version", name: "Unusual systolic", enabled: true, severity: "warning" as const,
-      executionTargets: ["live" as const], primaryTarget: { elementId: "eVitals.06" },
-      scope: { groupId: "eVitals.VitalGroup", iteration: "each" as const }, message: "Review systolic",
-      assertion: { operator: "equals" as const, elementId: "eVitals.06", value: 999 },
-      references: { elementIds: ["eVitals.06"], codes: [] } }],
-  } } };
+    supportsNotValues: true, supportsPertinentNegatives: true } }, validation: { versionId: "validation-version",
+      compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
   const authored = validateStationaryRecord(document, clinicalForm, evaluationTimestamp).find(({ id }) => id.includes("systolic-rule"));
   assert.ok(authored);
   assert.deepEqual({ groupInstanceId: authored.target.groupInstanceId, occurrenceId: authored.target.occurrenceId,
     fieldId: authored.target.fieldId }, {
     groupInstanceId: "pressure-authored", occurrenceId: "systolic-authored", fieldId: "eVitals.06",
   });
+});
+
+test("a broken live rule reports an attributable engine error while the form remains evaluable", () => {
+  const brokenBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [{
+      schemaVersion: 1, languageVersion: "1.0.0", ruleId: "broken-live-rule", validationVersionId: "validation-version",
+      name: "Broken", enabled: true, severity: "error", executionTargets: ["live"],
+      primaryTarget: { elementId: "ePatient.02" }, message: "Broken", assertion: { operator: "future" } as never,
+      references: { elementIds: ["ePatient.02"], codes: [] },
+    }] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {},
+    validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(brokenBundle),
+      bundle: brokenBundle } };
+  const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp);
+  assert.ok(findings.some(({ title, message }) => title === "Rule engine" && message.includes("broken-live-rule")));
+});
+
+test("tampered cached live rules produce an integrity error instead of silently passing", () => {
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {},
+    validation: { versionId: "validation-version", compiledSha256: compiledValidationBundleSha256(bundle),
+      bundle: { ...bundle, catalogReleaseId: "tampered" } } };
+  const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp);
+  assert.ok(findings.some(({ id, title }) => id.includes("validation.integrity") && title === "Rule engine"));
 });

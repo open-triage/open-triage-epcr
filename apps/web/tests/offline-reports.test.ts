@@ -26,6 +26,7 @@ import {
   saveCachedValidationErrorCount,
 } from "../app/offline-reports";
 import type { SaveDraftReportCommand } from "../app/draft-report";
+import { compiledValidationBundleSha256, type CompiledValidationBundle } from "@open-triage/contracts";
 
 function memoryStorage(seed = new Map<string, string>()) {
   return {
@@ -128,6 +129,26 @@ test("a locally edited canonical document makes an opened report self-contained 
   cacheLocalReportDocument(storage, opened.report.id, edited);
 
   assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.document.encounter.updatedAt, "2026-09-04T12:00:00.000Z");
+});
+
+test("an opened report caches its pinned live rules, messages, targets, and integrity metadata for offline use", () => {
+  const storage = memoryStorage();
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-1", catalogReleaseId: "catalog-1", rules: [{
+      schemaVersion: 1, languageVersion: "1.0.0", ruleId: "rule-1", validationVersionId: "validation-1",
+      name: "Patient required", enabled: true, severity: "error", executionTargets: ["live"],
+      primaryTarget: { elementId: "ePatient.02" }, message: "Document the patient name",
+      assertion: { operator: "present", elementId: "ePatient.02" }, references: { elementIds: ["ePatient.02"], codes: [] },
+    }] };
+  const configured = { ...opened, report: { ...opened.report, validationVersionId: "validation-1",
+    clinicalForm: { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {}, validation: {
+      versionId: "validation-1", compiledSha256: compiledValidationBundleSha256(bundle), bundle,
+    } } } };
+  cacheOpenedReport(storage, session, configured, "CALL-51");
+  const offline = cachedReopenResponse(storage, session.user.id, opened.report.id)!.report.clinicalForm!.validation!;
+  assert.equal(offline.compiledSha256, compiledValidationBundleSha256(bundle));
+  assert.deepEqual(offline.bundle.rules[0]!.primaryTarget, { elementId: "ePatient.02" });
+  assert.equal(offline.bundle.rules[0]!.message, "Document the patient name");
 });
 
 test("cached work is listable and reopenable only when both ownership fields match the clinician", () => {
