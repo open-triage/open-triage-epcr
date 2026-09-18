@@ -5,6 +5,9 @@ import test from "node:test";
 const sql = await readFile(new URL("../../../supabase/migrations/20260918170000_validation_required_element_rule.sql", import.meta.url), "utf8");
 const capabilitySql = await readFile(new URL("../../../supabase/migrations/20260918183807_validation_capabilities_and_default_grants.sql", import.meta.url), "utf8");
 const lifecycleSql = await readFile(new URL("../../../supabase/migrations/20260918190000_validation_version_lifecycle.sql", import.meta.url), "utf8");
+const rolloutSql = await readFile(new URL("../../../supabase/migrations/20260918210000_mark_legacy_unversioned_validation_artifacts.sql", import.meta.url), "utf8");
+const seedScript = await readFile(new URL("../scripts/seed-initial-validation-versions.mjs", import.meta.url), "utf8");
+const resetScript = await readFile(new URL("../scripts/reset-unsigned-clinical-work.mjs", import.meta.url), "utf8");
 
 test("Validation capabilities have explicit protected-role defaults without changing custom roles", () => {
   for (const capability of ["validation:read", "validation:write", "validation:publish"]) {
@@ -56,4 +59,30 @@ test("Validation publication and activation history is append-only, actor-attrib
     "source_sha256", "compiled_sha256"]) assert.ok(lifecycleSql.includes(field), `missing ${field}`);
   assert.match(lifecycleSql, /validation_change_event_append_only/);
   assert.match(lifecycleSql, /foreign key \(organization_id, destination_version_id\)/);
+});
+
+test("rollout marks signed artifacts truthfully without assigning a retroactive version", () => {
+  assert.match(rolloutSql, /legacy_unversioned_validation boolean not null default false/g);
+  assert.match(rolloutSql, /where report\.validation_version_id is null/);
+  assert.match(rolloutSql, /where snapshot\.validation_version_id is null/);
+  assert.match(rolloutSql, /warning_acknowledgements/);
+  assert.doesNotMatch(rolloutSql, /update clinical\.report[\s\S]*set validation_version_id/);
+});
+
+test("initial seeding is replay-safe, imports NEMSIS, publishes, and activates a compatible bundle", () => {
+  assert.match(seedScript, /importNemsisEmsSchematron/);
+  assert.match(seedScript, /formatOccurrenceSource/);
+  assert.match(seedScript, /status: "already-active"/);
+  assert.match(seedScript, /insert into validation\.version/);
+  assert.match(seedScript, /insert into app_identity\.active_configuration_bundle/);
+  assert.match(seedScript, /sourceKind === "nemsis"/);
+});
+
+test("unsigned reset is migration-only, previewed, confirmed, and verifies the signed boundary", () => {
+  assert.match(rolloutSql, /grant execute on function clinical\.reset_unsigned_rollout\(uuid\[\], uuid\[\]\) to open_triage_migration_executor/);
+  assert.match(rolloutSql, /revoke all on function clinical\.reset_unsigned_rollout\(uuid\[\], uuid\[\]\) from public/);
+  assert.match(rolloutSql, /snapshot\.report_id=requested\.id/);
+  assert.match(resetScript, /unsigned_clinical_reset_preview/);
+  assert.match(resetScript, /DELETE-UNSIGNED-CLINICAL-WORK/);
+  assert.match(resetScript, /Signed reset boundary verification failed/);
 });
