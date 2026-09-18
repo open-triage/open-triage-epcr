@@ -28,6 +28,29 @@ export {
   ValidationCompatibilityError,
   ValidationResourceLimitError,
 } from "./validation-rules.js";
+export {
+  NEMSIS_351_EMS_BUILD,
+  NEMSIS_351_EMS_RELEASE,
+  NemsisSchematronCompatibilityError,
+  compareNemsisFixtureParity,
+  importNemsisEmsSchematron,
+  nemsisTargetCandidates,
+  type ImportedNemsisRule,
+  type ImportedNemsisRuleset,
+  type NemsisAssertionSource,
+  type NemsisCompatibilityProblem,
+  type NemsisCompatibilityReport,
+  type NemsisControlAccounting,
+  type NemsisFixtureOutcome,
+  type NemsisFixtureParityMismatch,
+  type NemsisNormalizationTable,
+  type NemsisRuleNormalization,
+  type NemsisRuleProvenance,
+} from "./nemsis-schematron-import.js";
+export {
+  NEMSIS_351_EMS_NORMALIZATIONS,
+  NEMSIS_351_EMS_SOURCE_SHA256,
+} from "./nemsis-3.5.1-ems.generated.js";
 
 export type FeedbackSubmissionType = "bug" | "feature";
 

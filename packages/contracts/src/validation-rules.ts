@@ -58,6 +58,8 @@ export interface ValidationDiagnostic {
 }
 
 export type CompiledValidationExpression =
+  | { operator: "constant"; value: boolean }
+  | { operator: "any-payload" }
   | { operator: "present"; elementId: string }
   | { operator: "coded"; elementId: string; codeSystem: string; code: string }
   | { operator: "equals"; elementId: string; value: string | number | boolean }
@@ -68,6 +70,13 @@ export type CompiledValidationExpression =
   | { operator: "has-pertinent-negative"; elementId: string; code?: string }
   | { operator: "member"; elementId: string; values: Array<string | number | boolean> }
   | { operator: "matches"; elementId: string; pattern: string }
+  | { operator: "starts-with-element"; elementId: string; prefixElementId: string }
+  | { operator: "code-type"; elementId: string; codeType: string }
+  | { operator: "attribute"; elementId: string; name: string; value?: string }
+  | { operator: "compare-literal"; elementId: string; comparison: ValidationComparison; value: string | number | boolean }
+  | { operator: "empty-payload"; elementId: string }
+  | { operator: "all-elements"; invariant: "nil-needs-absence" | "nv-needs-empty" | "pn-needs-empty-no-nv" | "unique-nv" | "unique-pn";
+      excludedElementIds: string[] }
   | { operator: "quantified"; quantifier: "any" | "all" | "none"; elementId: string;
       predicate: "equals" | "member" | "matches" | "has-value" | "empty"; values?: Array<string | number | boolean>; pattern?: string }
   | { operator: "compare-elements"; leftElementId: string; comparison: ValidationComparison; rightElementId: string }
@@ -196,6 +205,10 @@ class ExpressionParser {
     if (depth > MAX_EXPRESSION_DEPTH) throw new ParseFailure(`Expression exceeds nesting depth ${MAX_EXPRESSION_DEPTH}`, this.sourceOffset, "resource-limit");
     const functionName = this.take("identifier", "Expected a Boolean function");
     this.punctuation("(");
+    if (functionName.value === "always" || functionName.value === "never") {
+      this.punctuation(")"); return { operator: "constant", value: functionName.value === "always" };
+    }
+    if (functionName.value === "anyPayload") { this.punctuation(")"); return { operator: "any-payload" }; }
     if (functionName.value === "present") {
       const elementId = this.take("string", "present expects an element ID string").value;
       this.punctuation(")"); return { operator: "present", elementId };
@@ -249,6 +262,44 @@ class ExpressionParser {
       const pattern = this.stringArgument("matches expects a regular-expression string");
       validateSafePattern(pattern, this.sourceOffset + functionName.offset);
       this.punctuation(")"); return { operator: "matches", elementId, pattern };
+    }
+    if (functionName.value === "startsWith") {
+      const elementId = this.stringArgument("startsWith expects an element ID string"); this.punctuation(",");
+      const prefixElementId = this.stringArgument("startsWith expects a prefix element ID string"); this.punctuation(")");
+      return { operator: "starts-with-element", elementId, prefixElementId };
+    }
+    if (functionName.value === "codeType") {
+      const elementId = this.stringArgument("codeType expects an element ID string"); this.punctuation(",");
+      const codeType = this.stringArgument("codeType expects a code type string"); this.punctuation(")");
+      return { operator: "code-type", elementId, codeType };
+    }
+    if (functionName.value === "attribute") {
+      const elementId = this.stringArgument("attribute expects an element ID string"); this.punctuation(",");
+      const name = this.stringArgument("attribute expects an attribute name string");
+      let value: string | undefined;
+      if (this.peek().value === ",") { this.index += 1; value = this.stringArgument("attribute expects a string value"); }
+      this.punctuation(")"); return { operator: "attribute", elementId, name, ...(value === undefined ? {} : { value }) };
+    }
+    if (functionName.value === "compareValue") {
+      const elementId = this.stringArgument("compareValue expects an element ID string"); this.punctuation(",");
+      const comparison = this.stringArgument("compareValue expects a comparison"); this.punctuation(",");
+      const value = this.literal(); this.punctuation(")");
+      if (!isComparison(comparison)) throw new ParseFailure(`Unsupported comparison ${comparison}`, this.sourceOffset + functionName.offset, "compatibility");
+      return { operator: "compare-literal", elementId, comparison, value };
+    }
+    if (functionName.value === "emptyPayload") {
+      const elementId = this.stringArgument("emptyPayload expects an element ID string"); this.punctuation(")");
+      return { operator: "empty-payload", elementId };
+    }
+    if (functionName.value === "allElements") {
+      const invariant = this.stringArgument("allElements expects an invariant string");
+      if (!(invariant === "nil-needs-absence" || invariant === "nv-needs-empty" || invariant === "pn-needs-empty-no-nv"
+        || invariant === "unique-nv" || invariant === "unique-pn")) {
+        throw new ParseFailure(`Unsupported all-element invariant ${invariant}`, this.sourceOffset + functionName.offset, "compatibility");
+      }
+      const excludedElementIds: string[] = [];
+      while (this.peek().value === ",") { this.index += 1; excludedElementIds.push(this.stringArgument("allElements exclusions must be element IDs")); }
+      this.punctuation(")"); return { operator: "all-elements", invariant, excludedElementIds };
     }
     if (["anyValue", "allValues", "noValue"].includes(functionName.value)) {
       const elementId = this.stringArgument(`${functionName.value} expects an element ID string`); this.punctuation(",");
@@ -390,6 +441,8 @@ function location(source: string, offset: number): { line: number; column: numbe
 
 function escape(value: string): string { return JSON.stringify(value); }
 function formatExpression(expression: CompiledValidationExpression, depth = 0): string {
+  if (expression.operator === "constant") return expression.value ? "always()" : "never()";
+  if (expression.operator === "any-payload") return "anyPayload()";
   if (expression.operator === "present") return `present(${escape(expression.elementId)})`;
   if (expression.operator === "coded") return `coded(${escape(expression.elementId)}, ${escape(expression.codeSystem)}, ${escape(expression.code)})`;
   if (expression.operator === "equals") return `equals(${escape(expression.elementId)}, ${typeof expression.value === "string" ? escape(expression.value) : expression.value})`;
@@ -402,6 +455,12 @@ function formatExpression(expression: CompiledValidationExpression, depth = 0): 
   }
   if (expression.operator === "member") return `member(${escape(expression.elementId)}, ${expression.values.map(formatLiteral).join(", ")})`;
   if (expression.operator === "matches") return `matches(${escape(expression.elementId)}, ${escape(expression.pattern)})`;
+  if (expression.operator === "starts-with-element") return `startsWith(${escape(expression.elementId)}, ${escape(expression.prefixElementId)})`;
+  if (expression.operator === "code-type") return `codeType(${escape(expression.elementId)}, ${escape(expression.codeType)})`;
+  if (expression.operator === "attribute") return `attribute(${escape(expression.elementId)}, ${escape(expression.name)}${expression.value === undefined ? "" : `, ${escape(expression.value)}`})`;
+  if (expression.operator === "compare-literal") return `compareValue(${escape(expression.elementId)}, ${escape(expression.comparison)}, ${formatLiteral(expression.value)})`;
+  if (expression.operator === "empty-payload") return `emptyPayload(${escape(expression.elementId)})`;
+  if (expression.operator === "all-elements") return `allElements(${escape(expression.invariant)}${expression.excludedElementIds.map((id) => `, ${escape(id)}`).join("")})`;
   if (expression.operator === "quantified") {
     const name = expression.quantifier === "any" ? "anyValue" : expression.quantifier === "all" ? "allValues" : "noValue";
     const argumentsText = expression.pattern !== undefined ? `, ${escape(expression.pattern)}`
@@ -445,6 +504,7 @@ function catalogParts(catalog: ReadonlySet<string> | ValidationCatalog): {
 
 type ExpressionReference = { elementId: string; expression: CompiledValidationExpression };
 function referencedExpressions(expression: CompiledValidationExpression): ExpressionReference[] {
+  if (expression.operator === "constant" || expression.operator === "any-payload") return [];
   if (expression.operator === "all" || expression.operator === "any") return expression.operands.flatMap(referencedExpressions);
   if (expression.operator === "not") return referencedExpressions(expression.operand);
   if (expression.operator === "compare-elements") return [
@@ -454,6 +514,9 @@ function referencedExpressions(expression: CompiledValidationExpression): Expres
     ...(expression.right.kind === "element" ? [{ elementId: expression.right.elementId, expression }] : [])];
   if (expression.operator === "occurrence-order") return [
     { elementId: expression.firstElementId, expression }, { elementId: expression.secondElementId, expression }];
+  if (expression.operator === "starts-with-element") return [
+    { elementId: expression.elementId, expression }, { elementId: expression.prefixElementId, expression }];
+  if (expression.operator === "all-elements") return [];
   return [{ elementId: expression.elementId, expression }];
 }
 
@@ -522,13 +585,15 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
         message: `${elementId} has datatype ${datatype}; temporal comparison requires date/time values` });
     }
   }
-  if (!known.elements.has(rule.primaryTargetElementId)) diagnostics.push({ severity: "error", code: "primary-target", ruleId: rule.id,
+  if (rule.primaryTargetElementId !== "*" && !known.elements.has(rule.primaryTargetElementId)) diagnostics.push({ severity: "error", code: "primary-target", ruleId: rule.id,
     message: `Primary target ${rule.primaryTargetElementId} is not present in the bound catalog` });
+  if (rule.primaryTargetElementId === "*" && parsed.assertion.operator !== "all-elements") diagnostics.push({ severity: "error", code: "primary-target", ruleId: rule.id,
+    message: "Dynamic primary targets require an allElements assertion" });
   if (parsed.scopeGroupId) {
     const catalogDefinition = "elements" in catalog ? catalog : undefined;
     const group = catalogDefinition?.groups?.find(({ groupId }) => groupId === parsed.scopeGroupId);
     const groupExistsInElementPaths = catalogDefinition?.elements.some(({ groupPath }) => groupPath?.includes(parsed.scopeGroupId!));
-    if (!group && !groupExistsInElementPaths) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
+    if (catalogDefinition && !group && !groupExistsInElementPaths) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
       message: `Repeating scope ${parsed.scopeGroupId} is not present in the bound catalog` });
     if (group && !group.repeating) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
       message: `Scope ${parsed.scopeGroupId} is not a repeating Catalog group` });
@@ -580,6 +645,8 @@ function labelFor(elementId: string, catalog: ValidationCatalog): string {
 }
 
 function explainExpression(expression: CompiledValidationExpression, catalog: ValidationCatalog): string {
+  if (expression.operator === "constant") return expression.value ? "always" : "never";
+  if (expression.operator === "any-payload") return "some element in this scope has an ordinary payload without a Pertinent Negative";
   if (expression.operator === "present") return `${labelFor(expression.elementId, catalog)} has a documented value`;
   if (expression.operator === "equals") return `${labelFor(expression.elementId, catalog)} equals ${JSON.stringify(expression.value)}`;
   if (expression.operator === "coded") {
@@ -593,6 +660,12 @@ function explainExpression(expression: CompiledValidationExpression, catalog: Va
   if (expression.operator === "has-pertinent-negative") return `${labelFor(expression.elementId, catalog)} has Pertinent Negative${expression.code ? ` ${expression.code}` : ""}`;
   if (expression.operator === "member") return `${labelFor(expression.elementId, catalog)} is a member of ${expression.values.map((value) => JSON.stringify(value)).join(", ")}`;
   if (expression.operator === "matches") return `${labelFor(expression.elementId, catalog)} safely matches ${JSON.stringify(expression.pattern)}`;
+  if (expression.operator === "starts-with-element") return `${labelFor(expression.elementId, catalog)} starts with ${labelFor(expression.prefixElementId, catalog)}`;
+  if (expression.operator === "code-type") return `${labelFor(expression.elementId, catalog)} uses CodeType ${expression.codeType}`;
+  if (expression.operator === "attribute") return `${labelFor(expression.elementId, catalog)} has attribute ${expression.name}${expression.value === undefined ? "" : ` equal to ${expression.value}`}`;
+  if (expression.operator === "compare-literal") return `${labelFor(expression.elementId, catalog)} is ${expression.comparison} ${JSON.stringify(expression.value)}`;
+  if (expression.operator === "empty-payload") return `${labelFor(expression.elementId, catalog)} has no ordinary payload`;
+  if (expression.operator === "all-elements") return `every documented element satisfies ${expression.invariant}`;
   if (expression.operator === "quantified") return `${expression.quantifier} values of ${labelFor(expression.elementId, catalog)} satisfy ${expression.predicate}`;
   if (expression.operator === "compare-elements") return `${labelFor(expression.leftElementId, catalog)} is ${expression.comparison} ${labelFor(expression.rightElementId, catalog)}`;
   if (expression.operator === "compare-times") return `${labelFor(expression.leftElementId, catalog)} is ${expression.comparison} ${expression.right.kind === "element" ? labelFor(expression.right.elementId, catalog) : "the evaluation time"}`;
@@ -617,7 +690,8 @@ function fingerprint(value: string): string {
 }
 
 type DocumentElement = { element: { id: string; values: readonly EncounterValue[] }; groupInstanceId: string; order: number };
-type EvaluationState = { timestamp: number; steps: number; maxSteps: number; maxValues: number };
+type EvaluationState = { timestamp: number; steps: number; maxSteps: number; maxValues: number; globalElements?: DocumentElement[];
+  scopeElementIds?: ReadonlySet<string> };
 function tick(state: EvaluationState, amount = 1): void {
   state.steps += amount;
   if (state.steps > state.maxSteps) throw new ValidationResourceLimitError(`Validation traversal exceeds ${state.maxSteps} steps`);
@@ -647,23 +721,32 @@ function compareValues(left: string | number | boolean, comparison: ValidationCo
   if (comparison === "greater-than") return left > right;
   return left >= right;
 }
+function referencedElements(elements: DocumentElement[], elementId: string, state: EvaluationState): DocumentElement[] {
+  const local = elements.filter(({ element }) => element.id === elementId);
+  return local.length || state.scopeElementIds?.has(elementId) ? local
+    : (state.globalElements ?? []).filter(({ element }) => element.id === elementId);
+}
 function evaluateExpression(expression: CompiledValidationExpression, elements: DocumentElement[], state: EvaluationState): boolean {
   tick(state);
+  if (expression.operator === "constant") return expression.value;
+  if (expression.operator === "any-payload") return elements.some(({ element }) => element.values.some((value) => {
+    const facets = encounterValueFacets(value); return facets.hasValue && !facets.hasPertinentNegative;
+  }));
   if (expression.operator === "all") return expression.operands.every((operand) => evaluateExpression(operand, elements, state));
   if (expression.operator === "any") return expression.operands.some((operand) => evaluateExpression(operand, elements, state));
   if (expression.operator === "not") return !evaluateExpression(expression.operand, elements, state);
   if (expression.operator === "compare-elements") {
-    const left = elements.filter(({ element }) => element.id === expression.leftElementId).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
-    const right = elements.filter(({ element }) => element.id === expression.rightElementId).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
+    const left = referencedElements(elements, expression.leftElementId, state).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
+    const right = referencedElements(elements, expression.rightElementId, state).flatMap(({ element }) => element.values).map(ordinaryValue).filter((value) => value !== undefined);
     tick(state, left.length + right.length);
     return left.some((leftValue) => right.some((rightValue) => compareValues(leftValue, expression.comparison, rightValue)));
   }
   if (expression.operator === "compare-times") {
-    const left = elements.filter(({ element }) => element.id === expression.leftElementId).flatMap(({ element }) => element.values)
+    const left = referencedElements(elements, expression.leftElementId, state).flatMap(({ element }) => element.values)
       .map(timestampValue).filter((value): value is number => value !== undefined);
     const rightElementId = expression.right.kind === "element" ? expression.right.elementId : undefined;
     const right = rightElementId === undefined ? [state.timestamp]
-      : elements.filter(({ element }) => element.id === rightElementId).flatMap(({ element }) => element.values)
+      : referencedElements(elements, rightElementId, state).flatMap(({ element }) => element.values)
         .map(timestampValue).filter((value): value is number => value !== undefined);
     tick(state, left.length + right.length);
     const offset = expression.offsetSeconds * 1000;
@@ -672,13 +755,22 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
       : expression.comparison === "same-or-before" ? leftValue <= rightValue + offset : leftValue >= rightValue + offset));
   }
   if (expression.operator === "occurrence-order") {
-    const first = elements.filter(({ element }) => element.id === expression.firstElementId && element.values.length).map(({ order }) => order);
-    const second = elements.filter(({ element }) => element.id === expression.secondElementId && element.values.length).map(({ order }) => order);
+    const first = referencedElements(elements, expression.firstElementId, state).filter(({ element }) => element.values.length).map(({ order }) => order);
+    const second = referencedElements(elements, expression.secondElementId, state).filter(({ element }) => element.values.length).map(({ order }) => order);
     tick(state, first.length + second.length);
     return expression.relation === "before" ? first.some((a) => second.some((b) => a < b))
       : first.some((a) => second.some((b) => Math.abs(a - b) === 1));
   }
-  const values = elements.filter(({ element }) => element.id === expression.elementId).flatMap(({ element }) => element.values);
+  if (expression.operator === "starts-with-element") {
+    const values = referencedElements(elements, expression.elementId, state).flatMap(({ element }) => element.values)
+      .map((value) => ordinaryValue(value) ?? "").map(String);
+    const prefixes = referencedElements(elements, expression.prefixElementId, state).flatMap(({ element }) => element.values)
+      .map((value) => ordinaryValue(value) ?? "").map(String);
+    tick(state, values.length + prefixes.length);
+    return values.some((value) => prefixes.some((prefix) => value.startsWith(prefix)));
+  }
+  if (expression.operator === "all-elements") return violatingAllElements(expression.invariant, elements, expression.excludedElementIds).length === 0;
+  const values = referencedElements(elements, expression.elementId, state).flatMap(({ element }) => element.values);
   tick(state, values.length);
   if (values.length > state.maxValues) throw new ValidationResourceLimitError(`Validation value collection exceeds ${state.maxValues} values`);
   if (expression.operator === "minimum-occurrences") return values.length >= expression.count;
@@ -691,7 +783,15 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
   if (expression.operator === "coded") return values.some((value) => value.kind === "coded" && value.code === expression.code
     && (value.system ?? "") === expression.codeSystem);
   if (expression.operator === "equals") return values.some((value) => ordinaryValue(value) === expression.value);
-  if (expression.operator === "has-not-value") return values.some((value) => encounterValueFacets(value).hasNotValue
+  if (expression.operator === "code-type") return values.some((value) => value.attributes?.CodeType === expression.codeType
+    || (value.kind === "coded" && value.system === expression.codeType));
+  if (expression.operator === "attribute") return values.some((value) => expression.name in (value.attributes ?? {})
+    && (expression.value === undefined || String(value.attributes?.[expression.name]) === expression.value));
+  if (expression.operator === "compare-literal") return values.some((value) => {
+    const ordinary = ordinaryValue(value) ?? ""; return compareValues(ordinary, expression.comparison, expression.value);
+  });
+  if (expression.operator === "empty-payload") return values.some((value) => !encounterValueFacets(value).hasValue);
+  if (expression.operator === "has-not-value") return values.some((value) => value.notValue !== undefined
     && (!expression.code || value.notValue?.code === expression.code));
   if (expression.operator === "has-pertinent-negative") return values.some((value) => encounterValueFacets(value).hasPertinentNegative
     && (!expression.code || value.pertinentNegative?.code === expression.code || (value.kind === "pertinent-negative" && value.code === expression.code)));
@@ -717,6 +817,23 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
   throw new ValidationCompatibilityError(`Unsupported compiled validation operator ${(expression as { operator: string }).operator}`);
 }
 
+function violatingAllElements(invariant: Extract<CompiledValidationExpression, { operator: "all-elements" }>["invariant"],
+  elements: DocumentElement[], excludedElementIds: readonly string[] = []): DocumentElement[] {
+  return elements.filter(({ element }) => !excludedElementIds.includes(element.id) && (() => {
+    const values = element.values;
+    if (invariant === "unique-nv") return values.some((value) => value.notValue !== undefined) && values.length > 1;
+    if (invariant === "unique-pn") return values.some((value) => value.pertinentNegative !== undefined || value.kind === "pertinent-negative") && values.length > 1;
+    return values.some((value) => {
+      const facets = encounterValueFacets(value);
+      if (invariant === "nil-needs-absence") return (value.kind === "null" || value.kind === "absent")
+        && value.notValue === undefined && value.pertinentNegative === undefined;
+      if (invariant === "nv-needs-empty") return value.notValue !== undefined && facets.hasValue;
+      return (value.pertinentNegative !== undefined || value.kind === "pertinent-negative")
+        && (facets.hasValue || value.notValue !== undefined);
+    });
+  })());
+}
+
 export function evaluateValidationBundle(bundle: CompiledValidationBundle, document: EncounterDocument,
   executionTarget: ValidationExecutionTarget, context: ValidationEvaluationContext): ValidationFinding[] {
   if (bundle.schemaVersion !== VALIDATION_COMPILED_SCHEMA_VERSION || bundle.languageVersion !== VALIDATION_LANGUAGE_VERSION) {
@@ -739,11 +856,13 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
   let order = 0;
   const elements = document.groups.flatMap((group) => group.instances.flatMap((instance) =>
     instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId, order: order++ }))));
+  state.globalElements = elements;
   tick(state, elements.length);
-  const scopedRows = (groupId: string): Array<{ elements: DocumentElement[]; rootGroupInstanceId: string }> => {
+  const scopedRows = (groupId: string): Array<{ elements: DocumentElement[]; rootGroupInstanceId: string;
+    scopeElementIds: ReadonlySet<string> }> => {
     const roots = document.groups.find(({ id }) => id === groupId)?.instances ?? [];
-    return roots.map((root) => {
-      const ownedInstanceIds = new Set([root.instanceId]);
+    const ownedByRoot = new Map(roots.map((root) => [root.instanceId, new Set([root.instanceId])]));
+    for (const ownedInstanceIds of ownedByRoot.values()) {
       let changed = true;
       while (changed) {
         changed = false;
@@ -754,20 +873,35 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
           }
         }
       }
-      return { rootGroupInstanceId: root.instanceId,
+    }
+    const scopeElementIds = new Set(document.groups.flatMap((group) => group.instances
+      .filter(({ instanceId }) => [...ownedByRoot.values()].some((ids) => ids.has(instanceId)))
+      .flatMap((instance) => instance.elements.map(({ id }) => id))));
+    return roots.map((root) => {
+      const ownedInstanceIds = ownedByRoot.get(root.instanceId)!;
+      return { rootGroupInstanceId: root.instanceId, scopeElementIds,
         elements: document.groups.flatMap((group) => group.instances.filter(({ instanceId }) => ownedInstanceIds.has(instanceId))
           .flatMap((instance) => instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId,
             order: elements.find(({ element: candidate, groupInstanceId }) => candidate === element && groupInstanceId === instance.instanceId)?.order ?? 0 })))) };
     });
   };
   return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget)).flatMap((rule) => {
-    const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string }> = rule.scope
+    const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string; scopeElementIds?: ReadonlySet<string> }> = rule.scope
       ? scopedRows(rule.scope.groupId) : [{ elements }];
     return scopes.flatMap((scope) => {
+    state.scopeElementIds = scope.scopeElementIds;
     const nodeCount = walkExpressions(rule.assertion).length + (rule.applicability ? walkExpressions(rule.applicability).length : 0);
     if (nodeCount > Math.min(requestedNodes, MAX_EXPRESSION_NODES)) throw new ValidationResourceLimitError("Compiled expression exceeds evaluation node limit");
     if (rule.applicability && !evaluateExpression(rule.applicability, scope.elements, state)) return [];
     if (evaluateExpression(rule.assertion, scope.elements, state)) return [];
+    if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
+      return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
+        validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
+        executionTarget, message: rule.message, primaryTarget: { elementId: match.element.id,
+          groupInstanceId: match.groupInstanceId, ...(match.element.values[0]?.occurrenceId ? { occurrenceId: match.element.values[0].occurrenceId } : {}) },
+        inputFingerprint: fingerprint(JSON.stringify([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
+          values: match.element.values }])) } satisfies ValidationFinding));
+    }
     const matches = scope.elements.filter(({ element }) => element.id === rule.primaryTarget.elementId);
     const referencedElementIds = rule.references?.elementIds ?? referencedExpressions(rule.assertion).map(({ elementId }) => elementId);
     const relevantInputs: unknown[] = scope.elements.filter(({ element }) => referencedElementIds.includes(element.id))

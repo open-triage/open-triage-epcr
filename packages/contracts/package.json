@@ -18,6 +18,9 @@
     "./examples/dispatch/*.json": "./examples/dispatch/*.json"
   },
   "scripts": {
+    "generate:nemsis-ems-import": "node scripts/generate-nemsis-ems-import.mjs",
+    "check:nemsis-ems-import": "node scripts/generate-nemsis-ems-import.mjs --check",
+    "prebuild": "npm run check:nemsis-ems-import",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
