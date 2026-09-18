@@ -43,12 +43,96 @@ type RuntimeContext = {
   payload: ProtectedClinicalPayload;
   revision: number;
   synchronizedRevision: number;
-  pending: Promise<void>;
+  writer: LatestProtectedWriteQueue<ProtectedClinicalPayload>;
   failure: Error | null;
   locking: boolean;
   receiptRequest: AbortController | null;
   readonly persistentStorage: boolean;
 };
+
+/**
+ * Serializes encrypted writes while collapsing a burst to the latest payload.
+ * A completion hold drains everything requested before the hold and prevents
+ * later writes from racing the server-side signing transaction. Releasing the
+ * hold resumes with one write of the newest payload when anything changed.
+ */
+export class LatestProtectedWriteQueue<T> {
+  private requested = 0;
+  private completed = 0;
+  private running: Promise<void> | null = null;
+  private held = false;
+  private heldTarget: number | null = null;
+  private latest: { readonly sequence: number; readonly value: T } | null = null;
+  private heldSnapshot: { readonly sequence: number; readonly value: T } | null = null;
+  private failed: unknown = null;
+
+  constructor(private readonly write: (value: T) => Promise<void>) {}
+
+  request(value: T): void {
+    this.requested += 1;
+    this.latest = { sequence: this.requested, value };
+    this.failed = null;
+    this.start();
+  }
+
+  async flush(): Promise<void> {
+    await this.drainThrough(this.heldTarget ?? this.requested);
+  }
+
+  async holdAfterFlush(): Promise<() => void> {
+    if (this.held) throw new Error("Protected persistence is already held for completion");
+    this.held = true;
+    const target = this.requested;
+    this.heldTarget = target;
+    this.heldSnapshot = this.latest;
+    try {
+      await this.drainThrough(target);
+    } catch (error) {
+      this.held = false;
+      this.heldTarget = null;
+      this.heldSnapshot = null;
+      throw error;
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.held = false;
+      this.heldTarget = null;
+      this.heldSnapshot = null;
+      this.start();
+    };
+  }
+
+  private start(): void {
+    if (this.running) return;
+    const snapshot = this.held ? this.heldSnapshot : this.latest;
+    const target = this.held ? this.heldTarget : this.requested;
+    if (!snapshot || target === null || this.completed >= target) return;
+    const attempt = this.write(snapshot.value).then(() => {
+      this.completed = Math.max(this.completed, target);
+      this.failed = null;
+    }).catch((error: unknown) => {
+      this.failed = error;
+      throw error;
+    });
+    this.running = attempt;
+    void attempt.catch(() => undefined).finally(() => {
+      if (this.running === attempt) this.running = null;
+      if (!this.failed) this.start();
+    });
+  }
+
+  private async drainThrough(target: number): Promise<void> {
+    while (this.completed < target) {
+      if (this.failed) throw this.failed;
+      if (!this.running) this.start();
+      const running = this.running;
+      if (!running) throw new Error("Protected persistence could not be started");
+      await running;
+    }
+  }
+}
 
 export type RecoveredProtectedPayload = {
   readonly schemaVersion: 1;
@@ -210,7 +294,7 @@ export async function lockProtectedClinicalStorage(now = new Date()): Promise<vo
     context.locking = true;
     context.receiptRequest?.abort();
   }
-  await Promise.allSettled(active.map(([, context]) => context.pending));
+  await Promise.allSettled(active.map(([, context]) => context.writer.flush()));
   for (const [reportId, context] of active) {
     contexts.delete(reportId);
     statuses.delete(reportId);
@@ -321,11 +405,11 @@ export async function restoreProtectedRecord<T>(key: CryptoKey, record: Protecte
     : { status: "incompatible", reason: "Protected clinical data was preserved in its original authenticated envelope." };
 }
 
-async function persist(reportId: string): Promise<void> {
+async function persist(reportId: string, payload: ProtectedClinicalPayload): Promise<void> {
   const context = contexts.get(reportId);
   if (!context) return;
   const revision = context.revision + 1;
-  const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, structuredClone(context.payload));
+  const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, payload);
   const record: ProtectedClinicalRecord = {
     localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
@@ -390,21 +474,29 @@ async function checkpointProtectedCiphertext(reportId: string, context: RuntimeC
   } catch { /* The local authenticated ciphertext remains authoritative until reconnect. */ }
 }
 
-function queuePersist(reportId: string): Promise<void> {
+function queuePersist(reportId: string): void {
   const context = contexts.get(reportId);
-  if (!context) return Promise.resolve();
-  context.pending = context.pending.catch(() => undefined).then(() => persist(reportId)).catch((error: unknown) => {
-    context.failure = error instanceof Error ? error : new Error("Protected clinical persistence failed");
-    if (contexts.get(reportId) !== context) throw context.failure;
-    publishStatus(reportId, {
-      mode: navigator.onLine ? "online-only" : "read-only",
-      explanation: navigator.onLine
-        ? "This browser cannot preserve offline changes. Server saves remain available while connected."
-        : "Protected storage failed while offline. The current form is readable, but editing is paused until storage or connectivity recovers.",
-    });
-    throw context.failure;
+  if (!context) return;
+  context.writer.request(structuredClone(context.payload));
+}
+
+function createProtectedWriter(reportId: string, context: RuntimeContext): LatestProtectedWriteQueue<ProtectedClinicalPayload> {
+  return new LatestProtectedWriteQueue(async (payload) => {
+    try {
+      await persist(reportId, payload);
+    } catch (error) {
+      context.failure = error instanceof Error ? error : new Error("Protected clinical persistence failed");
+      if (contexts.get(reportId) === context) {
+        publishStatus(reportId, {
+          mode: navigator.onLine ? "online-only" : "read-only",
+          explanation: navigator.onLine
+            ? "This browser cannot preserve offline changes. Server saves remain available while connected."
+            : "Protected storage failed while offline. The current form is readable, but editing is paused until storage or connectivity recovers.",
+        });
+      }
+      throw context.failure;
+    }
   });
-  return context.pending;
 }
 
 export async function persistentStorageGranted(
@@ -489,9 +581,11 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
-    const context: RuntimeContext = { key, localRecordId: crypto.randomUUID(), envelope, csrfToken,
+    const context = { key, localRecordId: crypto.randomUUID(), envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
-      pending: Promise.resolve(), failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage };
+      writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
+      failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
+    context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
     publishStatus(reportId, writableStorageStatus(context));
     return true;
@@ -566,7 +660,7 @@ export async function recoverProtectedReport(
     if (recoveredReportId !== undefined && recoveredReportId !== reportId) {
       throw new Error("Protected report recovery is unavailable.");
     }
-    contexts.set(reportId, {
+    const context = {
       key,
       localRecordId: record.localRecordId,
       envelope: { schemaVersion: 1, recoveryHandle: record.recoveryHandle,
@@ -576,12 +670,14 @@ export async function recoverProtectedReport(
       payload: protectedPayload,
       revision: record.ciphertextRevision,
       synchronizedRevision: record.synchronizedRevision,
-      pending: Promise.resolve(),
+      writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
       failure: null,
       locking: false,
       receiptRequest: null,
       persistentStorage,
-    });
+    } satisfies RuntimeContext;
+    context.writer = createProtectedWriter(reportId, context);
+    contexts.set(reportId, context);
     activated = true;
     publishStatus(reportId, grant.reportStatus === "signed"
       ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
@@ -599,22 +695,33 @@ export function updateProtectedReport(reportId: string, report: unknown): void {
   context.payload = { ...context.payload, report };
   const candidate = report as { queuedChanges?: ReadonlyArray<unknown> } | null;
   if (candidate && Array.isArray(candidate.queuedChanges) && candidate.queuedChanges.length === 0) context.synchronizedRevision = context.revision + 1;
-  void queuePersist(reportId).catch(() => undefined);
+  queuePersist(reportId);
 }
 
 export function updateProtectedShellState(reportId: string, shellState: unknown): void {
   const context = contexts.get(reportId);
   if (!context) return;
   context.payload = { ...context.payload, shellState };
-  void queuePersist(reportId).catch(() => undefined);
+  queuePersist(reportId);
 }
 
 export function protectedShellState(reportId: string): unknown { return contexts.get(reportId)?.payload.shellState; }
 
 export async function flushProtectedReport(reportId: string): Promise<void> {
   const context = contexts.get(reportId);
-  await context?.pending;
+  await context?.writer.flush();
   if (context?.failure) throw context.failure;
+}
+
+export async function holdProtectedReportForCompletion(reportId: string): Promise<() => void> {
+  const context = contexts.get(reportId);
+  if (!context) return () => undefined;
+  const release = await context.writer.holdAfterFlush();
+  if (context.failure) {
+    release();
+    throw context.failure;
+  }
+  return release;
 }
 
 export function removeProtectedReport(reportId: string): void {
@@ -623,7 +730,7 @@ export function removeProtectedReport(reportId: string): void {
   contexts.delete(reportId);
   statuses.delete(reportId);
   context.releaseLock();
-  void context.pending.catch(() => undefined).then(() => deleteRecords([context.localRecordId])).catch(() => undefined);
+  void context.writer.flush().catch(() => undefined).then(() => deleteRecords([context.localRecordId])).catch(() => undefined);
 }
 
 /** Locks editing immediately while retaining the key until queued late work is acknowledged. */

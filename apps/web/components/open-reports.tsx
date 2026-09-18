@@ -13,6 +13,7 @@ import {
   reopenOpenCall as reopenOpenReport,
 } from "../app/assigned-calls";
 import { browserRequestConfiguration } from "../app/browser-api";
+import { RecoveryReauthenticationGate } from "../app/recovery-reauthentication-gate";
 import { saveDraftReport } from "../app/draft-report";
 import { clearShellState, purgeCompletedReportCaches } from "../app/local-persistence";
 import {
@@ -71,6 +72,7 @@ export function OpenReports({
   const [notice, setNotice] = useState<string | null>(null);
   const reportsRef = useRef<OpenReportSummary[]>([]);
   const syncingCachedReports = useRef(false);
+  const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
 
@@ -122,11 +124,15 @@ export function OpenReports({
       const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
       for (const reportId of completedReportIds) {
         if (cachedOpenReports(window.localStorage, session.user.id).some((cached) => cached.report.id === reportId)) continue;
+        if (!recoveryReauthentication.current.shouldAttempt(reportId)) continue;
         try {
           const recovered = await recoverProtectedReport(csrfToken, reportId);
-          if (recovered) restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered);
+          if (recovered) {
+            restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered);
+          }
         } catch (recoveryError) {
           if (!(recoveryError instanceof RecoveryReauthenticationRequiredError)) throw recoveryError;
+          recoveryReauthentication.current.requireReauthentication(reportId);
         }
       }
       purgeCompletedReportCaches(window.localStorage, completedReportIds);
@@ -209,6 +215,7 @@ export function OpenReports({
     const password = String(new FormData(event.currentTarget).get("currentPassword") ?? "");
     try {
       await reauthenticateClinicianSession(password, csrfToken);
+      recoveryReauthentication.current.reauthenticated();
       setReauthenticationId(null);
       await reopen(report);
     } catch (reauthenticationError) {

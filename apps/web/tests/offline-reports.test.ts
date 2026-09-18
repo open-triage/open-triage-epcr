@@ -18,6 +18,7 @@ import {
   purgeCompletedOfflineReports,
   purgeExpiredOfflineReports,
   queueDraftChange,
+  queuedDraftChanges,
   rebaseQueuedDraftChanges,
   reconcileCachedActiveReport,
   reconcileServerOpenReports,
@@ -163,6 +164,19 @@ test("reconnect replay keeps attempted command identities and advances queued re
   assert.equal(cached.report.revision, 6);
   assert.equal(cached.syncStatus, "saved");
   assert.equal(nextDraftChange(storage, opened.report.id), null);
+});
+
+test("queued draft snapshots expose every optimistic mutation in order", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("command-1", 4));
+  markDraftChangeAttempted(storage, opened.report.id, "command-1");
+  queueDraftChange(storage, opened.report.id, command("command-2", 5));
+
+  assert.deepEqual(queuedDraftChanges(storage, opened.report.id).map(({ command: queued }) => queued.commandId), [
+    "command-1",
+    "command-2",
+  ]);
 });
 
 test("dispatch reconciliation rebases pending work and updates the offline report snapshot", () => {

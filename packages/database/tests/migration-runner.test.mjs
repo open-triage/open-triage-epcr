@@ -118,6 +118,48 @@ test("the known transaction-only role migration amendment preserves immutable hi
   assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
 });
 
+test("the portable offline-recovery role amendment preserves immutable history", async () => {
+  const migrations = await readMigrations(path.resolve(import.meta.dirname, "../../../supabase/migrations"));
+  const migration = migrations.find(({ version }) => version === "20260917113000");
+  assert.equal(migration?.checksum, "2e238c1a9b0a60e0d0bda9fb770953cbd5b8d5eda7cd0294233eae1b93e03979");
+  const legacyChecksum = "68fd47193095252e953fbeff93b5d55b1ee4aae2de95ee0f73809bd06792c926";
+  const client = new FakeClient([[migration.version, legacyChecksum]]);
+  const messages = [];
+
+  await applyMigrations(client, [migration], { info(message) { messages.push(message); } });
+
+  assert.equal(client.applied.get(migration.version), legacyChecksum, "the recorded checksum must not be rewritten");
+  assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
+});
+
+test("the portable offline-completion role amendment preserves immutable history", async () => {
+  const migrations = await readMigrations(path.resolve(import.meta.dirname, "../../../supabase/migrations"));
+  const migration = migrations.find(({ version }) => version === "20260917210000");
+  assert.equal(migration?.checksum, "28fa73f4c42fd059e2a7158eb307a128587cb45bb41038ce6a794969b9682b6d");
+  const legacyChecksum = "14062abc56f142bf24325219351bb72c58f8bf7e1ed2788af10c93a45d484a02";
+  const client = new FakeClient([[migration.version, legacyChecksum]]);
+  const messages = [];
+
+  await applyMigrations(client, [migration], { info(message) { messages.push(message); } });
+
+  assert.equal(client.applied.get(migration.version), legacyChecksum, "the recorded checksum must not be rewritten");
+  assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
+});
+
+test("the portable offline-lifecycle role amendment preserves immutable history", async () => {
+  const migrations = await readMigrations(path.resolve(import.meta.dirname, "../../../supabase/migrations"));
+  const migration = migrations.find(({ version }) => version === "20260917220000");
+  assert.equal(migration?.checksum, "ac4d01e02e24bcc04d8f4399cd9b5ab8247e39a83fa745a16b09bc3f48b22d67");
+  const legacyChecksum = "08938dfa65fa27d4995a63b410c6aefe821c352177a41e52d7a90c6af1e2d2b3";
+  const client = new FakeClient([[migration.version, legacyChecksum]]);
+  const messages = [];
+
+  await applyMigrations(client, [migration], { info(message) { messages.push(message); } });
+
+  assert.equal(client.applied.get(migration.version), legacyChecksum, "the recorded checksum must not be rewritten");
+  assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
+});
+
 test("migration history previously written by the Supabase CLI is respected", async () => {
   const migrations = await migrationSet({ "202608300001_first.sql": "select 'first migration';" });
   const client = new FakeClient([[migrations[0].version, null]]);
