@@ -79,3 +79,15 @@ test("limited administrators receive only their authorized navigation without da
   assert.equal(context.activeConfiguration, null);
   assert.equal(queried, false);
 });
+
+test("Validation navigation requires dedicated read authority", async () => {
+  const contexts = [];
+  for (const capabilities of [["catalog:read"], ["validation:read"]]) {
+    const service = new AdminService({ query: async () => [] }, {
+      get: async () => ({ ...session, capabilities })
+    });
+    contexts.push(await service.context("opaque-session"));
+  }
+  assert.deepEqual(contexts[0].panels, ["catalog"]);
+  assert.deepEqual(contexts[1].panels, ["validation"]);
+});
