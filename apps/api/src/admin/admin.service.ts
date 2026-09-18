@@ -30,7 +30,7 @@ type DashboardRow = {
 
 const panelCapabilities: ReadonlyArray<readonly [AdminPanelKey, string]> = [
   ["dashboard", "admin-dashboard:read"], ["users", "users:read"], ["roles", "roles:read"],
-  ["catalog", "catalog:read"], ["forms", "forms:read"]
+  ["catalog", "catalog:read"], ["forms", "forms:read"], ["validation", "catalog:read"]
 ];
 
 function authorizedPanels(session: ClinicianSession): AdminPanelKey[] {
@@ -49,7 +49,7 @@ export class AdminService {
     const session = await this.sessions.get(sessionToken);
     const panels = authorizedPanels(session);
     if (!panels.length) throw new UnauthorizedException("An administrative capability is required");
-    const configurationReadable = panels.some((panel) => panel === "dashboard" || panel === "catalog" || panel === "forms");
+    const configurationReadable = panels.some((panel) => ["dashboard", "catalog", "forms", "validation"].includes(panel));
     const rows = configurationReadable ? await this.dataSource.query<ActiveConfigurationRow[]>(`
       select fv.id as form_version_id, f.id as form_id, coalesce(fv.display_name, f.name) as form_name,
              fv.version as form_version, cr.id as catalog_release_id,

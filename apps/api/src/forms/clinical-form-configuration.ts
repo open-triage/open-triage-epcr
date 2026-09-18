@@ -1,4 +1,4 @@
-import type { ClinicalFormConfiguration, FormDraftDefinition } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, CompiledValidationBundle, FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type FieldRow = {
@@ -25,6 +25,7 @@ export async function clinicalFormConfiguration(
   manager: Pick<EntityManager, "query">,
   formVersionId: string,
   catalogReleaseId: string,
+  validationVersionId?: string | null,
 ): Promise<ClinicalFormConfiguration> {
   const versions = await manager.query<Array<{ canonical_definition: FormDraftDefinition }>>(`
     select canonical_definition from forms.form_version
@@ -35,9 +36,15 @@ export async function clinicalFormConfiguration(
   const elementIds = [...new Set(versions[0].canonical_definition.sections.flatMap((section) =>
     section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
 
+  const validation = validationVersionId ? await manager.query<Array<{ compiled_bundle: CompiledValidationBundle }>>(`
+    select compiled_bundle from validation.version
+    where id=$1 and catalog_release_id=$2 and status='published'
+  `, [validationVersionId, catalogReleaseId]) : [];
+  if (validationVersionId && !validation[0]) throw new Error("The report's pinned validation configuration is unavailable");
   return {
     definition: versions[0].canonical_definition,
     catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
+    ...(validation[0] ? { validation: { versionId: validationVersionId!, bundle: validation[0].compiled_bundle } } : {}),
   };
 }
 

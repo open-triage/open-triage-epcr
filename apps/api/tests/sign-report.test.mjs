@@ -107,3 +107,44 @@ test("signing does not require report occurrences for read-only configuration me
     code: "catalog.cardinality", path: "$.fields.ePatient.01"
   }]);
 });
+
+test("authoritative signing evaluates the report's pinned required-element bundle", async () => {
+  const validationVersionId = randomUUID();
+  const ruleId = randomUUID();
+  const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId,
+    catalogReleaseId: "catalog-release", rules: [{ schemaVersion: 1, languageVersion: "1.0.0",
+      ruleId, validationVersionId, name: "Require patient name", enabled: true, severity: "error",
+      executionTargets: ["live", "sign"], primaryTarget: { elementId: "ePatient.02" },
+      message: "Patient name is required", assertion: { operator: "present", elementId: "ePatient.02" } }] };
+  let valuePresent = false;
+  const manager = { query: async (sql) => {
+    const normalized = sql.replace(/\s+/g, " ");
+    if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle }];
+    if (normalized.includes("from clinical.report r join forms.form_version")) return [{
+      id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
+      catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
+    }];
+    if (normalized.includes("from clinical.group_instance")) return valuePresent ? [{ id: "patient-group", parent_group_instance_id: null,
+      group_id: "ePatient.PatientGroup", ordinal: 0, documented_time: null, correlation_id: null }] : [];
+    if (normalized.includes("from clinical.element_occurrence")) return valuePresent ? [{ id: "patient-name", group_instance_id: "patient-group",
+      element_id: "ePatient.02", ordinal: 0, value_kind: "text", value_text: "Morgan", value_integer: null,
+      value_numeric: null, value_boolean: null, value_date: null, value_datetime: null, value_time: null,
+      value_duration: null, value_binary: null, value_lexical: null, value_utc_offset_minutes: null,
+      value_precision: null, code: null, code_system: null, code_display: null, terminology_version: null,
+      absence_code: null, absence_display: null, source_attributes: null, provenance_kind: "clinician", provenance_detail: null }] : [];
+    throw new Error(`Unexpected SQL: ${normalized}`);
+  } };
+  const service = new SignReportService({}, {});
+  const findings = await service.validateAuthoredRules(manager, {
+    id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
+    validation_version_id: validationVersionId
+  });
+  assert.deepEqual(findings.map(({ severity, ruleId: id, targetElementId }) => ({ severity, id, targetElementId })), [{
+    severity: "error", id: ruleId, targetElementId: "ePatient.02"
+  }]);
+  valuePresent = true;
+  assert.deepEqual(await service.validateAuthoredRules(manager, {
+    id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
+    validation_version_id: validationVersionId
+  }), []);
+});

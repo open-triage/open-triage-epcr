@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, ValidationActivation, ValidationDraft, ValidationDraftResult } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -16,6 +16,7 @@ import { validateReplaceAdminUserRoles } from "./user-role-assignment.validation
 import { SessionAdministrationService } from "./session-administration.service.js";
 import { validateResetAdminCredential, validateRevokeAdminSession } from "./session-administration.validation.js";
 import { OwnershipTransferService } from "./ownership-transfer.service.js";
+import { ValidationAuthoringService } from "./validation-authoring.service.js";
 import { validateCancelOwnershipTransfer, validateInitiateOwnershipTransfer } from "./ownership-transfer.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
@@ -30,7 +31,8 @@ export class AdminController {
     private readonly roleAssignments: UserRoleAssignmentService,
     private readonly sessionAdministration: SessionAdministrationService,
     private readonly rolePackages: RolePackageService,
-    private readonly ownershipTransfer: OwnershipTransferService) {}
+    private readonly ownershipTransfer: OwnershipTransferService,
+    private readonly validations: ValidationAuthoringService) {}
 
   @Get("context")
   context(
@@ -258,5 +260,40 @@ export class AdminController {
   activateForm(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormActivation> {
     return this.forms.activate(sessionToken(request, authorization), id, body);
+  }
+
+  @Get("validation-draft")
+  validationDraft(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<ValidationDraft | null> {
+    return this.validations.current(sessionToken(request, authorization));
+  }
+
+  @Post("validation-drafts")
+  createValidation(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
+    return this.validations.create(sessionToken(request, authorization), body);
+  }
+
+  @Put("validation-drafts/:id")
+  saveValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
+    return this.validations.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("validation-drafts/:id/validate")
+  validateValidation(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationDraftResult> {
+    return this.validations.validate(sessionToken(request, authorization), id);
+  }
+
+  @Post("validation-drafts/:id/publish")
+  publishValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<PublishedValidationVersion> {
+    return this.validations.publish(sessionToken(request, authorization), id, body);
+  }
+
+  @Post("validation-versions/:id/activate")
+  activateValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<ValidationActivation> {
+    return this.validations.activate(sessionToken(request, authorization), id, body);
   }
 }

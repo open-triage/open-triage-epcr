@@ -13,12 +13,13 @@ import { UserLifecycleService } from "./user-lifecycle.service.js";
 import { UserRoleAssignmentService } from "./user-role-assignment.service.js";
 import { SessionAdministrationService } from "./session-administration.service.js";
 import { OwnershipTransferService } from "./ownership-transfer.service.js";
+import { ValidationAuthoringService } from "./validation-authoring.service.js";
 
 @Module({
   imports: [SessionsModule, FormsModule],
   controllers: [AdminController],
   providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
-    SessionAdministrationService, RolePackageService, OwnershipTransferService]
+    SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService]
 })
 export class AdminModule {}

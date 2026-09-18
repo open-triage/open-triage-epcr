@@ -28,6 +28,7 @@ import { RolePackageService } from "../dist/admin/role-package.service.js";
 import { OwnershipTransferService } from "../dist/admin/ownership-transfer.service.js";
 import { CatalogAuthoringService } from "../dist/admin/catalog-authoring.service.js";
 import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
+import { ValidationAuthoringService } from "../dist/admin/validation-authoring.service.js";
 import { AmendReportService } from "../dist/reports/amend-report.service.js";
 import { SignReportService } from "../dist/reports/sign-report.service.js";
 
@@ -893,6 +894,57 @@ integrationTest("authorized Admin context resolves only the session organization
   });
   await assert.rejects(client.query("update forms.form_version set canonical_definition='{}' where id=$1", [formVersionId]),
     /immutable/);
+});
+
+integrationTest("a catalog-bound Validation draft publishes immutably and activates against its compatible form", async (t) => {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  t.after(() => client.end());
+  await ensureFoundation(client);
+  const database = singleClientDataSource(client);
+  const organizationId = randomUUID();
+  const userId = randomUUID();
+  const formId = randomUUID();
+  const formVersionId = randomUUID();
+  const sectionId = randomUUID();
+  await client.query("insert into app_identity.organization(id,name,deployment_timezone) values ($1,'Validation integration','UTC')", [organizationId]);
+  await client.query("insert into app_identity.app_user(id,organization_id,display_name) values ($1,$2,'Validation administrator')",
+    [userId, organizationId]);
+  const release = (await client.query("select id from catalog.release where standard='NEMSIS' and version='3.5.1' limit 1")).rows[0];
+  const element = (await client.query(`select element_id,element_identity_id from catalog.element_definition
+    where release_id=$1 order by element_id limit 1`, [release.id])).rows[0];
+  const definition = { schemaVersion: 1, sections: [{ key: "required", fields: [
+    { key: element.element_id, source: { kind: "nemsis", elementId: element.element_id } }
+  ] }] };
+  const digest = canonicalDefinitionSha256(definition);
+  await client.query("insert into forms.form(id,organization_id,slug,name) values ($1,$2,'stationary','Stationary')", [formId, organizationId]);
+  await client.query(`insert into forms.form_version(id,form_id,catalog_release_id,version,status,canonical_definition,
+    definition_sha256,created_by) values ($1,$2,$3,1,'draft',$4::jsonb,$5,$6)`,
+  [formVersionId, formId, release.id, JSON.stringify(definition), digest, userId]);
+  await client.query("insert into forms.form_section(id,form_version_id,stable_key,position) values ($1,$2,'required',0)",
+    [sectionId, formVersionId]);
+  await client.query(`insert into forms.form_field(form_version_id,section_id,stable_key,position,source_kind,
+    catalog_element_identity_id,analytical_repeatable) values ($1,$2,$3,0,'nemsis',$4,false)`,
+  [formVersionId, sectionId, element.element_id, element.element_identity_id]);
+  await client.query(`update forms.form_version set status='published',change_note='fixture',published_by=$2,published_at=now()
+    where id=$1`, [formVersionId, userId]);
+  await client.query(`insert into forms.agency_stationary_default(organization_id,form_version_id,activated_by)
+    values ($1,$2,$3)`, [organizationId, formVersionId, userId]);
+  const sessions = { requireCapability: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
+  const validations = new ValidationAuthoringService(database, sessions);
+  const created = await validations.create("session", { catalogReleaseId: release.id, displayName: "Required fields" });
+  const checked = await validations.validate("session", created.id);
+  assert.equal(checked.valid, true);
+  const published = await validations.publish("session", created.id, {
+    expectedRevision: created.revision, displayName: created.displayName, changeNote: "Architecture-reviewed first rule"
+  });
+  const activated = await validations.activate("session", published.id, { changeNote: "Activate first required rule" });
+  assert.equal(activated.formVersionId, formVersionId);
+  assert.equal(activated.catalogReleaseId, release.id);
+  await assert.rejects(client.query("update validation.version set display_name='mutated' where id=$1", [published.id]),
+    /published validation versions are immutable/);
+  assert.equal((await client.query("select validation_version_id from validation.active_version where organization_id=$1",
+    [organizationId])).rows[0].validation_version_id, published.id);
 });
 
 integrationTest("dispatch projection routes by call sign and quarantines unknown agency units", async (t) => {

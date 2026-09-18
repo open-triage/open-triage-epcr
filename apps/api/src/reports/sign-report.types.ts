@@ -16,6 +16,11 @@ export interface SigningFinding {
   path: string;
   message: string;
   ruleVersion: string;
+  validationVersionId?: string;
+  ruleId?: string;
+  executionTarget?: "live" | "sign" | "review";
+  targetElementId?: string;
+  inputFingerprint?: string;
 }
 
 export interface QualityFinding {
@@ -52,6 +57,7 @@ export interface SignedReportResult {
   signedAt: string;
   formVersionId: string;
   catalogReleaseId: string;
+  validationVersionId?: string;
   reportingDate: string;
   reportingDateSource: "service-date" | "earliest-clinical-time" | "earliest-server-time" | "signing-time";
   qualityRuleVersion: string;

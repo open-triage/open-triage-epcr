@@ -49,6 +49,7 @@ type ReportRow = {
   agency_demographic_version_id: string;
   form_version_id: string;
   catalog_release_id: string;
+  validation_version_id?: string | null;
   documenting_user_id: string;
   synthetic?: boolean;
   demo_mutable?: boolean;
@@ -188,8 +189,9 @@ export class DraftReportService {
           form_version_id: string;
           catalog_release_id: string;
           agency_demographic_version_id: string;
+          validation_version_id: string | null;
         }>>(`
-          select fv.id as form_version_id, fv.catalog_release_id,
+          select fv.id as form_version_id, fv.catalog_release_id, vv.id as validation_version_id,
                  (select adv.id from app_identity.agency_demographic_version adv
                   where adv.organization_id = f.organization_id
                     and adv.catalog_release_id = fv.catalog_release_id
@@ -198,6 +200,11 @@ export class DraftReportService {
           from forms.agency_stationary_default active
           join forms.form_version fv on fv.id = active.form_version_id and fv.status = 'published'
           join forms.form f on f.id = fv.form_id and f.organization_id = active.organization_id
+          left join validation.active_version av on av.organization_id=f.organization_id
+            and av.form_version_id=fv.id
+          left join validation.version vv on vv.id=av.validation_version_id
+            and vv.organization_id=f.organization_id and vv.catalog_release_id=fv.catalog_release_id
+            and vv.status='published'
           where active.organization_id = $2 and f.id = $1
         `, [command.formId, command.organizationId]);
         if (!active[0]) throw new NotFoundException("No active published form version was found for the organization");
@@ -231,12 +238,12 @@ export class DraftReportService {
         await manager.query(`
           insert into clinical.report
             (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
-             form_version_id, catalog_release_id, documenting_user_id)
-          values ($1, $2, $3, $4, $5, $6, $7, $8)
+             form_version_id, catalog_release_id, validation_version_id, documenting_user_id)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           on conflict (id) do nothing
         `, [command.reportId, command.organizationId, command.incidentId, command.patientId,
           active[0].agency_demographic_version_id, active[0].form_version_id,
-          active[0].catalog_release_id, command.documentingUserId]);
+          active[0].catalog_release_id, active[0].validation_version_id, command.documentingUserId]);
         const result = await this.reportResult(manager, command.reportId);
         if (result.organizationId !== command.organizationId || result.incidentId !== command.incidentId ||
             result.patientId !== command.patientId || result.formVersionId !== active[0].form_version_id ||
@@ -1392,7 +1399,7 @@ export class DraftReportService {
     documentingUserId?: string
   ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
-      patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id,
+      patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id, documenting_user_id,
       expires_at
       from clinical.report where id = $1
         and ($2::uuid is null or organization_id = $2)
@@ -1413,6 +1420,7 @@ export class DraftReportService {
       incidentId: row.incident_id, patientId: row.patient_id,
       agencyDemographicVersionId: row.agency_demographic_version_id,
       formVersionId: row.form_version_id, catalogReleaseId: row.catalog_release_id,
+      ...(row.validation_version_id ? { validationVersionId: row.validation_version_id } : {}),
       documentingUserId: row.documenting_user_id
     };
   }

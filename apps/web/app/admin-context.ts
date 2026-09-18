@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -62,6 +62,26 @@ export const activateStationaryForm = (csrfToken: string, formVersionId: string,
 
 export const searchFormCatalog = (id: string, query: string) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
+
+export const loadValidationDraft = () => catalogRequest<ValidationDraft | null>("validation-draft", undefined, undefined, { value: null });
+export const createValidationDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) =>
+  catalogRequest<ValidationDraft>("validation-drafts", csrfToken, {
+    method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
+  });
+export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
+  catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}`, csrfToken, {
+    method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rule: draft.rule })
+  });
+export const validateValidationDraft = (csrfToken: string, id: string) =>
+  catalogRequest<ValidationDraftResult>(`validation-drafts/${id}/validate`, csrfToken, { method: "POST" });
+export const publishValidationDraft = (csrfToken: string, draft: ValidationDraft, changeNote: string) =>
+  catalogRequest<PublishedValidationVersion>(`validation-drafts/${draft.id}/publish`, csrfToken, {
+    method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, changeNote })
+  });
+export const activateValidationVersion = (csrfToken: string, id: string, changeNote: string) =>
+  catalogRequest<ValidationActivation>(`validation-versions/${id}/activate`, csrfToken, {
+    method: "POST", body: JSON.stringify({ changeNote })
+  });
 
 export async function loadAdminContext(): Promise<AdminContext> {
   const requestPath = "/api/admin/context";
