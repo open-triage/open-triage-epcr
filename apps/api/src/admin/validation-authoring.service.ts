@@ -3,15 +3,19 @@ import { ConflictException, Injectable, NotFoundException, UnprocessableEntityEx
 import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule,
+  evaluateValidationBundle,
   explainValidationRule,
   formatOccurrenceSource,
   type ClinicianSession,
   type CompiledValidationBundle,
+  type EncounterDocument,
   type PublishedValidationVersion,
   type ValidationActivation,
   type ValidationCatalog,
   type ValidationDraft,
   type ValidationDraftResult,
+  type ValidationHistoryEvent,
+  type ValidationRuleChanges,
   type ValidationRuleSource,
   type ValidationDiagnostic,
   type ValidationRulePage,
@@ -24,9 +28,11 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 
 type VersionRow = {
   id: string; organization_id: string; catalog_release_id: string; rule_id: string;
+  cloned_from_id: string | null;
   revision: number; display_name: string; source_rule: ValidationRuleSource | ValidationRuleSource[];
   status: "draft" | "published"; version: number | null; compiled_bundle: CompiledValidationBundle | null;
-  compiled_sha256: string | null; created_at: Date | string; updated_at: Date | string; published_at: Date | string | null;
+  source_sha256: string | null; compiled_sha256: string | null; created_at: Date | string;
+  updated_at: Date | string; published_at: Date | string | null;
 };
 
 type MigratedForm = {
@@ -67,13 +73,21 @@ function uuidText(value: unknown, name: string): string {
   return text;
 }
 
-function draft(row: VersionRow): ValidationDraft {
+function draft(row: VersionRow, diagnostics?: ValidationDiagnostic[]): ValidationDraft {
   const rules = Array.isArray(row.source_rule) ? row.source_rule : [row.source_rule];
-  return { id: row.id, catalogReleaseId: row.catalog_release_id, revision: Number(row.revision),
-    displayName: row.display_name, rules, updatedAt: new Date(row.updated_at).toISOString() };
+  return { id: row.id, catalogReleaseId: row.catalog_release_id, clonedFromId: row.cloned_from_id ?? null,
+    revision: Number(row.revision), displayName: row.display_name, rules,
+    ...(diagnostics ? { diagnostics } : {}), updatedAt: new Date(row.updated_at).toISOString() };
 }
 
 const RULE_SOURCES = new Set<ValidationRuleSourceKind>(["agency", "nemsis", "catalog", "form", "platform"]);
+const SMOKE_DOCUMENT: EncounterDocument = {
+  $schema: "./encounter-document.schema-1.0.0.json", documentType: "open-triage.encounter", modelVersion: "1.1.0",
+  dataModel: { standard: "NEMSIS", version: "smoke", dataset: "EMSDataSet" },
+  formProfile: { id: "validation-publication-smoke", version: "1" },
+  encounter: { id: "validation-publication-smoke", createdAt: "2000-01-01T00:00:00.000Z",
+    updatedAt: "2000-01-01T00:00:00.000Z" }, groups: [],
+};
 
 function sourceKind(rule: ValidationRuleSource): ValidationRuleSourceKind {
   return rule.sourceKind ?? (rule.provenance?.length ? "nemsis" : "agency");
@@ -113,6 +127,33 @@ export function migrateFormExpression(expression: FormExpression,
       return `${operation}(${conditions.join(", ")})`;
     }
   }
+}
+
+function ruleChanges(before: ValidationRuleSource[], after: ValidationRuleSource[]): ValidationRuleChanges {
+  const previous = new Map(before.map((rule) => [rule.id, rule]));
+  const currentIds = new Set(after.map(({ id }) => id));
+  const additions: ValidationRuleChanges["additions"] = [];
+  const modifications: ValidationRuleChanges["modifications"] = [];
+  const disablements: ValidationRuleChanges["disablements"] = [];
+  const executionTargetChanges: ValidationRuleChanges["executionTargetChanges"] = [];
+  for (const rule of after) {
+    const prior = previous.get(rule.id);
+    if (!prior) { additions.push({ ruleId: rule.id, name: rule.name }); continue; }
+    const fields: string[] = (["name", "severity", "primaryTargetElementId", "message", "source"] as const)
+      .filter((field) => rule[field] !== prior[field]);
+    if (prior.enabled !== rule.enabled) fields.push("enabled");
+    if (fields.length) modifications.push({ ruleId: rule.id, fields });
+    if (prior.enabled && !rule.enabled) disablements.push({ ruleId: rule.id });
+    const beforeTargets = [...new Set(prior.executionTargets)].sort();
+    const afterTargets = [...new Set(rule.executionTargets)].sort();
+    if (JSON.stringify(beforeTargets) !== JSON.stringify(afterTargets)) {
+      executionTargetChanges.push({ ruleId: rule.id, before: beforeTargets, after: afterTargets });
+    }
+  }
+  for (const prior of before) {
+    if (!currentIds.has(prior.id) && prior.enabled) disablements.push({ ruleId: prior.id });
+  }
+  return { additions, modifications, disablements, executionTargetChanges };
 }
 
 function ruleAdvisories(rules: ValidationRuleSource[]): Map<string, ValidationDiagnostic[]> {
@@ -300,6 +341,67 @@ export class ValidationAuthoringService {
     });
   }
 
+  async clone(token: string, sourceId: string, input: unknown): Promise<ValidationDraft> {
+    const session = await this.sessions.requireCapability(token, "validation:write");
+    const body = record(input);
+    const catalogReleaseId = uuidText(body.catalogReleaseId, "catalogReleaseId");
+    const displayName = requiredText(body.displayName, "displayName", 120);
+    return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}`]);
+      const sources = await manager.query<VersionRow[]>(`select * from validation.version
+        where id=$1 and organization_id=$2 and status='published'`, [sourceId, session.organization.id]);
+      const source = sources[0];
+      if (!source) throw new NotFoundException(`Published validation version ${sourceId} was not found`);
+      const existing = await manager.query<VersionRow[]>(`select * from validation.version
+        where organization_id=$1 and status='draft' for update`, [session.organization.id]);
+      if (existing[0]) {
+        if (existing[0].cloned_from_id !== sourceId || existing[0].catalog_release_id !== catalogReleaseId) {
+          throw new ConflictException("A Validation draft already exists from another version or Catalog");
+        }
+        const validation = await this.validateRow(manager, existing[0]);
+        return draft(existing[0], validation.diagnostics);
+      }
+      const catalogs = await manager.query<Array<{ id: string }>>(`
+        select target.id from catalog.release target
+        join catalog.release source on source.id=$3
+        where target.id=$1 and target.sealed and target.loaded_at >= source.loaded_at and (
+          exists (select 1 from catalog.authoring_draft d
+            where d.organization_id=$2 and d.published_release_id=target.id)
+          or exists (select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
+            where f.organization_id=$2 and fv.catalog_release_id=target.id and fv.status='published')
+        )
+      `, [catalogReleaseId, session.organization.id, source.catalog_release_id]);
+      if (!catalogs[0]) {
+        throw new UnprocessableEntityException("The selected Catalog must be the same as or newer than the source and published for this organization");
+      }
+      const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
+        (id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by,cloned_from_id)
+        values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8) returning *`,
+      [randomUUID(), session.organization.id, catalogReleaseId, source.rule_id, displayName,
+        JSON.stringify(this.rowRules(source)), session.user.id, source.id]));
+      const validation = await this.validateRow(manager, inserted[0]!);
+      return draft(inserted[0]!, validation.diagnostics);
+    });
+  }
+
+  async history(token: string): Promise<ValidationHistoryEvent[]> {
+    const session = await this.sessions.requireCapability(token, "validation:read");
+    const rows = await this.dataSource.query<Array<{
+      id: string | number; actor_id: string; action: ValidationHistoryEvent["action"];
+      source_version_id: string | null; destination_version_id: string; catalog_release_id: string;
+      change_note: string; rule_changes: ValidationRuleChanges; source_sha256: string | null;
+      compiled_sha256: string; occurred_at: Date | string;
+    }>>(`select id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
+      change_note,rule_changes,source_sha256,compiled_sha256,occurred_at
+      from validation.change_event where organization_id=$1 order by occurred_at desc,id desc`,
+    [session.organization.id]);
+    return rows.map((row) => ({ id: String(row.id), actorId: row.actor_id, action: row.action,
+      sourceVersionId: row.source_version_id, destinationVersionId: row.destination_version_id,
+      catalogReleaseId: row.catalog_release_id, changeNote: row.change_note, ruleChanges: row.rule_changes,
+      sourceSha256: row.source_sha256, compiledSha256: row.compiled_sha256,
+      occurredAt: new Date(row.occurred_at).toISOString() }));
+  }
+
   async save(token: string, id: string, input: unknown): Promise<ValidationDraft> {
     const session = await this.sessions.requireCapability(token, "validation:write");
     const body = record(input);
@@ -320,6 +422,10 @@ export class ValidationAuthoringService {
         ...(prior.provenance ? { provenance: prior.provenance } : {}) } : parsed;
     });
     if (new Set(rules.map(({ id }) => id)).size !== rules.length) throw new UnprocessableEntityException("Rule identities must be unique");
+    const retainedIds = new Set(rules.map(({ id }) => id));
+    if ([...existingRules.keys()].some((ruleId) => !retainedIds.has(ruleId))) {
+      throw new UnprocessableEntityException("Existing rules must be disabled rather than removed from Validation history");
+    }
     const displayName = requiredText(body.displayName, "displayName", 120);
     const identities = await this.dataSource.query<Array<{ id: string }>>(
       "select id from validation.rule_identity where organization_id=$1 and id=any($2::uuid[])",
@@ -404,18 +510,30 @@ export class ValidationAuthoringService {
       if (!validation.valid || !validation.compiledBundle || !validation.compiledSha256) {
         throw new UnprocessableEntityException({ message: "Validation publication failed", diagnostics: validation.diagnostics });
       }
+      const sourceRules = this.rowRules(row);
+      const sourceSha256 = createHash("sha256").update(JSON.stringify(sourceRules)).digest("hex");
+      const baselines = row.cloned_from_id ? await manager.query<VersionRow[]>(`select * from validation.version
+        where id=$1 and organization_id=$2 and status='published'`, [row.cloned_from_id, session.organization.id]) : [];
+      const changes = ruleChanges(baselines[0] ? this.rowRules(baselines[0]) : [], sourceRules);
       const versions = await manager.query<Array<{ next_version: number }>>(
         "select coalesce(max(version),0)+1 as next_version from validation.version where organization_id=$1", [session.organization.id]);
       const published = mutationRows<VersionRow>(await manager.query(`with updated as (
         update validation.version set status='published',version=$4,display_name=$5,change_note=$6,
-          compiled_bundle=$7::jsonb,compiled_sha256=$8,published_by=$9,published_at=now(),updated_at=now()
+          source_sha256=$7,compiled_bundle=$8::jsonb,compiled_sha256=$9,published_by=$10,published_at=now(),updated_at=now()
         where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning *) select * from updated`,
       [id, session.organization.id, body.expectedRevision, Number(versions[0]!.next_version), displayName, changeNote,
-        JSON.stringify(validation.compiledBundle), validation.compiledSha256, session.user.id]));
+        sourceSha256, JSON.stringify(validation.compiledBundle), validation.compiledSha256, session.user.id]));
       if (!published[0]) throw new ConflictException("Validation draft changed during publication");
+      await manager.query(`insert into validation.change_event
+        (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
+         change_note,rule_changes,source_sha256,compiled_sha256)
+        values ($1,$2,'validation.publish',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+      [session.organization.id, session.user.id, row.cloned_from_id, id, row.catalog_release_id,
+        changeNote, JSON.stringify(changes), sourceSha256, validation.compiledSha256]);
       return { id, organizationId: session.organization.id, catalogReleaseId: row.catalog_release_id,
-        version: Number(published[0].version), displayName, status: "published", ruleIds: this.rowRules(row).map(({ id }) => id),
-        compiledSha256: validation.compiledSha256, publishedAt: new Date(published[0].published_at!).toISOString() };
+        version: Number(published[0].version), displayName, status: "published", ruleIds: sourceRules.map(({ id }) => id),
+        sourceSha256, compiledSha256: validation.compiledSha256,
+        publishedAt: new Date(published[0].published_at!).toISOString() };
     });
   }
 
@@ -437,8 +555,9 @@ export class ValidationAuthoringService {
       if (!active[0] || active[0].catalog_release_id !== version.catalog_release_id) {
         throw new UnprocessableEntityException("The published validation version must bind to the active form's catalog");
       }
-      const ruleElements = [...new Set(version.compiled_bundle!.rules.flatMap((rule) =>
-        [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])]))];
+      const ruleElements = [...new Set(version.compiled_bundle!.rules
+        .filter((rule) => rule.enabled && rule.executionTargets.some((target) => target === "live" || target === "sign"))
+        .flatMap((rule) => [rule.primaryTarget.elementId, ...(rule.references?.elementIds ?? [])]))];
       const exposed = await manager.query<Array<{ element_id: string }>>(`select distinct e.element_id
         from forms.form_field ff join catalog.element_definition e
           on e.release_id=$2 and e.element_identity_id=ff.catalog_element_identity_id
@@ -447,14 +566,23 @@ export class ValidationAuthoringService {
       const exposedIds = new Set(exposed.map(({ element_id }) => element_id));
       const missing = ruleElements.filter((elementId) => !exposedIds.has(elementId));
       if (missing.length) throw new UnprocessableEntityException(`Active form does not expose referenced element${missing.length === 1 ? "" : "s"} ${missing.join(", ")}`);
-      const previous = await manager.query<Array<{ validation_version_id: string }>>(
-        "select validation_version_id from validation.active_version where organization_id=$1", [session.organization.id]);
+      const previous = await manager.query<Array<{ validation_version_id: string } & VersionRow>>(`
+        select active.validation_version_id,previous.* from validation.active_version active
+        join validation.version previous on previous.id=active.validation_version_id
+        where active.organization_id=$1`, [session.organization.id]);
       const activated = mutationRows<{ activated_at: Date | string }>(await manager.query(`insert into validation.active_version
         (organization_id,validation_version_id,form_version_id,activated_by,change_note)
         values ($1,$2,$3,$4,$5) on conflict (organization_id) do update set
           validation_version_id=excluded.validation_version_id,form_version_id=excluded.form_version_id,
           activated_by=excluded.activated_by,change_note=excluded.change_note,activated_at=now()
         returning activated_at`, [session.organization.id, id, active[0].form_version_id, session.user.id, changeNote]));
+      const changes = ruleChanges(previous[0] ? this.rowRules(previous[0]) : [], this.rowRules(version));
+      await manager.query(`insert into validation.change_event
+        (organization_id,actor_id,action,source_version_id,destination_version_id,catalog_release_id,
+         change_note,rule_changes,source_sha256,compiled_sha256)
+        values ($1,$2,'validation.activate',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+      [session.organization.id, session.user.id, previous[0]?.validation_version_id ?? null, id,
+        version.catalog_release_id, changeNote, JSON.stringify(changes), version.source_sha256, version.compiled_sha256]);
       return { organizationId: session.organization.id, validationVersionId: id,
         catalogReleaseId: version.catalog_release_id, formVersionId: active[0].form_version_id,
         activatedAt: new Date(activated[0]!.activated_at).toISOString(),
@@ -464,13 +592,22 @@ export class ValidationAuthoringService {
 
   private async validateRow(manager: Pick<EntityManager, "query">, row: VersionRow): Promise<ValidationDraftResult> {
     const catalog = await this.validationCatalog(manager, row.catalog_release_id);
-    const results = this.rowRules(row).map((rule) => compileValidationRule(rule, row.id, catalog));
     const rules = this.rowRules(row);
+    const results = rules.map((rule) => {
+      try { return compileValidationRule(rule, row.id, catalog); }
+      catch (error) {
+        return { compiled: undefined, diagnostics: [{ severity: "error" as const, code: "compile" as const, ruleId: rule.id,
+          message: error instanceof Error ? `Rule compilation failed: ${error.message}` : "Rule compilation failed" }] };
+      }
+    });
     const advisories = ruleAdvisories(rules);
-    const diagnostics = results.flatMap(({ diagnostics }, index) => diagnostics.map((item) =>
-      rules[index]!.enabled ? item : { ...item, severity: "warning" as const,
-        message: `Disabled rule: ${item.message}` })).concat([...advisories.values()].flat());
-    if (results.some(({ compiled }, index) => rules[index]!.enabled && !compiled)) return { valid: false, diagnostics };
+    const diagnostics = results.flatMap(({ diagnostics }, index) => diagnostics.map((item) => {
+      if (!rules[index]!.enabled) return { ...item, severity: "warning" as const, message: `Disabled rule: ${item.message}` };
+      if (item.code === "occurrence-bound") return { ...item, severity: "error" as const };
+      return item;
+    })).concat([...advisories.values()].flat());
+    if (results.some(({ compiled }, index) => rules[index]!.enabled && !compiled)
+      || diagnostics.some(({ severity }) => severity === "error")) return { valid: false, diagnostics };
     const seen = new Set<string>();
     const compiledRules = results.flatMap(({ compiled }, index) => {
       if (!compiled) return [];
@@ -480,6 +617,18 @@ export class ValidationAuthoringService {
     });
     const compiledBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
       validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: compiledRules };
+    for (const rule of compiledRules.filter(({ enabled }) => enabled)) {
+      for (const target of rule.executionTargets) {
+        try {
+          evaluateValidationBundle({ ...compiledBundle, rules: [rule] }, SMOKE_DOCUMENT, target,
+            { timestamp: "2000-01-01T00:00:00.000Z" });
+        } catch (error) {
+          diagnostics.push({ severity: "error", code: "smoke-evaluation", ruleId: rule.ruleId,
+            message: error instanceof Error ? `Smoke evaluation failed: ${error.message}` : "Smoke evaluation failed" });
+        }
+      }
+    }
+    if (diagnostics.some(({ severity }) => severity === "error")) return { valid: false, diagnostics };
     return { valid: true, diagnostics, explanation: results.flatMap(({ compiled }) => compiled ? [explainValidationRule(compiled, catalog)] : []).join("\n"), compiledBundle,
       compiledSha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex") };
   }
