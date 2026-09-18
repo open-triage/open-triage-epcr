@@ -8,9 +8,15 @@ export {
   VALIDATION_LANGUAGE_VERSION,
   compileValidationRule,
   evaluateValidationBundle,
+  explainValidationRule,
   formatRequiredElementSource,
+  formatValidationSource,
   type CompiledValidationBundle,
+  type CompiledValidationExpression,
   type CompiledValidationRule,
+  type ValidationCatalog,
+  type ValidationCatalogCode,
+  type ValidationCatalogElement,
   type ValidationDiagnostic,
   type ValidationExecutionTarget,
   type ValidationFinding,
@@ -608,6 +614,7 @@ export interface ValidationDraft {
 export interface ValidationDraftResult {
   valid: boolean;
   diagnostics: import("./validation-rules.js").ValidationDiagnostic[];
+  explanation?: string;
   compiledBundle?: import("./validation-rules.js").CompiledValidationBundle;
   compiledSha256?: string;
 }
