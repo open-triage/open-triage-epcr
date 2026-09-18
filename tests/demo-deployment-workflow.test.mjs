@@ -49,7 +49,9 @@ test("deployment follows image publication and uses serialized, scoped DOKS acce
   assert.match(deploy, /^    environment: demo$/m);
   assert.match(deploy, /^    permissions:\n      contents: read$/m);
   assert.match(deploy, /token: \$\{\{ secrets\.DIGITALOCEAN_ACCESS_TOKEN \}\}/);
-  assert.match(deploy, /kubeconfig save .*--expiry-seconds 600/);
+  assert.match(deploy, /kubeconfig save .*--expiry-seconds 1800/);
+  assert.match(deploy, /Provision isolated demo workload credentials/);
+  assert.match(deploy, /scripts\/provision-demo-workload-secrets\.sh/);
   assert.doesNotMatch(deploy, /KUBE_CONFIG|KUBECONFIG_DATA/);
 });
 

@@ -369,7 +369,13 @@ jobs:
         env:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 600
+        run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
+      - name: Provision isolated demo workload credentials
+        env:
+          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
+        run: >-
+          bash scripts/provision-demo-workload-secrets.sh
+          "${{ steps.images.outputs.api-repository }}:${{ steps.images.outputs.api-tag }}"
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig

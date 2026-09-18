@@ -37,6 +37,7 @@ test("the pruned runtime explicitly retains approved database operations and the
     "synthetic-stationary-definition",
     "load-nemsis-catalog",
     "migrate",
+    "provision-workload-logins",
     "project-analytics",
     "projection-health",
     "retention",
@@ -49,6 +50,10 @@ test("the pruned runtime explicitly retains approved database operations and the
   assert.equal(
     databasePackage.scripts["bootstrap:synthetic:runtime"],
     "node scripts/bootstrap-synthetic-installation.mjs",
+  );
+  assert.equal(
+    databasePackage.scripts["provision:workload-logins"],
+    "node scripts/provision-workload-logins.mjs",
   );
   for (const asset of [
     "supabase/migrations",
