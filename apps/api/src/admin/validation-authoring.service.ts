@@ -4,7 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import {
   compileValidationRule,
   explainValidationRule,
-  formatRequiredElementSource,
+  formatOccurrenceSource,
   type ClinicianSession,
   type CompiledValidationBundle,
   type PublishedValidationVersion,
@@ -20,7 +20,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 
 type VersionRow = {
   id: string; organization_id: string; catalog_release_id: string; rule_id: string;
-  revision: number; display_name: string; source_rule: ValidationRuleSource;
+  revision: number; display_name: string; source_rule: ValidationRuleSource | ValidationRuleSource[];
   status: "draft" | "published"; version: number | null; compiled_bundle: CompiledValidationBundle | null;
   compiled_sha256: string | null; created_at: Date | string; updated_at: Date | string; published_at: Date | string | null;
 };
@@ -46,8 +46,9 @@ function uuidText(value: unknown, name: string): string {
 }
 
 function draft(row: VersionRow): ValidationDraft {
+  const rules = Array.isArray(row.source_rule) ? row.source_rule : [row.source_rule];
   return { id: row.id, catalogReleaseId: row.catalog_release_id, revision: Number(row.revision),
-    displayName: row.display_name, rule: row.source_rule, updatedAt: new Date(row.updated_at).toISOString() };
+    displayName: row.display_name, rules, updatedAt: new Date(row.updated_at).toISOString() };
 }
 
 @Injectable()
@@ -80,22 +81,42 @@ export class ValidationAuthoringService {
         where cr.id=$2 and cr.sealed
       `, [session.organization.id, catalogReleaseId]);
       if (!catalogs[0]) throw new UnprocessableEntityException("Validation drafts must bind to a published catalog available to the organization");
-      const element = (await manager.query<Array<{ element_id: string }>>(
-        "select element_id from catalog.element_definition where release_id=$1 order by element_id limit 1", [catalogReleaseId]))[0];
-      if (!element) throw new UnprocessableEntityException("The selected catalog has no elements");
+      const elements = await manager.query<Array<{ element_id: string; name: string; min_occurs: number;
+        max_occurs: number | null; group_id: string; group_repeating: boolean }>>(`
+        select e.element_id,e.name,e.min_occurs,e.max_occurs,e.group_path[array_length(e.group_path,1)] as group_id,
+          coalesce(g.repeating,false) as group_repeating
+        from catalog.element_definition e left join catalog.group_definition g
+          on g.release_id=e.release_id and g.group_id=e.group_path[array_length(e.group_path,1)]
+        where e.release_id=$1 order by e.element_id`, [catalogReleaseId]);
+      if (!elements.length) throw new UnprocessableEntityException("The selected catalog has no elements");
       const versionId = randomUUID();
-      const ruleId = randomUUID();
-      const source: ValidationRuleSource = {
-        id: ruleId, name: "Required element", enabled: true, severity: "error",
-        executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
-        message: `${element.element_id} is required`, source: formatRequiredElementSource(element.element_id),
-      };
-      await manager.query(`insert into validation.rule_identity(id,organization_id,created_by) values ($1,$2,$3)`,
-        [ruleId, session.organization.id, session.user.id]);
+      const rules: ValidationRuleSource[] = elements.flatMap((element) => {
+        const scope = element.group_repeating ? element.group_id : undefined;
+        const minimum = element.min_occurs > 0 ? [{ id: randomUUID(), name: `${element.name} documented minimum`, enabled: true,
+          severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
+          primaryTargetElementId: element.element_id,
+          message: `${element.name} requires at least ${element.min_occurs} documented occurrence(s)`,
+          source: formatOccurrenceSource(element.element_id, "minimum", element.min_occurs, scope) }] : [];
+        const maximum = element.max_occurs !== null ? [{ id: randomUUID(), name: `${element.name} documented maximum`, enabled: true,
+          severity: "error" as const, executionTargets: ["live", "sign"] as ValidationRuleSource["executionTargets"],
+          primaryTargetElementId: element.element_id,
+          message: `${element.name} permits at most ${element.max_occurs} documented occurrence(s)`,
+          source: formatOccurrenceSource(element.element_id, "maximum", element.max_occurs, scope) }] : [];
+        return [...minimum, ...maximum];
+      });
+      if (!rules.length) {
+        const element = elements[0]!;
+        rules.push({ id: randomUUID(), name: `${element.name} documented minimum`, enabled: false, severity: "error",
+          executionTargets: ["live", "sign"], primaryTargetElementId: element.element_id,
+          message: `${element.name} has no documented minimum`, source: formatOccurrenceSource(element.element_id, "minimum", 0) });
+      }
+      await manager.query(`insert into validation.rule_identity(id,organization_id,created_by)
+        select x.id,$1,$2 from jsonb_to_recordset($3::jsonb) x(id uuid)`,
+      [session.organization.id, session.user.id, JSON.stringify(rules.map(({ id }) => ({ id })))]);
       const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
         (id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by)
         values ($1,$2,$3,$4,$5,$6::jsonb,$7) returning *`,
-      [versionId, session.organization.id, catalogReleaseId, ruleId, displayName, JSON.stringify(source), session.user.id]));
+      [versionId, session.organization.id, catalogReleaseId, rules[0]!.id, displayName, JSON.stringify(rules), session.user.id]));
       return draft(inserted[0]!);
     });
   }
@@ -106,12 +127,18 @@ export class ValidationAuthoringService {
     if (!Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1) {
       throw new UnprocessableEntityException("expectedRevision must be a positive integer");
     }
-    const rule = this.rule(body.rule);
+    if (!Array.isArray(body.rules) || !body.rules.length) throw new UnprocessableEntityException("rules must contain at least one rule");
+    const rules = body.rules.map((rule) => this.rule(rule));
+    if (new Set(rules.map(({ id }) => id)).size !== rules.length) throw new UnprocessableEntityException("Rule identities must be unique");
     const displayName = requiredText(body.displayName, "displayName", 120);
+    const identities = await this.dataSource.query<Array<{ id: string }>>(
+      "select id from validation.rule_identity where organization_id=$1 and id=any($2::uuid[])",
+      [session.organization.id, rules.map(({ id }) => id)]);
+    if (identities.length !== rules.length) throw new UnprocessableEntityException("Rules must retain identities owned by the organization");
     const rows = mutationRows<VersionRow>(await this.dataSource.query(`with updated as (
       update validation.version set revision=revision+1,display_name=$4,source_rule=$5::jsonb,updated_at=now()
-      where id=$1 and organization_id=$2 and status='draft' and revision=$3 and rule_id=$6::uuid returning *) select * from updated`,
-    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rule), rule.id]));
+      where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning *) select * from updated`,
+    [id, session.organization.id, body.expectedRevision, displayName, JSON.stringify(rules)]));
     if (!rows[0]) throw new ConflictException("Validation draft revision is stale or the draft is no longer editable");
     return draft(rows[0]);
   }
@@ -153,7 +180,7 @@ export class ValidationAuthoringService {
         JSON.stringify(validation.compiledBundle), validation.compiledSha256, session.user.id]));
       if (!published[0]) throw new ConflictException("Validation draft changed during publication");
       return { id, organizationId: session.organization.id, catalogReleaseId: row.catalog_release_id,
-        version: Number(published[0].version), displayName, status: "published", ruleId: row.rule_id,
+        version: Number(published[0].version), displayName, status: "published", ruleIds: this.rowRules(row).map(({ id }) => id),
         compiledSha256: validation.compiledSha256, publishedAt: new Date(published[0].published_at!).toISOString() };
     });
   }
@@ -203,17 +230,22 @@ export class ValidationAuthoringService {
 
   private async validateRow(manager: Pick<EntityManager, "query">, row: VersionRow): Promise<ValidationDraftResult> {
     const catalog = await this.validationCatalog(manager, row.catalog_release_id);
-    const result = compileValidationRule(row.source_rule, row.id, catalog);
-    if (!result.compiled) return { valid: false, diagnostics: result.diagnostics };
+    const results = this.rowRules(row).map((rule) => compileValidationRule(rule, row.id, catalog));
+    const diagnostics = results.flatMap(({ diagnostics }) => diagnostics);
+    if (results.some(({ compiled }) => !compiled)) return { valid: false, diagnostics };
     const compiledBundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
-      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: [result.compiled] };
-    return { valid: true, diagnostics: result.diagnostics, explanation: explainValidationRule(result.compiled, catalog), compiledBundle,
+      validationVersionId: row.id, catalogReleaseId: row.catalog_release_id, rules: results.map(({ compiled }) => compiled!) };
+    return { valid: true, diagnostics, explanation: results.map(({ compiled }) => explainValidationRule(compiled!, catalog)).join("\n"), compiledBundle,
       compiledSha256: createHash("sha256").update(JSON.stringify(compiledBundle)).digest("hex") };
   }
 
   private async validationCatalog(manager: Pick<EntityManager, "query">, releaseId: string): Promise<ValidationCatalog> {
-    const elements = await manager.query<Array<{ element_id: string; name?: string; base_datatype?: string }>>(
-      "select element_id,name,base_datatype from catalog.element_definition where release_id=$1", [releaseId]);
+    const elements = await manager.query<Array<{ element_id: string; name?: string; base_datatype?: string; group_path: string[];
+      min_occurs: number; max_occurs: number | null }>>(
+      "select element_id,name,base_datatype,group_path,min_occurs,max_occurs from catalog.element_definition where release_id=$1", [releaseId]);
+    const groups = await manager.query<Array<{ group_id: string; name: string; repeating: boolean; parent_group_id: string | null;
+      min_occurs: number; max_occurs: number | null }>>(
+      "select group_id,name,repeating,parent_group_id,min_occurs,max_occurs from catalog.group_definition where release_id=$1", [releaseId]);
     const codes = await manager.query<Array<{ element_id: string; code: string; code_system: string; label: string; enabled: boolean }>>(`
       select e.element_id,e.code,e.code_system,e.label,e.enabled from (
         select o.element_id,o.code,o.code_system,o.display as label,coalesce(c.enabled,true) as enabled
@@ -228,8 +260,12 @@ export class ValidationAuthoringService {
           on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
         where vse.release_id=$1
       ) e`, [releaseId]);
-    return { elements: elements.map(({ element_id, name, base_datatype }) => ({
-      elementId: element_id, label: name ?? element_id, baseDatatype: base_datatype ?? "string",
+    return { elements: elements.map(({ element_id, name, base_datatype, group_path, min_occurs, max_occurs }) => ({
+      elementId: element_id, label: name ?? element_id, baseDatatype: base_datatype ?? "string", groupPath: group_path,
+      intrinsicOccurrence: { min: min_occurs, max: max_occurs ?? "unbounded" },
+    })), groups: groups.map(({ group_id, name, repeating, parent_group_id, min_occurs, max_occurs }) => ({
+      groupId: group_id, label: name, repeating, ...(parent_group_id ? { parentGroupId: parent_group_id } : {}),
+      intrinsicOccurrence: { min: min_occurs, max: max_occurs ?? "unbounded" },
     })), codes: codes.map(({ element_id, code, code_system, label, enabled }) => ({
       elementId: element_id, code, codeSystem: code_system, label, enabled,
     })) };
@@ -249,5 +285,9 @@ export class ValidationAuthoringService {
       executionTargets: targets as ValidationRuleSource["executionTargets"],
       primaryTargetElementId: requiredText(body.primaryTargetElementId, "rule.primaryTargetElementId", 200),
       message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000) };
+  }
+
+  private rowRules(row: Pick<VersionRow, "source_rule">): ValidationRuleSource[] {
+    return Array.isArray(row.source_rule) ? row.source_rule : [row.source_rule];
   }
 }

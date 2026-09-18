@@ -22,6 +22,16 @@ export interface ValidationCatalogElement {
   elementId: string;
   label: string;
   baseDatatype: string;
+  groupPath?: string[];
+  intrinsicOccurrence?: { min: number; max: number | "unbounded" };
+}
+
+export interface ValidationCatalogGroup {
+  groupId: string;
+  label: string;
+  repeating: boolean;
+  parentGroupId?: string;
+  intrinsicOccurrence: { min: number; max: number | "unbounded" };
 }
 
 export interface ValidationCatalogCode {
@@ -34,12 +44,13 @@ export interface ValidationCatalogCode {
 
 export interface ValidationCatalog {
   elements: readonly ValidationCatalogElement[];
+  groups?: readonly ValidationCatalogGroup[];
   codes?: readonly ValidationCatalogCode[];
 }
 
 export interface ValidationDiagnostic {
   severity: "error" | "warning";
-  code: "syntax" | "catalog-reference" | "datatype" | "primary-target" | "execution-target";
+  code: "syntax" | "catalog-reference" | "datatype" | "primary-target" | "execution-target" | "scope" | "occurrence-bound";
   message: string;
   ruleId: string;
   line?: number;
@@ -50,6 +61,8 @@ export type CompiledValidationExpression =
   | { operator: "present"; elementId: string }
   | { operator: "coded"; elementId: string; codeSystem: string; code: string }
   | { operator: "equals"; elementId: string; value: string | number | boolean }
+  | { operator: "minimum-occurrences"; elementId: string; count: number }
+  | { operator: "maximum-occurrences"; elementId: string; count: number }
   | { operator: "all"; operands: CompiledValidationExpression[] }
   | { operator: "any"; operands: CompiledValidationExpression[] }
   | { operator: "not"; operand: CompiledValidationExpression };
@@ -64,6 +77,7 @@ export interface CompiledValidationRule {
   severity: ValidationSeverity;
   executionTargets: ValidationExecutionTarget[];
   primaryTarget: { elementId: string };
+  scope?: { groupId: string; iteration: "each" };
   message: string;
   applicability?: CompiledValidationExpression;
   assertion: CompiledValidationExpression;
@@ -89,7 +103,7 @@ export interface ValidationFinding {
 }
 
 type Token = { kind: "identifier" | "string" | "number" | "punctuation" | "eof"; value: string; offset: number };
-type ParsedSource = { applicability?: CompiledValidationExpression; assertion: CompiledValidationExpression };
+type ParsedSource = { scopeGroupId?: string; applicability?: CompiledValidationExpression; assertion: CompiledValidationExpression };
 
 class ParseFailure extends Error {
   constructor(message: string, readonly offset: number) { super(message); }
@@ -165,6 +179,14 @@ class ExpressionParser {
       else throw new ParseFailure("equals accepts only true or false as unquoted values", this.sourceOffset + literal.offset);
       this.punctuation(")"); return { operator: "equals", elementId, value };
     }
+    if (functionName.value === "minimum" || functionName.value === "maximum") {
+      const elementId = this.take("string", `${functionName.value} expects an element ID string`).value; this.punctuation(",");
+      const count = this.take("number", `${functionName.value} expects a non-negative integer`).value;
+      if (!/^\d+$/.test(count)) throw new ParseFailure(`${functionName.value} expects a non-negative integer`, this.sourceOffset + functionName.offset);
+      this.punctuation(")");
+      return { operator: functionName.value === "minimum" ? "minimum-occurrences" : "maximum-occurrences",
+        elementId, count: Number(count) };
+    }
     if (functionName.value === "not") {
       const operand = this.expression(); this.punctuation(")"); return { operator: "not", operand };
     }
@@ -209,9 +231,12 @@ function sourceSections(source: string): { when?: { text: string; offset: number
 }
 
 function parseSource(source: string): ParsedSource {
-  const sections = sourceSections(source);
+  const scopeMatch = /^\s*for\s+each\(\s*"([^"\\]+)"\s*\)\s*(?:\r?\n|$)/.exec(source);
+  const scopedSource = scopeMatch ? `${" ".repeat(scopeMatch[0].length)}${source.slice(scopeMatch[0].length)}` : source;
+  const sections = sourceSections(scopedSource);
   if (!sections.require.text) throw new ParseFailure("require must contain a Boolean expression", sections.require.offset);
-  return { ...(sections.when ? { applicability: new ExpressionParser(sections.when.text, sections.when.offset).parse() } : {}),
+  return { ...(scopeMatch ? { scopeGroupId: scopeMatch[1] } : {}),
+    ...(sections.when ? { applicability: new ExpressionParser(sections.when.text, sections.when.offset).parse() } : {}),
     assertion: new ExpressionParser(sections.require.text, sections.require.offset).parse() };
 }
 
@@ -226,6 +251,8 @@ function formatExpression(expression: CompiledValidationExpression, depth = 0): 
   if (expression.operator === "present") return `present(${escape(expression.elementId)})`;
   if (expression.operator === "coded") return `coded(${escape(expression.elementId)}, ${escape(expression.codeSystem)}, ${escape(expression.code)})`;
   if (expression.operator === "equals") return `equals(${escape(expression.elementId)}, ${typeof expression.value === "string" ? escape(expression.value) : expression.value})`;
+  if (expression.operator === "minimum-occurrences") return `minimum(${escape(expression.elementId)}, ${expression.count})`;
+  if (expression.operator === "maximum-occurrences") return `maximum(${escape(expression.elementId)}, ${expression.count})`;
   if (expression.operator === "not") return `not(${formatExpression(expression.operand, depth)})`;
   const indent = "  ".repeat(depth + 1);
   const closing = "  ".repeat(depth);
@@ -233,11 +260,15 @@ function formatExpression(expression: CompiledValidationExpression, depth = 0): 
 }
 
 export function formatRequiredElementSource(elementId: string): string { return `require present(${escape(elementId)})`; }
+export function formatOccurrenceSource(elementId: string, kind: "minimum" | "maximum", count: number,
+  scopeGroupId?: string): string {
+  return `${scopeGroupId ? `for each(${escape(scopeGroupId)})\n` : ""}require ${kind}(${escape(elementId)}, ${count})`;
+}
 
 export function formatValidationSource(source: string): { formatted?: string; diagnostics: ValidationDiagnostic[] } {
   try {
     const parsed = parseSource(source);
-    return { diagnostics: [], formatted: `${parsed.applicability ? `when ${formatExpression(parsed.applicability)}\n` : ""}require ${formatExpression(parsed.assertion)}` };
+    return { diagnostics: [], formatted: `${parsed.scopeGroupId ? `for each(${escape(parsed.scopeGroupId)})\n` : ""}${parsed.applicability ? `when ${formatExpression(parsed.applicability)}\n` : ""}require ${formatExpression(parsed.assertion)}` };
   } catch (error) {
     const failure = error instanceof ParseFailure ? error : new ParseFailure("Invalid rule source", 0);
     return { diagnostics: [{ severity: "error", code: "syntax", ruleId: "", message: failure.message, ...location(source, failure.offset) }] };
@@ -253,7 +284,7 @@ function catalogParts(catalog: ReadonlySet<string> | ValidationCatalog): {
 }
 
 function referencedExpressions(expression: CompiledValidationExpression): Array<Extract<CompiledValidationExpression,
-  { operator: "present" | "coded" | "equals" }>> {
+  { elementId: string }>> {
   if (expression.operator === "all" || expression.operator === "any") return expression.operands.flatMap(referencedExpressions);
   if (expression.operator === "not") return referencedExpressions(expression.operand);
   return [expression];
@@ -300,6 +331,31 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
   }
   if (!known.elements.has(rule.primaryTargetElementId)) diagnostics.push({ severity: "error", code: "primary-target", ruleId: rule.id,
     message: `Primary target ${rule.primaryTargetElementId} is not present in the bound catalog` });
+  if (parsed.scopeGroupId) {
+    const catalogDefinition = "elements" in catalog ? catalog : undefined;
+    const group = catalogDefinition?.groups?.find(({ groupId }) => groupId === parsed.scopeGroupId);
+    const groupExistsInElementPaths = catalogDefinition?.elements.some(({ groupPath }) => groupPath?.includes(parsed.scopeGroupId!));
+    if (!group && !groupExistsInElementPaths) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
+      message: `Repeating scope ${parsed.scopeGroupId} is not present in the bound catalog` });
+    if (group && !group.repeating) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
+      message: `Scope ${parsed.scopeGroupId} is not a repeating Catalog group` });
+    for (const elementId of new Set([...expressions.map(({ elementId }) => elementId), rule.primaryTargetElementId])) {
+      const element = known.elements.get(elementId);
+      if (element?.groupPath && !element.groupPath.includes(parsed.scopeGroupId)) diagnostics.push({
+        severity: "error", code: "scope", ruleId: rule.id,
+        message: `Element ${elementId} is outside repeating scope ${parsed.scopeGroupId}`,
+      });
+    }
+  }
+  for (const expression of expressions) {
+    if (expression.operator !== "minimum-occurrences" && expression.operator !== "maximum-occurrences") continue;
+    const bound = known.elements.get(expression.elementId)?.intrinsicOccurrence;
+    const intrinsicMaximum = bound?.max;
+    if (expression.operator === "maximum-occurrences" && typeof intrinsicMaximum === "number" && expression.count > intrinsicMaximum) {
+      diagnostics.push({ severity: "warning", code: "occurrence-bound", ruleId: rule.id,
+        message: `The editable maximum of ${expression.count} cannot broaden ${expression.elementId}'s intrinsic Catalog maximum of ${intrinsicMaximum}` });
+    }
+  }
   if (!rule.executionTargets.length) diagnostics.push({ severity: "error", code: "execution-target", ruleId: rule.id,
     message: "Select at least one execution target" });
   if (diagnostics.some(({ severity }) => severity === "error")) return { diagnostics };
@@ -312,6 +368,7 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     ruleId: rule.id, validationVersionId, name: rule.name.trim(), enabled: rule.enabled,
     severity: rule.severity, executionTargets: [...new Set(rule.executionTargets)].sort(),
     primaryTarget: { elementId: rule.primaryTargetElementId }, message: rule.message.trim(),
+    ...(parsed.scopeGroupId ? { scope: { groupId: parsed.scopeGroupId, iteration: "each" as const } } : {}),
     ...(parsed.applicability ? { applicability: parsed.applicability } : {}), assertion: parsed.assertion,
     references: { elementIds: elements, codes },
   } };
@@ -329,13 +386,17 @@ function explainExpression(expression: CompiledValidationExpression, catalog: Va
     const codeLabel = catalog.codes?.find((code) => code.elementId === expression.elementId && code.codeSystem === expression.codeSystem && code.code === expression.code)?.label;
     return `${labelFor(expression.elementId, catalog)} contains ${codeLabel ? `${codeLabel} ` : ""}(${expression.codeSystem}|${expression.code})`;
   }
+  if (expression.operator === "minimum-occurrences") return `${labelFor(expression.elementId, catalog)} has at least ${expression.count} documented occurrence(s)`;
+  if (expression.operator === "maximum-occurrences") return `${labelFor(expression.elementId, catalog)} has at most ${expression.count} documented occurrence(s)`;
   if (expression.operator === "not") return `not (${explainExpression(expression.operand, catalog)})`;
   const joiner = expression.operator === "all" ? " and " : " or ";
   return expression.operands.map((operand) => `(${explainExpression(operand, catalog)})`).join(joiner);
 }
 
 export function explainValidationRule(compiled: CompiledValidationRule, catalog: ValidationCatalog): string {
-  const scope = `Finding target: ${labelFor(compiled.primaryTarget.elementId, catalog)}.`;
+  const group = compiled.scope && catalog.groups?.find(({ groupId }) => groupId === compiled.scope!.groupId);
+  const scope = `Finding target: ${labelFor(compiled.primaryTarget.elementId, catalog)}.${compiled.scope ?
+    ` Evaluate each ${group?.label ?? compiled.scope.groupId} row independently.` : ""}`;
   const condition = compiled.applicability ? `Applies when ${explainExpression(compiled.applicability, catalog)}.` : "Always applies.";
   return `${scope} ${condition} Requires ${explainExpression(compiled.assertion, catalog)}.`;
 }
@@ -352,6 +413,8 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
   if (expression.operator === "any") return expression.operands.some((operand) => evaluateExpression(operand, elements));
   if (expression.operator === "not") return !evaluateExpression(expression.operand, elements);
   const values = elements.filter(({ element }) => element.id === expression.elementId).flatMap(({ element }) => element.values);
+  if (expression.operator === "minimum-occurrences") return values.length >= expression.count;
+  if (expression.operator === "maximum-occurrences") return values.length <= expression.count;
   if (expression.operator === "present") return values.some((value) => {
     const facets = encounterValueFacets(value);
     return facets.hasValue || facets.hasNotValue || facets.hasPertinentNegative;
@@ -365,16 +428,39 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
   executionTarget: ValidationExecutionTarget): ValidationFinding[] {
   const elements = document.groups.flatMap((group) => group.instances.flatMap((instance) =>
     instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId }))));
+  const scopedRows = (groupId: string): Array<{ elements: DocumentElement[]; rootGroupInstanceId: string }> => {
+    const roots = document.groups.find(({ id }) => id === groupId)?.instances ?? [];
+    return roots.map((root) => {
+      const ownedInstanceIds = new Set([root.instanceId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const group of document.groups) for (const instance of group.instances) {
+          if (instance.parentInstanceId && ownedInstanceIds.has(instance.parentInstanceId) && !ownedInstanceIds.has(instance.instanceId)) {
+            ownedInstanceIds.add(instance.instanceId); changed = true;
+          }
+        }
+      }
+      return { rootGroupInstanceId: root.instanceId,
+        elements: document.groups.flatMap((group) => group.instances.filter(({ instanceId }) => ownedInstanceIds.has(instanceId))
+          .flatMap((instance) => instance.elements.map((element) => ({ element, groupInstanceId: instance.instanceId })))) };
+    });
+  };
   return bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes(executionTarget)).flatMap((rule) => {
-    if (rule.applicability && !evaluateExpression(rule.applicability, elements)) return [];
-    if (evaluateExpression(rule.assertion, elements)) return [];
-    const matches = elements.filter(({ element }) => element.id === rule.primaryTarget.elementId);
+    const scopes: Array<{ elements: DocumentElement[]; rootGroupInstanceId?: string }> = rule.scope
+      ? scopedRows(rule.scope.groupId) : [{ elements }];
+    return scopes.flatMap((scope) => {
+    if (rule.applicability && !evaluateExpression(rule.applicability, scope.elements)) return [];
+    if (evaluateExpression(rule.assertion, scope.elements)) return [];
+    const matches = scope.elements.filter(({ element }) => element.id === rule.primaryTarget.elementId);
     const referencedElementIds = rule.references?.elementIds ?? referencedExpressions(rule.assertion).map(({ elementId }) => elementId);
-    const relevantInputs = elements.filter(({ element }) => referencedElementIds.includes(element.id))
+    const relevantInputs = scope.elements.filter(({ element }) => referencedElementIds.includes(element.id))
       .map(({ element, groupInstanceId }) => ({ elementId: element.id, groupInstanceId, values: element.values }));
     return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
       executionTarget, message: rule.message, primaryTarget: { elementId: rule.primaryTarget.elementId,
-        ...(matches[0]?.groupInstanceId ? { groupInstanceId: matches[0].groupInstanceId } : {}) },
+        ...(matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId ? { groupInstanceId: matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId } : {}),
+        ...(matches[0]?.element.values[0]?.occurrenceId ? { occurrenceId: matches[0].element.values[0].occurrenceId } : {}) },
       inputFingerprint: fingerprint(JSON.stringify(relevantInputs)) } satisfies ValidationFinding];
+    });
   });
 }

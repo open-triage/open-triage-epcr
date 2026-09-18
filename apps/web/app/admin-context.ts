@@ -70,7 +70,7 @@ export const createValidationDraft = (csrfToken: string, catalogReleaseId: strin
   });
 export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}`, csrfToken, {
-    method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rule: draft.rule })
+    method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rules: draft.rules })
   });
 export const validateValidationDraft = (csrfToken: string, id: string) =>
   catalogRequest<ValidationDraftResult>(`validation-drafts/${id}/validate`, csrfToken, { method: "POST" });

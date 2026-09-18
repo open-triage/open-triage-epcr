@@ -9,6 +9,7 @@ export {
   compileValidationRule,
   evaluateValidationBundle,
   explainValidationRule,
+  formatOccurrenceSource,
   formatRequiredElementSource,
   formatValidationSource,
   type CompiledValidationBundle,
@@ -17,6 +18,7 @@ export {
   type ValidationCatalog,
   type ValidationCatalogCode,
   type ValidationCatalogElement,
+  type ValidationCatalogGroup,
   type ValidationDiagnostic,
   type ValidationExecutionTarget,
   type ValidationFinding,
@@ -607,7 +609,7 @@ export interface ValidationDraft {
   catalogReleaseId: string;
   revision: number;
   displayName: string;
-  rule: import("./validation-rules.js").ValidationRuleSource;
+  rules: import("./validation-rules.js").ValidationRuleSource[];
   updatedAt: string;
 }
 
@@ -626,7 +628,7 @@ export interface PublishedValidationVersion {
   version: number;
   displayName: string;
   status: "published";
-  ruleId: string;
+  ruleIds: string[];
   compiledSha256: string;
   publishedAt: string;
 }

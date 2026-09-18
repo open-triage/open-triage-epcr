@@ -122,3 +122,32 @@ test("nested validation is isolated across multiple repeating parent occurrences
     && target.parentGroupInstanceId === "vital-two"), false,
     "child-field findings do not leak from one repeating parent occurrence to another");
 });
+
+test("authored repeated-group findings retain the exact row and occurrence used by stationary navigation", () => {
+  const base = structuredClone(syntheticEncounter.document);
+  const document = { ...base, groups: [...base.groups,
+    { id: "eVitals.VitalGroup", instances: [{ instanceId: "vital-authored", elements: [] }] },
+    { id: "eVitals.BloodPressureGroup", instances: [{ instanceId: "pressure-authored",
+    parentInstanceId: "vital-authored", elements: [{ id: "eVitals.06", values: [
+      { kind: "scalar" as const, occurrenceId: "systolic-authored", value: 120 },
+    ] }] }] },
+  ] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
+    { key: "systolic", source: { kind: "nemsis" as const, elementId: "eVitals.06" } },
+  ] }] }, catalogFields: { "eVitals.06": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: true } }, validation: { versionId: "validation-version", bundle: {
+    schemaVersion: 1 as const, languageVersion: "1.0.0" as const, validationVersionId: "validation-version", catalogReleaseId: "catalog",
+    rules: [{ schemaVersion: 1 as const, languageVersion: "1.0.0" as const, ruleId: "systolic-rule",
+      validationVersionId: "validation-version", name: "Unusual systolic", enabled: true, severity: "warning" as const,
+      executionTargets: ["live" as const], primaryTarget: { elementId: "eVitals.06" },
+      scope: { groupId: "eVitals.VitalGroup", iteration: "each" as const }, message: "Review systolic",
+      assertion: { operator: "equals" as const, elementId: "eVitals.06", value: 999 },
+      references: { elementIds: ["eVitals.06"], codes: [] } }],
+  } } };
+  const authored = validateStationaryRecord(document, clinicalForm).find(({ id }) => id.includes("systolic-rule"));
+  assert.ok(authored);
+  assert.deepEqual({ groupInstanceId: authored.target.groupInstanceId, occurrenceId: authored.target.occurrenceId,
+    fieldId: authored.target.fieldId }, {
+    groupInstanceId: "pressure-authored", occurrenceId: "systolic-authored", fieldId: "eVitals.06",
+  });
+});

@@ -135,3 +135,52 @@ test("rule inputs expose ordinary value, Not Value, Pertinent Negative, and empt
     hasValue: false, hasNotValue: false, hasPertinentNegative: false, empty: true,
   });
 });
+
+test("a named repeating-group scope evaluates and targets every failing row independently", () => {
+  const catalog: ValidationCatalog = { elements: [
+    { elementId: "eVitals.06", label: "Systolic Blood Pressure", baseDatatype: "integer",
+      groupPath: ["eVitals.VitalGroup"], intrinsicOccurrence: { min: 0, max: 1 } },
+    { elementId: "eVitals.07", label: "Diastolic Blood Pressure", baseDatatype: "integer",
+      groupPath: ["eVitals.VitalGroup"], intrinsicOccurrence: { min: 0, max: 1 } },
+  ], groups: [{ groupId: "eVitals.VitalGroup", label: "Vital", repeating: true,
+    intrinsicOccurrence: { min: 0, max: "unbounded" } }] };
+  const scoped = compileValidationRule({ ...rule, primaryTargetElementId: "eVitals.07",
+    source: 'for each("eVitals.VitalGroup")\nwhen present("eVitals.06")\nrequire present("eVitals.07")' }, versionId, catalog).compiled!;
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [scoped] };
+  const document = { groups: [{ id: "eVitals.VitalGroup", instances: [
+    { instanceId: "vital-ok", elements: [
+      { id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "systolic-ok", value: 120 }] },
+      { id: "eVitals.07", values: [{ kind: "scalar", occurrenceId: "diastolic-ok", value: 80 }] },
+    ] },
+    { instanceId: "vital-failing-1", elements: [
+      { id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "systolic-1", value: 110 }] },
+      { id: "eVitals.07", values: [] },
+    ] },
+    { instanceId: "vital-failing-2", elements: [
+      { id: "eVitals.06", values: [{ kind: "scalar", occurrenceId: "systolic-2", value: 100 }] },
+    ] },
+  ] }] } as unknown as EncounterDocument;
+  const findings = evaluateValidationBundle(bundle, document, "live");
+  assert.deepEqual(findings.map(({ primaryTarget }) => primaryTarget), [
+    { elementId: "eVitals.07", groupInstanceId: "vital-failing-1" },
+    { elementId: "eVitals.07", groupInstanceId: "vital-failing-2" },
+  ]);
+  assert.notEqual(findings[0]!.inputFingerprint, findings[1]!.inputFingerprint);
+});
+
+test("minimum and maximum documented occurrence policies compile as independent editable rules within intrinsic bounds", () => {
+  const catalog: ValidationCatalog = { elements: [{ elementId: "ePatient.18", label: "Phone", baseDatatype: "string",
+    groupPath: ["ePatient.PatientGroup"], intrinsicOccurrence: { min: 1, max: 2 } }],
+    groups: [{ groupId: "ePatient.PatientGroup", label: "Patient", repeating: true,
+      intrinsicOccurrence: { min: 1, max: 1 } }] };
+  const minimum = compileValidationRule({ ...rule, enabled: false, primaryTargetElementId: "ePatient.18",
+    source: 'for each("ePatient.PatientGroup")\nrequire minimum("ePatient.18", 0)' }, versionId, catalog);
+  const maximum = compileValidationRule({ ...rule, id: "52000000-0000-4000-8000-000000000002",
+    primaryTargetElementId: "ePatient.18", source: 'for each("ePatient.PatientGroup")\nrequire maximum("ePatient.18", 3)' }, versionId, catalog);
+  assert.equal(minimum.compiled?.enabled, false, "a documented minimum can be disabled or relaxed independently");
+  assert.equal(minimum.compiled?.assertion.operator, "minimum-occurrences");
+  assert.equal(maximum.compiled?.assertion.operator, "maximum-occurrences");
+  assert.equal(maximum.diagnostics[0]?.code, "occurrence-bound",
+    "a policy cannot broaden the visible intrinsic Catalog maximum");
+});
