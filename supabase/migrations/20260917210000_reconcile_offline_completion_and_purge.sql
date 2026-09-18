@@ -32,7 +32,21 @@ create table offline_recovery.report_purge_tombstone (
 
 comment on table offline_recovery.report_purge_tombstone is
   'Non-clinical cryptographic-erasure fact preventing recreation or delayed key release.';
-revoke all on offline_recovery.report_purge_tombstone from public, anon, authenticated;
+revoke all on offline_recovery.report_purge_tombstone from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on table offline_recovery.report_purge_tombstone from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
 
 create or replace function offline_recovery.checkpoint_report_ciphertext(
   candidate_report_id uuid, candidate_organization_id uuid,
@@ -410,15 +424,29 @@ end;
 $$;
 
 revoke all on function offline_recovery.mark_report_completed(),
-  offline_recovery.purge_report_before_delete() from public, anon, authenticated;
+  offline_recovery.purge_report_before_delete() from public;
 revoke all on function offline_recovery.checkpoint_report_ciphertext(uuid, uuid, uuid, uuid, bigint, text),
   offline_recovery.expire_due_report_keys(timestamptz),
   offline_recovery.recover_report_key(uuid, uuid, uuid, uuid),
   offline_recovery.register_report_key(uuid, uuid, uuid, uuid, integer, bytea, bytea),
-  offline_recovery.purge_server_recovery(uuid, uuid, text) from public, anon, authenticated;
+  offline_recovery.purge_server_recovery(uuid, uuid, text) from public;
 revoke all on function offline_recovery.create_report_recovery_grant(uuid, uuid, uuid, text, text, integer),
   offline_recovery.consume_report_recovery_grant(uuid, uuid, uuid, text, text, integer)
-from public, anon, authenticated;
+from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on all functions in schema offline_recovery from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
 grant execute on function offline_recovery.checkpoint_report_ciphertext(uuid, uuid, uuid, uuid, bigint, text),
   offline_recovery.recover_report_key(uuid, uuid, uuid, uuid),
   offline_recovery.register_report_key(uuid, uuid, uuid, uuid, integer, bytea, bytea),

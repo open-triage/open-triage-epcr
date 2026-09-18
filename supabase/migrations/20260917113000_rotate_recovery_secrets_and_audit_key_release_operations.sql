@@ -464,7 +464,24 @@ begin
 end;
 $$;
 
-revoke all on all functions in schema offline_recovery from public, anon, authenticated;
+revoke all on all functions in schema offline_recovery from public;
+
+-- Supabase provisions these API roles, while the supported standalone
+-- PostgreSQL deployment does not. Revoke them when present without making the
+-- migration depend on Supabase-specific cluster roles.
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on all functions in schema offline_recovery from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
 grant usage on schema offline_recovery to open_triage_offline_runtime,
   open_triage_offline_key_rotator, open_triage_offline_recovery_purger;
 

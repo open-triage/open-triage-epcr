@@ -466,7 +466,21 @@ revoke all on function offline_recovery.revoke_user_recovery_grants(uuid, uuid, 
   offline_recovery.on_role_assignment_authority_change(),
   offline_recovery.on_role_definition_authority_change(),
   offline_recovery.on_account_containment()
-from public, anon, authenticated;
+from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on all functions in schema offline_recovery from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
 
 grant execute on function offline_recovery.revoke_user_recovery_grants(uuid, uuid, text),
   offline_recovery.reconcile_user_clinical_authority(uuid, uuid, text),
