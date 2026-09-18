@@ -3,6 +3,8 @@ import test from "node:test";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
 import { validateStationaryRecord } from "../app/stationary-validation";
+
+const evaluationTimestamp = "2026-01-01T00:00:00.000Z";
 import { syntheticEncounter } from "../app/standard-encounter";
 
 function withGroupInstances(document: typeof syntheticEncounter.document, groupId: string,
@@ -11,7 +13,7 @@ function withGroupInstances(document: typeof syntheticEncounter.document, groupI
 }
 
 test("complete-record validation associates required findings with stable navigable targets", () => {
-  const findings = validateStationaryRecord(syntheticEncounter.document);
+  const findings = validateStationaryRecord(syntheticEncounter.document, undefined, evaluationTimestamp);
   const patient = findings.find(({ target }) => target.fieldId === "ePatient.07");
   assert.ok(patient);
   assert.equal(patient.target.sectionId, "ePatientSection");
@@ -24,7 +26,7 @@ test("complete-record validation associates required findings with stable naviga
 
 test("Populate produces a catalog-valid complete stationary record", () => {
   const populated = populateStationaryDemoData(syntheticEncounter.document);
-  assert.deepEqual(validateStationaryRecord(populated), []);
+  assert.deepEqual(validateStationaryRecord(populated, undefined, evaluationTimestamp), []);
 });
 
 test("invalid scalar findings retain group, occurrence, and field identity", () => {
@@ -41,7 +43,7 @@ test("invalid scalar findings retain group, occurrence, and field identity", () 
   const malformedPatient = malformed.groups.find(({ id }) => id === "ePatient.AgeGroup")!.instances[0]!;
   const malformedOccurrence = malformedPatient.elements.find(({ id }) => id === "ePatient.15")!.values[0]!;
   Object.assign(malformedOccurrence, { kind: "scalar", value: "not-a-valid-age", lexical: "not-a-valid-age" });
-  const finding = validateStationaryRecord(malformed).find(({ target }) => target.occurrenceId === occurrence.occurrenceId);
+  const finding = validateStationaryRecord(malformed, undefined, evaluationTimestamp).find(({ target }) => target.occurrenceId === occurrence.occurrenceId);
   assert.ok(finding);
   assert.deepEqual(finding.target, {
     sectionId: "ePatientSection", groupId: "ePatient.AgeGroup", groupInstanceId: patient.instanceId,
@@ -63,14 +65,14 @@ test("report-pinned form requiredness and configured choices define clinical val
       codeChoices: [{ code: "9906001", codeSystem: "", label: "Configured female" }],
     } },
   };
-  const missing = validateStationaryRecord(document, clinicalForm);
+  const missing = validateStationaryRecord(document, clinicalForm, evaluationTimestamp);
   assert.deepEqual(missing.filter(({ target }) => target.fieldId === "ePatient.25").map(({ id }) => id.split(":")[1]), ["field.minimum"]);
   assert.equal(missing.some(({ target }) => target.fieldId && target.fieldId !== "ePatient.25"), false,
     "fields removed from the form do not block completion");
 });
 
 test("absent optional repeating records do not promote child minima to report-level findings", () => {
-  const findings = validateStationaryRecord(syntheticEncounter.document);
+  const findings = validateStationaryRecord(syntheticEncounter.document, undefined, evaluationTimestamp);
   for (const groupId of ["eVitals.VitalGroup", "eMedications.MedicationGroup", "eProcedures.ProcedureGroup"]) {
     assert.equal(findings.some(({ target }) => target.groupId === groupId), false, `${groupId} remains optional while absent`);
   }
@@ -80,7 +82,7 @@ test("an existing repeating occurrence activates its required child fields", () 
   const document = withGroupInstances(syntheticEncounter.document, "eMedications.MedicationGroup", [
     { instanceId: "medication-one", elements: [] },
   ]);
-  const findings = validateStationaryRecord(document).filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
+  const findings = validateStationaryRecord(document, undefined, evaluationTimestamp).filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
   assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "medication-one"
     && target.fieldId === "eMedications.03" && id.includes("field.minimum")));
   assert.ok(findings.every(({ target }) => target.groupInstanceId === "medication-one"),
@@ -97,7 +99,7 @@ test("a pinned form can explicitly require an otherwise optional repeating recor
       supportsNotValues: true, supportsPertinentNegatives: true,
     } },
   };
-  const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm);
+  const findings = validateStationaryRecord(syntheticEncounter.document, clinicalForm, evaluationTimestamp);
   const missingRecord = findings.filter(({ target }) => target.groupId === "eMedications.MedicationGroup");
   assert.equal(missingRecord.length, 1);
   assert.match(missingRecord[0]!.id, /group\.minimum/);
@@ -113,7 +115,7 @@ test("nested validation is isolated across multiple repeating parent occurrences
   document = withGroupInstances(document, "eVitals.BloodPressureGroup", [
     { instanceId: "pressure-one", parentInstanceId: "vital-one", elements: [] },
   ]);
-  const findings = validateStationaryRecord(document).filter(({ target }) => target.groupId === "eVitals.BloodPressureGroup");
+  const findings = validateStationaryRecord(document, undefined, evaluationTimestamp).filter(({ target }) => target.groupId === "eVitals.BloodPressureGroup");
   assert.ok(findings.some(({ target, id }) => target.groupInstanceId === "pressure-one"
     && target.fieldId === "eVitals.06" && id.includes("field.minimum")));
   assert.ok(findings.some(({ target, id }) => target.parentGroupInstanceId === "vital-two"
@@ -144,7 +146,7 @@ test("authored repeated-group findings retain the exact row and occurrence used 
       assertion: { operator: "equals" as const, elementId: "eVitals.06", value: 999 },
       references: { elementIds: ["eVitals.06"], codes: [] } }],
   } } };
-  const authored = validateStationaryRecord(document, clinicalForm).find(({ id }) => id.includes("systolic-rule"));
+  const authored = validateStationaryRecord(document, clinicalForm, evaluationTimestamp).find(({ id }) => id.includes("systolic-rule"));
   assert.ok(authored);
   assert.deepEqual({ groupInstanceId: authored.target.groupInstanceId, occurrenceId: authored.target.occurrenceId,
     fieldId: authored.target.fieldId }, {

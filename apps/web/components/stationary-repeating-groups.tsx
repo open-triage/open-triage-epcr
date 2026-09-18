@@ -29,7 +29,7 @@ import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from
 export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
   const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
   return [
-    ...validateStationaryRecord(document, clinicalForm),
+    ...validateStationaryRecord(document, clinicalForm, new Date().toISOString()),
     ...stationaryReviewFindings(reviewFindings, clinicalForm),
   ];
 }

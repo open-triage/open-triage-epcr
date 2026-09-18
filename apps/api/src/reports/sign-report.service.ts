@@ -296,7 +296,8 @@ export class SignReportService {
       ruleVersion: report.validation_version_id, validationVersionId: report.validation_version_id,
       executionTarget: "sign" }];
     const document = await encounterDocument(manager, report.id);
-    return evaluateValidationBundle(versions[0].compiled_bundle, document, "sign").map((finding) => ({
+    return evaluateValidationBundle(versions[0].compiled_bundle, document, "sign",
+      { timestamp: new Date().toISOString() }).map((finding) => ({
       severity: finding.severity === "information" ? "warning" : finding.severity,
       code: "validation.required-element",
       path: `$.elements.${finding.primaryTarget.elementId}`,

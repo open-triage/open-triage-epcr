@@ -20,10 +20,13 @@ export {
   type ValidationCatalogElement,
   type ValidationCatalogGroup,
   type ValidationDiagnostic,
+  type ValidationEvaluationContext,
   type ValidationExecutionTarget,
   type ValidationFinding,
   type ValidationRuleSource,
   type ValidationSeverity,
+  ValidationCompatibilityError,
+  ValidationResourceLimitError,
 } from "./validation-rules.js";
 
 export type FeedbackSubmissionType = "bug" | "feature";

@@ -138,7 +138,8 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
  * Evaluates every editable target in the pinned stationary catalog. Findings
  * carry enough canonical identity to reopen the exact row and focus its field.
  */
-export function validateStationaryRecord(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationaryValidationFinding> {
+export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
+  evaluationTimestamp: string): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
   const configuredFields = clinicalForm
     ? new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))
@@ -208,7 +209,8 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     }
   }
   if (clinicalForm?.validation) {
-    for (const authored of evaluateValidationBundle(clinicalForm.validation.bundle, document, "live")) {
+    if (!evaluationTimestamp) throw new TypeError("An explicit validation evaluation timestamp is required");
+    for (const authored of evaluateValidationBundle(clinicalForm.validation.bundle, document, "live", { timestamp: evaluationTimestamp })) {
       const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
       const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
       findings.push(finding(

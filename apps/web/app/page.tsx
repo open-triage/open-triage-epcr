@@ -99,7 +99,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const medicationDefinition = bundledEncounterDefinition.events.medication;
   const vitalDefinition = bundledEncounterDefinition.events.vitals;
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
-  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm), [encounter.document, report?.clinicalForm]);
+  const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm,
+    new Date().toISOString()), [encounter.document, report?.clinicalForm]);
   const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
     () => [...stationaryFindings, ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
     [report?.clinicalForm, reviewFindings, stationaryFindings],
