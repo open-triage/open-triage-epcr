@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -17,6 +17,7 @@ type DraftRow = {
 };
 
 type SourceElementRow = {
+  hidden_element_ids?: string[];
   element_id: string; name: string; element_identity_id: string; base_datatype: string; source_datatype: string;
   group_path: string[]; min_occurs: number; max_occurs: number | null; nillable: boolean;
   supports_not_values: boolean; supports_pertinent_negatives: boolean; usage: string;
@@ -81,6 +82,31 @@ export class CatalogAuthoringService {
       definition: await this.cloneDefinition(this.dataSource.manager, release.id) };
   }
 
+  async versions(sessionToken: string): Promise<AuthoringVersionOption[]> {
+    const session = await this.authorize(sessionToken, "catalog:read");
+    const rows = await this.dataSource.query<Array<{ id: string; display_name: string; version: string; active: boolean }>>(`
+      select cr.id,coalesce(cr.display_name,cr.standard || ' ' || cr.version) as display_name,cr.version,
+        exists(select 1 from app_identity.active_configuration_bundle active
+          where active.organization_id=$1 and active.catalog_release_id=cr.id) as active
+      from catalog.release cr where cr.sealed and (
+        exists(select 1 from catalog.authoring_draft d
+          where d.organization_id=$1 and d.published_release_id=cr.id)
+        or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
+          where f.organization_id=$1 and fv.catalog_release_id=cr.id and fv.status='published'))
+      order by cr.loaded_at desc,cr.id desc
+    `, [session.organization.id]);
+    return rows.map((row) => ({ id: row.id, displayName: row.display_name, version: row.version,
+      status: row.active ? "active" : "published" }));
+  }
+
+  async inspectVersion(sessionToken: string, id: string): Promise<CatalogDefinitionView> {
+    const versions = await this.versions(sessionToken);
+    const version = versions.find((item) => item.id === id);
+    if (!version) throw new NotFoundException("The selected catalog version is unavailable");
+    return { id: version.id, displayName: version.displayName, version: String(version.version),
+      status: version.status, definition: await this.cloneDefinition(this.dataSource.manager, id) };
+  }
+
   async cloneActive(sessionToken: string, input: unknown): Promise<CatalogDraft> {
     const session = await this.authorize(sessionToken, "catalog:write");
     const displayName = this.displayName(input);
@@ -90,16 +116,28 @@ export class CatalogAuthoringService {
         select * from catalog.authoring_draft
         where organization_id = $1 and published_release_id is null for update
       `, [session.organization.id]);
-      if (existing[0]) return this.result({ ...existing[0], canonical_definition:
-        await this.upgradeDefinition(manager, existing[0].source_release_id, existing[0].canonical_definition) });
+      if (existing[0]) {
+        const requestedSourceId = input && typeof input === "object" ? (input as Record<string, unknown>).sourceVersionId : undefined;
+        if (requestedSourceId && existing[0].source_release_id !== requestedSourceId)
+          throw new ConflictException("A catalog draft already exists from another version");
+        return this.result({ ...existing[0], canonical_definition:
+          await this.upgradeDefinition(manager, existing[0].source_release_id, existing[0].canonical_definition) });
+      }
+      const requestedSourceId = input && typeof input === "object" ? (input as Record<string, unknown>).sourceVersionId : undefined;
+      if (requestedSourceId !== undefined && (typeof requestedSourceId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedSourceId))) {
+        throw new UnprocessableEntityException("sourceVersionId must be a UUID");
+      }
       const releases = await manager.query<Array<{ id: string }>>(`
-        select fv.catalog_release_id as id from forms.form_version fv
-        join forms.form f on f.id = fv.form_id
-        join forms.agency_stationary_default active on active.organization_id=f.organization_id
-          and active.form_version_id=fv.id
-        where f.organization_id = $1 and fv.status = 'published' limit 1
-      `, [session.organization.id]);
-      if (!releases[0]) throw new NotFoundException("No active catalog is available to clone");
+        select cr.id from catalog.release cr where cr.sealed and
+          (($2::uuid is null and exists(select 1 from app_identity.active_configuration_bundle active
+            where active.organization_id=$1 and active.catalog_release_id=cr.id)) or
+          (cr.id=$2::uuid and (exists(select 1 from catalog.authoring_draft d
+            where d.organization_id=$1 and d.published_release_id=cr.id)
+            or exists(select 1 from forms.form_version fv join forms.form f on f.id=fv.form_id
+              where f.organization_id=$1 and fv.catalog_release_id=cr.id and fv.status='published')))) limit 1
+      `, [session.organization.id, requestedSourceId ?? null]);
+      if (!releases[0]) throw new NotFoundException("The selected catalog version is unavailable");
       const definition = await this.cloneDefinition(manager, releases[0].id);
       const digest = catalogDefinitionSha256(definition);
       const inserted = mutationRows<DraftRow>(await manager.query(`
@@ -186,7 +224,8 @@ export class CatalogAuthoringService {
         values ($1,$2,$3,$4,$5,$6,$7::jsonb,false,$8)`, [releaseId, source.standard, version, source.dataset,
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           dataModelVersion: source.data_model_version,
-          organizationId: session.organization.id, changeNote: body.changeNote }), body.displayName]);
+          organizationId: session.organization.id, changeNote: body.changeNote,
+          hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [] }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -277,7 +316,9 @@ export class CatalogAuthoringService {
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
     return manager.query(`select e.element_id, e.name, e.element_identity_id, e.base_datatype, e.source_datatype,
       e.group_path, e.min_occurs, e.max_occurs, e.nillable, e.supports_not_values,
-      e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type
+      e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type,
+      (select coalesce(array_agg(value),array[]::text[]) from jsonb_array_elements_text(
+        coalesce((select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)) value) as hidden_element_ids
       from catalog.element_definition e left join catalog.analytics_element_mapping m
         on m.release_id=e.release_id and m.element_id=e.element_id
       where e.release_id=$1 order by e.element_id`, [releaseId]).then((rows: Array<SourceElementRow & { analytical_location: string | null; sql_type: string | null }>) =>
@@ -322,7 +363,9 @@ export class CatalogAuthoringService {
   private async cloneDefinition(manager: EntityManager, sourceReleaseId: string): Promise<CatalogDraftDefinition> {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
-    return { schemaVersion: 1, sourceReleaseId, elements: elements.map((row) => ({
+    return { schemaVersion: 1, sourceReleaseId,
+      ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
+      elements: elements.map((row) => ({
       elementId: row.element_id, label: row.name, identityId: row.element_identity_id, baseDatatype: row.base_datatype,
       storageSemantics: { sourceDatatype: row.source_datatype, groupPath: row.group_path,
         analyticalLocation: row.analytical_location, sqlType: row.sql_type },
@@ -343,6 +386,7 @@ export class CatalogAuthoringService {
     const existingElements = Array.isArray(existing?.elements) ? new Map(existing.elements.map((element) => [element.elementId, element])) : new Map();
     const existingLists = Array.isArray(existing?.codeLists) ? new Map(existing.codeLists.map((list) => [list.listId, list])) : new Map();
     return { ...baseline,
+      ...(existing.hiddenElementIds ? { hiddenElementIds: existing.hiddenElementIds } : {}),
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
@@ -370,6 +414,12 @@ export class CatalogAuthoringService {
     }
     const source = await this.sourceElements(manager, sourceReleaseId);
     const sourceById = new Map(source.map((item) => [item.element_id, item]));
+    const hiddenIds = isRecord(definition) ? definition.hiddenElementIds : undefined;
+    if (hiddenIds !== undefined && (!Array.isArray(hiddenIds) ||
+      hiddenIds.some((id) => typeof id !== "string" || !id.startsWith("ePayment.") || !sourceById.has(id)) ||
+      new Set(hiddenIds).size !== hiddenIds.length)) {
+      findings.push("Hidden elements must be unique ePayment IDs retained in the source catalog");
+    }
     const elements = isRecord(definition) && Array.isArray(definition.elements) ? definition.elements : [];
     const seen = new Set<string>();
     for (const [index, unknownElement] of elements.entries()) {

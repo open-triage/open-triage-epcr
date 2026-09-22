@@ -13,7 +13,7 @@ import { affectedFieldNames, formAuthority, formStructuralSummary, moveFormSecti
 import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
-import { ValidationReferenceAssistance, ValidationRuleFilterControls } from "../components/validation-authoring";
+import { ValidationReferenceAssistance, ValidationResultFeedback, ValidationRuleFilterControls } from "../components/validation-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -98,6 +98,7 @@ test("Validation library requests expose all filters and revisioned create, disa
   };
   await loadValidationRules({ search: "incident number", element: "eResponse.03", source: "nemsis", severity: "warning",
     executionTarget: "sign", enabled: "false", validity: "invalid", cursor: "opaque", limit: 25 });
+  await loadValidationRules({ source: "nemsis", limit: "all" });
   const rule = { name: "Agency incident rule", enabled: false, severity: "warning" as const,
     executionTargets: ["live" as const], primaryTargetElementId: "eResponse.03", message: "Review incident number",
     source: 'require present("eResponse.03")', sourceKind: "agency" as const };
@@ -105,11 +106,12 @@ test("Validation library requests expose all filters and revisioned create, disa
   await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", false);
   await setValidationRuleEnabled("csrf-proof", draft, "52000000-0000-4000-8000-000000000001", true);
   assert.match(requests[0]!.input, /validation-rules\?search=incident\+number&element=eResponse\.03&source=nemsis&severity=warning&executionTarget=sign&enabled=false&validity=invalid&cursor=opaque&limit=25$/);
-  assert.match(requests[1]!.input, /validation-drafts\/51000000-0000-4000-8000-000000000001\/rules$/);
-  assert.equal(JSON.parse(String(requests[1]!.init?.body)).expectedRevision, 4);
-  assert.match(requests[2]!.input, /\/disable$/);
-  assert.match(requests[3]!.input, /\/restore$/);
-  assert.ok(requests.slice(1).every(({ init }) => (init?.headers as Record<string, string>)["x-csrf-token"] === "csrf-proof"));
+  assert.match(requests[1]!.input, /validation-rules\?source=nemsis&limit=all$/);
+  assert.match(requests[2]!.input, /validation-drafts\/51000000-0000-4000-8000-000000000001\/rules$/);
+  assert.equal(JSON.parse(String(requests[2]!.init?.body)).expectedRevision, 4);
+  assert.match(requests[3]!.input, /\/disable$/);
+  assert.match(requests[4]!.input, /\/restore$/);
+  assert.ok(requests.slice(2).every(({ init }) => (init?.headers as Record<string, string>)["x-csrf-token"] === "csrf-proof"));
 });
 
 test("Validation rule-library filters expose an accessible search landmark and every supported facet", () => {
@@ -124,6 +126,34 @@ test("Validation rule-library filters expose an accessible search landmark and e
   assert.match(markup, />NEMSIS<\/option>/);
   assert.match(markup, />Disabled<\/option>/);
   assert.match(markup, />Invalid<\/option>/);
+  assert.match(markup, /Element <select/);
+  assert.doesNotMatch(markup, /validation-element-references/);
+});
+
+test("Validation element reference uses a scrollable native dropdown", () => {
+  const markup = renderToStaticMarkup(createElement(ValidationReferenceAssistance, {
+    catalog: { elements: [{ elementId: "ePatient.01", label: "Name", baseDatatype: "string" }], codes: [] },
+    elementId: "ePatient.01", onElementIdChange() {},
+  }));
+  assert.match(markup, /<select id="validation-reference-element"/);
+  assert.match(markup, /ePatient\.01 — Name/);
+  assert.doesNotMatch(markup, /<datalist id="validation-element-references"/);
+});
+
+test("Validation feedback keeps the draft-wide explanation collapsed and summarizes issues", () => {
+  const success = renderToStaticMarkup(createElement(ValidationResultFeedback, { ruleCount: 198, result: {
+    valid: true, diagnostics: [], explanation: "Long explanation for all rules in the draft",
+  } }));
+  assert.match(success, /Validation passed.<\/strong> 198 rules checked/);
+  assert.match(success, /<details><summary>View details<\/summary>/);
+  assert.doesNotMatch(success, /<details open/);
+  const failure = renderToStaticMarkup(createElement(ValidationResultFeedback, { ruleCount: 4, result: {
+    valid: false, diagnostics: [1, 2, 3, 4].map((number) => ({ ruleId: `rule-${number}`, code: "syntax" as const,
+      severity: "error" as const, message: `Issue ${number}` })),
+  } }));
+  assert.match(failure, /Validation found 4 issues/);
+  assert.match(failure, /Show all 4 issues/);
+  assert.equal((failure.match(/<li>/g) ?? []).length, 7);
 });
 
 test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
@@ -499,7 +529,7 @@ test("form review summarizes structure and publication stays separate from activ
         definitionSha256: "a".repeat(64), displayName: "Night Shift Form", changeNote: "Reviewed" });
       return Response.json({ id: "draft-id", status: "published" });
     }
-    assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Deploy" });
+    assert.deepEqual(JSON.parse(String(init?.body)), { validationVersionId: "validation-id", changeNote: "Deploy" });
     return Response.json({ formVersionId: "draft-id" });
   };
   const draft = { id: "draft-id", formId: "form-id", catalogReleaseId: "catalog-id", clonedFromId: "source-id",
@@ -507,7 +537,7 @@ test("form review summarizes structure and publication stays separate from activ
     updatedAt: "2026-09-07T01:00:00.000Z" };
   await publishStationaryFormDraft("csrf-proof", draft, "Night Shift Form", "Reviewed");
   assert.equal(paths.length, 1, "publication did not activate the form");
-  await activateStationaryForm("csrf-proof", "draft-id", "Deploy");
+  await activateStationaryForm("csrf-proof", "draft-id", "validation-id", "Deploy");
   assert.match(paths[1]!, /form-versions\/draft-id\/activate$/);
 });
 
@@ -522,7 +552,8 @@ test("Validation publication and activation are separate browser commands", asyn
       assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 3, displayName: "Agency required fields", changeNote: "Reviewed" });
       return Response.json({ id: "51000000-0000-4000-8000-000000000001", status: "published" });
     }
-    assert.deepEqual(JSON.parse(String(init?.body)), { changeNote: "Activate reviewed rule" });
+    assert.deepEqual(JSON.parse(String(init?.body)), { formVersionId: "form-id", catalogReleaseId: "catalog",
+      changeNote: "Activate reviewed rule" });
     return Response.json({ validationVersionId: "51000000-0000-4000-8000-000000000001" });
   };
   const draft = { id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog", clonedFromId: null, revision: 3,
@@ -532,7 +563,7 @@ test("Validation publication and activation are separate browser commands", asyn
       message: "Incident number is required", source: 'assert present("eResponse.03")' }], updatedAt: new Date().toISOString() };
   await publishValidationDraft("csrf-proof", draft, "Reviewed");
   assert.equal(paths.length, 1);
-  await activateValidationVersion("csrf-proof", draft.id, "Activate reviewed rule");
+  await activateValidationVersion("csrf-proof", draft.id, "form-id", "catalog", "Activate reviewed rule");
   assert.match(paths[1]!, /validation-versions\/.*\/activate$/);
 });
 

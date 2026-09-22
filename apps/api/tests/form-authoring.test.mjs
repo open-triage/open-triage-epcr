@@ -246,6 +246,7 @@ test("activation pins one exact version and appends previous/new audit evidence"
     if (sql.includes("from forms.form_version fv join forms.form f")) return [{
       form_id: formId, catalog_release_id: catalogId, definition_sha256: "b".repeat(64)
     }];
+    if (sql.includes("from app_identity.active_configuration_bundle")) return [{ form_version_id: draftId }];
     if (sql.includes("from forms.agency_stationary_default")) return [{
       form_version_id: sourceFormId, catalog_release_id: sourceCatalogId
     }];
@@ -263,4 +264,27 @@ test("activation pins one exact version and appends previous/new audit evidence"
   const audit = queries.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
   assert.deepEqual(audit.parameters.slice(0, 8), [organizationId, session.user.id, draftId, catalogId,
     sourceFormId, sourceCatalogId, "Deploy reviewed form", "b".repeat(64)]);
+});
+
+test("form activation delegates a selected compatible Validation bundle", async () => {
+  const calls = [];
+  const service = new FormAuthoringService({ query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    return [{ form_id: formId, catalog_release_id: catalogId }];
+  } }, { requireCapability: async () => session }, {}, {
+    activate: async (token, validationVersionId, input) => {
+      calls.push({ token, validationVersionId, input });
+      return { organizationId, formVersionId: draftId, catalogReleaseId: catalogId,
+        activatedAt: "2026-09-07T02:05:00.000Z", previousFormVersionId: sourceFormId,
+        previousCatalogReleaseId: sourceCatalogId };
+    }
+  });
+  const result = await service.activate("owner-session", draftId, {
+    validationVersionId: "70000000-0000-4000-8000-000000000001", changeNote: "Deploy complete bundle"
+  });
+  assert.equal(result.formId, formId);
+  assert.equal(result.previousFormVersionId, sourceFormId);
+  assert.deepEqual(calls[1], { token: "owner-session",
+    validationVersionId: "70000000-0000-4000-8000-000000000001",
+    input: { formVersionId: draftId, catalogReleaseId: catalogId, changeNote: "Deploy complete bundle" } });
 });

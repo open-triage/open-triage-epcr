@@ -1,8 +1,9 @@
 "use client";
 
-import type { CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
-import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
+import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
+import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 
 export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   readonly canRead: boolean; readonly canWrite: boolean; readonly canPublish: boolean;
@@ -20,6 +21,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
   const { canWrite, canPublish } = catalogAuthority(capabilities);
   const publicationAllowed = canPublish;
   const [draft, setDraft] = useState<CatalogDraft | CatalogDefinitionView | null>(null);
+  const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
@@ -29,16 +32,30 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
+  const hasAuthoringDraft = Boolean(draft && "revision" in draft);
   useEffect(() => {
     const load = async () => canWrite
       ? await loadCatalogDraft() ?? await loadActiveCatalogDefinition()
       : loadActiveCatalogDefinition();
     load().then(setDraft).catch(showError).finally(() => setLoaded(true));
   }, [canWrite]);
+  useEffect(() => {
+    loadCatalogVersions().then((items) => { setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? ""); })
+      .catch(showError);
+  }, []);
+  useEffect(() => {
+    if (!loaded || !selectedVersionId || hasAuthoringDraft) return;
+    let current = true;
+    loadCatalogVersion(selectedVersionId).then((value) => { if (current) setDraft(value); })
+      .catch((reason: unknown) => { if (current) showError(reason); });
+    return () => { current = false; };
+  }, [loaded, selectedVersionId, hasAuthoringDraft]);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
+    !draft.definition.hiddenElementIds?.includes(element.elementId) &&
     `${element.elementId} ${element.label}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query]);
   const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
-    (list.elementIds.length ? list.elementIds : [list.name]).map((elementId) => ({
+    (list.elementIds.length ? list.elementIds : [list.name])
+      .filter((elementId) => !draft.definition.hiddenElementIds?.includes(elementId)).map((elementId) => ({
       key: `${list.listId}\u0000${elementId}`, elementId, list
     }))) ?? [], [draft]);
   const selectedList = listOptions.find(({ key }) => key === selectedListKey)?.list ?? listOptions[0]?.list;
@@ -62,17 +79,19 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
     try { await work(); } catch (reason) { showError(reason); } finally { setBusy(false); }
   }
 
+  const versionWorkspace = <AuthoringVersionWorkspace title="Catalog" versions={versions} selectedId={selectedVersionId}
+    onSelect={setSelectedVersionId} draftName={newDisplayName} onDraftNameChange={setNewDisplayName}
+    canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && "revision" in draft)}
+    onCreateDraft={() => action(async () => {
+      const cloned = await cloneCatalogDraft(csrfToken, newDisplayName, selectedVersionId);
+      setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
+    })}>
+      <p role="note">A published catalog becomes active when you activate a stationary form pinned to it.</p>
+    </AuthoringVersionWorkspace>;
+
   if (!loaded) return <p role="status">Loading catalog draft…</p>;
   if (!draft) return <div className="catalog-empty">
-    {canWrite ? <>
-      <p>Clone the active catalog to adjust agency validation without changing clinical work.</p>
-      <label htmlFor="new-catalog-display-name">New catalog version display name</label>
-      <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
-        onChange={(event) => setNewDisplayName(event.target.value)} />
-      <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
-        const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Catalog draft created.");
-      })}>Clone active catalog</button>
-    </> : <p role="note">There is no Catalog draft available to inspect.</p>}
+    {versionWorkspace}
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
@@ -81,9 +100,10 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
   const canEdit = canWrite && authoringDraft !== null;
 
   return <div className="catalog-editor">
+    {versionWorkspace}
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
-      : canWrite ? `Active Catalog ${draft.displayName}, version ${draft.version}. Clone it to create an editable version.`
-        : `Active Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
+      : canWrite ? `${draft.status === "active" ? "Active" : "Published"} Catalog ${draft.displayName}, version ${draft.version}. Create a draft to edit it.`
+        : `${draft.status === "active" ? "Active" : "Published"} Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
     <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
     <h3 id="element-catalog-heading">Element catalog</h3>
     <label htmlFor="catalog-search">Find by identifier or label</label>
@@ -127,26 +147,18 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
       <input id="catalog-display-name" disabled={!canEdit} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
       {publicationAllowed && authoringDraft ? <>
-        <label htmlFor="catalog-change-note">Publication change note</label>
-        <textarea id="catalog-change-note" value={note} onChange={(event) => setNote(event.target.value)} />
-        <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || !note.trim() || status !== "Catalog is valid and projections are verified."}
-          onClick={() => action(async () => {
+        <AuthoringLifecycleAction title="Catalog" kind="publish" note={note} onNoteChange={setNote}
+          disabled={busy || dirty || !draft.displayName?.trim()}
+          buttonLabel="Publish immutable catalog" onSubmit={() => action(async () => {
             const published = await publishCatalogDraft(csrfToken, authoringDraft, authoringDraft.displayName!, note);
             onPublished?.(published.id);
             setDraft(null); setDirty(false); setNote(""); setStatus(`Published ${published.displayName}.`);
-          })}>Publish immutable catalog</button>
+            const items = await loadCatalogVersions(); setVersions(items); setSelectedVersionId(published.id);
+          })} />
       </> : canEdit && <p role="note">{canPublish
         ? "Publishing is disabled for this installation. Catalog drafts can still be created, edited, validated, and saved."
         : "Your Catalog access permits draft authoring but not publication or activation."}</p>}
-      {!authoringDraft && canWrite && <div className="catalog-clone-active">
-        <label htmlFor="new-catalog-display-name">New catalog version display name</label>
-        <input id="new-catalog-display-name" maxLength={120} required value={newDisplayName}
-          onChange={(event) => setNewDisplayName(event.target.value)} />
-        <button type="button" disabled={busy || !newDisplayName.trim()} onClick={() => action(async () => {
-          const cloned = await cloneCatalogDraft(csrfToken, newDisplayName); setDraft(cloned); setNewDisplayName("");
-          setDirty(false); setStatus("Catalog draft created.");
-        })}>Clone active catalog</button>
-      </div>}
+      {authoringDraft && dirty && <p role="status">Save the current draft before publishing.</p>}
     </div>
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>

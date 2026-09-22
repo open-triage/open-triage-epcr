@@ -1,12 +1,14 @@
 "use client";
 
 import { compileValidationRule, explainValidationRule, formatValidationSource,
-  type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
+  type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
-import { activateValidationVersion, createValidationDraft, loadValidationDraft, publishValidationDraft,
-  createValidationRule, loadActiveCatalogDefinition, loadValidationRules, saveValidationDraft,
+import { activateValidationVersion, cloneValidationVersion, createValidationDraft, deleteValidationDraft, loadStationaryFormVersions,
+  loadValidationDraft, loadValidationVersions, publishValidationDraft,
+  createValidationRule, loadActiveCatalogDefinition, loadCatalogVersion, loadValidationRules, saveValidationDraft,
   setValidationRuleEnabled, validateValidationDraft } from "../app/admin-context";
+import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 
 export function validationCatalog(definition: CatalogDefinitionView["definition"]): ValidationCatalog {
   return { elements: definition.elements.map(({ elementId, label, baseDatatype, storageSemantics, constraints }) => {
@@ -27,10 +29,14 @@ export function ValidationReferenceAssistance({ catalog, elementId, onElementIdC
   const relevantCodes = (catalog.codes ?? []).filter((code) => code.elementId === elementId && code.enabled !== false);
   return <aside aria-label="Rule reference assistance">
     <label htmlFor="validation-reference-element">Element reference</label>
-    <input id="validation-reference-element" type="search" list="validation-element-references" value={elementId}
-      onChange={(event) => onElementIdChange(event.target.value)} />
-    <datalist id="validation-element-references">{catalog.elements.map((element) =>
-      <option key={element.elementId} value={element.elementId}>{element.label} — {element.baseDatatype}</option>)}</datalist>
+    <select id="validation-reference-element" value={elementId}
+      onChange={(event) => onElementIdChange(event.target.value)}>
+      <option value="">Select an element</option>
+      {elementId && !catalog.elements.some((element) => element.elementId === elementId) &&
+        <option value={elementId}>{elementId} (not in this catalog)</option>}
+      {catalog.elements.map((element) =>
+        <option key={element.elementId} value={element.elementId}>{element.elementId} — {element.label}</option>)}
+    </select>
     <label htmlFor="validation-reference-code">Code reference for selected element</label>
     <input id="validation-reference-code" type="search" list="validation-code-references"
       placeholder="code-system|code" aria-describedby="validation-reference-note" />
@@ -43,14 +49,21 @@ export function ValidationReferenceAssistance({ catalog, elementId, onElementIdC
 export type ValidationRuleFilters = { search: string; element: string; source: string; severity: string;
   executionTarget: string; enabled: string; validity: string };
 
-export function ValidationRuleFilterControls({ value, onChange }: {
+export function ValidationRuleFilterControls({ value, onChange, elements = [] }: {
   readonly value: ValidationRuleFilters;
   readonly onChange: (value: ValidationRuleFilters) => void;
+  readonly elements?: ValidationCatalog["elements"];
 }) {
   const change = (key: keyof ValidationRuleFilters, next: string) => onChange({ ...value, [key]: next });
   return <div className="validation-library-filters" role="search" aria-label="Filter Validation rules">
     <label>Search <input type="search" value={value.search} onChange={(event) => change("search", event.target.value)} /></label>
-    <label>Element <input value={value.element} list="validation-element-references" onChange={(event) => change("element", event.target.value)} /></label>
+    <label>Element <select value={value.element} onChange={(event) => change("element", event.target.value)}>
+      <option value="">All elements</option>
+      {value.element && !elements.some(({ elementId }) => elementId === value.element) &&
+        <option value={value.element}>{value.element}</option>}
+      {elements.map((element) => <option key={element.elementId} value={element.elementId}>
+        {element.elementId} — {element.label}</option>)}
+    </select></label>
     <label>Source <select value={value.source} onChange={(event) => change("source", event.target.value)}>
       <option value="">All sources</option><option value="agency">Agency</option><option value="nemsis">NEMSIS</option>
       <option value="catalog">Catalog</option><option value="form">Form</option><option value="platform">Platform</option></select></label>
@@ -67,6 +80,29 @@ export function ValidationRuleFilterControls({ value, onChange }: {
   </div>;
 }
 
+export function ValidationResultFeedback({ result, ruleCount }: {
+  readonly result: ValidationDraftResult;
+  readonly ruleCount: number;
+}) {
+  const warnings = result.diagnostics.filter(({ severity }) => severity === "warning");
+  if (result.valid) return <div className="validation-result" role="status">
+    <strong>Validation passed.</strong> {ruleCount} rule{ruleCount === 1 ? "" : "s"} checked.
+    {warnings.length > 0 && <span> {warnings.length} warning{warnings.length === 1 ? "" : "s"}.</span>}
+    {(result.explanation || warnings.length > 0) && <details><summary>View details</summary>
+      {warnings.length > 0 && <ul>{warnings.map((item, index) => <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>}
+      {result.explanation && <p className="validation-result-explanation">{result.explanation}</p>}
+    </details>}
+  </div>;
+  return <div className="validation-result validation-result-error" role="alert">
+    <strong>Validation found {result.diagnostics.length} issue{result.diagnostics.length === 1 ? "" : "s"}.</strong>
+    <ul>{result.diagnostics.slice(0, 3).map((item, index) =>
+      <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>
+    {result.diagnostics.length > 3 && <details><summary>Show all {result.diagnostics.length} issues</summary>
+      <ul>{result.diagnostics.map((item, index) => <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>
+    </details>}
+  </div>;
+}
+
 export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated }: {
   readonly csrfToken: string;
   readonly capabilities: readonly string[];
@@ -76,6 +112,10 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const canWrite = capabilities.includes("validation:write");
   const canPublish = capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<ValidationDraft | null>(null);
+  const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
+  const [formVersions, setFormVersions] = useState<AuthoringVersionOption[]>([]);
+  const [selectedFormVersionId, setSelectedFormVersionId] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -87,34 +127,50 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [validation, setValidation] = useState<ValidationDraftResult | null>(null);
   const [published, setPublished] = useState<PublishedValidationVersion | null>(null);
   const [catalog, setCatalog] = useState<ValidationCatalog | null>(null);
+  const [hiddenElementIds, setHiddenElementIds] = useState<readonly string[]>([]);
   const [referenceElementId, setReferenceElementId] = useState("");
   const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
   const [library, setLibrary] = useState<ValidationRulePage | null>(null);
   const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "",
     executionTarget: "", enabled: "", validity: "" });
-  const [cursor, setCursor] = useState<string | undefined>();
   const draftRevision = draft?.revision;
 
   useEffect(() => {
     let current = true;
-    Promise.all([loadValidationDraft(), loadActiveCatalogDefinition()]).then(([value, catalogDefinition]) => {
+    Promise.all([loadValidationDraft(), loadActiveCatalogDefinition()]).then(async ([value, activeDefinition]) => {
+      const catalogDefinition = value?.catalogReleaseId
+        ? await loadCatalogVersion(value.catalogReleaseId) : activeDefinition;
       if (current) {
         setDraft(value); setReferenceElementId(value?.rules[0]?.primaryTargetElementId ?? "");
         setCatalog(catalogDefinition ? validationCatalog(catalogDefinition.definition) : null);
+        setHiddenElementIds(catalogDefinition?.definition.hiddenElementIds ?? []);
       }
     })
       .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Validation draft is unavailable."); })
       .finally(() => { if (current) setLoaded(true); });
     return () => { current = false; };
   }, []);
+  useEffect(() => {
+    let current = true;
+    loadValidationVersions().then((items) => { if (current) {
+      setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+    } }).catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Validation versions are unavailable."); });
+    return () => { current = false; };
+  }, []);
+  useEffect(() => {
+    let current = true;
+    loadStationaryFormVersions().then((items) => { if (current) setFormVersions(items); })
+      .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Form versions are unavailable."); });
+    return () => { current = false; };
+  }, []);
 
   useEffect(() => {
     if (!draftRevision) return;
     let current = true;
-    loadValidationRules({ ...filters, cursor, limit: 25 }).then((page) => { if (current) setLibrary(page); })
+    loadValidationRules({ ...filters, limit: "all" }).then((page) => { if (current) setLibrary(page); })
       .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Rule library is unavailable."); });
     return () => { current = false; };
-  }, [draftRevision, filters, cursor]);
+  }, [draftRevision, filters]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -131,92 +187,148 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const inlineValidation = useMemo(() => draft && catalog && selectedRule
     ? compileValidationRule(selectedRule, draft.id, catalog) : null, [draft, catalog, selectedRule]);
   const explanation = inlineValidation?.compiled && catalog ? explainValidationRule(inlineValidation.compiled, catalog) : null;
+  const visibleCatalogElements = catalog?.elements.filter(({ elementId }) => !hiddenElementIds.includes(elementId)) ?? [];
+  const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
+  const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId ?? "";
+  const compatibleForms = formVersions.filter(({ catalogReleaseId: id }) => id === activationCatalogId);
+  const selectedForm = compatibleForms.find(({ id }) => id === selectedFormVersionId)
+    ?? compatibleForms.find(({ status }) => status === "active") ?? compatibleForms[0];
+  const formActivationChoice = <div className="authoring-version-row">
+    <label htmlFor="validation-activation-form">Stationary form</label>
+    <select id="validation-activation-form" value={selectedForm?.id ?? ""}
+      onChange={(event) => setSelectedFormVersionId(event.target.value)} disabled={compatibleForms.length === 0}>
+      {compatibleForms.length === 0 && <option value="">No compatible published form</option>}
+      {compatibleForms.map((form) => <option key={form.id} value={form.id}>
+        {form.displayName} · v{form.version}{form.status === "active" ? " · Active" : ""}</option>)}
+    </select>
+  </div>;
+  const versionWorkspace = <AuthoringVersionWorkspace title="Validation rules" versions={versions}
+    selectedId={selectedVersionId} onSelect={setSelectedVersionId} draftName={displayName}
+    onDraftNameChange={setDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
+    canCreateWithoutSource={Boolean(catalogReleaseId)}
+    onCreateDraft={() => action(async () => {
+      const cloned = selectedVersion
+        ? await cloneValidationVersion(csrfToken, selectedVersion.id,
+          selectedVersion.catalogReleaseId ?? catalogReleaseId, displayName)
+        : await createValidationDraft(csrfToken, catalogReleaseId, displayName);
+      const definition = await loadCatalogVersion(cloned.catalogReleaseId);
+      setCatalog(validationCatalog(definition.definition));
+      setHiddenElementIds(definition.definition.hiddenElementIds ?? []);
+      setPublished(null); setDraft(cloned); setDisplayName(""); setDirty(false); setStatus("Validation draft created.");
+    })}>
+    {selectedVersion && selectedVersion.status !== "active" && canPublish && !draft && !published &&
+      <>{formActivationChoice}<AuthoringLifecycleAction title="Selected Validation rules" kind="activate" note={activationNote}
+        onNoteChange={setActivationNote} disabled={busy || !selectedForm} buttonLabel="Activate selected version"
+        onSubmit={() => action(async () => {
+          if (!selectedForm || !selectedVersion.catalogReleaseId) return;
+          await activateValidationVersion(csrfToken, selectedVersion.id, selectedForm.id,
+            selectedVersion.catalogReleaseId, activationNote);
+          setVersions((current) => current.map((item) => ({ ...item, status: item.id === selectedVersion.id ? "active" : "published" })));
+          setActivationNote(""); setStatus("Validation activated for new reports."); onActivated?.();
+        })} /></>}
+  </AuthoringVersionWorkspace>;
   if (!loaded) return <p role="status">Loading Validation draft…</p>;
   if (!draft) return <div className="form-empty">
-    {canWrite ? <>
-      <p>Create a Validation draft bound to the active published Element catalog.</p>
-      <label htmlFor="validation-name">Validation version display name</label>
-      <input id="validation-name" maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-      <button type="button" disabled={busy || !catalogReleaseId || !displayName.trim()} onClick={() => action(async () => {
-        setDraft(await createValidationDraft(csrfToken, catalogReleaseId, displayName));
-        setStatus("Validation draft created with one required-element rule.");
-      })}>Create Validation draft</button>
-    </> : <p role="note">No Validation draft is available.</p>}
+    {versionWorkspace}
     {error && <p role="alert">{error}</p>}<p role="status">{status}</p>
   </div>;
 
   if (published) return <div className="form-publication">
+    {versionWorkspace}
     <h3>Published {published.displayName}</h3>
     <p>Version {published.version} and its {published.ruleIds.length} rules are immutable and bound to catalog {published.catalogReleaseId}.</p>
-    <label htmlFor="validation-activation-note">Activation note</label>
-    <textarea id="validation-activation-note" value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
-    <button type="button" disabled={busy || !canPublish || !activationNote.trim()} onClick={() => action(async () => {
-      await activateValidationVersion(csrfToken, published.id, activationNote); setStatus("Validation activated for new reports."); onActivated?.();
-    })}>Activate for clinical use</button>
+    {formActivationChoice}
+    <AuthoringLifecycleAction title="Validation rules" kind="activate" note={activationNote}
+      onNoteChange={setActivationNote} disabled={busy || !canPublish || !selectedForm} buttonLabel="Activate for clinical use"
+      onSubmit={() => action(async () => {
+      if (!selectedForm) return;
+      await activateValidationVersion(csrfToken, published.id, selectedForm.id, published.catalogReleaseId, activationNote);
+      setVersions((current) => current.map((item) => ({ ...item, status: item.id === published.id ? "active" : "published" })));
+      setStatus("Validation activated for new reports."); onActivated?.();
+    })} />
     {error && <p role="alert">{error}</p>}<p role="status" aria-live="polite">{status}</p>
   </div>;
 
   return <div className="form-editor">
+    {versionWorkspace}
     <p>Draft revision {draft.revision}, bound to published catalog {draft.catalogReleaseId}.</p>
     <label htmlFor="validation-display-name">Validation version display name</label>
     <input id="validation-display-name" disabled={!canWrite} value={draft.displayName}
       onChange={(event) => change((current) => ({ ...current, displayName: event.target.value }))} />
     <section className="validation-library" aria-labelledby="validation-library-heading">
       <h3 id="validation-library-heading">Rule library</h3>
-      <ValidationRuleFilterControls value={filters} onChange={(value) => { setCursor(undefined); setFilters(value); }} />
+      <ValidationRuleFilterControls value={filters} elements={visibleCatalogElements}
+        onChange={(value) => { setLibrary(null); setFilters(value); }} />
       <p role="status">{library ? `${library.total} matching rule${library.total === 1 ? "" : "s"}.` : "Loading rules…"}</p>
-      <nav aria-label="Validation rules"><ul>{(library?.items ?? []).map((item) => {
+      <div className="validation-rule-table-scroll"><table className="validation-rule-table">
+        <caption className="sr-only">Validation rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Element</th>
+          <th scope="col">Source</th><th scope="col">Severity</th><th scope="col">Targets</th>
+          <th scope="col">State</th><th scope="col">Validity</th></tr></thead><tbody>{(library?.items ?? []).map((item) => {
         const index = draft.rules.findIndex(({ id }) => id === item.rule.id);
-        return <li key={item.rule.id}><button type="button" disabled={index < 0}
+        return <tr key={item.rule.id} className={index === selectedRuleIndex ? "is-selected" : undefined}>
+          <th scope="row"><button type="button" disabled={index < 0}
           aria-current={index === selectedRuleIndex ? "page" : undefined} onClick={() => {
             setSelectedRuleIndex(index); setReferenceElementId(item.rule.primaryTargetElementId);
-          }}>{item.rule.name} — {item.source}, {item.validity}{item.rule.enabled ? "" : " (disabled)"}</button>
-          {item.diagnostics.length > 0 && <ul aria-label={`${item.rule.name} diagnostics`}>{item.diagnostics.map((diagnostic, diagnosticIndex) =>
-            <li key={`${diagnostic.code}:${diagnosticIndex}`}>{diagnostic.message}</li>)}</ul>}</li>;
-      })}</ul></nav>
-      <div className="form-actions"><button type="button" disabled={!cursor} onClick={() => setCursor(undefined)}>First page</button>
-        <button type="button" disabled={!library?.nextCursor} onClick={() => setCursor(library?.nextCursor ?? undefined)}>Next page</button>
-        {canWrite && <button type="button" disabled={busy || dirty || !catalog?.elements[0]} onClick={() => action(async () => {
-          const element = catalog!.elements[0]!;
+          }}>{item.rule.name}</button></th><td><code>{item.rule.primaryTargetElementId}</code></td>
+          <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.join(", ")}</td>
+          <td>{item.rule.enabled ? "Enabled" : "Disabled"}</td><td>{item.validity}
+            {item.diagnostics.length > 0 && <span className="validation-help" tabIndex={0}
+              aria-label={`${item.rule.name} diagnostics: ${item.diagnostics.map(({ message }) => message).join("; ")}`}
+              title={item.diagnostics.map(({ message }) => message).join("\n")}>ⓘ</span>}</td></tr>;
+      })}</tbody></table></div>
+      <div className="form-actions">{canWrite && <button type="button" disabled={busy || dirty || !visibleCatalogElements[0]} onClick={() => action(async () => {
+          const element = visibleCatalogElements[0]!;
           const updated = await createValidationRule(csrfToken, draft, { name: "New agency rule", enabled: false,
             severity: "warning", executionTargets: ["live"], primaryTargetElementId: element.elementId,
             message: `Review ${element.label}`, source: `require present("${element.elementId}")`, sourceKind: "agency" });
           setDraft(updated); setSelectedRuleIndex(updated.rules.length - 1); setStatus("Agency rule created disabled; edit and restore it when ready.");
         })}>Create agency rule</button>}</div>
     </section>
-    {selectedRule && <fieldset disabled={!canWrite}>
+    {selectedRule && <fieldset className="validation-rule-editor" disabled={!canWrite}>
       <legend>Conditional validation rule</legend>
-      <label htmlFor="validation-rule-name">Rule name</label>
+      <div className="validation-rule-row"><label htmlFor="validation-rule-name">Name</label>
       <input id="validation-rule-name" value={selectedRule.name}
-        onChange={(event) => changeRule((rule) => ({ ...rule, name: event.target.value }))} />
-      <label><input type="checkbox" checked={selectedRule.enabled}
-        onChange={(event) => changeRule((rule) => ({ ...rule, enabled: event.target.checked }))} /> Rule enabled</label>
-      <label htmlFor="validation-severity">Severity</label>
+        onChange={(event) => changeRule((rule) => ({ ...rule, name: event.target.value }))} /></div>
+      <div className="validation-rule-row"><label><span>Enabled</span><input type="checkbox" checked={selectedRule.enabled}
+        onChange={(event) => changeRule((rule) => ({ ...rule, enabled: event.target.checked }))} /></label></div>
+      <div className="validation-rule-row"><label htmlFor="validation-severity">Severity</label>
       <select id="validation-severity" value={selectedRule.severity}
         onChange={(event) => changeRule((rule) => ({ ...rule, severity: event.target.value as typeof rule.severity }))}>
         <option value="error">Error</option><option value="warning">Warning</option><option value="information">Information</option>
-      </select>
-      <fieldset><legend>Execution targets</legend>{(["live", "sign", "review"] as const).map((target) => <label key={target}>
+      </select></div>
+      <div className="validation-rule-row"><span id="validation-targets-label">Targets</span><div role="group" aria-labelledby="validation-targets-label" className="validation-targets">{(["live", "sign", "review"] as const).map((target) => <label key={target}>
         <input type="checkbox" checked={selectedRule.executionTargets.includes(target)} onChange={(event) => changeRule((rule) => ({
           ...rule, executionTargets: event.target.checked ? [...new Set([...rule.executionTargets, target])] : rule.executionTargets.filter((item) => item !== target),
-        }))} /> {target}</label>)}</fieldset>
-      <label htmlFor="validation-element-id">Primary target element ID</label>
-      <input id="validation-element-id" list="validation-element-references" value={selectedRule.primaryTargetElementId}
-        onChange={(event) => changeRule((rule) => ({ ...rule, primaryTargetElementId: event.target.value }))} />
-      {catalog && <ValidationReferenceAssistance catalog={catalog} elementId={referenceElementId || selectedRule.primaryTargetElementId}
-        onElementIdChange={setReferenceElementId} />}
+        }))} /> {target}</label>)}</div></div>
+      <div className="validation-rule-row"><label htmlFor="validation-element-id">Element ID</label>
+      <select id="validation-element-id" value={selectedRule.primaryTargetElementId}
+        onChange={(event) => changeRule((rule) => ({ ...rule, primaryTargetElementId: event.target.value }))}>
+        {!visibleCatalogElements.some(({ elementId }) => elementId === selectedRule.primaryTargetElementId) &&
+          <option value={selectedRule.primaryTargetElementId}>{selectedRule.primaryTargetElementId} (not in this catalog)</option>}
+        {visibleCatalogElements.map((element) => <option key={element.elementId} value={element.elementId}>
+          {element.elementId} — {element.label}</option>)}
+      </select></div>
+      {catalog && <details className="validation-reference-details"><summary>Element and code references</summary>
+        <ValidationReferenceAssistance catalog={{ ...catalog, elements: visibleCatalogElements,
+          codes: catalog.codes?.filter(({ elementId }) => !hiddenElementIds.includes(elementId)) }}
+          elementId={referenceElementId || selectedRule.primaryTargetElementId}
+          onElementIdChange={setReferenceElementId} /></details>}
       {catalog?.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)?.intrinsicOccurrence && (() => {
         const element = catalog.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)!;
-        return <p role="note"><strong>Intrinsic Catalog structure (read-only):</strong> {element.intrinsicOccurrence!.min}–{element.intrinsicOccurrence!.max} occurrence(s)
-          {element.groupPath?.length ? ` in ${element.groupPath.at(-1)}` : ""}. Validation policies may be disabled or relaxed, but cannot make unsupported occurrences structurally valid.</p>;
+        return <div className="validation-rule-row"><span>Catalog limits</span><span>{element.intrinsicOccurrence!.min}–{element.intrinsicOccurrence!.max} occurrences
+          {element.groupPath?.length ? ` in ${element.groupPath.at(-1)}` : ""} <span className="validation-help" tabIndex={0}
+            aria-label="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid."
+            title="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.">ⓘ</span></span></div>;
       })()}
-      <label htmlFor="validation-message">Finding message</label>
+      <div className="validation-rule-row"><label htmlFor="validation-message">Message</label>
       <input id="validation-message" value={selectedRule.message}
-        onChange={(event) => changeRule((rule) => ({ ...rule, message: event.target.value }))} />
-      <label htmlFor="validation-source">Rule source</label>
-      <textarea id="validation-source" spellCheck={false} value={selectedRule.source}
-        onChange={(event) => changeRule((rule) => ({ ...rule, source: event.target.value }))} />
-      <small>Use optional <code>for each(&quot;group-id&quot;)</code> and <code>when</code> clauses followed by <code>require</code>. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.</small>
+        onChange={(event) => changeRule((rule) => ({ ...rule, message: event.target.value }))} /></div>
+      <div className="validation-rule-row validation-source-row"><label htmlFor="validation-source">Rule source <span className="validation-help"
+        tabIndex={0} aria-label="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order."
+        title="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.">ⓘ</span></label>
+      <textarea id="validation-source" spellCheck={false} rows={3} value={selectedRule.source}
+        onChange={(event) => changeRule((rule) => ({ ...rule, source: event.target.value }))} /></div>
+      <div className="form-actions validation-rule-actions">
       <button type="button" onClick={() => {
         const formatted = formatValidationSource(selectedRule.source);
         if (formatted.formatted) changeRule((rule) => ({ ...rule, source: formatted.formatted! }));
@@ -224,7 +336,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
         const updated = await setValidationRuleEnabled(csrfToken, draft, selectedRule.id, !selectedRule.enabled);
         setDraft(updated); setStatus(selectedRule.enabled ? "Rule disabled and retained in history." : "Rule restored to execution.");
-      })}>{selectedRule.enabled ? "Disable rule" : "Restore rule"}</button>
+      })}>{selectedRule.enabled ? "Disable rule" : "Restore rule"}</button></div>
     </fieldset>}
     {selectedRule?.provenance?.length ? <details><summary>NEMSIS provenance ({selectedRule.provenance.length})</summary>
       {selectedRule.provenance.map((source) => <dl key={`${source.sourceIdentity}:${source.sourceRelease}`}>
@@ -232,34 +344,40 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         <div><dt>Release</dt><dd>{source.sourceRelease}{source.sourceBuild ? ` (${source.sourceBuild})` : ""}</dd></div>
         <div><dt>Original expression</dt><dd><code>{source.originalExpression}</code></dd></div>
         <div><dt>Original message</dt><dd>{source.originalMessage}</dd></div>
-      </dl>)}</details> : selectedRule && <p role="note">Source: {selectedRule.sourceKind ?? "agency"}. This rule has no imported provenance.</p>}
+      </dl>)}</details> : null}
     {inlineValidation && inlineValidation.diagnostics.length > 0 && <div role="alert" aria-label="Inline rule diagnostics"><ul>
       {inlineValidation.diagnostics.map((item, index) => <li key={`${item.code}:${index}`}>
         {item.line ? `Line ${item.line}, column ${item.column}: ` : ""}{item.message}</li>)}
     </ul></div>}
-    {explanation && <section aria-label="Generated rule explanation"><h3>Explanation</h3><p>{explanation}</p></section>}
-    {validation && <div role={validation.valid ? "status" : "alert"}>
-      {validation.valid ? <><p>Rule source, catalog references, datatypes, compiled representation, and finding target are valid.</p>
-        {validation.explanation && <p>{validation.explanation}</p>}</>
-        : <ul>{validation.diagnostics.map((item) => <li key={`${item.ruleId}:${item.code}`}>{item.message}</li>)}</ul>}
-    </div>}
+    {explanation && <details aria-label="Generated rule explanation"><summary>Explanation</summary><p>{explanation}</p></details>}
+    {validation && <ValidationResultFeedback result={validation} ruleCount={draft.rules.length} />}
     <div className="form-actions">
       {canWrite && <button type="button" disabled={busy || !dirty} onClick={() => action(async () => {
         const saved = await saveValidationDraft(csrfToken, draft); setDraft(saved); setDirty(false); setStatus(`Saved draft revision ${saved.revision}.`);
       })}>Save Validation draft</button>}
+      {canWrite && <button type="button" disabled={busy} onClick={() => {
+        if (!window.confirm(`Delete Validation draft ${draft.displayName}? This cannot be undone.`)) return;
+        void action(async () => {
+          await deleteValidationDraft(csrfToken, draft);
+          setDraft(null); setDirty(false); setValidation(null); setLibrary(null);
+          setStatus("Validation draft deleted. You can now start a draft from a selected version.");
+        });
+      }}>Delete draft</button>}
       <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
         const result = await validateValidationDraft(csrfToken, draft.id); setValidation(result);
-        setStatus(result.valid ? "Validation succeeded." : "Validation found errors.");
-      })}>Validate rule</button>
+        setStatus("");
+      })}>Validate draft</button>
     </div>
     {canPublish && <section className="form-publication-review">
       <h3>Publication review</h3>
       <p>Publication creates immutable version and rule identities. Activation is a separate action.</p>
-      <label htmlFor="validation-change-note">Publication note</label>
-      <textarea id="validation-change-note" value={changeNote} onChange={(event) => setChangeNote(event.target.value)} />
-      <button type="button" disabled={busy || dirty || !validation?.valid || !changeNote.trim()} onClick={() => action(async () => {
-        setPublished(await publishValidationDraft(csrfToken, draft, changeNote)); setStatus("Validation version published.");
-      })}>Publish immutable Validation version</button>
+      <AuthoringLifecycleAction title="Validation rules" kind="publish" note={changeNote}
+        onNoteChange={setChangeNote} disabled={busy || dirty || !validation?.valid}
+        buttonLabel="Publish immutable Validation version" onSubmit={() => action(async () => {
+        const result = await publishValidationDraft(csrfToken, draft, changeNote);
+        setPublished(result); setSelectedVersionId(result.id); setVersions(await loadValidationVersions());
+        setStatus("Validation version published.");
+      })} />
     </section>}
     {error && <p role="alert">{error}</p>}<p role="status" aria-live="polite">{status}</p>
   </div>;

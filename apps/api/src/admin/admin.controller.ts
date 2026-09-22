@@ -197,6 +197,17 @@ export class AdminController {
     return this.catalogs.inspectActive(sessionToken(request, authorization));
   }
 
+  @Get("catalog-versions")
+  catalogVersions(@Req() request: RequestLike, @Headers("authorization") authorization?: string) {
+    return this.catalogs.versions(sessionToken(request, authorization));
+  }
+
+  @Get("catalog-versions/:id")
+  catalogVersion(@Param("id", new ParseUUIDPipe()) id: string, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<CatalogDefinitionView> {
+    return this.catalogs.inspectVersion(sessionToken(request, authorization), id);
+  }
+
   @Post("catalog-drafts")
   cloneCatalog(@Body() body: unknown, @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogDraft> {
     return this.catalogs.cloneActive(sessionToken(request, authorization), body);
@@ -223,6 +234,11 @@ export class AdminController {
   @Get("form-draft")
   formDraft(@Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<StationaryFormDraft | null> {
     return this.forms.current(sessionToken(request, authorization));
+  }
+
+  @Get("form-versions")
+  formVersions(@Req() request: RequestLike, @Headers("authorization") authorization?: string) {
+    return this.forms.versions(sessionToken(request, authorization));
   }
 
   @Post("form-drafts")
@@ -267,6 +283,11 @@ export class AdminController {
     return this.validations.current(sessionToken(request, authorization));
   }
 
+  @Get("validation-versions")
+  validationVersions(@Req() request: RequestLike, @Headers("authorization") authorization?: string) {
+    return this.validations.versions(sessionToken(request, authorization));
+  }
+
   @Get("validation-rules")
   validationRules(@Query() query: Record<string, unknown>, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<ValidationRulePage> {
@@ -295,6 +316,12 @@ export class AdminController {
   saveValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
     @Headers("authorization") authorization?: string): Promise<ValidationDraft> {
     return this.validations.save(sessionToken(request, authorization), id, body);
+  }
+
+  @Delete("validation-drafts/:id")
+  deleteValidation(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<void> {
+    return this.validations.delete(sessionToken(request, authorization), id, body);
   }
 
   @Post("validation-drafts/:id/rules")

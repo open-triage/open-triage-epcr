@@ -115,6 +115,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     })), ...stationaryReviewFindings(reviewFindings, report?.clinicalForm)],
     [report?.clinicalForm, reviewFindings, shell.acknowledgedWarnings, stationaryFindings],
   );
+  const stationarySectionFindings = useMemo(() => configuredStationaryFindings.flatMap((finding) =>
+    finding.severity === "information" ? [] : [{ severity: finding.severity, target: finding.target }]),
+  [configuredStationaryFindings]);
   const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
@@ -246,7 +249,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     const target = finding.target;
     window.requestAnimationFrame(() => {
       const section = stationarySectionForGroup(target.groupId);
-      if (section) window.history.pushState(null, "", `#${section.hash}`);
+      if (section) document.getElementById(section.hash)?.scrollIntoView({ block: "start" });
       const escape = (value: string) => CSS.escape(value);
       const instanceId = "groupInstanceId" in target ? target.groupInstanceId : target.instanceId;
       const focusTarget = () => {
@@ -446,8 +449,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           <StationaryRecord
             document={encounter.document}
             findings={actionableStationaryFindings(configuredStationaryFindings.filter((finding): finding is StationaryValidationFinding => !("eventType" in finding)))}
+            sectionFindings={stationarySectionFindings}
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
+            validation={report?.clinicalForm?.validation}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
           />
         </div>

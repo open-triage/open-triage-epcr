@@ -1,8 +1,9 @@
 "use client";
 
-import type { FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
-import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
+import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
 
 type FormSection = FormDraftDefinition["sections"][number];
@@ -53,15 +54,21 @@ export function formStructuralSummary(definition: FormDraftDefinition): string {
   return `${definition.sections.length} ${definition.sections.length === 1 ? "section" : "sections"} and ${fields} ${fields === 1 ? "element" : "elements"}`;
 }
 
-export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated }: {
+export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, preferredCatalogReleaseId, onActivated }: {
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly catalogReleaseId: string;
-  readonly onActivated?: (activation: StationaryFormActivation, published: PublishedStationaryForm) => void;
+  readonly preferredCatalogReleaseId?: string;
+  readonly onActivated?: (activation: StationaryFormActivation, published?: PublishedStationaryForm) => void;
 }) {
   const { canWrite, canPublish } = formAuthority(capabilities);
   const publicationAllowed = canPublish;
+  const activationAllowed = canPublish && capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<StationaryFormDraft | null>(null);
+  const [versions, setVersions] = useState<AuthoringVersionOption[]>([]);
+  const [validationVersions, setValidationVersions] = useState<AuthoringVersionOption[]>([]);
+  const [selectedValidationVersionId, setSelectedValidationVersionId] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -84,6 +91,19 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     loadStationaryFormDraft().then((loadedDraft) => { if (current) setDraft(loadedDraft); })
       .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); })
       .finally(() => { if (current) setLoaded(true); });
+    return () => { current = false; };
+  }, []);
+  useEffect(() => {
+    let current = true;
+    loadStationaryFormVersions().then((items) => { if (current) {
+      setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+    } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
+    return () => { current = false; };
+  }, []);
+  useEffect(() => {
+    let current = true;
+    loadValidationVersions().then((items) => { if (current) setValidationVersions(items); })
+      .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     return () => { current = false; };
   }, []);
 
@@ -115,44 +135,71 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         `Added ${element.elementId}.`);
     } catch (reason) { setError(operationErrorMessage(reason)); }
   }
+  const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
+  const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId;
+  const compatibleValidations = validationVersions.filter(({ catalogReleaseId: id }) => id === activationCatalogId);
+  const selectedValidation = compatibleValidations.find(({ id }) => id === selectedValidationVersionId)
+    ?? compatibleValidations.find(({ status }) => status === "active") ?? compatibleValidations[0];
+  const validationChoice = <div className="authoring-version-row">
+    <label htmlFor="form-activation-validation">Validation rules</label>
+    <select id="form-activation-validation" value={selectedValidation?.id ?? ""}
+      onChange={(event) => setSelectedValidationVersionId(event.target.value)} disabled={compatibleValidations.length === 0}>
+      {compatibleValidations.length === 0 && <option value="">No compatible published rules</option>}
+      {compatibleValidations.map((version) => <option key={version.id} value={version.id}>
+        {version.displayName} · v{version.version}{version.status === "active" ? " · Active" : ""}</option>)}
+    </select>
+  </div>;
+  const versionWorkspace = <AuthoringVersionWorkspace title="Stationary form" versions={versions}
+    selectedId={selectedVersionId} onSelect={setSelectedVersionId} draftName={newDisplayName}
+    onDraftNameChange={setNewDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
+    onCreateDraft={() => action(async () => {
+      const cloned = await cloneStationaryFormDraft(csrfToken,
+        preferredCatalogReleaseId || selectedVersion?.catalogReleaseId || catalogReleaseId, newDisplayName, selectedVersionId);
+      setPublished(null); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Stationary form draft created.");
+    })}>
+    {selectedVersion && selectedVersion.status !== "active" && activationAllowed && !published &&
+      <>{validationChoice}<AuthoringLifecycleAction title="Selected Stationary form" kind="activate" note={activationNote}
+        onNoteChange={setActivationNote} disabled={busy || !selectedValidation} buttonLabel="Activate selected version"
+        onSubmit={() => action(async () => {
+          if (!selectedValidation) return;
+          const activation = await activateStationaryForm(csrfToken, selectedVersion.id, selectedValidation.id, activationNote);
+          setStatus("Stationary form activated for new reports."); setActivationNote("");
+          setVersions((current) => current.map((item) => ({ ...item, status: item.id === selectedVersion.id ? "active" : "published" })));
+          onActivated?.(activation);
+        })} /></>}
+  </AuthoringVersionWorkspace>;
   if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
   if (!draft) return <div className="form-empty">
-    {canWrite ? <>
-      <p>Clone the active Stationary form to change its section sequence without changing the published form.</p>
-      <label htmlFor="new-form-display-name">New form version display name</label>
-      <input id="new-form-display-name" maxLength={120} required value={newDisplayName}
-        onChange={(event) => setNewDisplayName(event.target.value)} />
-      <button type="button" disabled={busy || !catalogReleaseId || !newDisplayName.trim()} onClick={() => action(async () => {
-        const cloned = await cloneStationaryFormDraft(csrfToken, catalogReleaseId, newDisplayName);
-        setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus("Stationary form draft created.");
-      })}>Clone active Stationary form</button>
-    </> : <p role="note">There is no Stationary form draft available to inspect.</p>}
+    {versionWorkspace}
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
   if (published) return <div className="form-publication" aria-labelledby="published-form-heading">
+    {versionWorkspace}
     <h3 id="published-form-heading">Published {published.displayName}</h3>
     <p>{published.structuralSummary.sections} sections and {published.structuralSummary.fields} elements were published as immutable content.</p>
     <p className="form-activation-status" role="status">This version is published but is not active. New reports still use the existing agency default.</p>
-    {publicationAllowed ? <>
-      <label htmlFor="form-activation-note">Activation note</label>
-      <textarea id="form-activation-note" required value={activationNote} onChange={(event) => setActivationNote(event.target.value)} />
-      <small>An activation note is required. Activation applies this form and its catalog to new reports.</small>
-      <button className="form-primary-action" type="button" disabled={busy || activated || !activationNote.trim()} onClick={() => action(async () => {
-        const activation = await activateStationaryForm(csrfToken, published.id, activationNote);
+    {activationAllowed ? <>
+      {validationChoice}
+      <AuthoringLifecycleAction title="Stationary form" kind="activate" note={activationNote}
+        onNoteChange={setActivationNote} disabled={busy || activated || !selectedValidation}
+        detail="Activation applies this form, its catalog, and the selected validation rules to new reports."
+        buttonLabel={activated ? "Agency default active" : "Activate as agency default"} onSubmit={() => action(async () => {
+        if (!selectedValidation) return;
+        const activation = await activateStationaryForm(csrfToken, published.id, selectedValidation.id, activationNote);
         setActivated(true);
+        setVersions((current) => current.map((item) => ({ ...item, status: item.id === published.id ? "active" : "published" })));
         setStatus("Stationary form activated for new reports. Existing reports remain pinned to their original versions.");
         onActivated?.(activation, published);
-      })}>{activated ? "Agency default active" : "Activate as agency default"}</button>
-    </> : <p role="note">{canPublish
-      ? "Activation is disabled for this installation."
-      : "Your Forms access does not permit activation."}</p>}
+      })} />
+    </> : <p role="note">Activating a form requires Forms and Validation publication access.</p>}
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
   return <div className="form-editor">
+    {versionWorkspace}
     <p>Draft revision {draft.revision}. {canWrite
       ? "Published forms remain immutable and existing reports keep their pinned form version."
       : "You have read-only access to this form definition."}</p>
@@ -210,17 +257,16 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <input id="form-display-name" disabled={!canWrite} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
       {publicationAllowed ? <>
-        <label htmlFor="form-publication-note">Publication note</label>
-        <textarea id="form-publication-note" required value={publicationNote}
-          onChange={(event) => setPublicationNote(event.target.value)} />
-        <small>A publication note is required.</small>
-        <button type="button" disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
-          onClick={() => action(async () => {
+        <AuthoringLifecycleAction title="Stationary form" kind="publish" note={publicationNote}
+          onNoteChange={setPublicationNote} disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
+          buttonLabel="Publish immutable form" onSubmit={() => action(async () => {
             if (!draft.displayName?.trim()) throw new Error("Enter a form version display name before publishing.");
             if (!publicationNote.trim()) throw new Error("Enter a publication note before publishing.");
             const result = await publishStationaryFormDraft(csrfToken, draft, draft.displayName, publicationNote);
-            setPublished(result); setStatus("Stationary form published. Activate it separately when ready.");
-          })}>Publish immutable form</button>
+            setPublished(result); setSelectedVersionId(result.id);
+            setVersions(await loadStationaryFormVersions());
+            setStatus("Stationary form published. Activate it separately when ready.");
+          })} />
         {dirty && <p role="status">Save the current draft before publishing.</p>}
       </> : canWrite && <p role="note">{canPublish
         ? "Publishing is disabled for this installation. Form drafts can still be created, edited, previewed, and saved."

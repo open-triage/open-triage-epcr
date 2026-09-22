@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ConflictException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, NotFoundException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { CatalogAuthoringService, catalogDefinitionSha256 } from "../dist/admin/catalog-authoring.service.js";
 
 const sourceElement = {
@@ -26,6 +26,19 @@ function serviceWith(manager, sessions = { requireCapability: async () => sessio
 
 test("catalog hashes are stable across object key ordering", () => {
   assert.equal(catalogDefinitionSha256({ b: 2, a: 1 }), catalogDefinitionSha256({ a: 1, b: 2 }));
+});
+
+test("catalog version inspection only loads a version visible to the organization", async () => {
+  const service = serviceWith({ query: async () => [] });
+  service.versions = async () => [{ id: "release-1", displayName: "Sweden catalog", version: "1.0", status: "published" }];
+  service.cloneDefinition = async (_manager, id) => {
+    assert.equal(id, "release-1");
+    return definition;
+  };
+  assert.deepEqual(await service.inspectVersion("session", "release-1"), {
+    id: "release-1", displayName: "Sweden catalog", version: "1.0", status: "published", definition
+  });
+  await assert.rejects(service.inspectVersion("session", "foreign-release"), NotFoundException);
 });
 
 test("stale catalog saves fail before changing canonical content", async () => {
@@ -202,7 +215,7 @@ test("cloning the active catalog unwraps PostgreSQL mutation tuples into a usabl
   const manager = { query: async (sql, parameters = []) => {
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("select * from catalog.authoring_draft")) return [];
-    if (sql.includes("select fv.catalog_release_id as id")) return [{ id: "release-1" }];
+    if (sql.includes("select cr.id from catalog.release cr")) return [{ id: "release-1" }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
     if (sql.includes("insert into catalog.authoring_draft")) return [[{

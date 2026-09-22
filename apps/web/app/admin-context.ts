@@ -1,4 +1,4 @@
-import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
+import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, AuthoringVersionOption, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -29,9 +29,11 @@ async function catalogRequest<T>(path: string, csrfToken?: string, init?: Reques
 }
 
 export const loadCatalogDraft = () => catalogRequest<CatalogDraft | null>("catalog-draft", undefined, undefined, { value: null });
+export const loadCatalogVersions = () => catalogRequest<AuthoringVersionOption[]>("catalog-versions");
+export const loadCatalogVersion = (id: string) => catalogRequest<CatalogDefinitionView>(`catalog-versions/${id}`);
 export const loadActiveCatalogDefinition = () => catalogRequest<CatalogDefinitionView | null>("catalog-definition", undefined, undefined, { value: null });
-export const cloneCatalogDraft = (csrfToken: string, displayName: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
-  method: "POST", body: JSON.stringify({ displayName })
+export const cloneCatalogDraft = (csrfToken: string, displayName: string, sourceVersionId?: string) => catalogRequest<CatalogDraft>("catalog-drafts", csrfToken, {
+  method: "POST", body: JSON.stringify({ displayName, sourceVersionId })
 });
 export const saveCatalogDraft = (csrfToken: string, draft: CatalogDraft) => catalogRequest<CatalogDraft>(`catalog-drafts/${draft.id}`, csrfToken, {
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
@@ -41,8 +43,9 @@ export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, disp
   method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, displayName, changeNote })
 });
 export const loadStationaryFormDraft = () => catalogRequest<StationaryFormDraft | null>("form-draft", undefined, undefined, { value: null });
-export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
-  method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
+export const loadStationaryFormVersions = () => catalogRequest<AuthoringVersionOption[]>("form-versions");
+export const cloneStationaryFormDraft = (csrfToken: string, catalogReleaseId: string, displayName: string, sourceVersionId?: string) => catalogRequest<StationaryFormDraft>("form-drafts", csrfToken, {
+  method: "POST", body: JSON.stringify({ catalogReleaseId, displayName, sourceVersionId })
 });
 export const saveStationaryFormDraft = (csrfToken: string, draft: StationaryFormDraft) => catalogRequest<StationaryFormDraft>(`form-drafts/${draft.id}`, csrfToken, {
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
@@ -55,17 +58,22 @@ export const publishStationaryFormDraft = (csrfToken: string, draft: StationaryF
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision,
       definitionSha256: draft.definitionSha256, displayName, changeNote })
   });
-export const activateStationaryForm = (csrfToken: string, formVersionId: string, changeNote: string) =>
+export const activateStationaryForm = (csrfToken: string, formVersionId: string, validationVersionId: string, changeNote: string) =>
   catalogRequest<StationaryFormActivation>(`form-versions/${formVersionId}/activate`, csrfToken, {
-    method: "POST", body: JSON.stringify({ changeNote })
+    method: "POST", body: JSON.stringify({ validationVersionId, changeNote })
   });
 
 export const searchFormCatalog = (id: string, query: string) =>
   catalogRequest<FormCatalogElementPage>(`form-drafts/${id}/catalog-elements?query=${encodeURIComponent(query)}`);
 
 export const loadValidationDraft = () => catalogRequest<ValidationDraft | null>("validation-draft", undefined, undefined, { value: null });
+export const loadValidationVersions = () => catalogRequest<AuthoringVersionOption[]>("validation-versions");
+export const cloneValidationVersion = (csrfToken: string, sourceVersionId: string, catalogReleaseId: string, displayName: string) =>
+  catalogRequest<ValidationDraft>(`validation-versions/${sourceVersionId}/clone`, csrfToken, {
+    method: "POST", body: JSON.stringify({ catalogReleaseId, displayName })
+  });
 export type ValidationRuleQuery = { search?: string; element?: string; source?: string; severity?: string;
-  executionTarget?: string; enabled?: string; validity?: string; cursor?: string; limit?: number };
+  executionTarget?: string; enabled?: string; validity?: string; cursor?: string; limit?: number | "all" };
 export const loadValidationRules = (query: ValidationRuleQuery = {}) =>
   catalogRequest<ValidationRulePage>(`validation-rules${queryString(query as Record<string, string | number | undefined>)}`);
 export const createValidationDraft = (csrfToken: string, catalogReleaseId: string, displayName: string) =>
@@ -75,6 +83,10 @@ export const createValidationDraft = (csrfToken: string, catalogReleaseId: strin
 export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}`, csrfToken, {
     method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, rules: draft.rules })
+  });
+export const deleteValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
+  catalogRequest<void>(`validation-drafts/${draft.id}`, csrfToken, {
+    method: "DELETE", body: JSON.stringify({ expectedRevision: draft.revision })
   });
 export const createValidationRule = (csrfToken: string, draft: ValidationDraft, rule: Omit<ValidationRuleSource, "id">) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}/rules`, csrfToken, {
@@ -90,9 +102,10 @@ export const publishValidationDraft = (csrfToken: string, draft: ValidationDraft
   catalogRequest<PublishedValidationVersion>(`validation-drafts/${draft.id}/publish`, csrfToken, {
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, changeNote })
   });
-export const activateValidationVersion = (csrfToken: string, id: string, changeNote: string) =>
+export const activateValidationVersion = (csrfToken: string, id: string, formVersionId: string,
+  catalogReleaseId: string, changeNote: string) =>
   catalogRequest<ValidationActivation>(`validation-versions/${id}/activate`, csrfToken, {
-    method: "POST", body: JSON.stringify({ changeNote })
+    method: "POST", body: JSON.stringify({ formVersionId, catalogReleaseId, changeNote })
   });
 
 export async function loadAdminContext(): Promise<AdminContext> {

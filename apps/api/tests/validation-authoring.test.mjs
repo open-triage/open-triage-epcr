@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
 import { compiledValidationBundleSha256, evaluateValidationBundle } from "@open-triage/contracts";
-import { UnauthorizedException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { ValidationAuthoringService, migrateFormExpression } from "../dist/admin/validation-authoring.service.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 
@@ -22,6 +22,25 @@ function service(manager, capabilityCalls = []) {
     }
   });
 }
+
+test("discard deletes only an organization-scoped draft at its expected revision", async () => {
+  const capabilities = [];
+  const calls = [];
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select * from validation.version")) return [{ id: versionId, revision: 2, status: "draft" }];
+    if (sql.includes("delete from validation.version")) return [{ id: versionId }];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  await service(manager, capabilities).delete("session", versionId, { expectedRevision: 2 });
+  assert.deepEqual(capabilities, ["validation:write"]);
+  assert.match(calls.at(-1).sql, /organization_id=\$2 and status='draft' and revision=\$3/);
+  assert.deepEqual(calls.at(-1).parameters, [versionId, organizationId, 2]);
+  await assert.rejects(service(manager).delete("session", versionId, { expectedRevision: 1 }), ConflictException);
+  const missing = { query: async (sql) => sql.includes("pg_advisory_xact_lock") ? [] : [] };
+  await assert.rejects(service(missing).delete("session", versionId, { expectedRevision: 2 }), NotFoundException);
+});
 
 test("new drafts persist documented minimum and maximum as separate rules without changing Catalog bounds", async () => {
   let persistedRules;
@@ -60,6 +79,8 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
     if (sql.includes("from validation.version where organization_id") && !sql.includes("insert")) return [];
     if (sql.includes("select distinct cr.id")) return [{ id: catalogReleaseId }];
     if (sql.includes("select e.element_id,e.name,e.min_occurs")) return [
+      { element_id: "dAgency.01", name: "EMS Agency Unique State ID", min_occurs: 1, max_occurs: 1,
+        group_id: "DemographicGroup", group_repeating: false, agency_required: true, agency_required_severity: "error" },
       { element_id: "ePatient.01", name: "Patient", min_occurs: 0, max_occurs: null,
         group_id: "ePatient.PatientGroup", group_repeating: false, agency_required: true, agency_required_severity: "warning" },
       { element_id: "ePatient.02", name: "Last Name", min_occurs: 0, max_occurs: 1,
@@ -67,6 +88,7 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
     ];
     if (sql.includes("select fv.id,fv.canonical_definition")) return [{ id: "form-1", canonical_definition: {
       sections: [{ fields: [
+        { key: "agency-id", source: { kind: "nemsis", elementId: "dAgency.01" }, required: true },
         { key: "patient", source: { kind: "nemsis", elementId: "ePatient.01" } },
         { key: "last-name", source: { kind: "nemsis", elementId: "ePatient.02" }, required: true,
           rules: [{ kind: "requiredness", expression: { operator: "exists", field: "patient" } }] },
@@ -87,6 +109,7 @@ test("new drafts migrate Catalog and Form requiredness into visible Validation r
   assert.equal(persistedRules[2].source, 'require minimum("ePatient.02", 1)');
   assert.equal(persistedRules[3].source,
     'when present("ePatient.01")\nrequire present("ePatient.02")');
+  assert.equal(persistedRules.some(({ primaryTargetElementId }) => primaryTargetElementId === "dAgency.01"), false);
 });
 
 test("legacy nested Form predicates have a deterministic Validation-language migration", () => {
@@ -237,6 +260,9 @@ test("rule library applies organization-scoped filters, stable pagination, prove
   const second = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: 1, cursor: first.nextCursor });
   assert.equal(second.items.length, 1);
   assert.notEqual(second.items[0].rule.id, first.items[0].rule.id);
+  const all = await subject.library("session", { element: "eResponse.03", validity: "valid", limit: "all" });
+  assert.equal(all.items.length, all.total);
+  assert.equal(all.nextCursor, null);
   const imported = await subject.library("session", { source: "nemsis", search: "nemSch_1" });
   assert.equal(imported.items[0].rule.provenance[0].originalExpression, "not(eResponse.03)");
   assert.ok(imported.items[0].diagnostics.some(({ code }) => code === "possible-conflict"));
@@ -274,7 +300,7 @@ test("a published version clones onto a same-or-newer published Catalog and retu
     if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("where id=$1") && sql.includes("status='published'")) return [published];
     if (sql.includes("status='draft' for update")) return [];
-    if (sql.includes("select target.id from catalog.release")) return [{ id: targetCatalogId }];
+    if (sql.includes("from catalog.release target")) return [{ id: targetCatalogId }];
     if (sql.includes("insert into validation.version")) {
       insertedSource = JSON.parse(parameters[5]);
       return [{ ...published, id: parameters[0], catalog_release_id: targetCatalogId, cloned_from_id: versionId,
@@ -291,7 +317,7 @@ test("a published version clones onto a same-or-newer published Catalog and retu
   assert.equal(cloned.clonedFromId, versionId);
   assert.deepEqual(insertedSource, [sourceRule]);
   assert.equal(cloned.diagnostics[0].code, "catalog-reference");
-  assert.ok(calls.some(({ sql, parameters }) => sql.includes("select target.id from catalog.release")
+  assert.ok(calls.some(({ sql, parameters }) => sql.includes("from catalog.release target")
     && parameters[1] === organizationId && parameters[2] === published.catalog_release_id));
 });
 

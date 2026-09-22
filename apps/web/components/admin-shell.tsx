@@ -8,10 +8,10 @@ import { StationaryFormAuthoring } from "./stationary-form-authoring";
 import { ValidationAuthoring } from "./validation-authoring";
 import { RolesPanel, UsersPanel } from "./admin-directory";
 
-type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation";
+type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
-  ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation"]
+  ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -131,21 +131,20 @@ export function AdminShell({ session }: {
 
     {context && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
-      {context.activeConfiguration ? <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         capabilities={context.capabilities}
-        catalogReleaseId={formCatalogReleaseId || context.activeConfiguration.catalog.id}
+        catalogReleaseId={formCatalogReleaseId || context.activeConfiguration?.catalog.id || ""}
+        preferredCatalogReleaseId={formCatalogReleaseId}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
-        : <p role="status">No active Stationary configuration is available to clone. Publish and activate a form configuration first.</p>}
     </section>}
 
-    {context && activePanel === "Validation" && <section className="admin-configuration" aria-labelledby="validation-authoring-heading">
-      <div className="section-heading"><h2 id="validation-authoring-heading">Validation</h2></div>
-      {context.activeConfiguration ? <ValidationAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
-        capabilities={context.capabilities} catalogReleaseId={context.activeConfiguration.catalog.id}
+    {context && activePanel === "Validation rules" && <section className="admin-configuration" aria-labelledby="validation-authoring-heading">
+      <div className="section-heading"><h2 id="validation-authoring-heading">Validation rules</h2></div>
+      <ValidationAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        capabilities={context.capabilities} catalogReleaseId={context.activeConfiguration?.catalog.id || ""}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
-        : <p role="status">Activate a Stationary form and catalog before authoring Validation.</p>}
     </section>}
 
       </div>

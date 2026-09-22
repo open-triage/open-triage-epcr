@@ -7,6 +7,7 @@ import {
   evaluateValidationBundle,
   explainValidationRule,
   formatOccurrenceSource,
+  isNemsisDemographicElementId,
   type ClinicianSession,
   type CompiledValidationBundle,
   type EncounterDocument,
@@ -20,7 +21,7 @@ import {
   type ValidationRuleChanges,
   type ValidationRuleSource,
   type ValidationDiagnostic,
-  type ValidationRulePage,
+  type AuthoringVersionOption, type ValidationRulePage,
   type ValidationRuleProvenance,
   type ValidationRuleSourceKind,
 } from "@open-triage/contracts";
@@ -196,6 +197,20 @@ export class ValidationAuthoringService {
     return rows[0] ? draft(rows[0]) : null;
   }
 
+  async versions(token: string): Promise<AuthoringVersionOption[]> {
+    const session = await this.sessions.requireCapability(token, "validation:read");
+    const rows = await this.dataSource.query<Array<{ id: string; display_name: string; version: number;
+      catalog_release_id: string; active: boolean }>>(`
+      select v.id,v.display_name,v.version,v.catalog_release_id,
+        exists(select 1 from app_identity.active_configuration_bundle active
+          where active.organization_id=$1 and active.validation_version_id=v.id) as active
+      from validation.version v where v.organization_id=$1 and v.status='published'
+      order by v.version desc,v.id desc
+    `, [session.organization.id]);
+    return rows.map((row) => ({ id: row.id, displayName: row.display_name, version: row.version,
+      catalogReleaseId: row.catalog_release_id, status: row.active ? "active" : "published" }));
+  }
+
   async library(token: string, query: Record<string, unknown>): Promise<ValidationRulePage> {
     const session = await this.sessions.requireCapability(token, "validation:read");
     const rows = await this.dataSource.query<VersionRow[]>(`select * from validation.version
@@ -230,7 +245,8 @@ export class ValidationAuthoringService {
         && (!validity || item.validity === validity);
     }).sort((first, second) => first.rule.name.localeCompare(second.rule.name) || first.rule.id.localeCompare(second.rule.id));
     const requestedLimit = Number(query.limit ?? 25);
-    const limit = Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 25;
+    const limit = query.limit === "all" ? filtered.length
+      : Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 25;
     let start = 0;
     if (typeof query.cursor === "string" && query.cursor) {
       try {
@@ -257,13 +273,14 @@ export class ValidationAuthoringService {
       const existing = await manager.query<VersionRow[]>(
         "select * from validation.version where organization_id=$1 and status='draft'", [session.organization.id]);
       if (existing[0]) return draft(existing[0]);
-      const catalogs = await manager.query<Array<{ id: string }>>(`
-        select distinct cr.id from catalog.release cr
+      const catalogs = await manager.query<Array<{ id: string; hidden_element_ids?: string[] }>>(`
+        select distinct cr.id,cr.provenance->'hiddenElementIds' as hidden_element_ids from catalog.release cr
         join forms.form_version fv on fv.catalog_release_id=cr.id and fv.status='published'
         join forms.form f on f.id=fv.form_id and f.organization_id=$1
         where cr.id=$2 and cr.sealed
       `, [session.organization.id, catalogReleaseId]);
       if (!catalogs[0]) throw new UnprocessableEntityException("Validation drafts must bind to a published catalog available to the organization");
+      const hiddenIds = new Set(catalogs[0].hidden_element_ids ?? []);
       const elements = await manager.query<Array<{ element_id: string; name: string; min_occurs: number;
         max_occurs: number | null; group_id: string; group_repeating: boolean;
         agency_required: boolean | null; agency_required_severity: "warning" | "error" | null }>>(`
@@ -281,7 +298,8 @@ export class ValidationAuthoringService {
         where f.organization_id=$1 and fv.catalog_release_id=$2 and fv.status='published' limit 1`,
       [session.organization.id, catalogReleaseId]);
       const versionId = randomUUID();
-      const rules: ValidationRuleSource[] = elements.flatMap((element) => {
+      const rules: ValidationRuleSource[] = elements.filter((element) =>
+        !isNemsisDemographicElementId(element.element_id)).flatMap((element) => {
         const scope = element.group_repeating ? element.group_id : undefined;
         const required = element.agency_required === true ? [{ id: randomUUID(), name: `${element.name} agency required`, enabled: true,
           severity: element.agency_required_severity ?? "error" as const,
@@ -300,7 +318,8 @@ export class ValidationAuthoringService {
           primaryTargetElementId: element.element_id,
           message: `${element.name} permits at most ${element.max_occurs} documented occurrence(s)`,
           source: formatOccurrenceSource(element.element_id, "maximum", element.max_occurs, scope) }] : [];
-        return [...required, ...minimum, ...maximum];
+        return [...required, ...minimum, ...maximum].map((rule) =>
+          hiddenIds.has(element.element_id) ? { ...rule, enabled: false } : rule);
       });
       const form = forms[0];
       if (form) {
@@ -310,7 +329,7 @@ export class ValidationAuthoringService {
         for (const field of fields) {
           if (!field.key || field.source?.kind !== "nemsis" || !field.source.elementId) continue;
           const element = elements.find(({ element_id }) => element_id === field.source!.elementId);
-          if (!element) continue;
+          if (!element || isNemsisDemographicElementId(element.element_id)) continue;
           if (field.required) rules.push({ id: randomUUID(), name: `${element.name} form required`, enabled: true,
             severity: "error", executionTargets: ["live", "sign"], sourceKind: "form",
             primaryTargetElementId: element.element_id, message: `${element.name} is required by the form`,
@@ -364,8 +383,8 @@ export class ValidationAuthoringService {
         const validation = await this.validateRow(manager, existing[0]);
         return draft(existing[0], validation.diagnostics);
       }
-      const catalogs = await manager.query<Array<{ id: string }>>(`
-        select target.id from catalog.release target
+      const catalogs = await manager.query<Array<{ id: string; hidden_element_ids?: string[] }>>(`
+        select target.id,target.provenance->'hiddenElementIds' as hidden_element_ids from catalog.release target
         join catalog.release source on source.id=$3
         where target.id=$1 and target.sealed and target.loaded_at >= source.loaded_at and (
           exists (select 1 from catalog.authoring_draft d
@@ -377,13 +396,35 @@ export class ValidationAuthoringService {
       if (!catalogs[0]) {
         throw new UnprocessableEntityException("The selected Catalog must be the same as or newer than the source and published for this organization");
       }
+      const hiddenIds = new Set(catalogs[0].hidden_element_ids ?? []);
+      const clonedRules = this.rowRules(source).map((rule) => hiddenIds.has(rule.primaryTargetElementId) ||
+        [...hiddenIds].some((id) => rule.source.includes(`"${id}"`)) ? { ...rule, enabled: false } : rule);
       const inserted = mutationRows<VersionRow>(await manager.query(`insert into validation.version
         (id,organization_id,catalog_release_id,rule_id,display_name,source_rule,created_by,cloned_from_id)
         values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8) returning *`,
       [randomUUID(), session.organization.id, catalogReleaseId, source.rule_id, displayName,
-        JSON.stringify(this.rowRules(source)), session.user.id, source.id]));
+        JSON.stringify(clonedRules), session.user.id, source.id]));
       const validation = await this.validateRow(manager, inserted[0]!);
       return draft(inserted[0]!, validation.diagnostics);
+    });
+  }
+
+  async delete(token: string, id: string, input: unknown): Promise<void> {
+    const session = await this.sessions.requireCapability(token, "validation:write");
+    const expectedRevision = record(input).expectedRevision;
+    if (!Number.isSafeInteger(expectedRevision) || Number(expectedRevision) < 1)
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`validation-draft:${session.organization.id}`]);
+      const rows = await manager.query<VersionRow[]>(`select * from validation.version
+        where id=$1 and organization_id=$2 and status='draft' for update`, [id, session.organization.id]);
+      if (!rows[0]) throw new NotFoundException(`Validation draft ${id} was not found`);
+      if (rows[0].revision !== expectedRevision)
+        throw new ConflictException("Validation draft revision is stale");
+      const deleted = mutationRows<Array<{ id: string }>[number]>(await manager.query(`delete from validation.version
+        where id=$1 and organization_id=$2 and status='draft' and revision=$3 returning id`,
+      [id, session.organization.id, expectedRevision]));
+      if (!deleted[0]) throw new ConflictException("Validation draft revision is stale or the version was published");
     });
   }
 
@@ -418,6 +459,9 @@ export class ValidationAuthoringService {
     if (!existing) throw new NotFoundException(`Validation draft ${id} was not found`);
     const existingRules = new Map(this.rowRules(existing).map((rule) => [rule.id, rule]));
     const rules = body.rules.map((value) => {
+      const unchanged = value && typeof value === "object" && !Array.isArray(value)
+        ? existingRules.get((value as Record<string, unknown>).id as string) : undefined;
+      if (unchanged && JSON.stringify(value) === JSON.stringify(unchanged)) return unchanged;
       const parsed = this.rule(value);
       const prior = existingRules.get(parsed.id);
       const { provenance: _provenance, sourceKind: _source, ...editable } = parsed;

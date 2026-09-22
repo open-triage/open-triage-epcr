@@ -1,12 +1,13 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
-import type { ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
+import type { AuthoringVersionOption, ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
 import { catalogFieldsConfiguration } from "../forms/clinical-form-configuration.js";
 import { mutationRows } from "../database/mutation-result.js";
+import { ValidationAuthoringService } from "./validation-authoring.service.js";
 
 type VersionRow = {
   id: string; form_id: string; catalog_release_id: string; cloned_from_id: string | null;
@@ -17,13 +18,14 @@ type VersionRow = {
 
 type ElementRow = {
   element_id: string; element_identity_id: string; base_datatype: string; source_datatype: string;
-  usage: string; definition: Record<string, unknown>; analytical_location: string | null;
+  usage: string; definition: Record<string, unknown>; analytical_location: string | null; hidden?: boolean;
 };
 
 @Injectable()
 export class FormAuthoringService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource, private readonly sessions: ClinicianSessionService,
-    private readonly publication: FormPublicationService) {}
+    private readonly publication: FormPublicationService,
+    @Optional() private readonly validations?: ValidationAuthoringService) {}
 
   async current(token: string): Promise<StationaryFormDraft | null> {
     const session = await this.authorize(token, "forms:read");
@@ -35,9 +37,25 @@ export class FormAuthoringService {
     return this.result(this.dataSource.manager, rows[0]);
   }
 
+  async versions(token: string): Promise<AuthoringVersionOption[]> {
+    const session = await this.authorize(token, "forms:read");
+    const rows = await this.dataSource.query<Array<{ id: string; display_name: string; version: number;
+      catalog_release_id: string; active: boolean }>>(`
+      select fv.id,coalesce(fv.display_name,'Version ' || fv.version) as display_name,fv.version,
+        fv.catalog_release_id,active.form_version_id is not null as active
+      from forms.form_version fv join forms.form f on f.id=fv.form_id
+      left join forms.agency_stationary_default active on active.organization_id=f.organization_id
+        and active.form_version_id=fv.id
+      where f.organization_id=$1 and fv.status='published'
+      order by fv.version desc,fv.id desc
+    `, [session.organization.id]);
+    return rows.map((row) => ({ id: row.id, displayName: row.display_name, version: row.version,
+      catalogReleaseId: row.catalog_release_id, status: row.active ? "active" : "published" }));
+  }
+
   async clone(token: string, input: unknown): Promise<StationaryFormDraft> {
     const session = await this.authorize(token, "forms:write");
-    const { catalogReleaseId, displayName } = this.cloneBody(input);
+    const { catalogReleaseId, displayName, sourceVersionId } = this.cloneBody(input);
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-draft:${session.organization.id}`]);
       const target = await manager.query<Array<{ id: string }>>(`
@@ -58,15 +76,18 @@ export class FormAuthoringService {
       if (!target[0]) throw new NotFoundException("The selected published catalog was not found for this organization");
       const source = await manager.query<Array<VersionRow & { version: number }>>(`
         select fv.* from forms.form_version fv join forms.form f on f.id=fv.form_id
-        join forms.agency_stationary_default active on active.organization_id=f.organization_id
+        left join forms.agency_stationary_default active on active.organization_id=f.organization_id
           and active.form_version_id=fv.id
-        where f.organization_id=$1 and fv.status='published' limit 1
-      `, [session.organization.id]);
-      if (!source[0]) throw new NotFoundException("No active Stationary form is available to clone");
+        where f.organization_id=$1 and fv.status='published' and
+          (($2::uuid is null and active.form_version_id is not null) or fv.id=$2::uuid) limit 1
+      `, [session.organization.id, sourceVersionId ?? null]);
+      if (!source[0]) throw new NotFoundException("The selected Stationary form version is unavailable");
       const existing = await manager.query<VersionRow[]>(`
         select * from forms.form_version where form_id=$1 and status='draft' for update
       `, [source[0].form_id]);
       if (existing[0]) {
+        if (sourceVersionId && existing[0].cloned_from_id !== sourceVersionId)
+          throw new ConflictException("A Stationary form draft already exists from another version");
         if (existing[0].catalog_release_id !== catalogReleaseId)
           throw new ConflictException("A Stationary form draft is already pinned to another catalog");
         return this.result(manager, existing[0]);
@@ -101,6 +122,8 @@ export class FormAuthoringService {
       select element_id,name,description,base_datatype,group_path
       from catalog.element_definition
       where release_id=$1 and element_id like 'e%.%'
+        and element_id not in (select jsonb_array_elements_text(coalesce(
+          (select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)))
         and ($2='' or position($2 in lower(element_id || ' ' || name || ' ' || description)) > 0)
       order by section,group_path,element_id
     `, [drafts[0].catalog_release_id, query]);
@@ -187,6 +210,27 @@ export class FormAuthoringService {
   async activate(token: string, id: string, input: unknown): Promise<StationaryFormActivation> {
     const session = await this.authorize(token, "forms:publish");
     const changeNote = this.changeNote(input);
+    const validationVersionId = input && typeof input === "object"
+      ? (input as Record<string, unknown>).validationVersionId : undefined;
+    if (validationVersionId !== undefined) {
+      if (typeof validationVersionId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(validationVersionId)) {
+        throw new UnprocessableEntityException("validationVersionId must be a UUID");
+      }
+      const targets = await this.dataSource.query<Array<{ form_id: string; catalog_release_id: string }>>(`
+        select fv.form_id,fv.catalog_release_id from forms.form_version fv
+        join forms.form f on f.id=fv.form_id
+        where fv.id=$1 and f.organization_id=$2 and fv.status='published'
+      `, [id, session.organization.id]);
+      if (!targets[0]) throw new NotFoundException(`Published form version ${id} was not found`);
+      if (!this.validations) throw new UnprocessableEntityException("Complete configuration activation is unavailable");
+      const activation = await this.validations.activate(token, validationVersionId, {
+        formVersionId: id, catalogReleaseId: targets[0].catalog_release_id, changeNote
+      });
+      return { organizationId: activation.organizationId, formVersionId: id, formId: targets[0].form_id,
+        catalogReleaseId: activation.catalogReleaseId, activatedAt: activation.activatedAt,
+        previousFormVersionId: activation.previousFormVersionId,
+        previousCatalogReleaseId: activation.previousCatalogReleaseId };
+    }
     return this.dataSource.transaction("SERIALIZABLE", async (manager) => {
       await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`form-activation:${session.organization.id}`]);
       const target = await manager.query<Array<{ form_id: string; catalog_release_id: string; definition_sha256: string }>>(`
@@ -195,6 +239,12 @@ export class FormAuthoringService {
         where fv.id=$1 and f.organization_id=$2 and fv.status='published'
       `, [id, session.organization.id]);
       if (!target[0]) throw new NotFoundException(`Published form version ${id} was not found`);
+      const active = await manager.query<Array<{ form_version_id: string }>>(`
+        select form_version_id from app_identity.active_configuration_bundle
+        where organization_id=$1`, [session.organization.id]);
+      if (active[0] && active[0].form_version_id !== id) {
+        throw new UnprocessableEntityException("Select compatible published Validation rules to activate this Form and Catalog together");
+      }
       const previous = await manager.query<Array<{ form_version_id: string; catalog_release_id: string }>>(`
         select d.form_version_id,fv.catalog_release_id
         from forms.agency_stationary_default d join forms.form_version fv on fv.id=d.form_version_id
@@ -234,7 +284,10 @@ export class FormAuthoringService {
     `, [sourceReleaseId, elementIds]) : [];
     const targets = elementIds.length ? await manager.query<ElementRow[]>(`
       select e.element_id,e.element_identity_id,e.base_datatype,e.source_datatype,e.usage,e.definition,
-        m.analytical_location from catalog.element_definition e
+        m.analytical_location,
+        e.element_id in (select jsonb_array_elements_text(coalesce(
+          (select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb))) as hidden
+        from catalog.element_definition e
       left join catalog.analytics_element_mapping m on m.release_id=e.release_id and m.element_id=e.element_id
       where e.release_id=$1 and e.element_id=any($2::text[])
     `, [targetReleaseId, elementIds]) : [];
@@ -247,6 +300,7 @@ export class FormAuthoringService {
       const path = `sections[${sectionIndex}].fields[${fieldIndex}].source.elementId`;
       const before = oldById.get(field.source.elementId);
       const after = newById.get(field.source.elementId);
+      if (after?.hidden) return false;
       if (!after) {
         diagnostics.push({ code: "missing-reference", path, message: `${field.source.elementId} is missing from the selected catalog` });
         return false;
@@ -261,7 +315,7 @@ export class FormAuthoringService {
         return false;
       }
       return true;
-    }) }));
+    }) })).filter((section) => section.fields.length > 0);
     return { definition: { ...definition, sections }, diagnostics };
   }
 
@@ -281,11 +335,15 @@ export class FormAuthoringService {
       definition: this.definition((input as Record<string, unknown>).definition) };
   }
 
-  private cloneBody(input: unknown): { catalogReleaseId: string; displayName: string } {
+  private cloneBody(input: unknown): { catalogReleaseId: string; displayName: string; sourceVersionId?: string } {
     const id = input && typeof input === "object" ? (input as Record<string, unknown>).catalogReleaseId : undefined;
     if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
       throw new UnprocessableEntityException("catalogReleaseId must be a UUID");
-    return { catalogReleaseId: id, displayName: this.displayName(input) };
+    const sourceVersionId = (input as Record<string, unknown>).sourceVersionId;
+    if (sourceVersionId !== undefined && (typeof sourceVersionId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sourceVersionId)))
+      throw new UnprocessableEntityException("sourceVersionId must be a UUID");
+    return { catalogReleaseId: id, displayName: this.displayName(input), ...(sourceVersionId ? { sourceVersionId } : {}) };
   }
 
   private publicationBody(input: unknown): { expectedRevision: number; definitionSha256: string; displayName: string; changeNote: string } {
