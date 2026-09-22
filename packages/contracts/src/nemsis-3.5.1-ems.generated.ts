@@ -5,43 +5,43 @@ export const NEMSIS_351_EMS_SOURCE_SHA256 = "b096fadc0efb1606dbee4d55d610562e895
 export const NEMSIS_351_EMS_NORMALIZATIONS = {
   "nemSch_e003": {
     "primaryTargetElementId": "eSituation.01",
-    "source": "when hasPertinentNegative(\"eSituation.01\", \"8801023\")\nrequire all(emptyPayload(\"eSituation.01\"), not(hasNotValue(\"eSituation.01\")))"
+    "source": "when all(not(undocumented(\"eSituation.01\")), hasPertinentNegative(\"eSituation.01\", \"8801023\"))\nrequire all(emptyPayload(\"eSituation.01\"), not(hasNotValue(\"eSituation.01\")))"
   },
   "nemSch_e188": {
     "primaryTargetElementId": "eSituation.18",
-    "source": "when hasPertinentNegative(\"eSituation.18\", \"8801023\")\nrequire all(emptyPayload(\"eSituation.18\"), not(hasNotValue(\"eSituation.18\")))"
+    "source": "when all(not(undocumented(\"eSituation.18\")), hasPertinentNegative(\"eSituation.18\", \"8801023\"))\nrequire all(emptyPayload(\"eSituation.18\"), not(hasNotValue(\"eSituation.18\")))"
   },
   "nemSch_e189": {
     "primaryTargetElementId": "eArrest.14",
-    "source": "when hasPertinentNegative(\"eArrest.14\", \"8801023\")\nrequire all(emptyPayload(\"eArrest.14\"), not(hasNotValue(\"eArrest.14\")))"
+    "source": "when all(not(undocumented(\"eArrest.14\")), hasPertinentNegative(\"eArrest.14\", \"8801023\"))\nrequire all(emptyPayload(\"eArrest.14\"), not(hasNotValue(\"eArrest.14\")))"
   },
   "nemSch_e190": {
     "primaryTargetElementId": "ePatient.15",
-    "source": "for each(\"ePatient.AgeGroup\")\nwhen hasPertinentNegative(\"ePatient.15\", \"8801029\")\nrequire all(not(emptyPayload(\"ePatient.15\")), not(hasNotValue(\"ePatient.15\")))"
+    "source": "for each(\"ePatient.AgeGroup\")\nwhen all(not(undocumented(\"ePatient.15\")), hasPertinentNegative(\"ePatient.15\", \"8801029\"))\nrequire all(not(emptyPayload(\"ePatient.15\")), not(hasNotValue(\"ePatient.15\")))"
   },
   "nemSch_e004": {
     "primaryTargetElementId": "eSituation.01",
-    "source": "when hasPertinentNegative(\"eSituation.01\", \"8801029\")\nrequire all(not(emptyPayload(\"eSituation.01\")), not(hasNotValue(\"eSituation.01\")))"
+    "source": "when all(not(undocumented(\"eSituation.01\")), hasPertinentNegative(\"eSituation.01\", \"8801029\"))\nrequire all(not(emptyPayload(\"eSituation.01\")), not(hasNotValue(\"eSituation.01\")))"
   },
   "nemSch_e191": {
     "primaryTargetElementId": "eSituation.18",
-    "source": "when hasPertinentNegative(\"eSituation.18\", \"8801029\")\nrequire all(not(emptyPayload(\"eSituation.18\")), not(hasNotValue(\"eSituation.18\")))"
+    "source": "when all(not(undocumented(\"eSituation.18\")), hasPertinentNegative(\"eSituation.18\", \"8801029\"))\nrequire all(not(emptyPayload(\"eSituation.18\")), not(hasNotValue(\"eSituation.18\")))"
   },
   "nemSch_e192": {
     "primaryTargetElementId": "eArrest.14",
-    "source": "when hasPertinentNegative(\"eArrest.14\", \"8801029\")\nrequire all(not(emptyPayload(\"eArrest.14\")), not(hasNotValue(\"eArrest.14\")))"
+    "source": "when all(not(undocumented(\"eArrest.14\")), hasPertinentNegative(\"eArrest.14\", \"8801029\"))\nrequire all(not(emptyPayload(\"eArrest.14\")), not(hasNotValue(\"eArrest.14\")))"
   },
   "nemSch_e005": {
     "primaryTargetElementId": "eSituation.10",
-    "source": "when hasPertinentNegative(\"eSituation.10\")\nrequire all(not(emptyPayload(\"eSituation.10\")), not(hasNotValue(\"eSituation.10\")))"
+    "source": "when all(not(undocumented(\"eSituation.10\")), hasPertinentNegative(\"eSituation.10\"))\nrequire all(not(emptyPayload(\"eSituation.10\")), not(hasNotValue(\"eSituation.10\")))"
   },
   "nemSch_e006": {
     "primaryTargetElementId": "eMedications.03",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen hasPertinentNegative(\"eMedications.03\")\nrequire all(not(emptyPayload(\"eMedications.03\")), not(hasNotValue(\"eMedications.03\")))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.03\")), hasPertinentNegative(\"eMedications.03\"))\nrequire all(not(emptyPayload(\"eMedications.03\")), not(hasNotValue(\"eMedications.03\")))"
   },
   "nemSch_e007": {
     "primaryTargetElementId": "eProcedures.03",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen hasPertinentNegative(\"eProcedures.03\")\nrequire all(not(emptyPayload(\"eProcedures.03\")), not(hasNotValue(\"eProcedures.03\")))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.03\")), hasPertinentNegative(\"eProcedures.03\"))\nrequire all(not(emptyPayload(\"eProcedures.03\")), not(hasNotValue(\"eProcedures.03\")))"
   },
   "nemSch_e008": {
     "primaryTargetElementId": "*",
@@ -65,219 +65,219 @@ export const NEMSIS_351_EMS_NORMALIZATIONS = {
   },
   "nemSch_e011": {
     "primaryTargetElementId": "eResponse.01",
-    "source": "require compare(\"eResponse.01\", \"equal\", \"dAgency.02\")"
+    "source": "when not(undocumented(\"eResponse.01\"))\nrequire compare(\"eResponse.01\", \"equal\", \"dAgency.02\")"
   },
   "nemSch_e012": {
     "primaryTargetElementId": "eResponse.08",
-    "source": "when compareValue(\"eResponse.08\", \"equal\", \"2208013\")\nrequire all(minimum(\"eResponse.08\", 1), maximum(\"eResponse.08\", 1))"
+    "source": "when all(not(undocumented(\"eResponse.08\")), compareValue(\"eResponse.08\", \"equal\", \"2208013\"))\nrequire all(minimum(\"eResponse.08\", 1), maximum(\"eResponse.08\", 1))"
   },
   "nemSch_e013": {
     "primaryTargetElementId": "eResponse.09",
-    "source": "when compareValue(\"eResponse.09\", \"equal\", \"2209011\")\nrequire all(minimum(\"eResponse.09\", 1), maximum(\"eResponse.09\", 1))"
+    "source": "when all(not(undocumented(\"eResponse.09\")), compareValue(\"eResponse.09\", \"equal\", \"2209011\"))\nrequire all(minimum(\"eResponse.09\", 1), maximum(\"eResponse.09\", 1))"
   },
   "nemSch_e014": {
     "primaryTargetElementId": "eResponse.10",
-    "source": "when compareValue(\"eResponse.10\", \"equal\", \"2210017\")\nrequire all(minimum(\"eResponse.10\", 1), maximum(\"eResponse.10\", 1))"
+    "source": "when all(not(undocumented(\"eResponse.10\")), compareValue(\"eResponse.10\", \"equal\", \"2210017\"))\nrequire all(minimum(\"eResponse.10\", 1), maximum(\"eResponse.10\", 1))"
   },
   "nemSch_e015": {
     "primaryTargetElementId": "eResponse.11",
-    "source": "when compareValue(\"eResponse.11\", \"equal\", \"2211011\")\nrequire all(minimum(\"eResponse.11\", 1), maximum(\"eResponse.11\", 1))"
+    "source": "when all(not(undocumented(\"eResponse.11\")), compareValue(\"eResponse.11\", \"equal\", \"2211011\"))\nrequire all(minimum(\"eResponse.11\", 1), maximum(\"eResponse.11\", 1))"
   },
   "nemSch_e016": {
     "primaryTargetElementId": "eResponse.12",
-    "source": "when compareValue(\"eResponse.12\", \"equal\", \"2212015\")\nrequire all(minimum(\"eResponse.12\", 1), maximum(\"eResponse.12\", 1))"
+    "source": "when all(not(undocumented(\"eResponse.12\")), compareValue(\"eResponse.12\", \"equal\", \"2212015\"))\nrequire all(minimum(\"eResponse.12\", 1), maximum(\"eResponse.12\", 1))"
   },
   "nemSch_e017": {
     "primaryTargetElementId": "eTimes.03",
-    "source": "when not(any(undocumented(\"eTimes.03\"), emptyPayload(\"eTimes.03\")))\nrequire any(any(undocumented(\"eTimes.01\"), emptyPayload(\"eTimes.01\")), timeCompare(\"eTimes.03\", \"same-or-after\", \"eTimes.01\"))"
+    "source": "when all(not(undocumented(\"eTimes.03\")), not(any(undocumented(\"eTimes.03\"), emptyPayload(\"eTimes.03\"))))\nrequire any(any(undocumented(\"eTimes.01\"), emptyPayload(\"eTimes.01\")), timeCompare(\"eTimes.03\", \"same-or-after\", \"eTimes.01\"))"
   },
   "nemSch_e018": {
     "primaryTargetElementId": "eTimes.05",
-    "source": "when any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eTimes.05\")), any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e019": {
     "primaryTargetElementId": "eTimes.05",
-    "source": "when not(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")))\nrequire timeCompare(\"eTimes.05\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.05\")), not(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\"))))\nrequire timeCompare(\"eTimes.05\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e020": {
     "primaryTargetElementId": "eTimes.06",
-    "source": "when any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eTimes.06\")), any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e021": {
     "primaryTargetElementId": "eTimes.06",
-    "source": "when not(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")))\nrequire timeCompare(\"eTimes.06\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.06\")), not(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\"))))\nrequire timeCompare(\"eTimes.06\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e022": {
     "primaryTargetElementId": "eTimes.06",
-    "source": "when not(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.06\", \"same-or-after\", \"eTimes.05\"))"
+    "source": "when all(not(undocumented(\"eTimes.06\")), not(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\"))))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.06\", \"same-or-after\", \"eTimes.05\"))"
   },
   "nemSch_e023": {
     "primaryTargetElementId": "eTimes.07",
-    "source": "when any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\"))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
+    "source": "when all(not(undocumented(\"eTimes.07\")), any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
   },
   "nemSch_e024": {
     "primaryTargetElementId": "eTimes.07",
-    "source": "when not(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")))\nrequire timeCompare(\"eTimes.07\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.07\")), not(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\"))))\nrequire timeCompare(\"eTimes.07\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e025": {
     "primaryTargetElementId": "eTimes.09",
-    "source": "when any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eTimes.09\")), any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e026": {
     "primaryTargetElementId": "eTimes.09",
-    "source": "when not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")))\nrequire timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.09\")), not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\"))))\nrequire timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e027": {
     "primaryTargetElementId": "eTimes.09",
-    "source": "when not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.05\"))"
+    "source": "when all(not(undocumented(\"eTimes.09\")), not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\"))))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.05\"))"
   },
   "nemSch_e028": {
     "primaryTargetElementId": "eTimes.09",
-    "source": "when not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.06\"))"
+    "source": "when all(not(undocumented(\"eTimes.09\")), not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\"))))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.06\"))"
   },
   "nemSch_e029": {
     "primaryTargetElementId": "eTimes.09",
-    "source": "when not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.07\"))"
+    "source": "when all(not(undocumented(\"eTimes.09\")), not(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.09\", \"same-or-after\", \"eTimes.07\"))"
   },
   "nemSch_e030": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "when all(not(undocumented(\"eTimes.11\")), any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e031": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.11\")), not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))))\nrequire timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e032": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.05\"))"
+    "source": "when all(not(undocumented(\"eTimes.11\")), not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.05\"))"
   },
   "nemSch_e033": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.06\"))"
+    "source": "when all(not(undocumented(\"eTimes.11\")), not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.06\"))"
   },
   "nemSch_e034": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.07\"))"
+    "source": "when all(not(undocumented(\"eTimes.11\")), not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.07\"))"
   },
   "nemSch_e035": {
     "primaryTargetElementId": "eTimes.11",
-    "source": "when not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.09\"))"
+    "source": "when all(not(undocumented(\"eTimes.11\")), not(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\"))))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.11\", \"same-or-after\", \"eTimes.09\"))"
   },
   "nemSch_e036": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e037": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e038": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.05\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.05\"))"
   },
   "nemSch_e039": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.06\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.06\"))"
   },
   "nemSch_e040": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.07\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.07\"))"
   },
   "nemSch_e041": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.09\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.09\"))"
   },
   "nemSch_e042": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.11\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eTimes.11\"))"
   },
   "nemSch_e043": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eSituation.01\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eSituation.01\"))"
   },
   "nemSch_e044": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eSituation.18\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eSituation.18\"))"
   },
   "nemSch_e045": {
     "primaryTargetElementId": "eTimes.12",
-    "source": "when not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")))\nrequire any(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eArrest.14\"))"
+    "source": "when all(not(undocumented(\"eTimes.12\")), not(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\"))))\nrequire any(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\")), timeCompare(\"eTimes.12\", \"same-or-after\", \"eArrest.14\"))"
   },
   "nemSch_e046": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.03\")"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e047": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.05\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.05\"), emptyPayload(\"eTimes.05\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.05\"))"
   },
   "nemSch_e048": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.06\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.06\"), emptyPayload(\"eTimes.06\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.06\"))"
   },
   "nemSch_e049": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.07\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.07\"))"
   },
   "nemSch_e050": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.09\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.09\"), emptyPayload(\"eTimes.09\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.09\"))"
   },
   "nemSch_e051": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.11\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.11\"), emptyPayload(\"eTimes.11\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.11\"))"
   },
   "nemSch_e052": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.12\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eTimes.12\"))"
   },
   "nemSch_e053": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eSituation.01\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eSituation.01\"))"
   },
   "nemSch_e054": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eSituation.18\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eSituation.18\"))"
   },
   "nemSch_e055": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire any(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eArrest.14\"))"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire any(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\")), timeCompare(\"eTimes.13\", \"same-or-after\", \"eArrest.14\"))"
   },
   "nemSch_e056": {
     "primaryTargetElementId": "eTimes.13",
-    "source": "when not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\")))\nrequire timeCompare(\"eTimes.13\", \"same-or-before\", \"evaluation-time\", 3600)"
+    "source": "when all(not(undocumented(\"eTimes.13\")), not(any(undocumented(\"eTimes.13\"), emptyPayload(\"eTimes.13\"))))\nrequire timeCompare(\"eTimes.13\", \"same-or-before\", \"evaluation-time\", 3600)"
   },
   "nemSch_e057": {
     "primaryTargetElementId": "ePatient.07",
-    "source": "when any(undocumented(\"ePatient.07\"), emptyPayload(\"ePatient.07\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "when all(not(undocumented(\"ePatient.07\")), any(undocumented(\"ePatient.07\"), emptyPayload(\"ePatient.07\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e058": {
     "primaryTargetElementId": "ePatient.07",
-    "source": "when not(any(undocumented(\"ePatient.07\"), emptyPayload(\"ePatient.07\")))\nrequire startsWith(\"ePatient.07\", \"ePatient.08\")"
+    "source": "when all(not(undocumented(\"ePatient.07\")), not(any(undocumented(\"ePatient.07\"), emptyPayload(\"ePatient.07\"))))\nrequire startsWith(\"ePatient.07\", \"ePatient.08\")"
   },
   "nemSch_e059": {
     "primaryTargetElementId": "ePatient.08",
-    "source": "when any(undocumented(\"ePatient.08\"), emptyPayload(\"ePatient.08\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "when all(not(undocumented(\"ePatient.08\")), any(undocumented(\"ePatient.08\"), emptyPayload(\"ePatient.08\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e060": {
     "primaryTargetElementId": "ePatient.09",
-    "source": "when any(undocumented(\"ePatient.09\"), emptyPayload(\"ePatient.09\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "when all(not(undocumented(\"ePatient.09\")), any(undocumented(\"ePatient.09\"), emptyPayload(\"ePatient.09\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e062": {
     "primaryTargetElementId": "ePatient.14",
-    "source": "when any(undocumented(\"ePatient.14\"), emptyPayload(\"ePatient.14\"))\nrequire any(not(any(undocumented(\"ePatient.14\"), emptyPayload(\"ePatient.14\"))), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"ePatient.14\")), any(undocumented(\"ePatient.14\"), emptyPayload(\"ePatient.14\")))\nrequire any(not(any(undocumented(\"ePatient.14\"), emptyPayload(\"ePatient.14\"))), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e063": {
     "primaryTargetElementId": "ePatient.15",
-    "source": "for each(\"ePatient.AgeGroup\")\nwhen any(undocumented(\"ePatient.15\"), emptyPayload(\"ePatient.15\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "for each(\"ePatient.AgeGroup\")\nwhen all(not(undocumented(\"ePatient.15\")), any(undocumented(\"ePatient.15\"), emptyPayload(\"ePatient.15\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e064": {
     "primaryTargetElementId": "ePatient.16",
-    "source": "for each(\"ePatient.AgeGroup\")\nwhen any(undocumented(\"ePatient.16\"), emptyPayload(\"ePatient.16\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "for each(\"ePatient.AgeGroup\")\nwhen all(not(undocumented(\"ePatient.16\")), any(undocumented(\"ePatient.16\"), emptyPayload(\"ePatient.16\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e065": {
     "primaryTargetElementId": "ePatient.16",
-    "source": "for each(\"ePatient.AgeGroup\")\nwhen any(undocumented(\"ePatient.16\"), emptyPayload(\"ePatient.16\"))\nrequire any(undocumented(\"ePatient.15\"), emptyPayload(\"ePatient.15\"))"
+    "source": "for each(\"ePatient.AgeGroup\")\nwhen all(not(undocumented(\"ePatient.16\")), any(undocumented(\"ePatient.16\"), emptyPayload(\"ePatient.16\")))\nrequire any(undocumented(\"ePatient.15\"), emptyPayload(\"ePatient.15\"))"
   },
   "nemSch_e193": {
     "primaryTargetElementId": "ePatient.25",
@@ -285,423 +285,423 @@ export const NEMSIS_351_EMS_NORMALIZATIONS = {
   },
   "nemSch_e067": {
     "primaryTargetElementId": "eScene.06",
-    "source": "require any(member(\"eScene.06\", \"2707001\", \"2707005\"), compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\"))"
+    "source": "when not(undocumented(\"eScene.06\"))\nrequire any(member(\"eScene.06\", \"2707001\", \"2707005\"), compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\"))"
   },
   "nemSch_e068": {
     "primaryTargetElementId": "eScene.06",
-    "source": "require any(compareValue(\"eScene.06\", \"equal\", \"2707001\"), compareValue(\"eScene.07\", \"not-equal\", \"9923003\"))"
+    "source": "when not(undocumented(\"eScene.06\"))\nrequire any(compareValue(\"eScene.06\", \"equal\", \"2707001\"), compareValue(\"eScene.07\", \"not-equal\", \"9923003\"))"
   },
   "nemSch_e069": {
     "primaryTargetElementId": "eScene.08",
-    "source": "when any(undocumented(\"eScene.08\"), emptyPayload(\"eScene.08\"))\nrequire compareValue(\"eScene.07\", \"not-equal\", \"9923003\")"
+    "source": "when all(not(undocumented(\"eScene.08\")), any(undocumented(\"eScene.08\"), emptyPayload(\"eScene.08\")))\nrequire compareValue(\"eScene.07\", \"not-equal\", \"9923003\")"
   },
   "nemSch_e070": {
     "primaryTargetElementId": "eScene.09",
-    "source": "when any(undocumented(\"eScene.09\"), emptyPayload(\"eScene.09\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eScene.09\")), any(undocumented(\"eScene.09\"), emptyPayload(\"eScene.09\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e071": {
     "primaryTargetElementId": "eScene.18",
-    "source": "when any(undocumented(\"eScene.18\"), emptyPayload(\"eScene.18\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eScene.18\")), any(undocumented(\"eScene.18\"), emptyPayload(\"eScene.18\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e072": {
     "primaryTargetElementId": "eScene.19",
-    "source": "when any(undocumented(\"eScene.19\"), emptyPayload(\"eScene.19\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eScene.19\")), any(undocumented(\"eScene.19\"), emptyPayload(\"eScene.19\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e073": {
     "primaryTargetElementId": "eScene.21",
-    "source": "when any(undocumented(\"eScene.21\"), emptyPayload(\"eScene.21\"))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
+    "source": "when all(not(undocumented(\"eScene.21\")), any(undocumented(\"eScene.21\"), emptyPayload(\"eScene.21\")))\nrequire compareValue(\"eDisposition.27\", \"equal\", \"4227005\")"
   },
   "nemSch_e074": {
     "primaryTargetElementId": "eScene.21",
-    "source": "when not(any(undocumented(\"eScene.21\"), emptyPayload(\"eScene.21\")))\nrequire startsWith(\"eScene.21\", \"eScene.18\")"
+    "source": "when all(not(undocumented(\"eScene.21\")), not(any(undocumented(\"eScene.21\"), emptyPayload(\"eScene.21\"))))\nrequire startsWith(\"eScene.21\", \"eScene.18\")"
   },
   "nemSch_e075": {
     "primaryTargetElementId": "eSituation.01",
-    "source": "when any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\"))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eSituation.01\")), any(undocumented(\"eSituation.01\"), emptyPayload(\"eSituation.01\")))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e076": {
     "primaryTargetElementId": "eSituation.02",
-    "source": "require any(not(any(undocumented(\"eSituation.02\"), emptyPayload(\"eSituation.02\"))), compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when not(undocumented(\"eSituation.02\"))\nrequire any(not(any(undocumented(\"eSituation.02\"), emptyPayload(\"eSituation.02\"))), compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e077": {
     "primaryTargetElementId": "eSituation.02",
-    "source": "require any(compareValue(\"eSituation.02\", \"equal\", \"9922005\"), not(any(matches(\"eSituation.09\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.10\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.11\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.12\", \"^(S|T(0\\\\d|1[0-4]))\"))))"
+    "source": "when not(undocumented(\"eSituation.02\"))\nrequire any(compareValue(\"eSituation.02\", \"equal\", \"9922005\"), not(any(matches(\"eSituation.09\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.10\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.11\", \"^(S|T(0\\\\d|1[0-4]))\"), matches(\"eSituation.12\", \"^(S|T(0\\\\d|1[0-4]))\"))))"
   },
   "nemSch_e080": {
     "primaryTargetElementId": "eSituation.09",
-    "source": "when any(undocumented(\"eSituation.09\"), emptyPayload(\"eSituation.09\"))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eSituation.09\")), any(undocumented(\"eSituation.09\"), emptyPayload(\"eSituation.09\")))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e081": {
     "primaryTargetElementId": "eSituation.10",
-    "source": "when not(any(undocumented(\"eSituation.10\"), emptyPayload(\"eSituation.10\")))\nrequire not(any(undocumented(\"eSituation.09\"), emptyPayload(\"eSituation.09\")))"
+    "source": "when all(not(undocumented(\"eSituation.10\")), not(any(undocumented(\"eSituation.10\"), emptyPayload(\"eSituation.10\"))))\nrequire not(any(undocumented(\"eSituation.09\"), emptyPayload(\"eSituation.09\")))"
   },
   "nemSch_e082": {
     "primaryTargetElementId": "eSituation.11",
-    "source": "when any(undocumented(\"eSituation.11\"), emptyPayload(\"eSituation.11\"))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eSituation.11\")), any(undocumented(\"eSituation.11\"), emptyPayload(\"eSituation.11\")))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e083": {
     "primaryTargetElementId": "eSituation.12",
-    "source": "when not(any(undocumented(\"eSituation.12\"), emptyPayload(\"eSituation.12\")))\nrequire not(any(undocumented(\"eSituation.11\"), emptyPayload(\"eSituation.11\")))"
+    "source": "when all(not(undocumented(\"eSituation.12\")), not(any(undocumented(\"eSituation.12\"), emptyPayload(\"eSituation.12\"))))\nrequire not(any(undocumented(\"eSituation.11\"), emptyPayload(\"eSituation.11\")))"
   },
   "nemSch_e084": {
     "primaryTargetElementId": "eSituation.13",
-    "source": "when any(undocumented(\"eSituation.13\"), emptyPayload(\"eSituation.13\"))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eSituation.13\")), any(undocumented(\"eSituation.13\"), emptyPayload(\"eSituation.13\")))\nrequire any(compareValue(\"eResponse.05\", \"not-equal\", \"2205001\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e085": {
     "primaryTargetElementId": "eSituation.18",
-    "source": "when any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\"))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(member(\"eArrest.01\", \"3001003\", \"3001005\")))"
+    "source": "when all(not(undocumented(\"eSituation.18\")), any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(member(\"eArrest.01\", \"3001003\", \"3001005\")))"
   },
   "nemSch_e086": {
     "primaryTargetElementId": "eSituation.18",
-    "source": "when any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\"))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(compareValue(\"eVitals.29\", \"equal\", \"3329005\")))"
+    "source": "when all(not(undocumented(\"eSituation.18\")), any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(compareValue(\"eVitals.29\", \"equal\", \"3329005\")))"
   },
   "nemSch_e087": {
     "primaryTargetElementId": "eSituation.18",
-    "source": "when any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\"))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(member(\"eVitals.03\", \"9901051\", \"9901053\", \"9901055\", \"9901057\", \"9901058\")))"
+    "source": "when all(not(undocumented(\"eSituation.18\")), any(undocumented(\"eSituation.18\"), emptyPayload(\"eSituation.18\")))\nrequire any(compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"), not(member(\"eVitals.03\", \"9901051\", \"9901053\", \"9901055\", \"9901057\", \"9901058\")))"
   },
   "nemSch_e088": {
     "primaryTargetElementId": "eSituation.20",
-    "source": "when not(any(undocumented(\"eSituation.20\"), emptyPayload(\"eSituation.20\")))\nrequire member(\"eResponse.05\", \"2205005\", \"2205007\", \"2205015\", \"2205017\", \"2205019\")"
+    "source": "when all(not(undocumented(\"eSituation.20\")), not(any(undocumented(\"eSituation.20\"), emptyPayload(\"eSituation.20\"))))\nrequire member(\"eResponse.05\", \"2205005\", \"2205007\", \"2205015\", \"2205017\", \"2205019\")"
   },
   "nemSch_e089": {
     "primaryTargetElementId": "eInjury.01",
-    "source": "when any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\"))\nrequire any(not(any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\"))), compareValue(\"eSituation.02\", \"not-equal\", \"9922005\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eInjury.01\")), any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\")))\nrequire any(not(any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\"))), compareValue(\"eSituation.02\", \"not-equal\", \"9922005\"), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e090": {
     "primaryTargetElementId": "eInjury.01",
-    "source": "when not(any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\")))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
+    "source": "when all(not(undocumented(\"eInjury.01\")), not(any(undocumented(\"eInjury.01\"), emptyPayload(\"eInjury.01\"))))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
   },
   "nemSch_e091": {
     "primaryTargetElementId": "eInjury.03",
-    "source": "when not(any(undocumented(\"eInjury.03\"), emptyPayload(\"eInjury.03\")))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
+    "source": "when all(not(undocumented(\"eInjury.03\")), not(any(undocumented(\"eInjury.03\"), emptyPayload(\"eInjury.03\"))))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
   },
   "nemSch_e092": {
     "primaryTargetElementId": "eInjury.04",
-    "source": "when not(any(undocumented(\"eInjury.04\"), emptyPayload(\"eInjury.04\")))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
+    "source": "when all(not(undocumented(\"eInjury.04\")), not(any(undocumented(\"eInjury.04\"), emptyPayload(\"eInjury.04\"))))\nrequire compareValue(\"eSituation.02\", \"equal\", \"9922005\")"
   },
   "nemSch_e093": {
     "primaryTargetElementId": "eArrest.02",
-    "source": "when any(undocumented(\"eArrest.02\"), emptyPayload(\"eArrest.02\"))\nrequire any(not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eArrest.02\")), any(undocumented(\"eArrest.02\"), emptyPayload(\"eArrest.02\")))\nrequire any(not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e094": {
     "primaryTargetElementId": "eArrest.02",
-    "source": "when not(any(undocumented(\"eArrest.02\"), emptyPayload(\"eArrest.02\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.02\")), not(any(undocumented(\"eArrest.02\"), emptyPayload(\"eArrest.02\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e095": {
     "primaryTargetElementId": "eArrest.03",
-    "source": "require any(not(any(undocumented(\"eArrest.03\"), emptyPayload(\"eArrest.03\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when not(undocumented(\"eArrest.03\"))\nrequire any(not(any(undocumented(\"eArrest.03\"), emptyPayload(\"eArrest.03\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e096": {
     "primaryTargetElementId": "eArrest.03",
-    "source": "require any(not(not(any(undocumented(\"eArrest.03\"), emptyPayload(\"eArrest.03\")))), member(\"eArrest.01\", \"3001003\", \"3001005\"))"
+    "source": "when not(undocumented(\"eArrest.03\"))\nrequire any(not(not(any(undocumented(\"eArrest.03\"), emptyPayload(\"eArrest.03\")))), member(\"eArrest.01\", \"3001003\", \"3001005\"))"
   },
   "nemSch_e097": {
     "primaryTargetElementId": "eArrest.03",
-    "source": "require not(all(member(\"eArrest.03\", \"3003001\", \"3003003\", \"3003005\"), member(\"eArrest.03\", \"3003007\", \"3003009\", \"3003011\")))"
+    "source": "when not(undocumented(\"eArrest.03\"))\nrequire not(all(member(\"eArrest.03\", \"3003001\", \"3003003\", \"3003005\"), member(\"eArrest.03\", \"3003007\", \"3003009\", \"3003011\")))"
   },
   "nemSch_e098": {
     "primaryTargetElementId": "eArrest.03",
-    "source": "require any(compareValue(\"eArrest.03\", \"equal\", \"3003005\"), not(member(\"eArrest.09\", \"3009001\", \"3009003\", \"3009005\", \"3009007\", \"3009009\", \"3009011\", \"3009021\")))"
+    "source": "when not(undocumented(\"eArrest.03\"))\nrequire any(compareValue(\"eArrest.03\", \"equal\", \"3003005\"), not(member(\"eArrest.09\", \"3009001\", \"3009003\", \"3009005\", \"3009007\", \"3009009\", \"3009011\", \"3009021\")))"
   },
   "nemSch_e099": {
     "primaryTargetElementId": "eArrest.03",
-    "source": "require any(compareValue(\"eArrest.03\", \"equal\", \"3003003\"), not(member(\"eArrest.09\", \"3009009\", \"3009013\", \"3009015\", \"3009017\", \"3009019\", \"3009023\", \"3009025\", \"3009027\")))"
+    "source": "when not(undocumented(\"eArrest.03\"))\nrequire any(compareValue(\"eArrest.03\", \"equal\", \"3003003\"), not(member(\"eArrest.09\", \"3009009\", \"3009013\", \"3009015\", \"3009017\", \"3009019\", \"3009023\", \"3009025\", \"3009027\")))"
   },
   "nemSch_e100": {
     "primaryTargetElementId": "eArrest.04",
-    "source": "when any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\"))\nrequire any(not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eArrest.04\")), any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\")))\nrequire any(not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e101": {
     "primaryTargetElementId": "eArrest.04",
-    "source": "when not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.04\")), not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e102": {
     "primaryTargetElementId": "eArrest.04",
-    "source": "when not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\")))\nrequire any(not(compareValue(\"eArrest.04\", \"equal\", \"3004001\")), all(minimum(\"eArrest.04\", 1), maximum(\"eArrest.04\", 1)))"
+    "source": "when all(not(undocumented(\"eArrest.04\")), not(any(undocumented(\"eArrest.04\"), emptyPayload(\"eArrest.04\"))))\nrequire any(not(compareValue(\"eArrest.04\", \"equal\", \"3004001\")), all(minimum(\"eArrest.04\", 1), maximum(\"eArrest.04\", 1)))"
   },
   "nemSch_e103": {
     "primaryTargetElementId": "eArrest.07",
-    "source": "when any(undocumented(\"eArrest.07\"), emptyPayload(\"eArrest.07\"))\nrequire any(not(compareValue(\"eArrest.01\", \"equal\", \"3001003\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eArrest.07\")), any(undocumented(\"eArrest.07\"), emptyPayload(\"eArrest.07\")))\nrequire any(not(compareValue(\"eArrest.01\", \"equal\", \"3001003\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e104": {
     "primaryTargetElementId": "eArrest.07",
-    "source": "when not(any(undocumented(\"eArrest.07\"), emptyPayload(\"eArrest.07\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.07\")), not(any(undocumented(\"eArrest.07\"), emptyPayload(\"eArrest.07\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e105": {
     "primaryTargetElementId": "eArrest.09",
-    "source": "require any(not(not(any(undocumented(\"eArrest.09\"), emptyPayload(\"eArrest.09\")))), member(\"eArrest.01\", \"3001003\", \"3001005\"))"
+    "source": "when not(undocumented(\"eArrest.09\"))\nrequire any(not(not(any(undocumented(\"eArrest.09\"), emptyPayload(\"eArrest.09\")))), member(\"eArrest.01\", \"3001003\", \"3001005\"))"
   },
   "nemSch_e106": {
     "primaryTargetElementId": "eArrest.09",
-    "source": "require any(not(compareValue(\"eArrest.03\", \"equal\", \"3003005\")), member(\"eArrest.09\", \"3009001\", \"3009003\", \"3009005\", \"3009007\", \"3009009\", \"3009011\", \"3009021\"))"
+    "source": "when not(undocumented(\"eArrest.09\"))\nrequire any(not(compareValue(\"eArrest.03\", \"equal\", \"3003005\")), member(\"eArrest.09\", \"3009001\", \"3009003\", \"3009005\", \"3009007\", \"3009009\", \"3009011\", \"3009021\"))"
   },
   "nemSch_e107": {
     "primaryTargetElementId": "eArrest.09",
-    "source": "require any(not(compareValue(\"eArrest.03\", \"equal\", \"3003003\")), member(\"eArrest.09\", \"3009009\", \"3009013\", \"3009015\", \"3009017\", \"3009019\", \"3009023\", \"3009025\", \"3009027\"))"
+    "source": "when not(undocumented(\"eArrest.09\"))\nrequire any(not(compareValue(\"eArrest.03\", \"equal\", \"3003003\")), member(\"eArrest.09\", \"3009009\", \"3009013\", \"3009015\", \"3009017\", \"3009019\", \"3009023\", \"3009025\", \"3009027\"))"
   },
   "nemSch_e108": {
     "primaryTargetElementId": "eArrest.12",
-    "source": "when any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\"))\nrequire any(not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eArrest.12\")), any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\")))\nrequire any(not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e109": {
     "primaryTargetElementId": "eArrest.12",
-    "source": "when not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.12\")), not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e110": {
     "primaryTargetElementId": "eArrest.12",
-    "source": "when not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\")))\nrequire any(not(compareValue(\"eArrest.12\", \"equal\", \"3012001\")), all(minimum(\"eArrest.12\", 1), maximum(\"eArrest.12\", 1)))"
+    "source": "when all(not(undocumented(\"eArrest.12\")), not(any(undocumented(\"eArrest.12\"), emptyPayload(\"eArrest.12\"))))\nrequire any(not(compareValue(\"eArrest.12\", \"equal\", \"3012001\")), all(minimum(\"eArrest.12\", 1), maximum(\"eArrest.12\", 1)))"
   },
   "nemSch_e111": {
     "primaryTargetElementId": "eArrest.14",
-    "source": "when not(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.14\")), not(any(undocumented(\"eArrest.14\"), emptyPayload(\"eArrest.14\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e112": {
     "primaryTargetElementId": "eArrest.16",
-    "source": "when not(any(undocumented(\"eArrest.16\"), emptyPayload(\"eArrest.16\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.16\")), not(any(undocumented(\"eArrest.16\"), emptyPayload(\"eArrest.16\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e113": {
     "primaryTargetElementId": "eArrest.17",
-    "source": "when any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\"))\nrequire any(not(any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), not(member(\"eDisposition.30\", \"4230001\", \"4230001\")))"
+    "source": "when all(not(undocumented(\"eArrest.17\")), any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\")))\nrequire any(not(any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\"))), not(member(\"eArrest.01\", \"3001003\", \"3001005\")), not(member(\"eDisposition.30\", \"4230001\", \"4230001\")))"
   },
   "nemSch_e114": {
     "primaryTargetElementId": "eArrest.17",
-    "source": "when not(any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.17\")), not(any(undocumented(\"eArrest.17\"), emptyPayload(\"eArrest.17\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e115": {
     "primaryTargetElementId": "eArrest.18",
-    "source": "when any(undocumented(\"eArrest.18\"), emptyPayload(\"eArrest.18\"))\nrequire any(not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
+    "source": "when all(not(undocumented(\"eArrest.18\")), any(undocumented(\"eArrest.18\"), emptyPayload(\"eArrest.18\")))\nrequire any(not(member(\"eArrest.01\", \"3001003\", \"3001005\")), compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\"))"
   },
   "nemSch_e116": {
     "primaryTargetElementId": "eArrest.18",
-    "source": "when not(any(undocumented(\"eArrest.18\"), emptyPayload(\"eArrest.18\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.18\")), not(any(undocumented(\"eArrest.18\"), emptyPayload(\"eArrest.18\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e117": {
     "primaryTargetElementId": "eArrest.20",
-    "source": "when any(undocumented(\"eArrest.20\"), emptyPayload(\"eArrest.20\"))\nrequire not(member(\"eArrest.03\", \"3003001\", \"3003003\", \"3003005\"))"
+    "source": "when all(not(undocumented(\"eArrest.20\")), any(undocumented(\"eArrest.20\"), emptyPayload(\"eArrest.20\")))\nrequire not(member(\"eArrest.03\", \"3003001\", \"3003003\", \"3003005\"))"
   },
   "nemSch_e118": {
     "primaryTargetElementId": "eArrest.20",
-    "source": "when not(any(undocumented(\"eArrest.20\"), emptyPayload(\"eArrest.20\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.20\")), not(any(undocumented(\"eArrest.20\"), emptyPayload(\"eArrest.20\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e119": {
     "primaryTargetElementId": "eArrest.21",
-    "source": "when any(undocumented(\"eArrest.21\"), emptyPayload(\"eArrest.21\"))\nrequire not(member(\"eArrest.07\", \"3007003\", \"3007005\"))"
+    "source": "when all(not(undocumented(\"eArrest.21\")), any(undocumented(\"eArrest.21\"), emptyPayload(\"eArrest.21\")))\nrequire not(member(\"eArrest.07\", \"3007003\", \"3007005\"))"
   },
   "nemSch_e120": {
     "primaryTargetElementId": "eArrest.21",
-    "source": "when not(any(undocumented(\"eArrest.21\"), emptyPayload(\"eArrest.21\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.21\")), not(any(undocumented(\"eArrest.21\"), emptyPayload(\"eArrest.21\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e122": {
     "primaryTargetElementId": "eArrest.22",
-    "source": "when any(undocumented(\"eArrest.22\"), emptyPayload(\"eArrest.22\"))\nrequire not(compareValue(\"eArrest.07\", \"equal\", \"3007005\"))"
+    "source": "when all(not(undocumented(\"eArrest.22\")), any(undocumented(\"eArrest.22\"), emptyPayload(\"eArrest.22\")))\nrequire not(compareValue(\"eArrest.07\", \"equal\", \"3007005\"))"
   },
   "nemSch_e123": {
     "primaryTargetElementId": "eArrest.22",
-    "source": "when not(any(undocumented(\"eArrest.22\"), emptyPayload(\"eArrest.22\")))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
+    "source": "when all(not(undocumented(\"eArrest.22\")), not(any(undocumented(\"eArrest.22\"), emptyPayload(\"eArrest.22\"))))\nrequire member(\"eArrest.01\", \"3001003\", \"3001005\")"
   },
   "nemSch_e124": {
     "primaryTargetElementId": "eHistory.01",
-    "source": "when compareValue(\"eHistory.01\", \"equal\", \"3101009\")\nrequire all(minimum(\"eHistory.01\", 1), maximum(\"eHistory.01\", 1))"
+    "source": "when all(not(undocumented(\"eHistory.01\")), compareValue(\"eHistory.01\", \"equal\", \"3101009\"))\nrequire all(minimum(\"eHistory.01\", 1), maximum(\"eHistory.01\", 1))"
   },
   "nemSch_e125": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(anyPayload(), any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire compareValue(\"eVitals.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), anyPayload(), any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire compareValue(\"eVitals.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e126": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire any(timeCompare(\"eVitals.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eVitals.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\"))))\nrequire any(timeCompare(\"eVitals.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eVitals.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e127": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eVitals.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eVitals.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eVitals.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eVitals.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e128": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.12\"))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\"))))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.12\"))"
   },
   "nemSch_e129": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.13\")"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\"))))\nrequire timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.13\")"
   },
   "nemSch_e130": {
     "primaryTargetElementId": "eVitals.01",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eVitals.02\", \"not-equal\", \"9923003\"))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.01\")), not(any(undocumented(\"eVitals.01\"), emptyPayload(\"eVitals.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eVitals.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eVitals.02\", \"not-equal\", \"9923003\"))"
   },
   "nemSch_e131": {
     "primaryTargetElementId": "eVitals.16",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\")))\nrequire any(compareValue(\"eVitals.16\", \"less-or-equal\", 100), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340003\")))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.16\")), not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\"))))\nrequire any(compareValue(\"eVitals.16\", \"less-or-equal\", 100), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340003\")))"
   },
   "nemSch_e132": {
     "primaryTargetElementId": "eVitals.16",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\")))\nrequire any(compareValue(\"eVitals.16\", \"less-or-equal\", 100), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340005\")))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.16\")), not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\"))))\nrequire any(compareValue(\"eVitals.16\", \"less-or-equal\", 100), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340005\")))"
   },
   "nemSch_e133": {
     "primaryTargetElementId": "eVitals.16",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\")))\nrequire any(matches(\"eVitals.16\", \"^-?[0-9]+$\"), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340001\")))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.16\")), not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\"))))\nrequire any(matches(\"eVitals.16\", \"^-?[0-9]+$\"), not(attribute(\"eVitals.16\", \"ETCO2Type\", \"3340001\")))"
   },
   "nemSch_e134": {
     "primaryTargetElementId": "eVitals.16",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\")))\nrequire attribute(\"eVitals.16\", \"ETCO2Type\")"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.16\")), not(any(undocumented(\"eVitals.16\"), emptyPayload(\"eVitals.16\"))))\nrequire attribute(\"eVitals.16\", \"ETCO2Type\")"
   },
   "nemSch_e135": {
     "primaryTargetElementId": "eVitals.22",
-    "source": "for each(\"eVitals.VitalGroup\")\nwhen compareValue(\"eVitals.22\", \"equal\", \"3322003\")\nrequire all(minimum(\"eVitals.22\", 1), maximum(\"eVitals.22\", 1))"
+    "source": "for each(\"eVitals.VitalGroup\")\nwhen all(not(undocumented(\"eVitals.22\")), compareValue(\"eVitals.22\", \"equal\", \"3322003\"))\nrequire all(minimum(\"eVitals.22\", 1), maximum(\"eVitals.22\", 1))"
   },
   "nemSch_e136": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), anyPayload(), any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e137": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire any(timeCompare(\"eMedications.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eMedications.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\"))))\nrequire any(timeCompare(\"eMedications.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eMedications.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e138": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eMedications.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eMedications.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eMedications.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eMedications.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e139": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.12\"))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\"))))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.12\"))"
   },
   "nemSch_e140": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.13\")"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\"))))\nrequire timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.13\")"
   },
   "nemSch_e141": {
     "primaryTargetElementId": "eMedications.01",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eMedications.02\", \"not-equal\", \"9923003\"))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.01\")), not(any(undocumented(\"eMedications.01\"), emptyPayload(\"eMedications.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eMedications.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eMedications.02\", \"not-equal\", \"9923003\"))"
   },
   "nemSch_e142": {
     "primaryTargetElementId": "eMedications.03",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\")))\nrequire never()"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.03\")), anyPayload(), any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\")))\nrequire never()"
   },
   "nemSch_e143": {
     "primaryTargetElementId": "eMedications.03",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), attribute(\"eMedications.03\", \"CodeType\"))\nrequire any(matches(\"eMedications.03\", \"^[0-9]{2,7}$\"), not(codeType(\"eMedications.03\", \"9924003\")))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.03\")), all(not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), attribute(\"eMedications.03\", \"CodeType\")))\nrequire any(matches(\"eMedications.03\", \"^[0-9]{2,7}$\"), not(codeType(\"eMedications.03\", \"9924003\")))"
   },
   "nemSch_e144": {
     "primaryTargetElementId": "eMedications.03",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), attribute(\"eMedications.03\", \"CodeType\"))\nrequire any(member(\"eMedications.03\", \"116762002\", \"116795008\", \"116861002\", \"116865006\", \"180208003\", \"33389009\", \"71493000\"), not(codeType(\"eMedications.03\", \"9924005\")))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.03\")), all(not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), attribute(\"eMedications.03\", \"CodeType\")))\nrequire any(member(\"eMedications.03\", \"116762002\", \"116795008\", \"116861002\", \"116865006\", \"180208003\", \"33389009\", \"71493000\"), not(codeType(\"eMedications.03\", \"9924005\")))"
   },
   "nemSch_e145": {
     "primaryTargetElementId": "eMedications.03",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), not(attribute(\"eMedications.03\", \"CodeType\")))\nrequire any(matches(\"eMedications.03\", \"^[0-9]{2,7}$\"), member(\"eMedications.03\", \"116762002\", \"116795008\", \"116861002\", \"116865006\", \"180208003\", \"33389009\", \"71493000\"))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.03\")), not(any(undocumented(\"eMedications.03\"), emptyPayload(\"eMedications.03\"))), not(attribute(\"eMedications.03\", \"CodeType\")))\nrequire any(matches(\"eMedications.03\", \"^[0-9]{2,7}$\"), member(\"eMedications.03\", \"116762002\", \"116795008\", \"116861002\", \"116865006\", \"180208003\", \"33389009\", \"71493000\"))"
   },
   "nemSch_e146": {
     "primaryTargetElementId": "eMedications.04",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.04\"), emptyPayload(\"eMedications.04\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.04\")), anyPayload(), any(undocumented(\"eMedications.04\"), emptyPayload(\"eMedications.04\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e147": {
     "primaryTargetElementId": "eMedications.05",
-    "source": "for each(\"eMedications.DosageGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.05\"), emptyPayload(\"eMedications.05\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eMedications.DosageGroup\")\nwhen all(not(undocumented(\"eMedications.05\")), anyPayload(), any(undocumented(\"eMedications.05\"), emptyPayload(\"eMedications.05\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e148": {
     "primaryTargetElementId": "eMedications.06",
-    "source": "for each(\"eMedications.DosageGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.06\"), emptyPayload(\"eMedications.06\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eMedications.DosageGroup\")\nwhen all(not(undocumented(\"eMedications.06\")), anyPayload(), any(undocumented(\"eMedications.06\"), emptyPayload(\"eMedications.06\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e149": {
     "primaryTargetElementId": "eMedications.08",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen compareValue(\"eMedications.08\", \"equal\", \"3708031\")\nrequire all(minimum(\"eMedications.08\", 1), maximum(\"eMedications.08\", 1))"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.08\")), compareValue(\"eMedications.08\", \"equal\", \"3708031\"))\nrequire all(minimum(\"eMedications.08\", 1), maximum(\"eMedications.08\", 1))"
   },
   "nemSch_e150": {
     "primaryTargetElementId": "eMedications.10",
-    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(anyPayload(), any(undocumented(\"eMedications.10\"), emptyPayload(\"eMedications.10\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eMedications.MedicationGroup\")\nwhen all(not(undocumented(\"eMedications.10\")), anyPayload(), any(undocumented(\"eMedications.10\"), emptyPayload(\"eMedications.10\")))\nrequire compareValue(\"eMedications.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e151": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(anyPayload(), any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire compareValue(\"eProcedures.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), anyPayload(), any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire compareValue(\"eProcedures.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e152": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire any(timeCompare(\"eProcedures.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eProcedures.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\"))))\nrequire any(timeCompare(\"eProcedures.01\", \"same-or-after\", \"eTimes.03\"), compareValue(\"eProcedures.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e153": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eProcedures.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eProcedures.02\", \"equal\", \"9923003\"))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eProcedures.01\", \"same-or-after\", \"eTimes.07\"), compareValue(\"eProcedures.02\", \"equal\", \"9923003\"))"
   },
   "nemSch_e154": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.12\"))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\"))))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.12\"))"
   },
   "nemSch_e155": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.13\")"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\"))))\nrequire timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.13\")"
   },
   "nemSch_e156": {
     "primaryTargetElementId": "eProcedures.01",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\")))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eProcedures.02\", \"not-equal\", \"9923003\"))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.01\")), not(any(undocumented(\"eProcedures.01\"), emptyPayload(\"eProcedures.01\"))))\nrequire any(any(undocumented(\"eTimes.07\"), emptyPayload(\"eTimes.07\")), timeCompare(\"eProcedures.01\", \"same-or-before\", \"eTimes.07\"), compareValue(\"eProcedures.02\", \"not-equal\", \"9923003\"))"
   },
   "nemSch_e157": {
     "primaryTargetElementId": "eProcedures.03",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(anyPayload(), any(undocumented(\"eProcedures.03\"), emptyPayload(\"eProcedures.03\")))\nrequire never()"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.03\")), anyPayload(), any(undocumented(\"eProcedures.03\"), emptyPayload(\"eProcedures.03\")))\nrequire never()"
   },
   "nemSch_e158": {
     "primaryTargetElementId": "eProcedures.07",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen compareValue(\"eProcedures.07\", \"equal\", \"3907033\")\nrequire all(minimum(\"eProcedures.07\", 1), maximum(\"eProcedures.07\", 1))"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.07\")), compareValue(\"eProcedures.07\", \"equal\", \"3907033\"))\nrequire all(minimum(\"eProcedures.07\", 1), maximum(\"eProcedures.07\", 1))"
   },
   "nemSch_e159": {
     "primaryTargetElementId": "eProcedures.10",
-    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(anyPayload(), any(undocumented(\"eProcedures.10\"), emptyPayload(\"eProcedures.10\")))\nrequire compareValue(\"eProcedures.02\", \"equal\", \"9923003\")"
+    "source": "for each(\"eProcedures.ProcedureGroup\")\nwhen all(not(undocumented(\"eProcedures.10\")), anyPayload(), any(undocumented(\"eProcedures.10\"), emptyPayload(\"eProcedures.10\")))\nrequire compareValue(\"eProcedures.02\", \"equal\", \"9923003\")"
   },
   "nemSch_e160": {
     "primaryTargetElementId": "eDisposition.05",
-    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen any(undocumented(\"eDisposition.05\"), emptyPayload(\"eDisposition.05\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen all(not(undocumented(\"eDisposition.05\")), any(undocumented(\"eDisposition.05\"), emptyPayload(\"eDisposition.05\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e161": {
     "primaryTargetElementId": "eDisposition.06",
-    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen any(undocumented(\"eDisposition.06\"), emptyPayload(\"eDisposition.06\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen all(not(undocumented(\"eDisposition.06\")), any(undocumented(\"eDisposition.06\"), emptyPayload(\"eDisposition.06\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e162": {
     "primaryTargetElementId": "eDisposition.06",
-    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen not(any(undocumented(\"eDisposition.06\"), emptyPayload(\"eDisposition.06\")))\nrequire startsWith(\"eDisposition.06\", \"eDisposition.05\")"
+    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen all(not(undocumented(\"eDisposition.06\")), not(any(undocumented(\"eDisposition.06\"), emptyPayload(\"eDisposition.06\"))))\nrequire startsWith(\"eDisposition.06\", \"eDisposition.05\")"
   },
   "nemSch_e163": {
     "primaryTargetElementId": "eDisposition.07",
-    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen any(undocumented(\"eDisposition.07\"), emptyPayload(\"eDisposition.07\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "for each(\"eDisposition.DestinationGroup\")\nwhen all(not(undocumented(\"eDisposition.07\")), any(undocumented(\"eDisposition.07\"), emptyPayload(\"eDisposition.07\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e164": {
     "primaryTargetElementId": "eDisposition.16",
-    "source": "require any(not(any(undocumented(\"eDisposition.16\"), emptyPayload(\"eDisposition.16\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
+    "source": "when not(undocumented(\"eDisposition.16\"))\nrequire any(not(any(undocumented(\"eDisposition.16\"), emptyPayload(\"eDisposition.16\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
   },
   "nemSch_e165": {
     "primaryTargetElementId": "eDisposition.16",
-    "source": "require any(any(undocumented(\"eDisposition.16\"), emptyPayload(\"eDisposition.16\")), not(member(\"eDisposition.30\", \"4230009\", \"4230013\")))"
+    "source": "when not(undocumented(\"eDisposition.16\"))\nrequire any(any(undocumented(\"eDisposition.16\"), emptyPayload(\"eDisposition.16\")), not(member(\"eDisposition.30\", \"4230009\", \"4230013\")))"
   },
   "nemSch_e166": {
     "primaryTargetElementId": "eDisposition.17",
-    "source": "require any(not(any(undocumented(\"eDisposition.17\"), emptyPayload(\"eDisposition.17\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
+    "source": "when not(undocumented(\"eDisposition.17\"))\nrequire any(not(any(undocumented(\"eDisposition.17\"), emptyPayload(\"eDisposition.17\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
   },
   "nemSch_e167": {
     "primaryTargetElementId": "eDisposition.17",
-    "source": "require any(any(undocumented(\"eDisposition.17\"), emptyPayload(\"eDisposition.17\")), not(member(\"eDisposition.30\", \"4230009\", \"4230013\")))"
+    "source": "when not(undocumented(\"eDisposition.17\"))\nrequire any(any(undocumented(\"eDisposition.17\"), emptyPayload(\"eDisposition.17\")), not(member(\"eDisposition.30\", \"4230009\", \"4230013\")))"
   },
   "nemSch_e168": {
     "primaryTargetElementId": "eDisposition.19",
-    "source": "when any(undocumented(\"eDisposition.19\"), emptyPayload(\"eDisposition.19\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "when all(not(undocumented(\"eDisposition.19\")), any(undocumented(\"eDisposition.19\"), emptyPayload(\"eDisposition.19\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   },
   "nemSch_e169": {
     "primaryTargetElementId": "eDisposition.20",
-    "source": "when any(undocumented(\"eDisposition.20\"), emptyPayload(\"eDisposition.20\"))\nrequire any(not(any(undocumented(\"eDisposition.20\"), emptyPayload(\"eDisposition.20\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
+    "source": "when all(not(undocumented(\"eDisposition.20\")), any(undocumented(\"eDisposition.20\"), emptyPayload(\"eDisposition.20\")))\nrequire any(not(any(undocumented(\"eDisposition.20\"), emptyPayload(\"eDisposition.20\"))), not(member(\"eDisposition.30\", \"4230001\", \"4230003\")))"
   },
   "nemSch_e170": {
     "primaryTargetElementId": "eDisposition.21",
-    "source": "when any(undocumented(\"eDisposition.21\"), emptyPayload(\"eDisposition.21\"))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
+    "source": "when all(not(undocumented(\"eDisposition.21\")), any(undocumented(\"eDisposition.21\"), emptyPayload(\"eDisposition.21\")))\nrequire not(member(\"eDisposition.30\", \"4230001\", \"4230003\"))"
   },
   "nemSch_e171": {
     "primaryTargetElementId": "eDisposition.23",
-    "source": "when any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), member(\"eArrest.01\", \"3001003\", \"3001005\"))))"
+    "source": "when all(not(undocumented(\"eDisposition.23\")), any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\")))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), member(\"eArrest.01\", \"3001003\", \"3001005\"))))"
   },
   "nemSch_e172": {
     "primaryTargetElementId": "eDisposition.23",
-    "source": "when any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), compareValue(\"eVitals.29\", \"equal\", \"3329005\"))))"
+    "source": "when all(not(undocumented(\"eDisposition.23\")), any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\")))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), compareValue(\"eVitals.29\", \"equal\", \"3329005\"))))"
   },
   "nemSch_e173": {
     "primaryTargetElementId": "eDisposition.23",
-    "source": "when any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), member(\"eVitals.03\", \"9901051\", \"9901053\", \"9901055\", \"9901057\", \"9901058\"))))"
+    "source": "when all(not(undocumented(\"eDisposition.23\")), any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\")))\nrequire any(not(any(undocumented(\"eDisposition.23\"), emptyPayload(\"eDisposition.23\"))), not(all(member(\"eDisposition.21\", \"4221003\", \"4221005\", \"4221023\"), member(\"eVitals.03\", \"9901051\", \"9901053\", \"9901055\", \"9901057\", \"9901058\"))))"
   },
   "nemSch_e174": {
     "primaryTargetElementId": "eDisposition.24",
-    "source": "when compareValue(\"eDisposition.24\", \"equal\", \"4224001\")\nrequire all(minimum(\"eDisposition.24\", 1), maximum(\"eDisposition.24\", 1))"
+    "source": "when all(not(undocumented(\"eDisposition.24\")), compareValue(\"eDisposition.24\", \"equal\", \"4224001\"))\nrequire all(minimum(\"eDisposition.24\", 1), maximum(\"eDisposition.24\", 1))"
   },
   "nemSch_e175": {
     "primaryTargetElementId": "eDisposition.24",
@@ -713,46 +713,420 @@ export const NEMSIS_351_EMS_NORMALIZATIONS = {
   },
   "nemSch_e177": {
     "primaryTargetElementId": "eDisposition.25",
-    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\")))\nrequire timeCompare(\"eDisposition.25\", \"same-or-after\", \"eTimes.03\")"
+    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen all(not(undocumented(\"eDisposition.25\")), not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\"))))\nrequire timeCompare(\"eDisposition.25\", \"same-or-after\", \"eTimes.03\")"
   },
   "nemSch_e178": {
     "primaryTargetElementId": "eDisposition.25",
-    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\")))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eDisposition.25\", \"same-or-before\", \"eTimes.12\"))"
+    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen all(not(undocumented(\"eDisposition.25\")), not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\"))))\nrequire any(any(undocumented(\"eTimes.12\"), emptyPayload(\"eTimes.12\")), timeCompare(\"eDisposition.25\", \"same-or-before\", \"eTimes.12\"))"
   },
   "nemSch_e179": {
     "primaryTargetElementId": "eDisposition.25",
-    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\")))\nrequire timeCompare(\"eDisposition.25\", \"same-or-before\", \"eTimes.13\")"
+    "source": "for each(\"eDisposition.HospitalTeamActivationGroup\")\nwhen all(not(undocumented(\"eDisposition.25\")), not(any(undocumented(\"eDisposition.25\"), emptyPayload(\"eDisposition.25\"))))\nrequire timeCompare(\"eDisposition.25\", \"same-or-before\", \"eTimes.13\")"
   },
   "nemSch_e180": {
     "primaryTargetElementId": "eDisposition.27",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), not(member(\"eDisposition.28\", \"4228001\", \"4228003\", \"4228005\", \"4228007\")))"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen not(undocumented(\"eDisposition.27\"))\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), not(member(\"eDisposition.28\", \"4228001\", \"4228003\", \"4228005\", \"4228007\")))"
   },
   "nemSch_e181": {
     "primaryTargetElementId": "eDisposition.27",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), not(member(\"eDisposition.29\", \"4229001\", \"4229003\", \"4229005\", \"4229007\")))"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen not(undocumented(\"eDisposition.27\"))\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), not(member(\"eDisposition.29\", \"4229001\", \"4229003\", \"4229005\", \"4229007\")))"
   },
   "nemSch_e182": {
     "primaryTargetElementId": "eDisposition.27",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), any(any(undocumented(\"eDisposition.30\"), emptyPayload(\"eDisposition.30\")), member(\"eDisposition.30\", \"4230011\", \"4230013\")))"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen not(undocumented(\"eDisposition.27\"))\nrequire any(compareValue(\"eDisposition.27\", \"equal\", \"4227001\"), any(any(undocumented(\"eDisposition.30\"), emptyPayload(\"eDisposition.30\")), member(\"eDisposition.30\", \"4230011\", \"4230013\")))"
   },
   "nemSch_e183": {
     "primaryTargetElementId": "eDisposition.28",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nrequire any(not(any(undocumented(\"eDisposition.28\"), emptyPayload(\"eDisposition.28\"))), compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\"))"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen not(undocumented(\"eDisposition.28\"))\nrequire any(not(any(undocumented(\"eDisposition.28\"), emptyPayload(\"eDisposition.28\"))), compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\"))"
   },
   "nemSch_e184": {
     "primaryTargetElementId": "eDisposition.28",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nrequire any(compareValue(\"eDisposition.28\", \"equal\", \"4228001\"), not(member(\"eDisposition.29\", \"4229001\", \"4229003\", \"4229005\", \"4229007\")))"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen not(undocumented(\"eDisposition.28\"))\nrequire any(compareValue(\"eDisposition.28\", \"equal\", \"4228001\"), not(member(\"eDisposition.29\", \"4229001\", \"4229003\", \"4229005\", \"4229007\")))"
   },
   "nemSch_e185": {
     "primaryTargetElementId": "eDisposition.29",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen any(undocumented(\"eDisposition.29\"), emptyPayload(\"eDisposition.29\"))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen all(not(undocumented(\"eDisposition.29\")), any(undocumented(\"eDisposition.29\"), emptyPayload(\"eDisposition.29\")))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
   },
   "nemSch_e186": {
     "primaryTargetElementId": "eDisposition.30",
-    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen any(undocumented(\"eDisposition.30\"), emptyPayload(\"eDisposition.30\"))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
+    "source": "for each(\"eDisposition.IncidentDispositionGroup\")\nwhen all(not(undocumented(\"eDisposition.30\")), any(undocumented(\"eDisposition.30\"), emptyPayload(\"eDisposition.30\")))\nrequire compareValue(\"eDisposition.27\", \"not-equal\", \"4227001\")"
   },
   "nemSch_e187": {
     "primaryTargetElementId": "eDisposition.32",
-    "source": "when any(any(undocumented(\"eDisposition.32\"), emptyPayload(\"eDisposition.32\")), compareValue(\"eDisposition.32\", \"equal\", \"4232013\"))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
+    "source": "when all(not(undocumented(\"eDisposition.32\")), any(any(undocumented(\"eDisposition.32\"), emptyPayload(\"eDisposition.32\")), compareValue(\"eDisposition.32\", \"equal\", \"4232013\")))\nrequire compareValue(\"eDisposition.28\", \"not-equal\", \"4228001\")"
   }
 } as const satisfies NemsisNormalizationTable;
+
+export const NEMSIS_351_EMS_MESSAGE_REPAIRS: Readonly<Record<string, string>> = {
+  "eSituation.01\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.01": "When Date/Time of Symptom Onset has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eSituation.18\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.18": "When Date/Time Last Known Well has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eArrest.14\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eArrest.14": "When Date/Time of Cardiac Arrest has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "ePatient.15\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000ePatient.15": "When Age has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eSituation.01\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.01": "When Date/Time of Symptom Onset has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eSituation.18\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.18": "When Date/Time Last Known Well has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eArrest.14\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eArrest.14": "When Date/Time of Cardiac Arrest has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eSituation.10\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.10": "When Other Associated Symptoms has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eMedications.03\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eMedications.03": "When Medication Administered has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "eProcedures.03\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eProcedures.03": "When Procedure has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "*\u0000When has a Pertinent Negative, it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eArrest.14,eCustomResults.01,eExam.01,eExam.02,eExam.03,eExam.04,eExam.05,eExam.06,eExam.07,eExam.09,eExam.10,eExam.11,eExam.12,eExam.13,eExam.14,eExam.15,eExam.16,eExam.17,eExam.18,eExam.19,eExam.20,eExam.21,eExam.22,eExam.23,eExam.24,eExam.25,eHistory.10,eMedications.03,ePatient.15,eProcedures.03,eSituation.01,eSituation.10,eSituation.18": "When the element has a Pertinent Negative, it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).",
+  "*\u0000When is empty, it should have a Not Value (Not Applicable, Not Recorded, or Not Reporting, if allowed for the element) or a Pertinent Negative (if allowed for the element), or it should be omitted (if the element is optional).\u0000eCustomResults.01": "When the element is empty, it should have a Not Value (Not Applicable, Not Recorded, or Not Reporting, if allowed for the element) or a Pertinent Negative (if allowed for the element), or it should be omitted (if the element is optional).",
+  "*\u0000When has a Not Value (Not Applicable, Not Recorded, or Not Reporting), it should be empty.\u0000eArrest.14,eCustomResults.01,eExam.01,eExam.02,eExam.03,eExam.04,eExam.05,eExam.06,eExam.07,eExam.09,eExam.10,eExam.11,eExam.12,eExam.13,eExam.14,eExam.15,eExam.16,eExam.17,eExam.18,eExam.19,eExam.20,eExam.21,eExam.22,eExam.23,eExam.24,eExam.25,eHistory.10,eMedications.03,ePatient.15,eProcedures.03,eSituation.01,eSituation.10,eSituation.18": "When the element has a Not Value (Not Applicable, Not Recorded, or Not Reporting), it should be empty.",
+  "*\u0000When has a Not Value, no other value should be recorded.\u0000eCustomResults.01": "When the element has a Not Value, no other value should be recorded.",
+  "*\u0000When has a Pertinent Negative, no other value should be recorded.\u0000eArrest.14,eCustomResults.01,eExam.01,eExam.02,eExam.03,eExam.04,eExam.05,eExam.06,eExam.07,eExam.09,eExam.10,eExam.11,eExam.12,eExam.13,eExam.14,eExam.15,eExam.16,eExam.17,eExam.18,eExam.19,eExam.20,eExam.21,eExam.22,eExam.23,eExam.24,eExam.25,eHistory.10,eMedications.03,ePatient.15,eProcedures.03,eSituation.01,eSituation.10,eSituation.18": "When the element has a Pertinent Negative, no other value should be recorded.",
+  "eResponse.01\u0000in the patient care report should match in the agency demographic information.\u0000dAgency.02,eResponse.01": "EMS Agency Number in the patient care report should match EMS Agency Number in the agency demographic information.",
+  "eResponse.08\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.08": "When Type of Dispatch Delay is \"None/No Delay\", no other value should be recorded.",
+  "eResponse.09\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.09": "When Type of Response Delay is \"None/No Delay\", no other value should be recorded.",
+  "eResponse.10\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.10": "When Type of Scene Delay is \"None/No Delay\", no other value should be recorded.",
+  "eResponse.11\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.11": "When Type of Transport Delay is \"None/No Delay\", no other value should be recorded.",
+  "eResponse.12\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.12": "When Type of Turn-Around Delay is \"None/No Delay\", no other value should be recorded.",
+  "eTimes.03\u0000should not be earlier than .\u0000eTimes.01,eTimes.03": "Unit Notified by Dispatch Date/Time should not be earlier than PSAP Call Date/Time.",
+  "eTimes.05\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.05": "Unit En Route Date/Time should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eTimes.05\u0000should not be earlier than .\u0000eTimes.03,eTimes.05": "Unit En Route Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.06\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.06": "Unit Arrived on Scene Date/Time should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eTimes.06\u0000should not be earlier than .\u0000eTimes.03,eTimes.06": "Unit Arrived on Scene Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.06\u0000should not be earlier than .\u0000eTimes.05,eTimes.06": "Unit Arrived on Scene Date/Time should not be earlier than Unit En Route Date/Time.",
+  "eTimes.07\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eTimes.07": "Arrived at Patient Date/Time should be recorded when Unit Disposition is \"Patient Contact Made\".",
+  "eTimes.07\u0000should not be earlier than .\u0000eTimes.03,eTimes.07": "Arrived at Patient Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.09\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.09": "Unit Left Scene Date/Time should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.03,eTimes.09": "Unit Left Scene Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.05,eTimes.09": "Unit Left Scene Date/Time should not be earlier than Unit En Route Date/Time.",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.06,eTimes.09": "Unit Left Scene Date/Time should not be earlier than Unit Arrived on Scene Date/Time.",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.07,eTimes.09": "Unit Left Scene Date/Time should not be earlier than Arrived at Patient Date/Time.",
+  "eTimes.11\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.30,eTimes.11": "Patient Arrived at Destination Date/Time should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.03,eTimes.11": "Patient Arrived at Destination Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.05,eTimes.11": "Patient Arrived at Destination Date/Time should not be earlier than Unit En Route Date/Time.",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.06,eTimes.11": "Patient Arrived at Destination Date/Time should not be earlier than Unit Arrived on Scene Date/Time.",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.07,eTimes.11": "Patient Arrived at Destination Date/Time should not be earlier than Arrived at Patient Date/Time.",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.09,eTimes.11": "Patient Arrived at Destination Date/Time should not be earlier than Unit Left Scene Date/Time.",
+  "eTimes.12\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.30,eTimes.12": "Destination Patient Transfer of Care Date/Time should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.03,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.05,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Unit En Route Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.06,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Unit Arrived on Scene Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.07,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Arrived at Patient Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.09,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Unit Left Scene Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.11,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Patient Arrived at Destination Date/Time.",
+  "eTimes.12\u0000should not be earlier than .\u0000eSituation.01,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Date/Time of Symptom Onset.",
+  "eTimes.12\u0000should not be earlier than .\u0000eSituation.18,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Date/Time Last Known Well.",
+  "eTimes.12\u0000should not be earlier than .\u0000eArrest.14,eTimes.12": "Destination Patient Transfer of Care Date/Time should not be earlier than Date/Time of Cardiac Arrest.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.03,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.05,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Unit En Route Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.06,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Unit Arrived on Scene Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.07,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Arrived at Patient Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.09,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Unit Left Scene Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.11,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Patient Arrived at Destination Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.12,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Destination Patient Transfer of Care Date/Time.",
+  "eTimes.13\u0000should not be earlier than .\u0000eSituation.01,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Date/Time of Symptom Onset.",
+  "eTimes.13\u0000should not be earlier than .\u0000eSituation.18,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Date/Time Last Known Well.",
+  "eTimes.13\u0000should not be earlier than .\u0000eArrest.14,eTimes.13": "Unit Back in Service Date/Time should not be earlier than Date/Time of Cardiac Arrest.",
+  "eTimes.13\u0000should not be in the future (the current time according to this system is ).\u0000eTimes.13": "Unit Back in Service Date/Time should not be in the future (the current time according to this system is the current date/time).",
+  "ePatient.07\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.07": "Patient's Home County should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.07\u0000should belong within the .\u0000ePatient.07,ePatient.08": "Patient's Home County should belong within the Patient's Home State.",
+  "ePatient.08\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.08": "Patient's Home State should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.09\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.09": "Patient's Home ZIP Code should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.14\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.14": "Race should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.15\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.15": "Age should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.16\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.16": "Age Units should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "ePatient.16\u0000should be recorded when is recorded.\u0000ePatient.15,ePatient.16": "Age Units should be recorded when Age is recorded.",
+  "ePatient.25\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.25": "Sex should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eScene.06\u0000should be \"Multiple\" or \"Single\" when is \"Patient Contact Made\".\u0000eDisposition.27,eScene.06": "Number of Patients at Scene should be \"Multiple\" or \"Single\" when Unit Disposition is \"Patient Contact Made\".",
+  "eScene.06\u0000should be \"Multiple\" when is \"Yes\".\u0000eScene.06,eScene.07": "Number of Patients at Scene should be \"Multiple\" when Mass Casualty Incident is \"Yes\".",
+  "eScene.08\u0000should be recorded when is \"Yes\".\u0000eScene.07,eScene.08": "Triage Classification for MCI Patient should be recorded when Mass Casualty Incident is \"Yes\".",
+  "eScene.09\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.09": "Incident Location Type should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eScene.18\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.18": "Incident State should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eScene.19\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.19": "Incident ZIP Code should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eScene.21\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.21": "Incident County should be recorded unless Unit Disposition is \"Cancelled Prior to Arrival at Scene\".",
+  "eScene.21\u0000should belong within the .\u0000eScene.18,eScene.21": "Incident County should belong within the Incident State.",
+  "eSituation.01\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.01": "Date/Time of Symptom Onset should be recorded when Type of Service Requested is \"Emergency Response (Primary Response Area)\" and Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eSituation.02\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.02": "Possible Injury should be recorded when Type of Service Requested is \"Emergency Response (Primary Response Area)\" and Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eSituation.02\u0000should be \"Yes\" when a symptom or impression is injury-related.\u0000eSituation.02,eSituation.09,eSituation.10,eSituation.11,eSituation.12": "Possible Injury should be \"Yes\" when a symptom or impression is injury-related.",
+  "eSituation.09\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.09": "Primary Symptom should be recorded when Type of Service Requested is \"Emergency Response (Primary Response Area)\" and Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eSituation.10\u0000should only be recorded when is recorded.\u0000eSituation.09,eSituation.10": "Other Associated Symptoms should only be recorded when Primary Symptom is recorded.",
+  "eSituation.11\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.11": "Provider's Primary Impression should be recorded when Type of Service Requested is \"Emergency Response (Primary Response Area)\" and Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eSituation.12\u0000should only be recorded when is recorded.\u0000eSituation.11,eSituation.12": "Provider's Secondary Impressions should only be recorded when Provider's Primary Impression is recorded.",
+  "eSituation.13\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.13": "Initial Patient Acuity should be recorded when Type of Service Requested is \"Emergency Response (Primary Response Area)\" and Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eDisposition.28,eSituation.18": "Date/Time Last Known Well should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Positive\".\u0000eDisposition.28,eSituation.18,eVitals.29": "Date/Time Last Known Well should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Stroke Scale Result is \"Positive\".",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"STEMI...\".\u0000eDisposition.28,eSituation.18,eVitals.03": "Date/Time Last Known Well should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Rhythm / Electrocardiography (ECG) is \"STEMI...\".",
+  "eSituation.20\u0000should only be recorded when is \"... Transfer\" or \"Other Routine Medical Transport\".\u0000eResponse.05,eSituation.20": "Reason for Interfacility Transfer/Medical Transport should only be recorded when Type of Service Requested is \"... Transfer\" or \"Other Routine Medical Transport\".",
+  "eInjury.01\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes\".\u0000eDisposition.28,eInjury.01,eSituation.02": "Cause of Injury should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Possible Injury is \"Yes\".",
+  "eInjury.01\u0000should only be recorded when is \"Yes\".\u0000eInjury.01,eSituation.02": "Cause of Injury should only be recorded when Possible Injury is \"Yes\".",
+  "eInjury.03\u0000should only be recorded when is \"Yes\".\u0000eInjury.03,eSituation.02": "Trauma Triage Criteria (High Risk for Serious Injury) should only be recorded when Possible Injury is \"Yes\".",
+  "eInjury.04\u0000should only be recorded when is \"Yes\".\u0000eInjury.04,eSituation.02": "Trauma Triage Criteria (Moderate Risk for Serious Injury) should only be recorded when Possible Injury is \"Yes\".",
+  "eArrest.02\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.02,eDisposition.28": "Cardiac Arrest Etiology should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.02\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.02": "Cardiac Arrest Etiology should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.03\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.03,eDisposition.28": "Resuscitation Attempted By EMS should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.03\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.03": "Resuscitation Attempted By EMS should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.03\u0000should not contain both \"Attempted/Initiated...\" and \"Not Attempted...\".\u0000eArrest.03": "Resuscitation Attempted By EMS should not contain both \"Attempted/Initiated...\" and \"Not Attempted...\".",
+  "eArrest.03\u0000should contain \"Initiated Chest Compressions\" when contains \"Compressions...\".\u0000eArrest.03,eArrest.09": "Resuscitation Attempted By EMS should contain \"Initiated Chest Compressions\" when Type of CPR Provided contains \"Compressions...\".",
+  "eArrest.03\u0000should contain \"Attempted Ventilation\" when contains \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\".\u0000eArrest.03,eArrest.09": "Resuscitation Attempted By EMS should contain \"Attempted Ventilation\" when Type of CPR Provided contains \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\".",
+  "eArrest.04\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.04,eDisposition.28": "Arrest Witnessed By should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.04\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.04": "Arrest Witnessed By should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.04\u0000When is \"Not Witnessed\", no other value should be recorded.\u0000eArrest.04": "When Arrest Witnessed By is \"Not Witnessed\", no other value should be recorded.",
+  "eArrest.07\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes, Prior to Any EMS Arrival (includes Transport EMS & Medical First Responders)\".\u0000eArrest.01,eArrest.07,eDisposition.28": "AED Use Prior to EMS Arrival should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes, Prior to Any EMS Arrival (includes Transport EMS & Medical First Responders)\".",
+  "eArrest.07\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.07": "AED Use Prior to EMS Arrival should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.09\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.09": "Type of CPR Provided should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.09\u0000should contain \"Compressions...\" when contains \"Initiated Chest Compressions\".\u0000eArrest.03,eArrest.09": "Type of CPR Provided should contain \"Compressions...\" when Resuscitation Attempted By EMS contains \"Initiated Chest Compressions\".",
+  "eArrest.09\u0000should contain \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\" when contains \"Attempted Ventilation\".\u0000eArrest.03,eArrest.09": "Type of CPR Provided should contain \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\" when Resuscitation Attempted By EMS contains \"Attempted Ventilation\".",
+  "eArrest.12\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.12,eDisposition.28": "Any Return of Spontaneous Circulation should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.12\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.12": "Any Return of Spontaneous Circulation should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.12\u0000When is \"No\", no other value should be recorded.\u0000eArrest.12": "When Any Return of Spontaneous Circulation is \"No\", no other value should be recorded.",
+  "eArrest.14\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.14": "Date/Time of Cardiac Arrest should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.16\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.16": "Reason CPR/Resuscitation Discontinued should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.17\u0000should be recorded when is \"Transport by This EMS Unit...\" and is \"Yes...\".\u0000eArrest.01,eArrest.17,eDisposition.30": "Cardiac Rhythm on Arrival at Destination should be recorded when Transport Disposition is \"Transport by This EMS Unit...\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.17\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.17": "Cardiac Rhythm on Arrival at Destination should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.18,eDisposition.28": "End of EMS Cardiac Arrest Event should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\" and Cardiac Arrest is \"Yes...\".",
+  "eArrest.18\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.18": "End of EMS Cardiac Arrest Event should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.20\u0000should be recorded when is \"Attempted...\" or \"Initiated...\".\u0000eArrest.03,eArrest.20": "Who First Initiated CPR should be recorded when Resuscitation Attempted By EMS is \"Attempted...\" or \"Initiated...\".",
+  "eArrest.20\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.20": "Who First Initiated CPR should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.21\u0000should be recorded when is \"Yes...\".\u0000eArrest.07,eArrest.21": "Who First Applied the AED should be recorded when AED Use Prior to EMS Arrival is \"Yes...\".",
+  "eArrest.21\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.21": "Who First Applied the AED should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eArrest.22\u0000should be recorded when is \"Yes, With Defibrillation\".\u0000eArrest.07,eArrest.22": "Who First Defibrillated the Patient should be recorded when AED Use Prior to EMS Arrival is \"Yes, With Defibrillation\".",
+  "eArrest.22\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.22": "Who First Defibrillated the Patient should only be recorded when Cardiac Arrest is \"Yes...\".",
+  "eHistory.01\u0000When is \"None Noted\", no other value should be recorded.\u0000eHistory.01": "When Barriers to Patient Care is \"None Noted\", no other value should be recorded.",
+  "eVitals.01\u0000should be recorded, unless is \"Yes\".\u0000eVitals.01,eVitals.02": "Date/Time Vital Signs Taken should be recorded, unless Obtained Prior to this Unit's EMS Care is \"Yes\".",
+  "eVitals.01\u0000should not be earlier than , unless is \"Yes\".\u0000eTimes.03,eVitals.01,eVitals.02": "Date/Time Vital Signs Taken should not be earlier than Unit Notified by Dispatch Date/Time, unless Obtained Prior to this Unit's EMS Care is \"Yes\".",
+  "eVitals.01\u0000should not be earlier than , unless is \"Yes\".\u0000eTimes.07,eVitals.01,eVitals.02": "Date/Time Vital Signs Taken should not be earlier than Arrived at Patient Date/Time, unless Obtained Prior to this Unit's EMS Care is \"Yes\".",
+  "eVitals.01\u0000should not be later than .\u0000eTimes.12,eVitals.01": "Date/Time Vital Signs Taken should not be later than Destination Patient Transfer of Care Date/Time.",
+  "eVitals.01\u0000should not be later than .\u0000eTimes.13,eVitals.01": "Date/Time Vital Signs Taken should not be later than Unit Back in Service Date/Time.",
+  "eVitals.01\u0000should not be later than when is \"Yes\".\u0000eTimes.07,eVitals.01,eVitals.02": "Date/Time Vital Signs Taken should not be later than Arrived at Patient Date/Time when Obtained Prior to this Unit's EMS Care is \"Yes\".",
+  "eVitals.16\u0000should be no more than 100 when ETCO2 Type is \"Percentage\".\u0000eVitals.16": "End Tidal Carbon Dioxide (ETCO2) should be no more than 100 when ETCO2 Type is \"Percentage\".",
+  "eVitals.16\u0000should be no more than 100 when ETCO2 Type is \"kPa\".\u0000eVitals.16": "End Tidal Carbon Dioxide (ETCO2) should be no more than 100 when ETCO2 Type is \"kPa\".",
+  "eVitals.16\u0000should be an integer when ETCO2 Type is \"mmHg\".\u0000eVitals.16": "End Tidal Carbon Dioxide (ETCO2) should be an integer when ETCO2 Type is \"mmHg\".",
+  "eVitals.16\u0000ETCO2 Type should be recorded when is recorded.\u0000eVitals.16": "ETCO2 Type should be recorded when End Tidal Carbon Dioxide (ETCO2) is recorded.",
+  "eVitals.22\u0000When is \"Initial GCS has legitimate values without interventions such as intubation and sedation\", no other value should be recorded.\u0000eVitals.22": "When Glasgow Coma Score-Qualifier is \"Initial GCS has legitimate values without interventions such as intubation and sedation\", no other value should be recorded.",
+  "eMedications.01\u0000should be recorded, unless is \"Yes\".\u0000eMedications.01,eMedications.02": "Date/Time Medication Administered should be recorded, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.01\u0000should not be earlier than , unless is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.03": "Date/Time Medication Administered should not be earlier than Unit Notified by Dispatch Date/Time, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.01\u0000should not be earlier than , unless is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.07": "Date/Time Medication Administered should not be earlier than Arrived at Patient Date/Time, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.01\u0000should not be later than .\u0000eMedications.01,eTimes.12": "Date/Time Medication Administered should not be later than Destination Patient Transfer of Care Date/Time.",
+  "eMedications.01\u0000should not be later than .\u0000eMedications.01,eTimes.13": "Date/Time Medication Administered should not be later than Unit Back in Service Date/Time.",
+  "eMedications.01\u0000should not be later than when is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.07": "Date/Time Medication Administered should not be later than Arrived at Patient Date/Time when Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.03\u0000should be recorded when a medication is administered.\u0000eMedications.03": "Medication Administered should be recorded when a medication is administered.",
+  "eMedications.03\u0000should be a code of between 2 and 7 digits when Code Type is \"RxNorm\".\u0000eMedications.03": "Medication Administered should be a code of between 2 and 7 digits when Code Type is \"RxNorm\".",
+  "eMedications.03\u0000should be a SNOMED code specifically allowed in the data dictionary when Code Type is \"SNOMED\".\u0000eMedications.03": "Medication Administered should be a SNOMED code specifically allowed in the data dictionary when Code Type is \"SNOMED\".",
+  "eMedications.03\u0000should be an RxNorm code of between 2 and 7 digits or a SNOMED code specifically allowed in the data dictionary.\u0000eMedications.03": "Medication Administered should be an RxNorm code of between 2 and 7 digits or a SNOMED code specifically allowed in the data dictionary.",
+  "eMedications.04\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.04": "Medication Administered Route should be recorded, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.05\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.05": "Medication Dosage should be recorded, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.06\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.06": "Medication Dosage Units should be recorded, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eMedications.08\u0000When is \"None\", no other value should be recorded.\u0000eMedications.08": "When Medication Complication is \"None\", no other value should be recorded.",
+  "eMedications.10\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.10": "Role/Type of Person Administering Medication should be recorded, unless Medication Administered Prior to this Unit's EMS Care is \"Yes\".",
+  "eProcedures.01\u0000should be recorded, unless is \"Yes\".\u0000eProcedures.01,eProcedures.02": "Date/Time Procedure Performed should be recorded, unless Procedure Performed Prior to this Unit's EMS Care is \"Yes\".",
+  "eProcedures.01\u0000should not be earlier than , unless is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.03": "Date/Time Procedure Performed should not be earlier than Unit Notified by Dispatch Date/Time, unless Procedure Performed Prior to this Unit's EMS Care is \"Yes\".",
+  "eProcedures.01\u0000should not be earlier than , unless is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.07": "Date/Time Procedure Performed should not be earlier than Arrived at Patient Date/Time, unless Procedure Performed Prior to this Unit's EMS Care is \"Yes\".",
+  "eProcedures.01\u0000should not be later than .\u0000eProcedures.01,eTimes.12": "Date/Time Procedure Performed should not be later than Destination Patient Transfer of Care Date/Time.",
+  "eProcedures.01\u0000should not be later than .\u0000eProcedures.01,eTimes.13": "Date/Time Procedure Performed should not be later than Unit Back in Service Date/Time.",
+  "eProcedures.01\u0000should not be later than when is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.07": "Date/Time Procedure Performed should not be later than Arrived at Patient Date/Time when Procedure Performed Prior to this Unit's EMS Care is \"Yes\".",
+  "eProcedures.03\u0000should be recorded when a procedure is performed.\u0000eProcedures.03": "Procedure should be recorded when a procedure is performed.",
+  "eProcedures.07\u0000When is \"None\", no other value should be recorded.\u0000eProcedures.07": "When Procedure Complication is \"None\", no other value should be recorded.",
+  "eProcedures.10\u0000should be recorded, unless is \"Yes\".\u0000eProcedures.02,eProcedures.10": "Role/Type of Person Performing the Procedure should be recorded, unless Procedure Performed Prior to this Unit's EMS Care is \"Yes\".",
+  "eDisposition.05\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.05,eDisposition.30": "Destination State should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.06\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.06,eDisposition.30": "Destination County should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.06\u0000should belong within the .\u0000eDisposition.05,eDisposition.06": "Destination County should belong within the Destination State.",
+  "eDisposition.07\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.07,eDisposition.30": "Destination ZIP Code should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.16\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.16,eDisposition.30": "EMS Transport Method should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.16\u0000should not be recorded when is \"Patient Refused Transport\" or \"No Transport\".\u0000eDisposition.16,eDisposition.30": "EMS Transport Method should not be recorded when Transport Disposition is \"Patient Refused Transport\" or \"No Transport\".",
+  "eDisposition.17\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.17,eDisposition.30": "Transport Mode from Scene should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.17\u0000should not be recorded when is \"Patient Refused Transport\" or \"No Transport\".\u0000eDisposition.17,eDisposition.30": "Transport Mode from Scene should not be recorded when Transport Disposition is \"Patient Refused Transport\" or \"No Transport\".",
+  "eDisposition.19\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.19,eDisposition.28": "Acuity Upon EMS Release of Patient should be recorded when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\".",
+  "eDisposition.20\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.20,eDisposition.30": "Reason for Choosing Destination should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.21\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.21,eDisposition.30": "Type of Destination should be recorded when Transport Disposition is \"Transport by This EMS Unit...\".",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"Yes...\".\u0000eArrest.01,eDisposition.21,eDisposition.23": "Hospital Capability should be recorded when Type of Destination is \"Hospital...\" or \"Freestanding Emergency Department\" and Cardiac Arrest is \"Yes...\".",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"Positive\".\u0000eDisposition.21,eDisposition.23,eVitals.29": "Hospital Capability should be recorded when Type of Destination is \"Hospital...\" or \"Freestanding Emergency Department\" and Stroke Scale Result is \"Positive\".",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"STEMI...\".\u0000eDisposition.21,eDisposition.23,eVitals.03": "Hospital Capability should be recorded when Type of Destination is \"Hospital...\" or \"Freestanding Emergency Department\" and Cardiac Rhythm / Electrocardiography (ECG) is \"STEMI...\".",
+  "eDisposition.24\u0000When is \"No\", no other value should be recorded.\u0000eDisposition.24": "When Destination Team Pre-Arrival Alert or Activation is \"No\", no other value should be recorded.",
+  "eDisposition.24\u0000should be recorded when is recorded.\u0000eDisposition.24": "Destination Team Pre-Arrival Alert or Activation should be recorded when Date/Time of Destination Prearrival Alert or Activation is recorded.",
+  "eDisposition.24\u0000should be recorded when is recorded with a value other than \"None\".\u0000eDisposition.24,eDisposition.25": "Date/Time of Destination Prearrival Alert or Activation should be recorded when Destination Team Pre-Arrival Alert or Activation is recorded with a value other than \"None\".",
+  "eDisposition.25\u0000should not be earlier than .\u0000eDisposition.25,eTimes.03": "Date/Time of Destination Prearrival Alert or Activation should not be earlier than Unit Notified by Dispatch Date/Time.",
+  "eDisposition.25\u0000should not be later than .\u0000eDisposition.25,eTimes.12": "Date/Time of Destination Prearrival Alert or Activation should not be later than Destination Patient Transfer of Care Date/Time.",
+  "eDisposition.25\u0000should not be later than .\u0000eDisposition.25,eTimes.13": "Date/Time of Destination Prearrival Alert or Activation should not be later than Unit Back in Service Date/Time.",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when is \"Patient Evaluated...\" or \"Patient Refused Evaluation/Care\".\u0000eDisposition.27,eDisposition.28": "Unit Disposition should be \"Patient Contact Made\" when Patient Evaluation/Care is \"Patient Evaluated...\" or \"Patient Refused Evaluation/Care\".",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".\u0000eDisposition.27,eDisposition.29": "Unit Disposition should be \"Patient Contact Made\" when Crew Disposition contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when is a value other than \"Non-Patient Transport (Not Otherwise Listed)\" or \"No Transport\".\u0000eDisposition.27,eDisposition.30": "Unit Disposition should be \"Patient Contact Made\" when Transport Disposition is a value other than \"Non-Patient Transport (Not Otherwise Listed)\" or \"No Transport\".",
+  "eDisposition.28\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.28": "Patient Evaluation/Care should be recorded when Unit Disposition is \"Patient Contact Made\".",
+  "eDisposition.28\u0000should be \"Patient Evaluated and Care Provided\" when contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".\u0000eDisposition.28,eDisposition.29": "Patient Evaluation/Care should be \"Patient Evaluated and Care Provided\" when Crew Disposition contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".",
+  "eDisposition.29\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.29": "Crew Disposition should be recorded when Unit Disposition is \"Patient Contact Made\".",
+  "eDisposition.30\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.30": "Transport Disposition should be recorded when Unit Disposition is \"Patient Contact Made\".",
+  "eDisposition.32\u0000should be recorded (with a value other than \"No Care Provided\") when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eDisposition.32": "Level of Care Provided per Protocol should be recorded (with a value other than \"No Care Provided\") when Patient Evaluation/Care is \"Patient Evaluated and Care Provided\"."
+};
+
+export const NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS: Readonly<Record<string, string>> = {
+  "eSituation.01\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.01": "eSituation.01",
+  "eSituation.18\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.18": "eSituation.18",
+  "eArrest.14\u0000When has a Pertinent Negative of \"Unable to Complete\", it should be empty and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eArrest.14": "eArrest.14",
+  "ePatient.15\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000ePatient.15": "ePatient.15",
+  "eSituation.01\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.01": "eSituation.01",
+  "eSituation.18\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.18": "eSituation.18",
+  "eArrest.14\u0000When has a Pertinent Negative of \"Approximate\", it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eArrest.14": "eArrest.14",
+  "eSituation.10\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eSituation.10": "eSituation.10",
+  "eMedications.03\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eMedications.03": "eMedications.03",
+  "eProcedures.03\u0000When has a Pertinent Negative, it should have a value and it should not have a Not Value (Not Applicable, Not Recorded, or Not Reporting).\u0000eProcedures.03": "eProcedures.03",
+  "eResponse.01\u0000in the patient care report should match in the agency demographic information.\u0000dAgency.02,eResponse.01": "eResponse.01",
+  "eResponse.08\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.08": "eResponse.08",
+  "eResponse.09\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.09": "eResponse.09",
+  "eResponse.10\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.10": "eResponse.10",
+  "eResponse.11\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.11": "eResponse.11",
+  "eResponse.12\u0000When is \"None/No Delay\", no other value should be recorded.\u0000eResponse.12": "eResponse.12",
+  "eTimes.03\u0000should not be earlier than .\u0000eTimes.01,eTimes.03": "eTimes.03",
+  "eTimes.05\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.05": "eTimes.05",
+  "eTimes.05\u0000should not be earlier than .\u0000eTimes.03,eTimes.05": "eTimes.05",
+  "eTimes.06\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.06": "eTimes.06",
+  "eTimes.06\u0000should not be earlier than .\u0000eTimes.03,eTimes.06": "eTimes.06",
+  "eTimes.06\u0000should not be earlier than .\u0000eTimes.05,eTimes.06": "eTimes.06",
+  "eTimes.07\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eTimes.07": "eTimes.07",
+  "eTimes.07\u0000should not be earlier than .\u0000eTimes.03,eTimes.07": "eTimes.07",
+  "eTimes.09\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eTimes.09": "eTimes.09",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.03,eTimes.09": "eTimes.09",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.05,eTimes.09": "eTimes.09",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.06,eTimes.09": "eTimes.09",
+  "eTimes.09\u0000should not be earlier than .\u0000eTimes.07,eTimes.09": "eTimes.09",
+  "eTimes.11\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.30,eTimes.11": "eTimes.11",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.03,eTimes.11": "eTimes.11",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.05,eTimes.11": "eTimes.11",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.06,eTimes.11": "eTimes.11",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.07,eTimes.11": "eTimes.11",
+  "eTimes.11\u0000should not be earlier than .\u0000eTimes.09,eTimes.11": "eTimes.11",
+  "eTimes.12\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.30,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.03,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.05,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.06,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.07,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.09,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eTimes.11,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eSituation.01,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eSituation.18,eTimes.12": "eTimes.12",
+  "eTimes.12\u0000should not be earlier than .\u0000eArrest.14,eTimes.12": "eTimes.12",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.03,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.05,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.06,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.07,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.09,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.11,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eTimes.12,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eSituation.01,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eSituation.18,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be earlier than .\u0000eArrest.14,eTimes.13": "eTimes.13",
+  "eTimes.13\u0000should not be in the future (the current time according to this system is ).\u0000eTimes.13": "eTimes.13",
+  "ePatient.07\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.07": "ePatient.07",
+  "ePatient.07\u0000should belong within the .\u0000ePatient.07,ePatient.08": "ePatient.07",
+  "ePatient.08\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.08": "ePatient.08",
+  "ePatient.09\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.09": "ePatient.09",
+  "ePatient.14\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.14": "ePatient.14",
+  "ePatient.15\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.15": "ePatient.15",
+  "ePatient.16\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,ePatient.16": "ePatient.16",
+  "ePatient.16\u0000should be recorded when is recorded.\u0000ePatient.15,ePatient.16": "ePatient.16",
+  "eScene.06\u0000should be \"Multiple\" or \"Single\" when is \"Patient Contact Made\".\u0000eDisposition.27,eScene.06": "eScene.06",
+  "eScene.06\u0000should be \"Multiple\" when is \"Yes\".\u0000eScene.06,eScene.07": "eScene.06",
+  "eScene.08\u0000should be recorded when is \"Yes\".\u0000eScene.07,eScene.08": "eScene.08",
+  "eScene.09\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.09": "eScene.09",
+  "eScene.18\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.18": "eScene.18",
+  "eScene.19\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.19": "eScene.19",
+  "eScene.21\u0000should be recorded unless is \"Cancelled Prior to Arrival at Scene\".\u0000eDisposition.27,eScene.21": "eScene.21",
+  "eScene.21\u0000should belong within the .\u0000eScene.18,eScene.21": "eScene.21",
+  "eSituation.01\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.01": "eSituation.01",
+  "eSituation.02\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.02": "eSituation.02",
+  "eSituation.02\u0000should be \"Yes\" when a symptom or impression is injury-related.\u0000eSituation.02,eSituation.09,eSituation.10,eSituation.11,eSituation.12": "eSituation.02",
+  "eSituation.09\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.09": "eSituation.09",
+  "eSituation.10\u0000should only be recorded when is recorded.\u0000eSituation.09,eSituation.10": "eSituation.10",
+  "eSituation.11\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.11": "eSituation.11",
+  "eSituation.12\u0000should only be recorded when is recorded.\u0000eSituation.11,eSituation.12": "eSituation.12",
+  "eSituation.13\u0000should be recorded when is \"Emergency Response (Primary Response Area)\" and is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eResponse.05,eSituation.13": "eSituation.13",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eDisposition.28,eSituation.18": "eSituation.18",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Positive\".\u0000eDisposition.28,eSituation.18,eVitals.29": "eSituation.18",
+  "eSituation.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"STEMI...\".\u0000eDisposition.28,eSituation.18,eVitals.03": "eSituation.18",
+  "eSituation.20\u0000should only be recorded when is \"... Transfer\" or \"Other Routine Medical Transport\".\u0000eResponse.05,eSituation.20": "eSituation.20",
+  "eInjury.01\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes\".\u0000eDisposition.28,eInjury.01,eSituation.02": "eInjury.01",
+  "eInjury.01\u0000should only be recorded when is \"Yes\".\u0000eInjury.01,eSituation.02": "eInjury.01",
+  "eInjury.03\u0000should only be recorded when is \"Yes\".\u0000eInjury.03,eSituation.02": "eInjury.03",
+  "eInjury.04\u0000should only be recorded when is \"Yes\".\u0000eInjury.04,eSituation.02": "eInjury.04",
+  "eArrest.02\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.02,eDisposition.28": "eArrest.02",
+  "eArrest.02\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.02": "eArrest.02",
+  "eArrest.03\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.03,eDisposition.28": "eArrest.03",
+  "eArrest.03\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.03": "eArrest.03",
+  "eArrest.03\u0000should not contain both \"Attempted/Initiated...\" and \"Not Attempted...\".\u0000eArrest.03": "eArrest.03",
+  "eArrest.03\u0000should contain \"Initiated Chest Compressions\" when contains \"Compressions...\".\u0000eArrest.03,eArrest.09": "eArrest.03",
+  "eArrest.03\u0000should contain \"Attempted Ventilation\" when contains \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\".\u0000eArrest.03,eArrest.09": "eArrest.03",
+  "eArrest.04\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.04,eDisposition.28": "eArrest.04",
+  "eArrest.04\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.04": "eArrest.04",
+  "eArrest.04\u0000When is \"Not Witnessed\", no other value should be recorded.\u0000eArrest.04": "eArrest.04",
+  "eArrest.07\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes, Prior to Any EMS Arrival (includes Transport EMS & Medical First Responders)\".\u0000eArrest.01,eArrest.07,eDisposition.28": "eArrest.07",
+  "eArrest.07\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.07": "eArrest.07",
+  "eArrest.09\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.09": "eArrest.09",
+  "eArrest.09\u0000should contain \"Compressions...\" when contains \"Initiated Chest Compressions\".\u0000eArrest.03,eArrest.09": "eArrest.09",
+  "eArrest.09\u0000should contain \"Ventilation...\" or \"Compressions-Intermittent with Ventilation\" when contains \"Attempted Ventilation\".\u0000eArrest.03,eArrest.09": "eArrest.09",
+  "eArrest.12\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.12,eDisposition.28": "eArrest.12",
+  "eArrest.12\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.12": "eArrest.12",
+  "eArrest.12\u0000When is \"No\", no other value should be recorded.\u0000eArrest.12": "eArrest.12",
+  "eArrest.14\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.14": "eArrest.14",
+  "eArrest.16\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.16": "eArrest.16",
+  "eArrest.17\u0000should be recorded when is \"Transport by This EMS Unit...\" and is \"Yes...\".\u0000eArrest.01,eArrest.17,eDisposition.30": "eArrest.17",
+  "eArrest.17\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.17": "eArrest.17",
+  "eArrest.18\u0000should be recorded when is \"Patient Evaluated and Care Provided\" and is \"Yes...\".\u0000eArrest.01,eArrest.18,eDisposition.28": "eArrest.18",
+  "eArrest.18\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.18": "eArrest.18",
+  "eArrest.20\u0000should be recorded when is \"Attempted...\" or \"Initiated...\".\u0000eArrest.03,eArrest.20": "eArrest.20",
+  "eArrest.20\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.20": "eArrest.20",
+  "eArrest.21\u0000should be recorded when is \"Yes...\".\u0000eArrest.07,eArrest.21": "eArrest.21",
+  "eArrest.21\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.21": "eArrest.21",
+  "eArrest.22\u0000should be recorded when is \"Yes, With Defibrillation\".\u0000eArrest.07,eArrest.22": "eArrest.22",
+  "eArrest.22\u0000should only be recorded when is \"Yes...\".\u0000eArrest.01,eArrest.22": "eArrest.22",
+  "eHistory.01\u0000When is \"None Noted\", no other value should be recorded.\u0000eHistory.01": "eHistory.01",
+  "eVitals.01\u0000should be recorded, unless is \"Yes\".\u0000eVitals.01,eVitals.02": "eVitals.01",
+  "eVitals.01\u0000should not be earlier than , unless is \"Yes\".\u0000eTimes.03,eVitals.01,eVitals.02": "eVitals.01",
+  "eVitals.01\u0000should not be earlier than , unless is \"Yes\".\u0000eTimes.07,eVitals.01,eVitals.02": "eVitals.01",
+  "eVitals.01\u0000should not be later than .\u0000eTimes.12,eVitals.01": "eVitals.01",
+  "eVitals.01\u0000should not be later than .\u0000eTimes.13,eVitals.01": "eVitals.01",
+  "eVitals.01\u0000should not be later than when is \"Yes\".\u0000eTimes.07,eVitals.01,eVitals.02": "eVitals.01",
+  "eVitals.16\u0000should be no more than 100 when ETCO2 Type is \"Percentage\".\u0000eVitals.16": "eVitals.16",
+  "eVitals.16\u0000should be no more than 100 when ETCO2 Type is \"kPa\".\u0000eVitals.16": "eVitals.16",
+  "eVitals.16\u0000should be an integer when ETCO2 Type is \"mmHg\".\u0000eVitals.16": "eVitals.16",
+  "eVitals.16\u0000ETCO2 Type should be recorded when is recorded.\u0000eVitals.16": "eVitals.16",
+  "eVitals.22\u0000When is \"Initial GCS has legitimate values without interventions such as intubation and sedation\", no other value should be recorded.\u0000eVitals.22": "eVitals.22",
+  "eMedications.01\u0000should be recorded, unless is \"Yes\".\u0000eMedications.01,eMedications.02": "eMedications.01",
+  "eMedications.01\u0000should not be earlier than , unless is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.03": "eMedications.01",
+  "eMedications.01\u0000should not be earlier than , unless is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.07": "eMedications.01",
+  "eMedications.01\u0000should not be later than .\u0000eMedications.01,eTimes.12": "eMedications.01",
+  "eMedications.01\u0000should not be later than .\u0000eMedications.01,eTimes.13": "eMedications.01",
+  "eMedications.01\u0000should not be later than when is \"Yes\".\u0000eMedications.01,eMedications.02,eTimes.07": "eMedications.01",
+  "eMedications.03\u0000should be recorded when a medication is administered.\u0000eMedications.03": "eMedications.03",
+  "eMedications.03\u0000should be a code of between 2 and 7 digits when Code Type is \"RxNorm\".\u0000eMedications.03": "eMedications.03",
+  "eMedications.03\u0000should be a SNOMED code specifically allowed in the data dictionary when Code Type is \"SNOMED\".\u0000eMedications.03": "eMedications.03",
+  "eMedications.03\u0000should be an RxNorm code of between 2 and 7 digits or a SNOMED code specifically allowed in the data dictionary.\u0000eMedications.03": "eMedications.03",
+  "eMedications.04\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.04": "eMedications.04",
+  "eMedications.05\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.05": "eMedications.05",
+  "eMedications.06\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.06": "eMedications.06",
+  "eMedications.08\u0000When is \"None\", no other value should be recorded.\u0000eMedications.08": "eMedications.08",
+  "eMedications.10\u0000should be recorded, unless is \"Yes\".\u0000eMedications.02,eMedications.10": "eMedications.10",
+  "eProcedures.01\u0000should be recorded, unless is \"Yes\".\u0000eProcedures.01,eProcedures.02": "eProcedures.01",
+  "eProcedures.01\u0000should not be earlier than , unless is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.03": "eProcedures.01",
+  "eProcedures.01\u0000should not be earlier than , unless is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.07": "eProcedures.01",
+  "eProcedures.01\u0000should not be later than .\u0000eProcedures.01,eTimes.12": "eProcedures.01",
+  "eProcedures.01\u0000should not be later than .\u0000eProcedures.01,eTimes.13": "eProcedures.01",
+  "eProcedures.01\u0000should not be later than when is \"Yes\".\u0000eProcedures.01,eProcedures.02,eTimes.07": "eProcedures.01",
+  "eProcedures.03\u0000should be recorded when a procedure is performed.\u0000eProcedures.03": "eProcedures.03",
+  "eProcedures.07\u0000When is \"None\", no other value should be recorded.\u0000eProcedures.07": "eProcedures.07",
+  "eProcedures.10\u0000should be recorded, unless is \"Yes\".\u0000eProcedures.02,eProcedures.10": "eProcedures.10",
+  "eDisposition.05\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.05,eDisposition.30": "eDisposition.05",
+  "eDisposition.06\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.06,eDisposition.30": "eDisposition.06",
+  "eDisposition.06\u0000should belong within the .\u0000eDisposition.05,eDisposition.06": "eDisposition.06",
+  "eDisposition.07\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.07,eDisposition.30": "eDisposition.07",
+  "eDisposition.16\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.16,eDisposition.30": "eDisposition.16",
+  "eDisposition.16\u0000should not be recorded when is \"Patient Refused Transport\" or \"No Transport\".\u0000eDisposition.16,eDisposition.30": "eDisposition.16",
+  "eDisposition.17\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.17,eDisposition.30": "eDisposition.17",
+  "eDisposition.17\u0000should not be recorded when is \"Patient Refused Transport\" or \"No Transport\".\u0000eDisposition.17,eDisposition.30": "eDisposition.17",
+  "eDisposition.19\u0000should be recorded when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.19,eDisposition.28": "eDisposition.19",
+  "eDisposition.20\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.20,eDisposition.30": "eDisposition.20",
+  "eDisposition.21\u0000should be recorded when is \"Transport by This EMS Unit...\".\u0000eDisposition.21,eDisposition.30": "eDisposition.21",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"Yes...\".\u0000eArrest.01,eDisposition.21,eDisposition.23": "eDisposition.23",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"Positive\".\u0000eDisposition.21,eDisposition.23,eVitals.29": "eDisposition.23",
+  "eDisposition.23\u0000should be recorded when is \"Hospital...\" or \"Freestanding Emergency Department\" and is \"STEMI...\".\u0000eDisposition.21,eDisposition.23,eVitals.03": "eDisposition.23",
+  "eDisposition.24\u0000When is \"No\", no other value should be recorded.\u0000eDisposition.24": "eDisposition.24",
+  "eDisposition.25\u0000should not be earlier than .\u0000eDisposition.25,eTimes.03": "eDisposition.25",
+  "eDisposition.25\u0000should not be later than .\u0000eDisposition.25,eTimes.12": "eDisposition.25",
+  "eDisposition.25\u0000should not be later than .\u0000eDisposition.25,eTimes.13": "eDisposition.25",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when is \"Patient Evaluated...\" or \"Patient Refused Evaluation/Care\".\u0000eDisposition.27,eDisposition.28": "eDisposition.27",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".\u0000eDisposition.27,eDisposition.29": "eDisposition.27",
+  "eDisposition.27\u0000should be \"Patient Contact Made\" when is a value other than \"Non-Patient Transport (Not Otherwise Listed)\" or \"No Transport\".\u0000eDisposition.27,eDisposition.30": "eDisposition.27",
+  "eDisposition.28\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.28": "eDisposition.28",
+  "eDisposition.28\u0000should be \"Patient Evaluated and Care Provided\" when contains \"... Primary Care...\" or \"Provided Care Supporting Primary EMS Crew\".\u0000eDisposition.28,eDisposition.29": "eDisposition.28",
+  "eDisposition.29\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.29": "eDisposition.29",
+  "eDisposition.30\u0000should be recorded when is \"Patient Contact Made\".\u0000eDisposition.27,eDisposition.30": "eDisposition.30",
+  "eDisposition.32\u0000should be recorded (with a value other than \"No Care Provided\") when is \"Patient Evaluated and Care Provided\".\u0000eDisposition.28,eDisposition.32": "eDisposition.32"
+};

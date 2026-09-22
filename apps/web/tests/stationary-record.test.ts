@@ -15,6 +15,10 @@ import {
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
 import { stationaryActionLabel, stationaryDisplayLabel } from "../app/stationary-label";
 import { StationaryRecord } from "../components/stationary-record";
+import { populateStationaryDemoData } from "../app/stationary-demo-data";
+import { editScalarOccurrence } from "../app/stationary-scalar";
+import { INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
+import { stationaryReviewFindings } from "../app/stationary-validation";
 
 const document = structuredClone(synthetic) as EncounterDocument;
 
@@ -48,11 +52,11 @@ test("the complete record exposes configured sections and blocks in canonical hi
     const index = html.indexOf(`data-stationary-section="${section.id}"`);
     assert.ok(index > previous, `${section.id} must follow configured section order`);
     previous = index;
-    assert.ok(html.includes(`href="#${section.hash}"`));
+    assert.ok(html.includes(`aria-label="${stationaryDisplayLabel(section.label)}:`));
   }
   assert.match(html, /aria-label="Stationary record sections"/);
   assert.doesNotMatch(html, /data-stationary-section="(?:DemographicGroup|eCustomConfigurationSection)"/);
-  assert.doesNotMatch(html, /href="#stationary-section-(?:DemographicGroup|eCustomConfigurationSection)"/);
+  assert.doesNotMatch(html, /stationary-section-(?:DemographicGroup|eCustomConfigurationSection)/);
   assert.match(html, /aria-current="location"/);
   assert.match(html, /tabindex="-1"/);
 });
@@ -108,8 +112,8 @@ test("every compiled group and catalog element has exactly one renderer presenta
   assert.equal([...coverage.groups.values()].filter((kind) => kind === "nested-table").length > 0, true);
 });
 
-test("section status projects errors, warnings, and incomplete catalog requirements", () => {
-  const statuses = stationarySectionStatuses(document, [
+test("section status projects actionable errors and warnings", () => {
+  const statuses = stationarySectionStatuses([
     { severity: "error", target: { groupId: "eVitals.VitalGroup", elementId: "eVitals.06" } },
     { severity: "warning", target: { groupId: "eVitals.CardiacRhythmGroup", elementId: "eVitals.03" } },
     { severity: "warning", target: { groupId: "eNarrativeSection", elementId: "eNarrative.01" } },
@@ -117,17 +121,77 @@ test("section status projects errors, warnings, and incomplete catalog requireme
   assert.equal(statuses.get("eVitalsSection")?.errors, 1);
   assert.equal(statuses.get("eVitalsSection")?.warnings, 1);
   assert.equal(statuses.get("eNarrativeSection")?.warnings, 1);
-  assert.ok([...statuses.values()].some(({ incomplete }) => incomplete > 0));
 
   const html = renderToStaticMarkup(createElement(StationaryRecord, {
     document,
     findings: [{ severity: "error", target: { groupId: "eVitals.VitalGroup" } }],
     onDocumentChange() {},
   }));
-  assert.match(html, /Vitals: 1 error, 0 warnings,/);
+  assert.match(html, /Vitals: 1 error, 0 warnings/);
   assert.match(html, /warning-count zero-count/);
+  assert.doesNotMatch(html, /incomplete-count|required fields incomplete/);
   assert.doesNotMatch(html, /NEMSIS section/);
   assert.match(html, /data-section-status="error"/);
+});
+
+test("encounter-review warnings contribute to section badges without becoming inline form messages", () => {
+  const populated = populateStationaryDemoData(document);
+  const vitalReviewWarning = { severity: "warning" as const, target: {
+    groupId: "eVitals.VitalGroup", elementId: "eVitals.10",
+  } };
+  const html = renderToStaticMarkup(createElement(StationaryRecord, { document: populated,
+    findings: [], sectionFindings: [vitalReviewWarning], onDocumentChange() {} }));
+  assert.match(html, /Vitals: 0 errors, 1 warning/);
+  assert.doesNotMatch(html, /stationary-validation-message warning/);
+
+  const formDefinition = { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
+    { key: "heart-rate", source: { kind: "nemsis" as const, elementId: "eVitals.10" } },
+  ] }] };
+  const preview = renderToStaticMarkup(createElement(StationaryRecord, { document: populated,
+    formDefinition, findings: [], sectionFindings: [vitalReviewWarning], onDocumentChange() {} }));
+  assert.match(preview, /vitals: 0 errors, 1 warning/i);
+});
+
+test("populated vital review warnings appear in the stationary section rail", () => {
+  let populated = populateStationaryDemoData(document);
+  for (const elementId of ["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14"]) {
+    const groupId = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === elementId)!.groupPath.at(-1)!;
+    const instance = populated.groups.find(({ id }) => id === groupId)!.instances[0]!;
+    const occurrenceId = instance.elements.find(({ id }) => id === elementId)!.values[0]!.occurrenceId;
+    const edited = editScalarOccurrence(populated, { groupId, groupInstanceId: instance.instanceId,
+      elementId, occurrenceId, input: "0" });
+    assert.equal(edited.ok, true);
+    populated = edited.document;
+  }
+  const vitalFindings = reviewEncounter({ ...INITIAL_SHELL_STATE,
+    encounter: { ...INITIAL_SHELL_STATE.encounter, document: populated } })
+    .filter(({ eventType }) => eventType === "vitals");
+  assert.equal(vitalFindings.filter(({ severity }) => severity === "warning").length, 4);
+  const formDefinition = { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
+    ...["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14"].map((elementId) => ({
+      key: elementId, source: { kind: "nemsis" as const, elementId },
+    })),
+  ] }] };
+  const visible = stationaryReviewFindings(vitalFindings, { definition: formDefinition, catalogFields: {} });
+  assert.equal(visible.length, 4);
+  const fullHtml = renderToStaticMarkup(createElement(StationaryRecord, { document: populated,
+    sectionFindings: visible, onDocumentChange() {} }));
+  assert.match(fullHtml, /Vitals: 0 errors, 4 warnings/);
+  const html = renderToStaticMarkup(createElement(StationaryRecord, { document: populated, formDefinition,
+    sectionFindings: visible, onDocumentChange() {} }));
+  assert.match(html, /vitals: 0 errors, 4 warnings/i);
+});
+
+test("a warning on a vital field highlights its table row", () => {
+  const populated = populateStationaryDemoData(document);
+  const vital = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!;
+  const formDefinition = { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
+    { key: "etco2", source: { kind: "nemsis" as const, elementId: "eVitals.16" } },
+  ] }] };
+  const html = renderToStaticMarkup(createElement(StationaryRecord, { document: populated, formDefinition,
+    findings: [{ severity: "warning", target: { groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId,
+      fieldId: "eVitals.16" } }], onDocumentChange() {} }));
+  assert.match(html, /<tr[^>]*class="stationary-validation-state warning"/);
 });
 
 test("scroll activation selects the section crossing the sticky activation line", () => {

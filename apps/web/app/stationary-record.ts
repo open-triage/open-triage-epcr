@@ -1,5 +1,5 @@
-import type { EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
-import { NEMSIS_DATA_MODEL, getNemsisGroup } from "./nemsis-data-model";
+import type { FormDraftDefinition } from "@open-triage/contracts";
+import { getNemsisGroup } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup, type StationaryElementPlacement } from "./stationary-layout";
 
 export type StationarySectionFinding = {
@@ -18,7 +18,6 @@ export type StationarySectionFinding = {
 export type StationarySectionStatus = {
   readonly errors: number;
   readonly warnings: number;
-  readonly incomplete: number;
 };
 
 export type StationarySection = {
@@ -43,7 +42,7 @@ export type ConfiguredStationarySection = {
   readonly groupIds: ReadonlySet<string>;
 };
 
-const EMPTY_STATUS: StationarySectionStatus = { errors: 0, warnings: 0, incomplete: 0 };
+const EMPTY_STATUS: StationarySectionStatus = { errors: 0, warnings: 0 };
 const HIDDEN_STATIONARY_SECTION_IDS = new Set(["DemographicGroup", "eCustomConfigurationSection"]);
 const HIDDEN_STATIONARY_ELEMENT_PREFIXES = ["dAgency.", "eCustomConfiguration."] as const;
 const layoutGroups = new Map<string, CompiledStationaryGroup>();
@@ -182,23 +181,12 @@ export function stationarySectionForGroup(groupId: string, sections: ReadonlyArr
   return undefined;
 }
 
-/** Projects validation and catalog-required completeness onto the navigation rail. */
+/** Projects actionable validation findings onto the navigation rail. */
 export function stationarySectionStatuses(
-  document: EncounterDocument,
   findings: ReadonlyArray<StationarySectionFinding> = [],
   sections: ReadonlyArray<StationarySection> = configuredStationarySections(),
 ): ReadonlyMap<string, StationarySectionStatus> {
   const statuses = new Map(sections.map(({ id }) => [id, { ...EMPTY_STATUS }]));
-  const supplied = new Set(document.groups.flatMap((group) => group.instances.flatMap((instance) =>
-    instance.elements.filter(({ values }) => values.length > 0).map(({ id }) => id),
-  )));
-  for (const element of NEMSIS_DATA_MODEL.elements) {
-    if (element.occurrence.min === 0 || supplied.has(element.id)) continue;
-    const section = stationarySectionForGroup(element.groupPath.at(-1)!, sections);
-    if (!section) continue;
-    const status = statuses.get(section.id)!;
-    statuses.set(section.id, { ...status, incomplete: status.incomplete + 1 });
-  }
   for (const finding of findings) {
     const section = stationarySectionForGroup(finding.target.groupId, sections);
     if (!section) continue;

@@ -5,6 +5,8 @@ import test from "node:test";
 import {
   NEMSIS_351_EMS_BUILD,
   NEMSIS_351_EMS_NORMALIZATIONS,
+  NEMSIS_351_EMS_MESSAGE_REPAIRS,
+  NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS,
   NEMSIS_351_EMS_RELEASE,
   NEMSIS_351_EMS_SOURCE_SHA256,
   NemsisSchematronCompatibilityError,
@@ -41,6 +43,57 @@ test("the pinned official EMS corpus is completely accounted for with immutable 
   assert.match(example.originalExpression, /starts-with/);
   assert.match(example.originalMessage, /sch:value-of/);
   assert.match(example.targetExpression, /eDisposition\.06|\./);
+  assert.match(NEMSIS_351_EMS_NORMALIZATIONS.nemSch_e068.source,
+    /^when not\(undocumented\("eScene\.06"\)\)\nrequire any\(/);
+  assert.equal(imported.rules.find((candidate) => candidate.id === "nemSch_e068")?.message,
+    'Number of Patients at Scene should be "Multiple" when Mass Casualty Incident is "Yes".');
+  assert.equal(imported.rules.filter(({ message }) => /^should\b|\bwhen is\b/.test(message)).length, 0,
+    "all imported NEMSIS messages include their referenced element names");
+  const assertionsById = new Map(imported.assertions.map((assertion) => [assertion.identity, assertion]));
+  for (const importedRule of imported.rules) {
+    const original = assertionsById.get(importedRule.provenance[0]!.sourceIdentity)?.displayMessage;
+    if (!original || original === importedRule.message) continue;
+    const references = [...new Set([...importedRule.source.matchAll(/"([de][A-Z][A-Za-z]+\.\d{2})"/g)]
+      .map((match) => match[1]!))].sort();
+    assert.equal(NEMSIS_351_EMS_MESSAGE_REPAIRS[`${importedRule.primaryTargetElementId}\u0000${original}\u0000${references.join(",")}`],
+      importedRule.message, `${importedRule.id} has a matching legacy-message repair`);
+  }
+  let contextRules = 0;
+  for (const rule of source.matchAll(/<sch:rule\b([^>]*)>([\s\S]*?)<\/sch:rule>/g)) {
+    const contextElement = /context="nem:(e[A-Z][A-Za-z]+\.\d{2})(?:\[[^"]*\])?"/.exec(rule[1]!)?.[1];
+    if (!contextElement) continue;
+    for (const assertion of rule[2]!.matchAll(/<sch:assert\b([^>]*)>/g)) {
+      const identity = /\bid="([^"]+)"/.exec(assertion[1]!)?.[1];
+      if (!identity) continue;
+      contextRules += 1;
+      assert.ok((NEMSIS_351_EMS_NORMALIZATIONS as Readonly<Record<string, { source: string }>>)[identity]?.source
+        .includes(`not(undocumented("${contextElement}"))`),
+        `${identity} retains its Schematron element context`);
+      const importedRule = imported.rules.find((candidate) => candidate.id === identity);
+      const original = assertionsById.get(identity)?.displayMessage;
+      if (importedRule && original && original !== importedRule.message) {
+        const references = [...new Set([...importedRule.source.matchAll(/"([de][A-Z][A-Za-z]+\.\d{2})"/g)]
+          .map((match) => match[1]!))].sort();
+        assert.equal(NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS[
+          `${importedRule.primaryTargetElementId}\u0000${original}\u0000${references.join(",")}`], contextElement,
+        `${identity} has a matching guard for previously published rules`);
+      }
+    }
+  }
+  assert.ok(contextRules > 100, "all element-context assertions are covered");
+  const sweden = JSON.parse(readFileSync(resolve(process.cwd(),
+    "../../defines/validation/validation_sweden.json"), "utf8")) as { rules: Array<{
+      source: string; message: string; name: string; provenance?: Array<{ sourceIdentity: string }> }> };
+  const importedByIdentity = new Map(imported.rules.flatMap((importedRule) => importedRule.provenance
+    .map(({ sourceIdentity }) => [sourceIdentity, importedRule] as const)));
+  for (const seeded of sweden.rules) {
+    const sourceIdentity = seeded.provenance?.[0]?.sourceIdentity;
+    const importedRule = sourceIdentity ? importedByIdentity.get(sourceIdentity) : undefined;
+    if (!importedRule) continue;
+    assert.deepEqual({ source: seeded.source, message: seeded.message, name: seeded.name },
+      { source: importedRule.source, message: importedRule.message, name: importedRule.name },
+      `${sourceIdentity} stays synchronized with the shared import`);
+  }
 });
 
 test("every official fixture firing identity resolves to imported provenance and parity mismatches are exact", () => {

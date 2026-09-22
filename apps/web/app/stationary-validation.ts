@@ -1,5 +1,5 @@
-import { compiledValidationBundleSha256, evaluateValidationBundleSafely, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
-import { NEMSIS_DATA_MODEL, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
+import { compiledValidationBundleSha256, evaluateValidationBundleSafely, isNemsisDemographicElementId, repairNemsisImportedMessage, type ClinicalFormConfiguration, type EncounterDocument, type EncounterValue } from "@open-triage/contracts";
+import { NEMSIS_DATA_MODEL, getNemsisDataElement, resolveNemsisElementValues, type NemsisDataElement } from "./nemsis-data-model";
 import { COMPILED_STATIONARY_LAYOUT } from "./stationary-layout";
 import { validateScalarInput } from "./stationary-scalar";
 
@@ -49,6 +49,8 @@ type ClinicalReviewFinding = {
 
 const groupPresentation = new Map(COMPILED_STATIONARY_LAYOUT.groups.map((group) => [group.id, group]));
 const elementPresentation = new Map(COMPILED_STATIONARY_LAYOUT.elements.map((element) => [element.id, element]));
+const patientCareElements = NEMSIS_DATA_MODEL.elements.filter((element) => element.groupPath.includes("PatientCareReportGroup"));
+const patientCareGroups = NEMSIS_DATA_MODEL.groups.filter((group) => group.path.includes("PatientCareReportGroup"));
 
 function sectionId(groupId: string): string {
   let current = NEMSIS_DATA_MODEL.groups.find(({ id }) => id === groupId);
@@ -62,6 +64,29 @@ function idPart(value: string | undefined): string {
   return encodeURIComponent(value ?? "root");
 }
 
+/** Older published NEMSIS imports lost the names inside sch:value-of tags. */
+export function displayValidationRuleMessage(message: string, primaryElementId: string,
+  referencedElementIds: ReadonlyArray<string>): string {
+  const repaired = repairNemsisImportedMessage(message, primaryElementId, referencedElementIds);
+  if (repaired !== message) return repaired;
+  const missingComparisonNames = /^should be (.+) when is (.+)$/i.exec(message.trim());
+  if (missingComparisonNames) {
+    const otherId = referencedElementIds.find((id) => id !== primaryElementId);
+    if (otherId) return `${getNemsisDataElement(primaryElementId)?.name ?? primaryElementId} should be ${missingComparisonNames[1]} when ${getNemsisDataElement(otherId)?.name ?? otherId} is ${missingComparisonNames[2]}`;
+  }
+  const recorded = /^(.+?) should be recorded when is recorded\.?$/i.exec(message.trim());
+  if (recorded) return `${recorded[1]} should be recorded when ${getNemsisDataElement(primaryElementId)?.name ?? primaryElementId} is recorded.`;
+  if (/^should be recorded when is recorded\.?$/i.test(message.trim())) {
+    const otherId = referencedElementIds.find((id) => id !== primaryElementId);
+    if (otherId) return `${getNemsisDataElement(primaryElementId)?.name ?? primaryElementId} should be recorded when ${getNemsisDataElement(otherId)?.name ?? otherId} is recorded.`;
+  }
+  if (!/^should not be earlier than\s*\.?$/i.test(message.trim())) return message;
+  const otherId = referencedElementIds.find((id) => id !== primaryElementId);
+  const primary = getNemsisDataElement(primaryElementId);
+  const other = otherId ? getNemsisDataElement(otherId) : undefined;
+  return other ? `${primary?.name ?? primaryElementId} should not be earlier than ${other.name}.` : message;
+}
+
 /**
  * A pinned form owns structural/requiredness errors, while the encounter review
  * still owns clinical plausibility warnings. Limit those warnings to clinical
@@ -72,12 +97,14 @@ export function stationaryReviewFindings<T extends ClinicalReviewFinding>(
   findings: ReadonlyArray<T>,
   clinicalForm?: ClinicalFormConfiguration,
 ): ReadonlyArray<T> {
-  if (!clinicalForm) return findings;
+  const reportFindings = findings.filter(({ target }) => !isNemsisDemographicElementId(target.elementId ?? "")
+    && patientCareGroups.some(({ id }) => id === target.groupId));
+  if (!clinicalForm) return reportFindings;
   const configuredElements = new Set(clinicalForm.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-    field.source.kind === "nemsis" ? [field.source.elementId] : [])));
-  const configuredGroups = new Set(NEMSIS_DATA_MODEL.elements.filter(({ id }) => configuredElements.has(id))
+    field.source.kind === "nemsis" && !isNemsisDemographicElementId(field.source.elementId) ? [field.source.elementId] : [])));
+  const configuredGroups = new Set(patientCareElements.filter(({ id }) => configuredElements.has(id))
     .flatMap(({ groupPath }) => groupPath));
-  return findings.filter(({ severity, target }) => severity === "warning"
+  return reportFindings.filter(({ severity, target }) => severity === "warning"
     && (configuredElements.has(target.elementId ?? "") || configuredGroups.has(target.groupId)));
 }
 
@@ -134,7 +161,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
     const resolved = resolveNemsisElementValues(element);
     if (resolved.kind === "scalar") return [finding("value.kind", `${element.id} requires a scalar value.`, target, element.name)];
     const configuredChoices = configured?.codeChoices;
-    if (configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
+    if (resolved.exhaustive && configuredChoices && !configuredChoices.some(({ code, codeSystem }) =>
       code === value.code && (!codeSystem || codeSystem === (value.system ?? "")))) {
       return [finding("value.code", `${value.code} is not permitted for ${element.id}.`, target, element.name)];
     }
@@ -168,17 +195,17 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     : null;
   const formRequired = new Set(clinicalForm?.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
     field.source.kind === "nemsis" && field.required ? [field.source.elementId] : [])) ?? []);
-  const explicitlyRequiredElements = new Set(NEMSIS_DATA_MODEL.elements.filter((element) =>
+  const explicitlyRequiredElements = new Set(patientCareElements.filter((element) =>
     formRequired.has(element.id) || clinicalForm?.catalogFields[element.id]?.agencyRequired === true).map(({ id }) => id));
-  const explicitlyRequiredGroups = new Set(NEMSIS_DATA_MODEL.elements.filter(({ id }) => explicitlyRequiredElements.has(id))
+  const explicitlyRequiredGroups = new Set(patientCareElements.filter(({ id }) => explicitlyRequiredElements.has(id))
     .flatMap(({ groupPath }) => groupPath));
   const catalogGroups = new Map(NEMSIS_DATA_MODEL.groups.map((group) => [group.id, group]));
   const instancesByGroup = new Map(document.groups.map((group) => [group.id, group.instances]));
   const seenInstances = new Set<string>();
   const seenOccurrences = new Set<string>();
 
-  for (const catalogGroup of NEMSIS_DATA_MODEL.groups) {
-    const relevant = !configuredFields || NEMSIS_DATA_MODEL.elements.some((element) =>
+  for (const catalogGroup of patientCareGroups) {
+    const relevant = !configuredFields || patientCareElements.some((element) =>
       configuredFields.has(element.id) && element.groupPath.includes(catalogGroup.id));
     const instances = instancesByGroup.get(catalogGroup.id) ?? [];
     const presentation = groupPresentation.get(catalogGroup.id);
@@ -204,7 +231,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     }
   }
 
-  for (const element of NEMSIS_DATA_MODEL.elements) {
+  for (const element of patientCareElements) {
     if (configuredFields && !configuredFields.has(element.id)) continue;
     const groupId = element.groupPath.at(-1)!;
     const configured = clinicalForm?.catalogFields[element.id];
@@ -245,10 +272,13 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     ]));
     for (const authored of authoredFindings.values()) {
       const element = NEMSIS_DATA_MODEL.elements.find(({ id }) => id === authored.primaryTarget.elementId);
+      const rule = clinicalForm.validation.bundle.rules.find(({ ruleId }) => ruleId === authored.ruleId);
+      const message = displayValidationRuleMessage(authored.message, authored.primaryTarget.elementId,
+        rule?.references.elementIds ?? []);
       const groupId = element?.groupPath.at(-1) ?? "PatientCareReportGroup";
       findings.push(finding(
         `validation.${authored.validationVersionId}.${authored.ruleId}`,
-        authored.message,
+        message,
         { groupId, ...(authored.primaryTarget.groupInstanceId ? { groupInstanceId: authored.primaryTarget.groupInstanceId } : {}),
           ...(authored.primaryTarget.occurrenceId ? { occurrenceId: authored.primaryTarget.occurrenceId } : {}),
           fieldId: authored.primaryTarget.elementId },

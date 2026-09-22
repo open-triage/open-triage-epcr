@@ -14,6 +14,8 @@ export {
   formatOccurrenceSource,
   formatRequiredElementSource,
   formatValidationSource,
+  isNemsisDemographicElementId,
+  repairNemsisImportedMessage,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
   type CompiledValidationRule,
@@ -55,6 +57,8 @@ export {
 } from "./nemsis-schematron-import.js";
 export {
   NEMSIS_351_EMS_NORMALIZATIONS,
+  NEMSIS_351_EMS_MESSAGE_REPAIRS,
+  NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS,
   NEMSIS_351_EMS_SOURCE_SHA256,
 } from "./nemsis-3.5.1-ems.generated.js";
 
@@ -598,6 +602,8 @@ export interface CatalogDraftCodeList {
 export interface CatalogDraftDefinition {
   schemaVersion: 1;
   sourceReleaseId: string;
+  /** Elements retained for NEMSIS export but hidden from a regional authoring profile. */
+  hiddenElementIds?: string[];
   elements: CatalogDraftElement[];
   codeLists: CatalogDraftCodeList[];
 }
@@ -616,8 +622,16 @@ export interface CatalogDefinitionView {
   id: string;
   displayName: string;
   version: string;
-  status: "active";
+  status: "active" | "published";
   definition: CatalogDraftDefinition;
+}
+
+export interface AuthoringVersionOption {
+  id: string;
+  displayName: string;
+  version: string | number;
+  status: "published" | "active";
+  catalogReleaseId?: string;
 }
 
 export interface CatalogValidationResult {

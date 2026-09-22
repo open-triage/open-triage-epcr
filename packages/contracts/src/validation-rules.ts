@@ -1,4 +1,5 @@
 import { encounterValueFacets, type EncounterDocument, type EncounterValue } from "./index.js";
+import { NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS, NEMSIS_351_EMS_MESSAGE_REPAIRS } from "./nemsis-3.5.1-ems.generated.js";
 
 export const VALIDATION_LANGUAGE_VERSION = "1.0.0" as const;
 export const VALIDATION_COMPILED_SCHEMA_VERSION = 1 as const;
@@ -150,6 +151,16 @@ export interface CompiledValidationBundle {
   rules: CompiledValidationRule[];
 }
 
+/** Demographic (d*) NEMSIS elements belong to the agency dataset, not a patient care report. */
+export function isNemsisDemographicElementId(elementId: string): boolean {
+  return /^d[A-Za-z][A-Za-z0-9]*\.\d+$/.test(elementId);
+}
+
+function isPatientCareReportRule(rule: CompiledValidationRule): boolean {
+  return !isNemsisDemographicElementId(rule.primaryTarget?.elementId ?? "")
+    && !rule.references?.elementIds?.some(isNemsisDemographicElementId);
+}
+
 export interface ValidationFinding {
   validationVersionId: string;
   ruleId: string;
@@ -158,6 +169,32 @@ export interface ValidationFinding {
   message: string;
   primaryTarget: { elementId: string; groupInstanceId?: string; occurrenceId?: string };
   inputFingerprint: string;
+}
+
+function uniqueLegacyValues(values: Readonly<Record<string, string>>): Map<string, string | null> {
+  const unique = new Map<string, string | null>();
+  for (const [key, value] of Object.entries(values)) {
+    const prefix = key.slice(0, key.lastIndexOf("\u0000") + 1);
+    if (!unique.has(prefix)) unique.set(prefix, value);
+    else if (unique.get(prefix) !== value) unique.set(prefix, null);
+  }
+  return unique;
+}
+
+const uniqueNemsisMessageRepairs = uniqueLegacyValues(NEMSIS_351_EMS_MESSAGE_REPAIRS);
+const uniqueNemsisContextGuards = uniqueLegacyValues(NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS);
+
+function legacyNemsisValue(values: Readonly<Record<string, string>>, unique: ReadonlyMap<string, string | null>,
+  message: string, primaryElementId: string, referencedElementIds: ReadonlyArray<string>): string | undefined {
+  const prefix = `${primaryElementId}\u0000${message}\u0000`;
+  return values[`${prefix}${[...referencedElementIds].sort().join(",")}`] ?? unique.get(prefix) ?? undefined;
+}
+
+/** Restores labels lost from sch:value-of in previously published NEMSIS bundles. */
+export function repairNemsisImportedMessage(message: string, primaryElementId: string,
+  referencedElementIds: ReadonlyArray<string>): string {
+  return legacyNemsisValue(NEMSIS_351_EMS_MESSAGE_REPAIRS, uniqueNemsisMessageRepairs,
+    message, primaryElementId, referencedElementIds) ?? message;
 }
 
 export interface ValidationRuntimeFailure {
@@ -189,7 +226,7 @@ const MAX_REGEX_INPUT_LENGTH = 4_096;
 const MAX_TEMPORAL_OFFSET_SECONDS = 366 * 24 * 60 * 60 * 10;
 const MAX_TRAVERSAL_STEPS = 100_000;
 const MAX_VALUES = 50_000;
-const MAX_RULES_PER_EVALUATION = 512;
+const MAX_RULES_PER_EVALUATION = 1024;
 
 function stableJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableJson);
@@ -656,8 +693,8 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
         message: `${elementId} has datatype ${element.baseDatatype}; collection predicates require ${expectedLiteralType(element.baseDatatype)} values` });
     }
     if (expression.operator === "matches" || (expression.operator === "quantified" && expression.predicate === "matches")) {
-      if (element && expectedLiteralType(element.baseDatatype) !== "string") diagnostics.push({ severity: "error", code: "datatype", ruleId: rule.id,
-        message: `${elementId} has datatype ${element.baseDatatype}; regular expressions require string values` });
+      if (element && expectedLiteralType(element.baseDatatype) === "boolean") diagnostics.push({ severity: "error", code: "datatype", ruleId: rule.id,
+        message: `${elementId} has datatype ${element.baseDatatype}; regular expressions require string or numeric values` });
     }
   }
   const compoundExpressions = [...(parsed.applicability ? walkExpressions(parsed.applicability) : []), ...walkExpressions(parsed.assertion)];
@@ -685,16 +722,9 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     const group = catalogDefinition?.groups?.find(({ groupId }) => groupId === parsed.scopeGroupId);
     const groupExistsInElementPaths = catalogDefinition?.elements.some(({ groupPath }) => groupPath?.includes(parsed.scopeGroupId!));
     if (catalogDefinition && !group && !groupExistsInElementPaths) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
-      message: `Repeating scope ${parsed.scopeGroupId} is not present in the bound catalog` });
-    if (group && !group.repeating) diagnostics.push({ severity: "error", code: "scope", ruleId: rule.id,
-      message: `Scope ${parsed.scopeGroupId} is not a repeating Catalog group` });
-    for (const elementId of new Set([...expressions.map(({ elementId }) => elementId), rule.primaryTargetElementId])) {
-      const element = known.elements.get(elementId);
-      if (element?.groupPath && !element.groupPath.includes(parsed.scopeGroupId)) diagnostics.push({
-        severity: "error", code: "scope", ruleId: rule.id,
-        message: `Element ${elementId} is outside repeating scope ${parsed.scopeGroupId}`,
-      });
-    }
+      message: `Scope ${parsed.scopeGroupId} is not present in the bound catalog` });
+    // A Schematron context may be a singleton group and may reference values in ancestor or sibling groups.
+    // The evaluator resolves those external references against the document while retaining row-local values.
   }
   for (const { expression } of expressions) {
     if (expression.operator !== "minimum-occurrences" && expression.operator !== "maximum-occurrences") continue;
@@ -798,10 +828,11 @@ function timestampValue(value: EncounterValue): number | undefined {
   const parsed = Date.parse(normalized); return Number.isFinite(parsed) ? parsed : undefined;
 }
 function regexMatches(regex: RegExp, value: string | number | boolean | undefined): boolean {
-  if (typeof value !== "string") return false;
-  if (value.length > MAX_REGEX_INPUT_LENGTH) throw new ValidationResourceLimitError(
+  if (typeof value !== "string" && typeof value !== "number") return false;
+  const input = String(value);
+  if (input.length > MAX_REGEX_INPUT_LENGTH) throw new ValidationResourceLimitError(
     `Regular-expression input exceeds ${MAX_REGEX_INPUT_LENGTH} characters`);
-  return regex.test(value);
+  return regex.test(input);
 }
 function compareValues(left: string | number | boolean, comparison: ValidationComparison, right: string | number | boolean): boolean {
   if (comparison === "equal") return left === right;
@@ -878,6 +909,12 @@ function evaluateExpression(expression: CompiledValidationExpression, elements: 
     || (value.kind === "coded" && value.system === expression.codeType));
   if (expression.operator === "attribute") return values.some((value) => expression.name in (value.attributes ?? {})
     && (expression.value === undefined || String(value.attributes?.[expression.name]) === expression.value));
+  // A missing value is not the named literal. Imported conditional rules use
+  // this branch to mean "unless the other field says Yes"; existential
+  // not-equal made an entirely blank report fail those rules.
+  if (expression.operator === "compare-literal" && expression.comparison === "not-equal") {
+    return values.every((value) => ordinaryValue(value) !== expression.value);
+  }
   if (expression.operator === "compare-literal") return values.some((value) => {
     const ordinary = ordinaryValue(value) ?? ""; return compareValues(ordinary, expression.comparison, expression.value);
   });
@@ -983,12 +1020,19 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     state.scopeElementIds = scope.scopeElementIds;
     const nodeCount = walkExpressions(rule.assertion).length + (rule.applicability ? walkExpressions(rule.applicability).length : 0);
     if (nodeCount > Math.min(requestedNodes, MAX_EXPRESSION_NODES)) throw new ValidationResourceLimitError("Compiled expression exceeds evaluation node limit");
+    // Published pre-fix NEMSIS bundles omitted Schematron's element-context selection.
+    // Match only the pinned legacy assertion signature; never rewrite stored versions.
+    const legacyContextElement = legacyNemsisValue(NEMSIS_351_EMS_LEGACY_CONTEXT_GUARDS,
+      uniqueNemsisContextGuards, rule.message, rule.primaryTarget.elementId, rule.references?.elementIds ?? []);
+    if (legacyContextElement && evaluateExpression({ operator: "undocumented", elementId: legacyContextElement },
+      scope.elements, state)) return [];
     if (rule.applicability && !evaluateExpression(rule.applicability, scope.elements, state)) return [];
     if (evaluateExpression(rule.assertion, scope.elements, state)) return [];
     if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
       return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
         validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
-        executionTarget, message: rule.message, primaryTarget: { elementId: match.element.id,
+        executionTarget, message: repairNemsisImportedMessage(rule.message, rule.primaryTarget.elementId,
+          rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
           groupInstanceId: match.groupInstanceId, ...(match.element.values[0]?.occurrenceId ? { occurrenceId: match.element.values[0].occurrenceId } : {}) },
         inputFingerprint: fingerprint(JSON.stringify([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
           values: match.element.values }])) } satisfies ValidationFinding));
@@ -997,12 +1041,12 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     const referencedElementIds = rule.references?.elementIds ?? referencedExpressions(rule.assertion).map(({ elementId }) => elementId);
     const relevantInputs: unknown[] = scope.elements.filter(({ element }) => referencedElementIds.includes(element.id))
       .map(({ element, groupInstanceId }) => ({ elementId: element.id, groupInstanceId, values: element.values }));
-    if ([...(rule.applicability ? walkExpressions(rule.applicability) : []), ...walkExpressions(rule.assertion)]
-      .some((expression) => expression.operator === "compare-times" && expression.right.kind === "evaluation-time")) {
-      relevantInputs.push({ evaluationTimestamp: context.timestamp });
-    }
+    // Evaluation time is not a clinician-authored input. Including it here made
+    // an acknowledged warning acquire a new identity on every refresh (and at
+    // signing), even when the documented values had not changed.
     return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
-      executionTarget, message: rule.message, primaryTarget: { elementId: rule.primaryTarget.elementId,
+      executionTarget, message: repairNemsisImportedMessage(rule.message, rule.primaryTarget.elementId,
+        rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId ? { groupInstanceId: matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId } : {}),
         ...(matches[0]?.element.values[0]?.occurrenceId ? { occurrenceId: matches[0].element.values[0].occurrenceId } : {}) },
       inputFingerprint: fingerprint(JSON.stringify(relevantInputs)) } satisfies ValidationFinding];
@@ -1018,7 +1062,7 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
     code: "compatibility", message: "The compiled validation bundle has no rule list",
   }] };
   const targetRules = bundle.rules.filter((rule) => rule?.enabled && Array.isArray(rule.executionTargets)
-    && rule.executionTargets.includes(executionTarget));
+    && rule.executionTargets.includes(executionTarget) && isPatientCareReportRule(rule));
   if (targetRules.length > MAX_RULES_PER_EVALUATION) return { findings: [], failures: [{
     validationVersionId: bundle.validationVersionId, ruleId: "bundle", executionTarget,
     code: "resource-limit", message: `The compiled validation bundle exceeds ${MAX_RULES_PER_EVALUATION} rules`,
@@ -1027,7 +1071,8 @@ export function evaluateValidationBundleSafely(bundle: CompiledValidationBundle,
   const failures: ValidationRuntimeFailure[] = [];
   for (const rule of targetRules) {
     try {
-      findings.push(...evaluateValidationBundle({ ...bundle, rules: [rule] }, document, executionTarget, context));
+      findings.push(...evaluateValidationBundle({ ...bundle, rules: [rule] }, document, executionTarget, context)
+        .filter((finding) => !isNemsisDemographicElementId(finding.primaryTarget.elementId)));
     } catch (error) {
       failures.push({ validationVersionId: bundle.validationVersionId, ruleId: rule?.ruleId ?? "unknown", executionTarget,
         code: error instanceof ValidationResourceLimitError ? "resource-limit"

@@ -1,12 +1,98 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compiledValidationBundleSha256, type CompiledValidationBundle } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, NEMSIS_351_EMS_MESSAGE_REPAIRS, type CompiledValidationBundle } from "@open-triage/contracts";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
 import { editScalarOccurrence } from "../app/stationary-scalar";
-import { validateStationaryRecord } from "../app/stationary-validation";
+import { displayValidationRuleMessage, validateStationaryRecord } from "../app/stationary-validation";
 
 const evaluationTimestamp = "2026-01-01T00:00:00.000Z";
 import { syntheticEncounter } from "../app/standard-encounter";
+import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
+
+test("report validation does not require fields from agency demographics", () => {
+  const document = { ...syntheticEncounter.document, groups: [
+    ...syntheticEncounter.document.groups,
+    { id: "DemographicGroup", instances: [{ instanceId: "demographic-1", elements: [] }] },
+  ] } as never;
+  const findings = validateStationaryRecord(document, undefined, evaluationTimestamp);
+  assert.equal(findings.some(({ target }) => target.fieldId?.startsWith("dAgency.")
+    || target.groupId === "DemographicGroup"), false);
+});
+
+test("legacy time-order warnings name both involved fields", () => {
+  const message = displayValidationRuleMessage("should not be earlier than .", "eTimes.03", ["eTimes.01", "eTimes.03"]);
+  assert.match(message, /Date\/Time/);
+  assert.doesNotMatch(message, /^should not be earlier than/);
+  assert.match(message, /should not be earlier than/);
+});
+
+test("legacy ETCO2 type warnings identify the documented measurement", () => {
+  assert.equal(displayValidationRuleMessage("ETCO2 Type should be recorded when is recorded.", "eVitals.16", ["eVitals.16"]),
+    "ETCO2 Type should be recorded when End Tidal Carbon Dioxide (ETCO2) is recorded.");
+});
+
+test("legacy scene warnings name the field and Yes condition", () => {
+  assert.equal(displayValidationRuleMessage('should be "Multiple" when is "Yes".', "eScene.06", ["eScene.06", "eScene.07"]),
+    'Number of Patients at Scene should be "Multiple" when Mass Casualty Incident is "Yes".');
+});
+
+test("every pinned NEMSIS message with lost value-of labels is repaired", () => {
+  assert.ok(Object.keys(NEMSIS_351_EMS_MESSAGE_REPAIRS).length > 100);
+  for (const [key, expected] of Object.entries(NEMSIS_351_EMS_MESSAGE_REPAIRS)) {
+    const [primary, original, references] = key.split("\u0000");
+    assert.equal(displayValidationRuleMessage(original!, primary!, references!.split(",")), expected, key);
+  }
+});
+
+test("an ETCO2 type warning targets the vital field and clears after selecting its type", () => {
+  const compiled = compileValidationRule({ id: "etco2-type", name: "ETCO2 type", enabled: true, severity: "warning",
+    executionTargets: ["live", "sign"], primaryTargetElementId: "eVitals.16",
+    message: "ETCO2 Type should be recorded when is recorded.",
+    source: 'for each("eVitals.VitalGroup")\nwhen present("eVitals.16")\nrequire attribute("eVitals.16", "ETCO2Type")',
+  }, "validation-version", new Set(["eVitals.16"]));
+  assert.deepEqual(compiled.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: "validation-version", catalogReleaseId: "catalog", rules: [compiled.compiled!] };
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [{ key: "vitals", fields: [
+    { key: "etco2", source: { kind: "nemsis" as const, elementId: "eVitals.16" } },
+  ] }] }, catalogFields: {}, validation: { versionId: "validation-version",
+    compiledSha256: compiledValidationBundleSha256(bundle), bundle } };
+  const document = populateStationaryDemoData(syntheticEncounter.document);
+  const vital = document.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!;
+  const etco2 = vital.elements.find(({ id }) => id === "eVitals.16")!.values[0]!;
+  const withoutType = structuredClone(document);
+  const oldValue = withoutType.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!
+    .elements.find(({ id }) => id === "eVitals.16")!.values[0]!;
+  const { ETCO2Type: _type, ...attributesWithoutType } = oldValue.attributes ?? {};
+  Object.assign(oldValue, { attributes: attributesWithoutType });
+  const warning = stationaryDialogFindings(withoutType, clinicalForm).find(({ message }) => message?.includes("ETCO2 Type"));
+  assert.equal(warning?.target.fieldId, "eVitals.16");
+  assert.equal(warning?.target.groupInstanceId, vital.instanceId);
+  assert.equal(warning?.message, "ETCO2 Type should be recorded when End Tidal Carbon Dioxide (ETCO2) is recorded.");
+  const corrected = editScalarOccurrence(withoutType, { groupId: "eVitals.VitalGroup", groupInstanceId: vital.instanceId,
+    elementId: "eVitals.16", occurrenceId: etco2.occurrenceId, input: String(etco2.value),
+    attributes: { ETCO2Type: "3340001" } });
+  assert.equal(corrected.ok, true);
+  assert.equal(stationaryDialogFindings(corrected.document, clinicalForm).some(({ message }) => message?.includes("ETCO2 Type")), false);
+});
+
+test("open medication and procedure code systems accept documented values beyond catalog suggestions", () => {
+  for (const [groupId, elementId] of [
+    ["eMedications.MedicationGroup", "eMedications.03"],
+    ["eProcedures.ProcedureGroup", "eProcedures.03"],
+  ] as const) {
+    const document = withGroupInstances(syntheticEncounter.document, groupId, [{ instanceId: `row-${elementId}`,
+      elements: [{ id: elementId, values: [{ kind: "coded", occurrenceId: `value-${elementId}`,
+        code: "external-code", system: "SNOMED-CT" }] }] }] as never);
+    const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [{ key: "interventions", fields: [
+      { key: elementId, source: { kind: "nemsis" as const, elementId } },
+    ] }] }, catalogFields: { [elementId]: { agencyRequired: false, minOccurs: 0, maxOccurs: 1,
+      nillable: true, supportsNotValues: true, supportsPertinentNegatives: true,
+      codeChoices: [{ code: "suggested-code", codeSystem: "SNOMED-CT", label: "Suggested" }] } } };
+    assert.equal(validateStationaryRecord(document, clinicalForm, evaluationTimestamp)
+      .some((finding) => finding.target.fieldId === elementId && finding.id.includes("value.code")), false);
+  }
+});
 
 function withGroupInstances(document: typeof syntheticEncounter.document, groupId: string,
   instances: Array<{ instanceId: string; parentInstanceId?: string; elements: Array<{ id: string; values: [] }> }>) {

@@ -16,16 +16,20 @@ import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 
-function statusText(errors: number, warnings: number, incomplete: number): string {
-  return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}, ${incomplete} required ${incomplete === 1 ? "field" : "fields"} incomplete`;
+function statusText(errors: number, warnings: number): string {
+  return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}`;
 }
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
-export function StationaryRecord({ document, findings = [], formDefinition, catalogFields = {}, onDocumentChange }: {
+export function StationaryRecord({ document, findings = [], sectionFindings = findings,
+  formDefinition, catalogFields = {}, validation, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
+  /** Includes encounter-review findings for section counts without duplicating inline field messages. */
+  readonly sectionFindings?: ReadonlyArray<StationarySectionFinding>;
   readonly formDefinition?: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  readonly validation?: ClinicalFormConfiguration["validation"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultSections = useMemo(() => configuredStationarySections(), []);
@@ -33,29 +37,20 @@ export function StationaryRecord({ document, findings = [], formDefinition, cata
   const sections = previewSections ?? defaultSections;
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {
-    if (!previewSections) return stationarySectionStatuses(document, findings, defaultSections);
+    if (!previewSections) return stationarySectionStatuses(sectionFindings, defaultSections);
     return new Map(previewSections.map((section) => {
       const elementIds = new Set(section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : []));
-      const sectionFindings = findings.filter((finding) => {
+      const matchingFindings = sectionFindings.filter((finding) => {
         const elementId = finding.target.fieldId ?? finding.target.elementId;
-        return elementId ? elementIds.has(elementId) : section.groupIds.has(finding.target.groupId);
+        return elementId && getNemsisDataElement(elementId)
+          ? elementIds.has(elementId) : section.groupIds.has(finding.target.groupId);
       });
-      const incomplete = section.fields.filter((field) => {
-        if (field.source.kind !== "nemsis") return false;
-        const elementId = field.source.elementId;
-        const catalogRequired = catalogFields[elementId]?.agencyRequired ||
-          (catalogFields[elementId]?.minOccurs ?? getNemsisDataElement(elementId)?.occurrence.min ?? 0) > 0;
-        if (!(field.required === true || catalogRequired)) return false;
-        return !document.groups.some((group) => group.instances.some((instance) => instance.elements.some((element) =>
-          element.id === elementId && element.values.length > 0)));
-      }).length;
       return [section.id, {
-        errors: sectionFindings.filter(({ severity }) => severity === "error").length,
-        warnings: sectionFindings.filter(({ severity }) => severity === "warning").length,
-        incomplete,
+        errors: matchingFindings.filter(({ severity }) => severity === "error").length,
+        warnings: matchingFindings.filter(({ severity }) => severity === "warning").length,
       }];
     }));
-  }, [catalogFields, defaultSections, document, findings, previewSections]);
+  }, [defaultSections, previewSections, sectionFindings]);
   const [activeId, setActiveId] = useState(sections[0]?.id ?? "");
 
   const moveToSection = useCallback((sectionId: string, focus: boolean, smooth = false) => {
@@ -100,27 +95,21 @@ export function StationaryRecord({ document, findings = [], formDefinition, cata
     <nav className="stationary-section-rail" aria-label="Stationary record sections">
       <ul>{sections.map((section) => {
         const status = statuses.get(section.id)!;
-        const summary = statusText(status.errors, status.warnings, status.incomplete);
+        const summary = statusText(status.errors, status.warnings);
         const label = stationaryDisplayLabel(section.label);
         return <li key={section.id}>
-          <a
+          <button type="button"
             aria-current={activeId === section.id ? "location" : undefined}
             aria-label={`${label}: ${summary}`}
             className={activeId === section.id ? "active" : undefined}
-            href={`#${section.hash}`}
-            onClick={(event) => {
-              event.preventDefault();
-              window.history.pushState(null, "", `#${section.hash}`);
-              moveToSection(section.id, true, true);
-            }}
+            onClick={() => moveToSection(section.id, true, true)}
           >
             <span>{label}</span>
             <span className="stationary-section-counts" aria-hidden="true">
               <span className={`error-count${status.errors ? "" : " zero-count"}`} title="Blocking errors">{status.errors}</span>
               <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title="Warnings">{status.warnings}</span>
-              <span className={`incomplete-count${status.incomplete ? "" : " zero-count"}`} title="Incomplete required fields">{status.incomplete}</span>
             </span>
-          </a>
+          </button>
         </li>;
       })}</ul>
       <span className="visually-hidden" aria-live="polite">Current section: {stationaryDisplayLabel(sections.find(({ id }) => id === activeId)?.label ?? "")}</span>
@@ -133,7 +122,7 @@ export function StationaryRecord({ document, findings = [], formDefinition, cata
         return <section
           className="stationary-record-section"
           data-stationary-section={section.id}
-          data-section-status={status.errors ? "error" : status.warnings ? "warning" : status.incomplete ? "incomplete" : "complete"}
+          data-section-status={status.errors ? "error" : status.warnings ? "warning" : "complete"}
           id={section.hash}
           key={section.id}
           aria-labelledby={`${section.hash}-heading`}
@@ -141,10 +130,9 @@ export function StationaryRecord({ document, findings = [], formDefinition, cata
           <header className="stationary-record-section-heading">
             <h1 id={`${section.hash}-heading`} data-stationary-section-heading tabIndex={-1}>{label}</h1>
             <p>
-              <span className="visually-hidden">{statusText(status.errors, status.warnings, status.incomplete)}</span>
+              <span className="visually-hidden">{statusText(status.errors, status.warnings)}</span>
               <span className={`error-count${status.errors ? "" : " zero-count"}`}>{status.errors} errors</span>
               <span className={`warning-count${status.warnings ? "" : " zero-count"}`}>{status.warnings} warnings</span>
-              <span className={`incomplete-count${status.incomplete ? "" : " zero-count"}`}>{status.incomplete} incomplete</span>
             </p>
           </header>
           {("blocks" in section ? section.blocks : stationarySectionBlocks(section)).map((block, blockIndex) => block.kind === "inline"
@@ -154,7 +142,7 @@ export function StationaryRecord({ document, findings = [], formDefinition, cata
                 : inlineGroups.get(block.group.id)!.fields }
             ]} findings={findings} catalogFields={catalogFields} onDocumentChange={onDocumentChange} />
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
-              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields } : undefined} onDocumentChange={onDocumentChange} />)}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, ...(validation ? { validation } : {}) } : undefined} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

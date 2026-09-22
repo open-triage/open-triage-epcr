@@ -1,4 +1,4 @@
-import { compiledValidationBundleSha256, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
+import { compiledValidationBundleSha256, isNemsisDemographicElementId, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type FieldRow = {
@@ -47,7 +47,9 @@ export async function clinicalFormConfiguration(
     throw new Error("The report's pinned validation configuration failed its integrity check");
   }
   const liveBundle = validation[0] ? { ...validation[0].compiled_bundle,
-    rules: validation[0].compiled_bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("live")) } : undefined;
+    rules: validation[0].compiled_bundle.rules.filter((rule) => rule.enabled && rule.executionTargets.includes("live")
+      && !isNemsisDemographicElementId(rule.primaryTarget.elementId)
+      && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
   return {
     definition: versions[0].canonical_definition,
     catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),

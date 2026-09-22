@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import type { ClinicalFormConfiguration } from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256, type ClinicalFormConfiguration } from "@open-triage/contracts";
 import { encounterDocumentDiagnostics } from "../app/encounter-document";
 import { encounterEvents } from "../app/canonical-events";
 import { DEMO_PROVENANCE_ATTRIBUTE, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "../app/demo-provenance";
@@ -10,6 +11,7 @@ import { bundledEncounterDefinition, INITIAL_SHELL_STATE, MISSING_VITALS_FINDING
 import { clearStationaryDemoData, populateStationaryDemoData } from "../app/stationary-demo-data";
 import { COMPILED_STATIONARY_LAYOUT } from "../app/stationary-layout";
 import { editScalarOccurrence } from "../app/stationary-scalar";
+import { validateStationaryRecord } from "../app/stationary-validation";
 import { stationaryDialogFindings } from "../components/stationary-repeating-groups";
 
 const configuredVitalsForm: ClinicalFormConfiguration = {
@@ -30,6 +32,31 @@ test("Populate deterministically covers every editable element and repeating str
   const existingValues = new Map(baseline.groups.flatMap((group) => group.instances.flatMap((instance) => instance.elements.flatMap((element) =>
     element.values.map((value) => [value.occurrenceId, value] as const)))));
   const populated = populateStationaryDemoData(baseline);
+  const etco2 = populated.groups.find(({ id }) => id === "eVitals.VitalGroup")?.instances[0]?.elements
+    .find(({ id }) => id === "eVitals.16")?.values[0];
+  assert.equal(etco2?.attributes?.ETCO2Type, "3340001", "demo ETCO2 has a matching measurement type");
+  const vitalValues = new Map(populated.groups.filter(({ id }) => id.startsWith("eVitals"))
+    .flatMap(({ instances }) => instances).flatMap(({ elements }) => elements)
+    .map(({ id, values }) => [id, values[0]] as const));
+  for (const [elementId, expected] of Object.entries({
+    "eVitals.06": 120, "eVitals.07": 80, "eVitals.09": 93, "eVitals.10": 78,
+    "eVitals.12": 98, "eVitals.14": 16, "eVitals.16": 35,
+    "eVitals.23": 15,
+    "eVitals.24": 37,
+  })) {
+    const value = vitalValues.get(elementId);
+    assert.equal(value?.kind, "scalar", `${elementId} is a scalar vital`);
+    if (value?.kind === "scalar") assert.equal(String(value.value), String(expected), elementId);
+  }
+  for (const [elementId, expected] of Object.entries({ "eVitals.19": "4", "eVitals.20": "5", "eVitals.21": "6" })) {
+    const value = vitalValues.get(elementId);
+    assert.equal(value?.kind === "coded" ? value.code : undefined, expected, elementId);
+  }
+  for (const [elementId, value] of vitalValues) if (value?.kind === "scalar") {
+    assert.notEqual(String(value.value), "0", `${elementId} should not use a zero placeholder`);
+  }
+  assert.equal(stationaryDialogFindings(populated, configuredVitalsForm)
+    .some(({ message }) => message?.includes("Clinically unusual respiratory rate")), false);
 
   assert.deepEqual(populateStationaryDemoData(populated), populated, "a repeated Populate is idempotent");
   for (const [occurrenceId, original] of existingValues) {
@@ -58,6 +85,56 @@ test("Populate deterministically covers every editable element and repeating str
   const review = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...syntheticEncounter, document: populated } }, bundledEncounterDefinition);
   assert.equal(review.some(({ id }) => id === MISSING_VITALS_FINDING_ID), false);
   assert.equal(review.some(({ severity, reference }) => severity === "error" && ["eVitals.06", "eVitals.10", "eVitals.27"].includes(reference)), false);
+});
+
+test("the populated report satisfies all enabled canonical NEMSIS validation rules", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
+  const validation = JSON.parse(readFileSync(new URL("../../../defines/validation/validation_nemsis-full.json", import.meta.url), "utf8"));
+  const compileCatalog = {
+    elements: catalog.elements.map((element: any) => ({ elementId: element.id, label: element.name,
+      baseDatatype: element.datatype.base, groupPath: element.groupPath, intrinsicOccurrence: element.occurrence })),
+    groups: catalog.groups.map((group: any) => ({ groupId: group.id, label: group.name, repeating: group.repeating,
+      ...(group.parentId ? { parentGroupId: group.parentId } : {}), intrinsicOccurrence: group.occurrence })),
+  };
+  const rules = validation.rules.filter((rule: any) => rule.enabled).map((rule: any) => {
+    const result = compileValidationRule(rule, "demo-validation", compileCatalog);
+    assert.deepEqual(result.diagnostics, [], rule.name);
+    return result.compiled!;
+  });
+  const bundle = { schemaVersion: 1 as const, languageVersion: "1.0.0" as const, validationVersionId: "demo-validation",
+    catalogReleaseId: "nemsis-3.5.1", rules };
+  const clinicalForm: ClinicalFormConfiguration = {
+    definition: { schemaVersion: 1, sections: [{ key: "all", fields: catalog.elements
+      .filter((element: any) => element.id.startsWith("e"))
+      .map((element: any) => ({ key: element.id, source: { kind: "nemsis" as const, elementId: element.id } })) }] },
+    catalogFields: {},
+    validation: { versionId: bundle.validationVersionId, compiledSha256: compiledValidationBundleSha256(bundle), bundle },
+  };
+  const populated = populateStationaryDemoData(syntheticEncounter.document);
+  assert.deepEqual(validateStationaryRecord(populated, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
+
+  const stale = structuredClone(populated);
+  const injury = stale.groups.find(({ id }) => id === "eSituationSection")!.instances[0]!
+    .elements.find(({ id }) => id === "eSituation.02")!.values[0]!;
+  assert.equal(injury.kind, "coded");
+  if (injury.kind === "coded") Object.assign(injury, { code: "9922001", display: "No" });
+  const oldRespiratory = stale.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!
+    .elements.find(({ id }) => id === "eVitals.14")!.values[0]!;
+  if (oldRespiratory.kind === "scalar") Object.assign(oldRespiratory, { value: 0, lexical: "0" });
+  const refreshed = populateStationaryDemoData(stale);
+  const newRespiratory = refreshed.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances[0]!
+    .elements.find(({ id }) => id === "eVitals.14")!.values[0]!;
+  assert.equal(newRespiratory.kind === "scalar" ? newRespiratory.value : undefined, 16);
+  assert.deepEqual(validateStationaryRecord(refreshed, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
+  assert.deepEqual(populateStationaryDemoData(refreshed), refreshed);
+
+  const withoutDispatchTime = { ...syntheticEncounter.document, groups: syntheticEncounter.document.groups.map((group) =>
+    group.id === "eTimesSection" ? { ...group, instances: group.instances.map((instance) => ({ ...instance,
+      elements: instance.elements.filter(({ id }) => id !== "eTimes.03") })) } : group) };
+  const generatedTimeline = populateStationaryDemoData(withoutDispatchTime);
+  assert.deepEqual(populateStationaryDemoData(generatedTimeline), generatedTimeline,
+    "a demo-generated dispatch time does not move the timeline on a second Populate");
+  assert.deepEqual(validateStationaryRecord(generatedTimeline, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
 });
 
 test("Clear removes only explicitly provenanced demo values and group instances", () => {

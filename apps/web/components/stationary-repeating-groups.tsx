@@ -25,6 +25,7 @@ import type { StationarySectionFinding } from "../app/stationary-record";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord } from "../app/stationary-validation";
 import { bundledEncounterDefinition, INITIAL_SHELL_STATE, reviewEncounter } from "../app/standard-encounter";
+import { withoutDemoProvenance } from "../app/demo-provenance";
 
 export function stationaryDialogFindings(document: EncounterDocument, clinicalForm?: ClinicalFormConfiguration): ReadonlyArray<StationarySectionFinding> {
   const reviewFindings = reviewEncounter({ ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } }, bundledEncounterDefinition);
@@ -127,7 +128,25 @@ function SingleScalarGroupField({ document, instance, placement, presentation, v
       setFindings([]);
       if (presentation.family === "datetime") commit(input);
     }}
-    onBlur={commit} /></div>;
+    onBlur={commit} />
+    {placement.id === "eVitals.16" && <label className="stationary-etco2-type">ETCO₂ measurement type
+      <select value={String(value?.attributes?.ETCO2Type ?? "")} disabled={!value} onChange={(event) => {
+        if (!value) return;
+        const attributes = { ...withoutDemoProvenance(value.attributes) };
+        if (event.target.value) attributes.ETCO2Type = event.target.value;
+        else delete attributes.ETCO2Type;
+        const result = editScalarOccurrence(document, { groupId: placement.groupId, groupInstanceId: instance.instanceId,
+          elementId: placement.id, occurrenceId: value.occurrenceId, input: value.lexical ?? String(value.value), attributes });
+        if (result.ok) onDocumentChange(result.document);
+        else setFindings(result.findings);
+      }}>
+        <option value="">Select type</option>
+        <option value="3340001">mmHg</option>
+        <option value="3340003">Percentage</option>
+        <option value="3340005">kPa</option>
+      </select>
+    </label>}
+  </div>;
 }
 
 function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus, clinicalForm, onDraftChange, onCancel, onSave }: {
@@ -221,7 +240,10 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, cl
   const editable = placement.mode !== "read-only";
   const validationFindings = groupValidationFindings(findings, placement.id, instance?.instanceId);
   if (!instance) return <div className="stationary-nested-single stationary-nested-single-empty" aria-label={`${label} fields`} data-group-id={placement.id} data-parent-instance-id={parentInstanceId}>
-    {editable && <span className="stationary-single-group-loading" role="status">Loading {label} fields…</span>}
+    {editable && <button type="button" onClick={() => {
+      const result = ensureNestedSingleGroupOccurrence(document, placement.id, parentInstanceId);
+      if (result.ok) onDocumentChange(result.document);
+    }}>Add {label} fields</button>}
     <StationaryValidationMessages findings={validationFindings} />
   </div>;
   return <div className="stationary-nested-single" aria-label={`${label} fields`} data-group-id={placement.id} data-group-instance-id={instance.instanceId} data-parent-instance-id={parentInstanceId}>
@@ -243,21 +265,6 @@ function NestedGroupContents({ document, placement, parentInstanceId, findings, 
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  useEffect(() => {
-    let next = document;
-    let changed = false;
-    for (const child of placement.children) {
-      if (child.presentation.kind === "table" || child.mode === "read-only") continue;
-      const exists = next.groups.find(({ id }) => id === child.id)?.instances.some((instance) => instance.parentInstanceId === parentInstanceId);
-      if (exists) continue;
-      const result = ensureNestedSingleGroupOccurrence(next, child.id, parentInstanceId);
-      if (result.ok) {
-        next = result.document;
-        changed = true;
-      }
-    }
-    if (changed) onDocumentChange(next);
-  }, [document, onDocumentChange, parentInstanceId, placement.children]);
   if (!placement.children.length) return null;
   return <div className="stationary-nested-groups">
     {placement.children.map((child) => child.presentation.kind === "table"
@@ -302,11 +309,15 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
     </div>
     <div className="stationary-table-scroll" tabIndex={0} role="region" aria-label={`${label} table`}>
       <table><thead><tr>{(placement.presentation.columns ?? []).map((column) => <th key={column.elementId}>{column.label ?? requireNemsisDataElement(column.elementId).name}</th>)}<th>Actions</th></tr></thead>
-        <tbody>{instances.map((instance) => <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}>
+        <tbody>{instances.map((instance) => {
+          const rowSeverity = stationaryFindingSeverity(groupValidationFindings(validationFindings, placement.id, instance.instanceId));
+          return <tr key={instance.instanceId} data-group-instance-id={instance.instanceId}
+            className={rowSeverity ? `stationary-validation-state ${rowSeverity}` : undefined}>
             {repeatingGroupSummary(document, placement, instance).map((cell) => <td key={cell.elementId} data-element-id={cell.elementId}>{cell.values.length ? cell.values.map((value) => <span key={value.occurrenceId} data-occurrence-id={value.occurrenceId}>{value.text}</span>) : <span>Not recorded</span>}</td>)}
             <td className="stationary-table-actions"><div className="stationary-row-actions"><button className="stationary-icon-action edit" type="button" aria-label={`${editable ? "Edit" : "View"} ${actionLabel} row`} title={editable ? "Edit" : "View"} data-dialog-return-focus={`${placement.id}:${instance.instanceId}:edit`} onClick={(event) => setDialogState({ draft: document, instanceId: instance.instanceId, isNew: false, returnFocus: event.currentTarget })}><span aria-hidden="true">{editable ? "✎" : "View"}</span></button>
               {editable && <button className="stationary-icon-action remove" type="button" aria-label={`Remove ${actionLabel} row`} title="Remove" onClick={() => { const result = removeRepeatingGroupOccurrence(document, placement.id, instance.instanceId); if (result.ok) { setFinding(undefined); onDocumentChange(result.document); } else setFinding(result.findings[0]); }}><span aria-hidden="true">×</span></button>}</div></td>
-          </tr>)}</tbody></table>
+          </tr>;
+        })}</tbody></table>
     </div>
     {!instances.length && <p className="stationary-empty-table">No rows.</p>}
     <StationaryValidationMessages findings={validationFindings} />

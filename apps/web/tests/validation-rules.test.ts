@@ -52,6 +52,116 @@ test("browser and server targets produce the same targeted finding and clear whe
   assert.deepEqual(evaluateValidationBundle(bundle, syntheticEncounter as EncounterDocument, "sign", evaluation), []);
 });
 
+test("patient care report validation ignores demographic targets and dependencies", () => {
+  const catalog = new Set(["dAgency.01", "dAgency.02", "eResponse.01", "eResponse.03"]);
+  const sources: ValidationRuleSource[] = [
+    { ...rule, id: "demographic-target", primaryTargetElementId: "dAgency.01",
+      source: 'require minimum("dAgency.01", 1)' },
+    { ...rule, id: "demographic-reference", primaryTargetElementId: "eResponse.01",
+      source: 'require compare("eResponse.01", "equal", "dAgency.02")' },
+    { ...rule, id: "report-target" },
+  ];
+  const compiled = sources.map((source) => compileValidationRule(source, versionId, catalog).compiled!);
+  assert.ok(compiled.every(Boolean));
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: compiled };
+  const document = structuredClone(syntheticEncounter) as unknown as {
+    groups: Array<{ instances: Array<{ elements: Array<{ id: string; values: unknown[] }> }> }>;
+  };
+  for (const group of document.groups) for (const instance of group.instances) {
+    instance.elements = instance.elements.filter(({ id }) => id !== "eResponse.03");
+  }
+  for (const target of ["live", "sign"] as const) {
+    const result = evaluateValidationBundleSafely(bundle, document as unknown as EncounterDocument, target, evaluation);
+    assert.deepEqual(result.findings.map(({ ruleId }) => ruleId), ["report-target"]);
+    assert.deepEqual(result.failures, []);
+  }
+});
+
+test("an evaluation-time warning keeps its acknowledgement fingerprint as the clock advances", () => {
+  const timed = compileValidationRule({ ...rule, severity: "warning", primaryTargetElementId: "eTimes.03",
+    source: 'require timeCompare("eTimes.03", "same-or-before", "evaluation-time")' },
+  versionId, { elements: [{ elementId: "eTimes.03", label: "Dispatch time", baseDatatype: "dateTime" }], codes: [] });
+  assert.deepEqual(timed.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [timed.compiled!] };
+  const future = structuredClone(syntheticEncounter) as EncounterDocument;
+  const element = future.groups.flatMap((group) => group.instances).flatMap((instance) => instance.elements)
+    .find(({ id }) => id === "eTimes.03");
+  assert.ok(element);
+  (element as unknown as { values: unknown[] }).values = [{ kind: "scalar", occurrenceId: "future-time", value: "2030-01-01T00:00:00Z" }];
+  const first = evaluateValidationBundle(bundle, future, "live", { timestamp: "2026-01-01T00:00:00Z" });
+  const later = evaluateValidationBundle(bundle, future, "sign", { timestamp: "2026-01-02T00:00:00Z" });
+  assert.equal(first.length, 1);
+  assert.equal(first[0]?.inputFingerprint, later[0]?.inputFingerprint);
+});
+
+test("legacy imported scene rule does not warn until Mass Casualty Incident is Yes", () => {
+  const old = compileValidationRule({ ...rule, id: "scene-rule", severity: "warning", primaryTargetElementId: "eScene.06",
+    message: 'should be "Multiple" when is "Yes".',
+    source: 'require any(compareValue("eScene.06", "equal", "2707001"), compareValue("eScene.07", "not-equal", "9923003"))',
+  }, versionId, new Set(["eScene.06", "eScene.07"]));
+  assert.deepEqual(old.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [old.compiled!] };
+  const document = structuredClone(syntheticEncounter) as EncounterDocument;
+  const scene = document.groups.find(({ id }) => id === "eSceneSection");
+  assert.ok(scene);
+  const instance = scene.instances[0];
+  assert.ok(instance);
+  assert.deepEqual(evaluateValidationBundle(bundle, document, "live", evaluation), []);
+  (instance.elements as Array<unknown>).push({ id: "eScene.07", values: [{ kind: "coded", occurrenceId: "mci",
+    code: "9923003" }] });
+  assert.deepEqual(evaluateValidationBundle(bundle, document, "live", evaluation), [],
+    "a Schematron element-context rule does not run before its target is documented");
+  (instance.elements as Array<unknown>).push({ id: "eScene.06", values: [{ kind: "coded", occurrenceId: "count",
+    code: "2707002" }] });
+  const warning = evaluateValidationBundle(bundle, document, "live", evaluation);
+  assert.equal(warning.length, 1);
+  assert.equal(warning[0]?.message,
+    'Number of Patients at Scene should be "Multiple" when Mass Casualty Incident is "Yes".');
+  const count = instance.elements.find(({ id }) => id === "eScene.06");
+  assert.ok(count);
+  (count.values as unknown as Array<{ code: string }>)[0]!.code = "2707001";
+  assert.deepEqual(evaluateValidationBundle(bundle, document, "live", evaluation), []);
+});
+
+test("legacy imported rules outside Sweden retain their Schematron element context", () => {
+  const old = compileValidationRule({ ...rule, id: "legacy-response-rule", severity: "warning",
+    primaryTargetElementId: "eResponse.01",
+    message: "in the patient care report should match in the agency demographic information.",
+    source: 'require compare("eResponse.01", "equal", "dAgency.02")',
+  }, versionId, new Set(["eResponse.01", "dAgency.02"]));
+  assert.deepEqual(old.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [old.compiled!] };
+  const document = structuredClone(syntheticEncounter) as EncounterDocument;
+  assert.deepEqual(evaluateValidationBundle(bundle, document, "live", evaluation), []);
+  const response = document.groups.find(({ id }) => id === "eResponseSection")?.instances[0];
+  assert.ok(response);
+  (response.elements as Array<unknown>).push({ id: "eResponse.01", values: [{ kind: "scalar",
+    occurrenceId: "agency", value: "agency-a" }] });
+  const findings = evaluateValidationBundle(bundle, document, "live", evaluation);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]?.message,
+    "EMS Agency Number in the patient care report should match EMS Agency Number in the agency demographic information.");
+});
+
+test("not-equal comparisons treat undocumented values as not matching the named code", () => {
+  const compiled = compileValidationRule({ ...rule, id: "conditional-not-equal", primaryTargetElementId: "eScene.07",
+    source: 'require compareValue("eScene.07", "not-equal", "9923003")',
+  }, versionId, new Set(["eScene.07"]));
+  assert.deepEqual(compiled.diagnostics, []);
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [compiled.compiled!] };
+  const document = structuredClone(syntheticEncounter) as EncounterDocument;
+  assert.deepEqual(evaluateValidationBundle(bundle, document, "live", evaluation), []);
+  const scene = document.groups.find(({ id }) => id === "eSceneSection")!.instances[0]!;
+  (scene.elements as Array<unknown>).push({ id: "eScene.07", values: [{ kind: "coded", occurrenceId: "mci",
+    code: "9923003" }] });
+  assert.equal(evaluateValidationBundle(bundle, document, "live", evaluation).length, 1);
+});
+
 const conditionalCatalog: ValidationCatalog = { elements: [
   { elementId: "eSituation.13", label: "Primary Symptom", baseDatatype: "string" },
   { elementId: "eResponse.03", label: "Incident Number", baseDatatype: "string" },

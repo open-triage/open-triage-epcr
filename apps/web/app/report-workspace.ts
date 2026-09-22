@@ -356,15 +356,30 @@ export function useReportWorkspace({
       try {
         const response = await fetchActiveReport(report.id, previousEtag);
         if (!response || stopped) return;
+        // A response started before a successful autosave can arrive afterward.
+        // Never replace the newer local revision with that older snapshot.
+        if (response.resource.reportRevision < revision.current) return;
         activeEtag.current = response.etag || previousEtag;
         const local = shellRef.current.encounter.document;
         const queued = nextDraftChange(window.localStorage, report.id);
-        const hasPending = queued !== null;
-        const targets = queued ? pendingDraftTargets(queued.command, persistedDraft.current) : undefined;
+        const localDraft = encounterDocumentToDraftMutations(report.id, local);
+        const optimisticDraft = queuedDraftChanges(window.localStorage, report.id).reduce(
+          (baseline, change) => applyDraftMutationDelta(baseline, change.command),
+          persistedDraft.current,
+        );
+        const localDelta = draftMutationDelta(localDraft, optimisticDraft);
+        const hasUnqueuedChanges = localDelta.groups.length > 0 || localDelta.occurrences.length > 0;
+        const hasPending = queued !== null || hasUnqueuedChanges;
+        const queuedTargets = queued ? pendingDraftTargets(queued.command, persistedDraft.current) : undefined;
+        const localTargets = hasUnqueuedChanges ? pendingDraftTargets(localDelta, persistedDraft.current) : undefined;
+        const targets = hasPending ? {
+          groupIds: new Set([...(queuedTargets?.groupIds ?? []), ...(localTargets?.groupIds ?? [])]),
+          occurrenceIds: new Set([...(queuedTargets?.occurrenceIds ?? []), ...(localTargets?.occurrenceIds ?? [])]),
+        } : undefined;
         const merged = reconcileActiveReportDocument(report.id, local, response.resource.document, hasPending, targets);
         const serverDraft = encounterDocumentToDraftMutations(report.id, response.resource.document);
         revision.current = response.resource.reportRevision;
-        if (hasPending) {
+        if (queued) {
           if (recoverConflictingQueue.current) {
             const recoveredDraft = encounterDocumentToDraftMutations(report.id, merged);
             const retryDelta = draftMutationDelta(recoveredDraft, serverDraft);
@@ -384,7 +399,7 @@ export function useReportWorkspace({
             }
             // Recovery already materializes the exact retry delta. The
             // document-opened dispatch must not synthesize a duplicate queue.
-            skipReconciledQueue.current = true;
+            skipReconciledQueue.current = !hasUnqueuedChanges;
             skipInitialQueue.current = false;
             setSyncStatus(retryRecoveredChange ? "Saving" : "Saved");
           } else {
@@ -392,13 +407,13 @@ export function useReportWorkspace({
             // The queued command already owns the pending targets. Do not let
             // the document-opened dispatch synthesize another command on each
             // poll, especially after a terminal rejected retry.
-            skipReconciledQueue.current = true;
+            skipReconciledQueue.current = !hasUnqueuedChanges;
           }
           persistedDraft.current = serverDraft;
         }
         else {
           persistedDraft.current = serverDraft;
-          skipReconciledQueue.current = true;
+          skipReconciledQueue.current = !hasUnqueuedChanges;
         }
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
         setDispatchConflicts(response.resource.dispatchConflicts);

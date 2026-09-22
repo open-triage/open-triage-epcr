@@ -106,6 +106,18 @@ function text(source: string): string {
   return decode(source.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
+function renderedMessage(assertion: NemsisAssertionSource, primaryElementId: string,
+  labels: ReadonlyMap<string, string>): string {
+  return text(assertion.message.replace(/<sch:value-of\b([^>]*)\/>/g, (_match, attributesSource: string) => {
+    const select = attributes(attributesSource).select ?? "";
+    const id = /key\('nemSch_key_elements',\s*'([de][A-Z][A-Za-z]+\.\d{2})'/.exec(select)?.[1]
+      ?? (select.includes("local-name()") ? primaryElementId : undefined);
+    if (id) return labels.get(id) ?? (id === "*" ? "the element" : id);
+    if (select.includes("current-dateTime()")) return "the current date/time";
+    return "the referenced value";
+  }));
+}
+
 function count(source: string, expression: RegExp): number { return [...source.matchAll(expression)].length; }
 
 function sha256(source: string): string {
@@ -229,6 +241,8 @@ export function importNemsisEmsSchematron(source: string, normalizations: Nemsis
     problems.push({ code: "construct", message: `Unsupported Schematron construct sch:${match[1]}` });
   }
   const assertions = extractAssertions(source, problems);
+  const labels = new Map([...source.matchAll(/<element name="([de][A-Z][A-Za-z]+\.\d{2})">([^<]+)<\/element>/g)]
+    .map((match) => [match[1]!, text(match[2]!)] as const));
   const rules = new Map<string, ImportedNemsisRule>();
   for (const assertion of assertions) {
     const normalized = normalizations[assertion.identity];
@@ -243,12 +257,12 @@ export function importNemsisEmsSchematron(source: string, normalizations: Nemsis
       problems.push({ code: "normalization", sourceIdentity: assertion.identity,
         message: `Normalization for ${assertion.identity} is not valid domain source: ${formatted.diagnostics[0]?.message ?? "unknown error"}` }); continue;
     }
-    const message = normalized.message?.trim() || assertion.displayMessage;
+    const message = normalized.message?.trim() || renderedMessage(assertion, normalized.primaryTargetElementId, labels);
     const key = JSON.stringify([mappedSeverity, ["live", "sign"], normalized.primaryTargetElementId, message, formatted.formatted]);
     const sourceProvenance = provenance(assertion, release ?? "", build ?? "", sourceSha256);
     const duplicate = rules.get(key);
     if (duplicate) { duplicate.provenance.push(sourceProvenance); continue; }
-    rules.set(key, { id: assertion.identity, name: normalized.name?.trim() || assertion.displayMessage, enabled: true,
+    rules.set(key, { id: assertion.identity, name: normalized.name?.trim() || message, enabled: true,
       severity: mappedSeverity, executionTargets: ["live", "sign"], primaryTargetElementId: normalized.primaryTargetElementId,
       message, source: formatted.formatted, provenance: [sourceProvenance] });
   }

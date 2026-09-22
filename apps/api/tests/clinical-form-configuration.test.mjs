@@ -28,6 +28,9 @@ test("report configuration verifies the pinned artifact and distributes only its
       { ruleId: "live", enabled: true, executionTargets: ["live"], message: "Live message", primaryTarget: { elementId: "eA" } },
       { ruleId: "sign", enabled: true, executionTargets: ["sign"], message: "Sign message", primaryTarget: { elementId: "eB" } },
       { ruleId: "disabled", enabled: false, executionTargets: ["live"], message: "Disabled", primaryTarget: { elementId: "eC" } },
+      { ruleId: "demographic", enabled: true, executionTargets: ["live"], message: "Demographic", primaryTarget: { elementId: "dAgency.01" } },
+      { ruleId: "demographic-reference", enabled: true, executionTargets: ["live"], message: "Cross-dataset",
+        primaryTarget: { elementId: "eResponse.01" }, references: { elementIds: ["dAgency.02"] } },
     ] };
   const digest = compiledValidationBundleSha256(bundle);
   const manager = { query: async (sql) => {
