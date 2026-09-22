@@ -331,11 +331,15 @@ export function useReportWorkspace({
   useEffect(() => {
     const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
     window.addEventListener("online", retry);
-    return () => {
-      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
-      window.removeEventListener("online", retry);
-    };
+    return () => window.removeEventListener("online", retry);
   }, [flushSave, report]);
+
+  useEffect(() => () => {
+    if (saveTimer.current !== null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [report?.id]);
 
   useEffect(() => {
     if (!report || syncStatus !== "Pending sync") return;

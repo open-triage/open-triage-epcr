@@ -762,6 +762,71 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
   });
 
+  await t.test("keeps recovered browsers' ciphertext checkpoints independent", async () => {
+    await client.query("begin");
+    try {
+      const reportId = "32000000-0000-4000-8000-00000000000e";
+      const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
+      const userId = SYNTHETIC_DEMO_FIXTURE.userId;
+      const handle = randomUUID();
+      const firstBrowser = randomUUID();
+      const secondBrowser = randomUUID();
+      await client.query("set local role open_triage_api_runtime");
+      const registered = await client.query(`select * from offline_recovery.register_report_key(
+        $1, $2, $3, $4, 1, $5, $6)`,
+      [reportId, organizationId, userId, handle, Buffer.alloc(12, 1), Buffer.alloc(48, 2)]);
+      assert.equal(registered.rows[0]?.created, true);
+
+      // A legacy first-browser checkpoint remains authoritative for that
+      // browser while recovered browsers use their own opaque record IDs.
+      const parentHash = "a".repeat(64);
+      assert.equal((await client.query(`select * from offline_recovery.record_ciphertext_write(
+        $1, $2, $3, $4, 5, $5)`,
+      [reportId, organizationId, userId, handle, parentHash])).rowCount, 1);
+      assert.equal((await client.query(`select * from offline_recovery.checkpoint_report_ciphertext(
+        $1, $2, $3, $4, 5, $5)`,
+      [reportId, organizationId, userId, handle, parentHash])).rowCount, 1);
+
+      for (const [browserId, hash] of [[firstBrowser, "b".repeat(64)], [secondBrowser, "c".repeat(64)]]) {
+        assert.equal((await client.query(`select * from offline_recovery.record_browser_ciphertext_write(
+          $1, $2, $3, $4, $5, 1, $6)`,
+        [reportId, organizationId, userId, handle, browserId, hash])).rowCount, 1);
+        assert.equal((await client.query(`select * from offline_recovery.checkpoint_browser_ciphertext(
+          $1, $2, $3, $4, $5, 1, $6)`,
+        [reportId, organizationId, userId, handle, browserId, hash])).rowCount, 1);
+      }
+      assert.equal((await client.query(`select * from offline_recovery.record_browser_ciphertext_write(
+        $1, $2, $3, $4, $5, 2, $6)`,
+      [reportId, organizationId, userId, handle, firstBrowser, "d".repeat(64)])).rowCount, 1);
+      await rejectsSql(client, `select * from offline_recovery.checkpoint_browser_ciphertext(
+        $1, $2, $3, $4, $5, 1, $6)`,
+      [reportId, organizationId, userId, handle, firstBrowser, "b".repeat(64)], "40001");
+      await rejectsSql(client, `select * from offline_recovery.checkpoint_browser_ciphertext(
+        $1, $2, $3, $4, $5, 2, $6)`,
+      [reportId, organizationId, userId, handle, firstBrowser, "e".repeat(64)], "23505");
+      assert.equal((await client.query(`select * from offline_recovery.checkpoint_browser_ciphertext(
+        $1, $2, $3, $4, $5, 2, $6)`,
+      [reportId, organizationId, userId, handle, firstBrowser, "d".repeat(64)])).rowCount, 1);
+
+      await client.query("reset role");
+      assert.deepEqual((await client.query(`select ciphertext_revision, synchronized_revision,
+        ciphertext_sha256 from offline_recovery.report_key_envelope where report_id = $1`,
+      [reportId])).rows[0], {
+        ciphertext_revision: "5", synchronized_revision: "5", ciphertext_sha256: parentHash,
+      });
+      assert.deepEqual((await client.query(`select local_record_id, ciphertext_revision,
+        synchronized_revision from offline_recovery.report_browser_ciphertext
+        where report_id = $1 order by local_record_id`, [reportId])).rows,
+      [firstBrowser, secondBrowser].sort().map((id) => ({
+        local_record_id: id,
+        ciphertext_revision: id === firstBrowser ? "2" : "1",
+        synchronized_revision: id === firstBrowser ? "2" : "1",
+      })));
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("lets the API discard an authorized synthetic draft without retention authority", async () => {
     await client.query("begin");
     try {

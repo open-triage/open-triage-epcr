@@ -33,7 +33,11 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultSections = useMemo(() => configuredStationarySections(), []);
-  const previewSections = useMemo(() => formDefinition ? configuredStationaryPreviewSections(formDefinition) : undefined, [formDefinition]);
+  const previewSections = useMemo(() => {
+    if (!formDefinition) return undefined;
+    const configured = configuredStationaryPreviewSections(formDefinition);
+    return configured.some((section) => section.blocks.length > 0) ? configured : undefined;
+  }, [formDefinition]);
   const sections = previewSections ?? defaultSections;
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {

@@ -10,6 +10,7 @@ export interface ProtectedClinicalRecord {
   readonly schemaVersion: 1;
   readonly algorithm: "AES-256-GCM";
   readonly recoveryHandle: string;
+  readonly checkpointScope?: "browser";
   readonly recoveryDeadline: string;
   readonly ciphertextRevision: number;
   readonly synchronizedRevision: number;
@@ -37,6 +38,7 @@ export function protectedRecordExpired(
 type RuntimeContext = {
   readonly key: CryptoKey;
   readonly localRecordId: string;
+  readonly checkpointScope: "report" | "browser";
   envelope: ProtectedReportKeyEnvelope;
   readonly releaseLock: () => void;
   readonly csrfToken: string;
@@ -412,6 +414,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, payload);
   const record: ProtectedClinicalRecord = {
     localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
+    ...(context.checkpointScope === "browser" ? { checkpointScope: "browser" as const } : {}),
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
   };
@@ -429,6 +432,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
         body: JSON.stringify({
           schemaVersion: 1,
           recoveryHandle: context.envelope.recoveryHandle,
+          ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
           ciphertextRevision: revision,
           ciphertextSha256: await ciphertextSha256(encrypted.ciphertext),
         }),
@@ -467,7 +471,9 @@ async function checkpointProtectedCiphertext(reportId: string, context: RuntimeC
     const response = await fetch(url, browserRequestInit({
       method: "POST",
       headers: { "content-type": "application/json", "x-csrf-token": context.csrfToken },
-      body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle, ciphertextRevision: revision, ciphertextSha256 }),
+      body: JSON.stringify({ schemaVersion: 1, recoveryHandle: context.envelope.recoveryHandle,
+        ...(context.checkpointScope === "browser" ? { localRecordId: context.localRecordId } : {}),
+        ciphertextRevision: revision, ciphertextSha256 }),
     }));
     if (applyProtectedAuthorityResponse(reportId, response)) return;
     if (response.status === 409) publishStatus(reportId, { mode: "locked", explanation: "A newer synchronized protected revision exists. This tab is locked against rollback." });
@@ -581,7 +587,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
     const envelope = await response.json() as ProtectedReportKeyEnvelope;
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     raw.fill(0);
-    const context = { key, localRecordId: crypto.randomUUID(), envelope, csrfToken,
+    const context = { key, localRecordId: crypto.randomUUID(), checkpointScope: "report" as const, envelope, csrfToken,
       payload: { schemaVersion: PROTECTED_ENVELOPE_SCHEMA }, revision: 0, synchronizedRevision: 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
       failure: null, locking: false, receiptRequest: null, releaseLock, persistentStorage } satisfies RuntimeContext;
@@ -626,8 +632,9 @@ export async function recoverProtectedReport(
     reportStatus: "draft" | "signed";
   };
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
-  if (!record || record.schemaVersion !== 1 || record.algorithm !== "AES-256-GCM" ||
-      Date.parse(record.recoveryDeadline) <= Date.now() || Date.parse(grant.expiresAt) <= Date.now()) return null;
+  if (Date.parse(grant.expiresAt) <= Date.now() || (record && (record.schemaVersion !== 1 ||
+      record.algorithm !== "AES-256-GCM" || protectedRecordExpired(record)))) return null;
+  if (!record && grant.reportStatus === "signed") return null;
 
   const releaseLock = await acquireEditLock(reportId);
   if (!releaseLock) {
@@ -651,7 +658,7 @@ export async function recoverProtectedReport(
     raw = Uint8Array.from(atob(recovered.reportKeyBase64), (character) => character.charCodeAt(0));
     if (raw.byteLength !== 32) throw new Error("Protected report recovery is unavailable.");
     const key = await crypto.subtle.importKey("raw", raw.buffer as ArrayBuffer, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-    const payload = await decryptProtectedPayload(key, record);
+    const payload = record ? await decryptProtectedPayload(key, record) : { schemaVersion: 1 };
     if (!payload || typeof payload !== "object" || (payload as { schemaVersion?: unknown }).schemaVersion !== 1) {
       throw new Error("Protected report recovery is unavailable.");
     }
@@ -662,14 +669,15 @@ export async function recoverProtectedReport(
     }
     const context = {
       key,
-      localRecordId: record.localRecordId,
-      envelope: { schemaVersion: 1, recoveryHandle: record.recoveryHandle,
-        recoveryDeadline: record.recoveryDeadline, wrappingKeyVersion: recovered.wrappingKeyVersion },
+      localRecordId: record?.localRecordId ?? crypto.randomUUID(),
+      checkpointScope: record?.checkpointScope === "browser" || !record ? "browser" as const : "report" as const,
+      envelope: { schemaVersion: 1, recoveryHandle: grant.recoveryHandle,
+        recoveryDeadline: record?.recoveryDeadline ?? grant.expiresAt, wrappingKeyVersion: recovered.wrappingKeyVersion },
       csrfToken,
       releaseLock,
       payload: protectedPayload,
-      revision: record.ciphertextRevision,
-      synchronizedRevision: record.synchronizedRevision,
+      revision: record?.ciphertextRevision ?? 0,
+      synchronizedRevision: record?.synchronizedRevision ?? 0,
       writer: undefined as unknown as LatestProtectedWriteQueue<ProtectedClinicalPayload>,
       failure: null,
       locking: false,
@@ -682,7 +690,7 @@ export async function recoverProtectedReport(
     publishStatus(reportId, grant.reportStatus === "signed"
       ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
       : writableStorageStatus({ persistentStorage }));
-    return protectedPayload;
+    return record ? protectedPayload : null;
   } finally {
     raw?.fill(0);
     if (!activated) releaseLock();
