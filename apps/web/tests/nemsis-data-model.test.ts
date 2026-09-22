@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 import { NEMSIS_DATA_MODEL, NEMSIS_ELEMENT_IDS, getNemsisDataElement, requireNemsisDataElement, resolveNemsisElementValues } from "../app/nemsis-data-model";
-import catalog from "../app/data/nemsis-data-model-3.5.1.json";
+import catalog from "../../../defines/catalog/catalog_nemsis-3.5.1.json";
 
-const catalogPath = fileURLToPath(new URL("../app/data/nemsis-data-model-3.5.1.json", import.meta.url));
+const catalogPath = fileURLToPath(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url));
 const dataRoot = new URL("../app/data/", import.meta.url);
 
 test("contains the complete official EMSDataSet element universe", () => {

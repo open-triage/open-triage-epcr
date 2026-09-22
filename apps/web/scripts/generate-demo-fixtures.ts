@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   const sourcePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json");
   const sourceBytes = await readFile(sourcePath);
   const sample: unknown = JSON.parse(sourceBytes.toString("utf8"));
-  const catalog = JSON.parse(await readFile(resolve(webRoot, "app/data/nemsis-data-model-3.5.1.json"), "utf8")) as DispatchValidationCatalog;
+  const catalog = JSON.parse(await readFile(resolve(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json"), "utf8")) as DispatchValidationCatalog;
   const fixtures = buildDemoFixtures(sample, catalog, sourceBytes);
   const outputs = new Map<string, unknown>([
     [resolve(webRoot, "public/demo-assigned-calls.json"), fixtures.assignedCalls],

@@ -1,5 +1,5 @@
 {
-  "$schema": "./nemsis-data-model.schema-1.0.0.json",
+  "$schema": "./schema_nemsis-3.5.1.json",
   "schemaVersion": "1.0.0",
   "catalog": "nemsis-ems-data-model",
   "release": "3.5.1",

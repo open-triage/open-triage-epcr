@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const catalogPath = path.join(webRoot, "app/data/nemsis-data-model-3.5.1.json");
+const catalogPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
 const outputPath = path.join(webRoot, "app/data/stationary-layout-1.0.0.json");
 
 function groupPresentation(group, elements) {

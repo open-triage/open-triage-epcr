@@ -1,4 +1,4 @@
-import source from "./data/nemsis-data-model-3.5.1.json";
+import source from "../../../defines/catalog/catalog_nemsis-3.5.1.json";
 
 export type NemsisCodeValue = {
   readonly code: string;
@@ -73,7 +73,7 @@ export type NemsisDataElement = {
 };
 
 export type NemsisDataModel = {
-  readonly $schema: "./nemsis-data-model.schema-1.0.0.json";
+  readonly $schema: "./schema_nemsis-3.5.1.json";
   readonly schemaVersion: "1.0.0";
   readonly catalog: "nemsis-ems-data-model";
   readonly release: "3.5.1";

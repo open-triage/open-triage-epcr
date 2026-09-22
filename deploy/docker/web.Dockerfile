@@ -14,6 +14,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 RUN npm ci
 COPY apps/api apps/api
 COPY apps/web apps/web
+COPY defines defines
 COPY packages/contracts packages/contracts
 COPY packages/database/config/identifying-elements.json packages/database/config/identifying-elements.json
 COPY deploy/docker/nginx.conf deploy/docker/nginx.conf

@@ -5,6 +5,7 @@ import test from "node:test";
 const sql = await readFile(new URL("../../../supabase/migrations/20260918170000_validation_required_element_rule.sql", import.meta.url), "utf8");
 const capabilitySql = await readFile(new URL("../../../supabase/migrations/20260918183807_validation_capabilities_and_default_grants.sql", import.meta.url), "utf8");
 const lifecycleSql = await readFile(new URL("../../../supabase/migrations/20260918190000_validation_version_lifecycle.sql", import.meta.url), "utf8");
+const discardSql = await readFile(new URL("../../../supabase/migrations/20260922090000_allow_validation_draft_discard.sql", import.meta.url), "utf8");
 const rolloutSql = await readFile(new URL("../../../supabase/migrations/20260918210000_mark_legacy_unversioned_validation_artifacts.sql", import.meta.url), "utf8");
 const reviewSql = await readFile(new URL("../../../supabase/migrations/20260918211904_expose_review_target_server_evaluation.sql", import.meta.url), "utf8");
 const seedScript = await readFile(new URL("../scripts/seed-initial-validation-versions.mjs", import.meta.url), "utf8");
@@ -65,6 +66,12 @@ test("published Validation sources carry clone provenance and immutable integrit
   assert.match(lifecycleSql, /clone provenance, and catalog binding are immutable/);
 });
 
+test("draft discard keeps the published-version mutation guard", () => {
+  assert.match(discardSql, /if old\.status = 'draft' then return old/);
+  assert.match(discardSql, /if old\.status = 'published' then/);
+  assert.match(discardSql, /clone provenance, and catalog binding are immutable/);
+});
+
 test("Validation publication and activation history is append-only, actor-attributed, and rule-level", () => {
   assert.match(lifecycleSql, /create table validation\.change_event/);
   for (const field of ["actor_id", "source_version_id", "destination_version_id", "change_note", "rule_changes",
@@ -81,13 +88,14 @@ test("rollout marks signed artifacts truthfully without assigning a retroactive 
   assert.doesNotMatch(rolloutSql, /update clinical\.report[\s\S]*set validation_version_id/);
 });
 
-test("initial seeding is replay-safe, imports NEMSIS, publishes, and activates a compatible bundle", () => {
-  assert.match(seedScript, /importNemsisEmsSchematron/);
-  assert.match(seedScript, /formatOccurrenceSource/);
+test("initial seeding is replay-safe, reads the NEMSIS definition, publishes, and activates a compatible bundle", () => {
+  assert.match(seedScript, /defines\/validation\/validation_nemsis-full\.json/);
   assert.match(seedScript, /status: "already-active"/);
   assert.match(seedScript, /insert into validation\.version/);
   assert.match(seedScript, /insert into app_identity\.active_configuration_bundle/);
   assert.match(seedScript, /sourceKind === "nemsis"/);
+  assert.match(seedScript, /rule\.enabled = rule\.enabled && compatible/);
+  assert.match(seedScript, /compiledSha256 = compiledValidationBundleSha256\(compiledBundle\)/);
 });
 
 test("unsigned reset is migration-only, previewed, confirmed, and verifies the signed boundary", () => {

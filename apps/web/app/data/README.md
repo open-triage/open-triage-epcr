@@ -1,12 +1,12 @@
-# Canonical NEMSIS data assets
+# NEMSIS source assets and UI profiles
 
-`nemsis-data-model-3.5.1.json` is the complete, generated catalog of all 453
+`../../../../defines/catalog/catalog_nemsis-3.5.1.json` is the complete, generated catalog of all 453
 standard elements reachable in the official NEMSIS 3.5.1 `EMSDataSet`. Its
 pinned XSD and machine-readable data-dictionary inputs, provenance, and
 regeneration instructions are documented in `nemsis-3.5.1-sources/README.md`.
 The application imports this bundled JSON through `nemsis-data-model.ts`; it
 does not contact NEMSIS at runtime. The versioned
-`nemsis-data-model.schema-1.0.0.json` file validates the generated catalog.
+`../../../../defines/catalog/schema_nemsis-3.5.1.json` file validates the generated catalog.
 
 Element structure, datatypes, constraints, cardinality, NV/PN semantics, inline
 enumerations, and official defined or suggested lists all live in this one

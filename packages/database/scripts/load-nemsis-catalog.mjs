@@ -3,10 +3,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { catalogArtifactSha256 } from "./catalog-artifact-sha256.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const catalogPath = path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json");
+const catalogPath = path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json");
 const mappingPath = path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json");
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -18,7 +19,7 @@ const [catalogText, mappingText] = await Promise.all([
 ]);
 const catalog = JSON.parse(catalogText);
 const mapping = JSON.parse(mappingText);
-const catalogSha256 = createHash("sha256").update(catalogText).digest("hex");
+const catalogSha256 = catalogArtifactSha256(catalogText);
 
 if (mapping.catalogArtifactSha256 !== catalogSha256 || mapping.catalogVersion !== catalog.release) {
   throw new Error("Generated database mapping does not match the committed NEMSIS catalog");

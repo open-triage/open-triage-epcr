@@ -6,7 +6,7 @@ import test from "node:test";
 import { validateDispatchAssignment } from "../dist/dispatch/dispatch-assignment.validation.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const catalog = JSON.parse(await readFile(resolve(root, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"));
+const catalog = JSON.parse(await readFile(resolve(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"));
 const source = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-assignment-01.json"), "utf8"));
 const cancellation = JSON.parse(await readFile(resolve(root, "packages/contracts/examples/dispatch/synthetic-cancellation.json"), "utf8"));
 

@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["$schema", "schemaVersion", "catalog", "release", "dataset", "elementCount", "statistics", "provenance", "groups", "bundledLists", "elements"],
   "properties": {
-    "$schema": { "const": "./nemsis-data-model.schema-1.0.0.json" },
+    "$schema": { "const": "./schema_nemsis-3.5.1.json" },
     "schemaVersion": { "const": "1.0.0" },
     "catalog": { "const": "nemsis-ems-data-model" },
     "release": { "const": "3.5.1" },

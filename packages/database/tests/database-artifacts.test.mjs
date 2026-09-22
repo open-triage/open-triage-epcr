@@ -35,7 +35,7 @@ const [mapping, migration, catalog, runbook, privacyPolicy, identifyingConfig,
   syntheticExpiryMigration, protectedRoleSimplificationMigration, administratorClinicalMigration] = await Promise.all([
   readFile(path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "supabase/migrations/202608300001_initial.sql"), "utf8"),
-  readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
+  readFile(path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8").then(JSON.parse),
   readFile(path.join(repoRoot, "docs/runbooks/analytics-projection.md"), "utf8"),
   readFile(path.join(repoRoot, "docs/analytical-privacy-boundary.md"), "utf8"),
   readFile(path.join(packageRoot, "config/identifying-elements.json"), "utf8").then(JSON.parse),

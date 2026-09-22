@@ -18,7 +18,7 @@ const [databasePackage, bootstrap, apiMain, apiModule, initialMigration] = await
 test("builds the Stationary bootstrap from the complete NEMSIS dataset", async () => {
   const [definition, catalog] = await Promise.all([
     syntheticStationaryDefinition(),
-    readFile(path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8").then(JSON.parse),
+    readFile(path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8").then(JSON.parse),
   ]);
   const placed = definition.sections.flatMap(({ fields }) => fields.map(({ source }) => source.elementId));
 

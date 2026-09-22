@@ -26,7 +26,7 @@ function compare(label, expected, actual) {
 
 export async function auditCatalog() {
   const [committedText, dictionaryText, enumerationText] = await Promise.all([
-    readFile(path.join(dataRoot, "nemsis-data-model-3.5.1.json"), "utf8"),
+    readFile(path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"),
     readFile(path.join(dataRoot, "nemsis-3.5.1-sources/Combined_ElementDetails_Full.txt"), "utf8"),
     readFile(path.join(dataRoot, "nemsis-3.5.1-sources/Combined_ElementEnumerations.txt"), "utf8"),
   ]);

@@ -14,7 +14,7 @@ process.env.PATIENT_KEY_VERSION ??= "1";
 process.env.PATIENT_KEY_SECRET_BASE64 ??= Buffer.alloc(32, 0x31).toString("base64");
 
 const dispatchSample = JSON.parse(readFileSync(new URL("../../../packages/contracts/examples/dispatch/synthetic-assignment-01.json", import.meta.url), "utf8"));
-const dispatchCatalog = JSON.parse(readFileSync(new URL("../../web/app/data/nemsis-data-model-3.5.1.json", import.meta.url), "utf8"));
+const dispatchCatalog = JSON.parse(readFileSync(new URL("../../../defines/catalog/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
 
 const session = {
   accessToken: "authenticated-demo-token",

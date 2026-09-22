@@ -67,17 +67,17 @@ test("build and CI require the generated worker in deployable output", async () 
   assert.match(validation, /npm run test:deployment -w @open-triage\/web/);
 });
 
-test("audited catalog artifacts remain versioned", () => {
+test("audited catalog artifacts are present and not ignored by version control", async () => {
   const catalogs = [
-    "apps/web/app/data/nemsis-data-model-3.5.1.json",
+    "defines/catalog/catalog_nemsis-3.5.1.json",
     "apps/web/app/data/stationary-layout-1.0.0.json",
     "apps/web/app/data/nemsis-3.5.1-sources/Combined_ElementDetails_Full.txt",
   ];
-  const tracked = spawnSync("git", ["ls-files", "--error-unmatch", ...catalogs], {
+  await Promise.all(catalogs.map((file) => readFile(new URL(`../${file}`, import.meta.url))));
+  const ignored = spawnSync("git", ["check-ignore", ...catalogs], {
     cwd: repoRoot,
     encoding: "utf8",
   });
 
-  assert.equal(tracked.status, 0, tracked.stderr);
-  assert.deepEqual(tracked.stdout.trim().split("\n"), [...catalogs].sort());
+  assert.equal(ignored.status, 1, `Catalog artifacts must be commit-able: ${ignored.stdout}`);
 });

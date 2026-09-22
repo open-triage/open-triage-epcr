@@ -12,7 +12,7 @@ async function main(): Promise<void> {
     if (!databaseUrl) throw new Error("DATABASE_URL is required to ingest a dispatch file");
     const root = resolve(__dirname, "../../../..");
     const catalog = JSON.parse(await readFile(
-      resolve(root, "apps/web/app/data/nemsis-data-model-3.5.1.json"), "utf8"
+      resolve(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"
     )) as DispatchValidationCatalog;
     database = await new DataSource({ type: "postgres", url: databaseUrl }).initialize();
     const outcome = await runDispatchFileCli(process.argv.slice(2), {

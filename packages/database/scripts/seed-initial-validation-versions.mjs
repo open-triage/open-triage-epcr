@@ -3,19 +3,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
-import {
-  NEMSIS_351_EMS_BUILD,
-  NEMSIS_351_EMS_NORMALIZATIONS,
-  NEMSIS_351_EMS_RELEASE,
-  NEMSIS_351_EMS_SOURCE_SHA256,
-  compileValidationRule,
-  formatOccurrenceSource,
-  importNemsisEmsSchematron,
-} from "@open-triage/contracts";
+import { compileValidationRule, compiledValidationBundleSha256 } from "@open-triage/contracts";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-const schematronPath = path.resolve(scriptDirectory,
-  "../../contracts/fixtures/nemsis-3.5.1/EMSDataSet.sch.xml");
 const lockName = "open-triage-initial-validation-rollout-v1";
 
 function sha256(value) {
@@ -26,103 +16,6 @@ function sha256(value) {
 export function rolloutUuid(...parts) {
   const digest = sha256(parts.join("\u001f"));
   return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
-}
-
-function literal(value) {
-  return typeof value === "string" ? JSON.stringify(value) : String(value);
-}
-
-export function migrateFormExpression(expression, elementByField) {
-  if (!expression || typeof expression !== "object") return null;
-  if (expression.operator === "exists") {
-    const elementId = elementByField.get(expression.field);
-    return elementId ? `present(${JSON.stringify(elementId)})` : null;
-  }
-  if (expression.operator === "equals") {
-    const elementId = elementByField.get(expression.field);
-    return !elementId || expression.value === null ? null
-      : `equals(${JSON.stringify(elementId)}, ${literal(expression.value)})`;
-  }
-  if (expression.operator === "not") {
-    const condition = migrateFormExpression(expression.condition, elementByField);
-    return condition ? `not(${condition})` : null;
-  }
-  if (expression.operator === "and" || expression.operator === "or") {
-    if (!Array.isArray(expression.conditions)) return null;
-    const conditions = expression.conditions.map((condition) => migrateFormExpression(condition, elementByField));
-    if (conditions.some((condition) => condition === null)) return null;
-    return `${expression.operator === "and" ? "all" : "any"}(${conditions.join(", ")})`;
-  }
-  return null;
-}
-
-function versionRules(target, elements, importedRules, availableElements) {
-  const stableRule = (kind, key, rule) => ({
-    ...rule,
-    id: rolloutUuid("initial-validation-rule", target.organization_id, target.catalog_release_id, kind, key),
-  });
-  const rules = [];
-  for (const element of elements) {
-    const scope = element.group_repeating ? element.group_id : undefined;
-    const enabled = availableElements.has(element.element_id);
-    if (element.agency_required === true) rules.push(stableRule("catalog-agency", element.element_id, {
-      name: `${element.name} agency required`, enabled,
-      severity: element.agency_required_severity ?? "error", executionTargets: ["live", "sign"],
-      sourceKind: "catalog", primaryTargetElementId: element.element_id,
-      message: `${element.name} is required by agency policy`,
-      source: formatOccurrenceSource(element.element_id, "minimum", 1),
-    }));
-    if (element.min_occurs > 0) rules.push(stableRule("catalog-minimum", element.element_id, {
-      name: `${element.name} documented minimum`, enabled, severity: "error", executionTargets: ["live", "sign"],
-      sourceKind: "catalog", primaryTargetElementId: element.element_id,
-      message: `${element.name} requires at least ${element.min_occurs} documented occurrence(s)`,
-      source: formatOccurrenceSource(element.element_id, "minimum", element.min_occurs, scope),
-    }));
-    if (element.max_occurs !== null) rules.push(stableRule("catalog-maximum", element.element_id, {
-      name: `${element.name} documented maximum`, enabled, severity: "error", executionTargets: ["live", "sign"],
-      sourceKind: "catalog", primaryTargetElementId: element.element_id,
-      message: `${element.name} permits at most ${element.max_occurs} documented occurrence(s)`,
-      source: formatOccurrenceSource(element.element_id, "maximum", element.max_occurs, scope),
-    }));
-  }
-
-  const fields = target.canonical_definition?.sections?.flatMap((section) => section.fields ?? []) ?? [];
-  const elementByField = new Map(fields.flatMap((field) => field.key && field.source?.kind === "nemsis"
-    && field.source.elementId ? [[field.key, field.source.elementId]] : []));
-  const elementById = new Map(elements.map((element) => [element.element_id, element]));
-  for (const field of fields) {
-    if (!field.key || field.source?.kind !== "nemsis" || !field.source.elementId) continue;
-    const element = elementById.get(field.source.elementId);
-    if (!element) continue;
-    if (field.required) rules.push(stableRule("form-required", field.key, {
-      name: `${element.name} form required`, enabled: true, severity: "error", executionTargets: ["live", "sign"],
-      sourceKind: "form", primaryTargetElementId: element.element_id,
-      message: `${element.name} is required by the form`,
-      source: formatOccurrenceSource(element.element_id, "minimum", 1),
-    }));
-    for (const [position, legacyRule] of (field.rules ?? []).entries()) {
-      if (legacyRule.kind !== "requiredness") continue;
-      const condition = migrateFormExpression(legacyRule.expression, elementByField);
-      if (!condition) continue;
-      rules.push(stableRule("form-conditional", `${field.key}:${position}`, {
-        name: `${element.name} conditional form requirement`, enabled: true, severity: "error",
-        executionTargets: ["live", "sign"], sourceKind: "form", primaryTargetElementId: element.element_id,
-        message: `${element.name} is required by its current form condition`,
-        source: `when ${condition}\nrequire present(${JSON.stringify(element.element_id)})`,
-      }));
-    }
-  }
-
-  for (const imported of importedRules) {
-    rules.push(stableRule("nemsis", imported.id, {
-      ...imported,
-      sourceKind: "nemsis",
-      // Dynamic targets and rules whose inputs are not supplied by the current
-      // Form remain visible and traceable, but cannot block live documentation.
-      enabled: false,
-    }));
-  }
-  return rules;
 }
 
 async function catalogFor(client, releaseId) {
@@ -167,7 +60,7 @@ async function seedTarget(client, target, importedRules) {
   if (existing.rowCount) return { organizationId: target.organization_id, status: "already-active",
     validationVersionId: existing.rows[0].validation_version_id ?? versionId };
 
-  const { rows: elements, catalog } = await catalogFor(client, target.catalog_release_id);
+  const { catalog } = await catalogFor(client, target.catalog_release_id);
   const available = await client.query(`select e.element_id
     from forms.form_field field join catalog.element_definition e
       on e.release_id=$2 and e.element_identity_id=field.catalog_element_identity_id
@@ -175,7 +68,8 @@ async function seedTarget(client, target, importedRules) {
     union select element_id from validation.platform_element_source where catalog_release_id=$2`,
   [target.form_version_id, target.catalog_release_id]);
   const availableElements = new Set(available.rows.map(({ element_id }) => element_id));
-  const rules = versionRules(target, elements, importedRules, availableElements);
+  const rules = importedRules.map((rule) => ({ ...rule,
+    id: rolloutUuid("initial-validation-rule", target.organization_id, target.catalog_release_id, rule.id) }));
   const compiledRules = [];
   for (const rule of rules) {
     const compiled = compileValidationRule(rule, versionId, catalog);
@@ -188,15 +82,15 @@ async function seedTarget(client, target, importedRules) {
     if (rule.sourceKind === "nemsis") {
       const compatible = compiled.compiled.primaryTarget.elementId !== "*"
         && references.every((elementId) => availableElements.has(elementId));
-      rule.enabled = compatible;
-      compiled.compiled.enabled = compatible;
+      rule.enabled = rule.enabled && compatible;
+      compiled.compiled.enabled = rule.enabled;
     }
     compiledRules.push(compiled.compiled);
   }
   const compiledBundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
     catalogReleaseId: target.catalog_release_id, rules: compiledRules };
   const sourceSha256 = sha256(JSON.stringify(rules));
-  const compiledSha256 = sha256(JSON.stringify(compiledBundle));
+  const compiledSha256 = compiledValidationBundleSha256(compiledBundle);
   const nextVersion = Number((await client.query(`select coalesce(max(version),0)+1 next_version
     from validation.version where organization_id=$1`, [target.organization_id])).rows[0].next_version);
 
@@ -208,7 +102,7 @@ async function seedTarget(client, target, importedRules) {
      compiled_bundle,compiled_sha256,source_sha256,change_note,created_by,published_by,published_at)
     values ($1,$2,$3,$4,$5,'published',1,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$12,now())`,
   [versionId, target.organization_id, target.catalog_release_id, rules[0].id, nextVersion,
-    `Initial Validation for ${target.catalog_version}`, JSON.stringify(rules), JSON.stringify(compiledBundle),
+    target.definition_name, JSON.stringify(rules), JSON.stringify(compiledBundle),
     compiledSha256, sourceSha256, "Initial rollout from current Catalog, Form, and NEMSIS rules", target.actor_id]);
   await client.query(`insert into validation.change_event
     (organization_id,actor_id,action,destination_version_id,catalog_release_id,change_note,rule_changes,source_sha256,compiled_sha256)
@@ -242,10 +136,11 @@ async function seedTarget(client, target, importedRules) {
 export async function seedInitialValidationVersions({ databaseUrl = process.env.DATABASE_URL,
   Client = pg.Client, log = console } = {}) {
   if (!databaseUrl) throw new Error("DATABASE_URL is required to seed initial Validation versions");
-  const schematron = await readFile(schematronPath, "utf8");
-  const imported = importNemsisEmsSchematron(schematron, NEMSIS_351_EMS_NORMALIZATIONS, {
-    release: NEMSIS_351_EMS_RELEASE, build: NEMSIS_351_EMS_BUILD, sha256: NEMSIS_351_EMS_SOURCE_SHA256,
-  });
+  const definition = JSON.parse(await readFile(path.resolve(scriptDirectory,
+    "../../../defines/validation/validation_nemsis-full.json"), "utf8"));
+  if (definition.schemaVersion !== 1 || definition.key !== "nemsis-full" || !Array.isArray(definition.rules)) {
+    throw new Error("The default NEMSIS validation definition is invalid");
+  }
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {
@@ -261,7 +156,7 @@ export async function seedInitialValidationVersions({ databaseUrl = process.env.
       await client.query("begin isolation level serializable");
       try {
         await client.query("select pg_advisory_xact_lock(hashtext($1))", [`configuration:${target.organization_id}`]);
-        outcomes.push(await seedTarget(client, target, imported.rules));
+        outcomes.push(await seedTarget(client, { ...target, definition_name: definition.name }, definition.rules));
         await client.query("commit");
       } catch (error) {
         await client.query("rollback");

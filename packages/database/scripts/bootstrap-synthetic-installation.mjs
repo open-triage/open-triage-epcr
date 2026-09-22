@@ -74,12 +74,12 @@ async function ensureBaselineConfiguration(client, actorId) {
     const formId = upgraded ? completeBaselineFormId : baselineFormId;
     formVersionId = upgraded ? completeBaselineFormVersionId : baselineFormVersionId;
     await client.query(`insert into forms.form (id, organization_id, slug, name)
-      values ($1, $2, $3, 'Stationary') on conflict (id) do nothing`,
+      values ($1, $2, $3, 'NEMSIS full') on conflict (id) do nothing`,
     [formId, SYNTHETIC_DEMO_FIXTURE.organizationId, upgraded ? "stationary-complete" : "stationary"]);
     const inserted = await client.query(`insert into forms.form_version
       (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
        created_by, display_name)
-      values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, 'Stationary')
+      values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, 'NEMSIS full')
       on conflict (id) do nothing returning id`,
     [formVersionId, formId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId]);
     if (!inserted.rows[0]) throw new Error("The reserved complete Stationary form version is unavailable");

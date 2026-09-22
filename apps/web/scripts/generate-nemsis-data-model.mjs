@@ -9,8 +9,8 @@ const xsdRoot = path.join(sourceRoot, "xsd");
 const listRoot = path.join(sourceRoot, "lists");
 const dictionaryPath = path.join(sourceRoot, "Combined_ElementDetails_Full.txt");
 const enumerationsPath = path.join(sourceRoot, "Combined_ElementEnumerations.txt");
-const outputPath = path.join(webRoot, "app/data/nemsis-data-model-3.5.1.json");
-const schemaPath = path.join(webRoot, "app/data/nemsis-data-model.schema-1.0.0.json");
+const outputPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
+const schemaPath = path.join(webRoot, "../../defines/catalog/schema_nemsis-3.5.1.json");
 const releaseBaseUrl = "https://nemsis.org/media/nemsis_v3/release-3.5.1";
 const masterBaseUrl = "https://nemsis.org/media/nemsis_v3/master";
 const retrievalDate = "2026-09-01";
@@ -377,7 +377,7 @@ export async function generateCatalog() {
     ...listFiles.map(({ specification, content }) => ({ role: `${specification.classification}-list`, path: `nemsis-3.5.1-sources/lists/${specification.filename}`, url: `${masterBaseUrl}/${specification.remotePath}`, content })),
   ].sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   const catalog = {
-    $schema: "./nemsis-data-model.schema-1.0.0.json", schemaVersion: "1.0.0",
+    $schema: "./schema_nemsis-3.5.1.json", schemaVersion: "1.0.0",
     catalog: "nemsis-ems-data-model", release: "3.5.1", dataset: "EMSDataSet", elementCount: elements.length,
     statistics: {
       inlineEnumerationElements: inlineValues.size,
@@ -416,7 +416,7 @@ async function main() {
   if (process.argv.includes("--check")) {
     let committed = "";
     try { committed = await readFile(outputPath, "utf8"); } catch { /* reported as drift below */ }
-    if (committed !== output) { console.error("nemsis-data-model-3.5.1.json is stale. Run: npm run generate:nemsis-data-model"); process.exitCode = 1; return; }
+    if (committed !== output) { console.error("catalog_nemsis-3.5.1.json is stale. Run: npm run generate:nemsis-data-model"); process.exitCode = 1; return; }
     console.log("NEMSIS data model is current."); return;
   }
   await writeFile(outputPath, output);

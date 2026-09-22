@@ -42,6 +42,8 @@ COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs pac
 COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/database/scripts/
 COPY packages/database/scripts/synthetic-stationary-definition.mjs packages/database/scripts/
 COPY packages/database/scripts/load-nemsis-catalog.mjs packages/database/scripts/
+COPY packages/database/scripts/seed-initial-validation-versions.mjs packages/database/scripts/
+COPY packages/database/scripts/seed-install-definitions.mjs packages/database/scripts/
 COPY packages/database/scripts/migrate.mjs packages/database/scripts/
 COPY packages/database/scripts/provision-workload-logins.mjs packages/database/scripts/
 COPY packages/database/scripts/project-analytics.mjs packages/database/scripts/
@@ -53,7 +55,7 @@ COPY packages/database/scripts/verify-recovery.mjs packages/database/scripts/
 COPY packages/database/scripts/verify-reporting-replica.mjs packages/database/scripts/
 COPY packages/database/config/database-operations-policy.json packages/database/config/retention-policy.json packages/database/config/
 COPY packages/database/generated packages/database/generated
-COPY apps/web/app/data/nemsis-data-model-3.5.1.json apps/web/app/data/stationary-layout-1.0.0.json apps/web/app/data/standard-encounter-form.json apps/web/app/data/
+COPY defines defines
 COPY supabase/migrations supabase/migrations
 
 USER node

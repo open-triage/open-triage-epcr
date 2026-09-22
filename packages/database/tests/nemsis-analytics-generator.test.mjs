@@ -34,7 +34,7 @@ async function generate(paths, ...extra) {
   return new Promise((resolve, reject) => {
     execFile(process.execPath, [
       generator,
-      "--catalog", path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"),
+      "--catalog", path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json"),
       "--identifying", paths.identifying,
       "--group-times", path.join(packageRoot, "config/repeating-group-times.json"),
       "--output", paths.output,

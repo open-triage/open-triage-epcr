@@ -16,7 +16,7 @@ import { buildDemoFixtures } from "../scripts/demo-fixture-core";
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(webRoot, "../..");
 const samplePath = resolve(repositoryRoot, "packages/contracts/examples/dispatch/synthetic-assignment-01.json");
-const catalogPath = resolve(webRoot, "app/data/nemsis-data-model-3.5.1.json");
+const catalogPath = resolve(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
 
 async function source(): Promise<{ bytes: Buffer; sample: Record<string, unknown>; catalog: DispatchValidationCatalog }> {
   const bytes = await readFile(samplePath);

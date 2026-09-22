@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { catalogArtifactSha256 } from "./catalog-artifact-sha256.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -13,7 +14,7 @@ function option(name, fallback) {
   return path.resolve(value);
 }
 
-const catalogPath = option("--catalog", path.join(repoRoot, "apps/web/app/data/nemsis-data-model-3.5.1.json"));
+const catalogPath = option("--catalog", path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json"));
 const identifyingPath = option("--identifying", path.join(packageRoot, "config/identifying-elements.json"));
 const groupTimesPath = option("--group-times", path.join(packageRoot, "config/repeating-group-times.json"));
 const outputPath = option("--output", path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json"));
@@ -199,7 +200,7 @@ const artifact = {
   standard: "NEMSIS",
   catalogVersion: catalog.release,
   dataset: catalog.dataset,
-  catalogArtifactSha256: createHash("sha256").update(catalogText).digest("hex"),
+  catalogArtifactSha256: catalogArtifactSha256(catalogText),
   applicationIdentityNamespace: APPLICATION_NAMESPACE,
   naming: "Lowercase NEMSIS element identifier with the dot replaced by an underscore; companion columns use descriptive suffixes.",
   counts: {

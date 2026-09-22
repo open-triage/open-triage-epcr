@@ -60,9 +60,9 @@ test("the pruned runtime explicitly retains approved database operations and the
     "packages/database/generated",
     "database-operations-policy.json",
     "retention-policy.json",
-    "nemsis-data-model-3.5.1.json",
-    "stationary-layout-1.0.0.json",
-    "standard-encounter-form.json",
+    "COPY defines defines",
+    "seed-initial-validation-versions.mjs",
+    "seed-install-definitions.mjs",
     "packages/contracts/examples/dispatch",
   ]) {
     assert.ok(dockerfile.includes(asset), `runtime is missing ${asset}`);

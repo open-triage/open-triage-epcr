@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { migrateFormExpression, rolloutUuid } from "../scripts/seed-initial-validation-versions.mjs";
+import { rolloutUuid } from "../scripts/seed-initial-validation-versions.mjs";
 import { RESET_CONFIRMATION, resetUnsignedClinicalWork } from "../scripts/reset-unsigned-clinical-work.mjs";
 
-test("initial rollout identities and Form migration are deterministic", () => {
+test("initial rollout identities are deterministic", () => {
   assert.equal(rolloutUuid("organization", "catalog", "rule"), rolloutUuid("organization", "catalog", "rule"));
   assert.match(rolloutUuid("organization", "catalog", "rule"),
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
-  assert.equal(migrateFormExpression({ operator: "and", conditions: [
-    { operator: "exists", field: "incident" },
-    { operator: "not", condition: { operator: "equals", field: "priority", value: "routine" } },
-  ] }, new Map([["incident", "eResponse.03"], ["priority", "eDispatch.05"]])),
-  'all(present("eResponse.03"), not(equals("eDispatch.05", "routine")))');
 });
 
 function resetClient() {

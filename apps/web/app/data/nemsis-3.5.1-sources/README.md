@@ -1,7 +1,7 @@
 # Pinned NEMSIS 3.5.1 sources
 
 This directory contains the official source files used to generate
-`../nemsis-data-model-3.5.1.json`. They were retrieved from the versioned NEMSIS
+`../../../../../defines/catalog/catalog_nemsis-3.5.1.json`. They were retrieved from the versioned NEMSIS
 3.5.1 release and public-list directories on 2026-09-01 and are committed so
 generation, testing, and production builds never depend on network access.
 
