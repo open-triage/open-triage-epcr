@@ -154,10 +154,13 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
       return await this.dataSource.transaction(async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
-        const rows = await manager.query<Array<{ ciphertext_revision: string | number; ciphertext_sha256: string }>>(`
-          select * from offline_recovery.checkpoint_report_ciphertext($1, $2, $3, $4, $5, $6)
-        `, [reportId, session.organization.id, session.user.id, command.recoveryHandle,
-          command.ciphertextRevision, command.ciphertextSha256]);
+        const rows = await manager.query<Array<{ ciphertext_revision: string | number; ciphertext_sha256: string }>>(
+          command.localRecordId
+            ? "select * from offline_recovery.checkpoint_browser_ciphertext($1, $2, $3, $4, $5, $6, $7)"
+            : "select * from offline_recovery.checkpoint_report_ciphertext($1, $2, $3, $4, $5, $6)",
+          [reportId, session.organization.id, session.user.id, command.recoveryHandle,
+            ...(command.localRecordId ? [command.localRecordId] : []),
+            command.ciphertextRevision, command.ciphertextSha256]);
         if (!rows[0]) throw new NotFoundException("The protected report is unavailable");
         return { ciphertextRevision: Number(rows[0].ciphertext_revision), ciphertextSha256: rows[0].ciphertext_sha256 };
       });
@@ -179,10 +182,13 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
     const stored = await this.dataSource.transaction(async (manager) => {
       await this.sessions.assertCsrf(accessToken, csrfToken, manager);
       const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
-      const rows = await manager.query<Array<{ recovery_deadline: Date | string }>>(`
-        select * from offline_recovery.record_ciphertext_write($1, $2, $3, $4, $5, $6)
-      `, [reportId, session.organization.id, session.user.id, command.recoveryHandle,
-        command.ciphertextRevision, command.ciphertextSha256]);
+      const rows = await manager.query<Array<{ recovery_deadline: Date | string }>>(
+        command.localRecordId
+          ? "select * from offline_recovery.record_browser_ciphertext_write($1, $2, $3, $4, $5, $6, $7)"
+          : "select * from offline_recovery.record_ciphertext_write($1, $2, $3, $4, $5, $6)",
+        [reportId, session.organization.id, session.user.id, command.recoveryHandle,
+          ...(command.localRecordId ? [command.localRecordId] : []),
+          command.ciphertextRevision, command.ciphertextSha256]);
       return rows[0];
     });
     if (!stored) throw new NotFoundException("Protected report recovery is unavailable");
@@ -285,8 +291,9 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
   private validateCheckpoint(input: unknown): CheckpointProtectedReportCommand {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new UnprocessableEntityException("Protected ciphertext checkpoint is invalid");
     const record = input as Record<string, unknown>;
-    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
+    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "localRecordId", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
         record.schemaVersion !== 1 || typeof record.recoveryHandle !== "string" || !uuidV4.test(record.recoveryHandle) ||
+        (record.localRecordId !== undefined && (typeof record.localRecordId !== "string" || !uuidV4.test(record.localRecordId))) ||
         !Number.isSafeInteger(record.ciphertextRevision) || Number(record.ciphertextRevision) < 1 ||
         typeof record.ciphertextSha256 !== "string" || !/^[a-f0-9]{64}$/.test(record.ciphertextSha256)) {
       throw new UnprocessableEntityException("Protected ciphertext checkpoint is invalid");
@@ -299,8 +306,9 @@ export class ProtectedReportKeyService implements OnModuleInit, OnModuleDestroy 
       throw new UnprocessableEntityException("Protected ciphertext receipt is invalid");
     }
     const record = input as Record<string, unknown>;
-    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
+    if (Object.keys(record).some((key) => !["schemaVersion", "recoveryHandle", "localRecordId", "ciphertextRevision", "ciphertextSha256"].includes(key)) ||
         record.schemaVersion !== 1 || typeof record.recoveryHandle !== "string" || !uuidV4.test(record.recoveryHandle) ||
+        (record.localRecordId !== undefined && (typeof record.localRecordId !== "string" || !uuidV4.test(record.localRecordId))) ||
         typeof record.ciphertextRevision !== "number" || !Number.isSafeInteger(record.ciphertextRevision) || record.ciphertextRevision < 1 ||
         typeof record.ciphertextSha256 !== "string" || !/^[a-f0-9]{64}$/.test(record.ciphertextSha256)) {
       throw new UnprocessableEntityException("Protected ciphertext receipt is invalid");

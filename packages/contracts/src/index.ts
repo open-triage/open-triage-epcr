@@ -126,6 +126,7 @@ export interface ProtectedReportKeyEnvelope {
 export interface CheckpointProtectedReportCommand {
   schemaVersion: 1;
   recoveryHandle: string;
+  localRecordId?: string;
   ciphertextRevision: number;
   ciphertextSha256: string;
 }

@@ -57,6 +57,17 @@ test("the complete record exposes configured sections and blocks in canonical hi
   assert.match(html, /tabindex="-1"/);
 });
 
+test("an empty pinned form still renders the complete Stationary record", () => {
+  const html = renderToStaticMarkup(createElement(StationaryRecord, {
+    document,
+    formDefinition: { schemaVersion: 1, sections: [] },
+    onDocumentChange() {},
+  }));
+  assert.match(html, /data-stationary-section="eRecordSection"/);
+  assert.match(html, /data-element-id="eResponse\.22"/);
+  assert.match(html, /data-stationary-section="eOtherSection"/);
+});
+
 test("a pinned form controls Stationary section and element order", () => {
   const formDefinition = { schemaVersion: 1 as const, sections: [{
     key: "patient-first", presentation: { title: "Patient first" }, fields: [

@@ -40,6 +40,12 @@ wrapping secrets, grants, wrapped keys, request bodies, or ciphertext samples.
   report already authorized to the current user, recent password reauthentication
   is required before a single-use, 60-second, report/session/user/organization
   bound grant releases exactly that report's key. A grant cannot be replayed.
+- An authorized second browser can use that grant to create its own encrypted
+  offline copy when it has no local record. Its opaque local record ID gives it
+  an independent ciphertext revision and rollback checkpoint. The first
+  browser's encrypted copy and pending changes remain in that browser. Each
+  browser must reach the server once to establish its recovery receipt before
+  it can continue editing offline.
 - A different user receives neither a list nor labels from the browser store and
   cannot request or consume the original user's grant. Concurrent tabs use an
   exclusive per-report lock. Tampering fails AES-GCM authentication. A server

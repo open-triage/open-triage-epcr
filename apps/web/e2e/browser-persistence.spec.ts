@@ -22,11 +22,14 @@ const otherSession = {
   user: { id: "42000000-0000-4000-8000-000000000099", displayName: "Different Clinician" },
 };
 
-async function installRoutes(page: Page, persistentStorage = true) {
-  let opened = false;
+async function installRoutes(page: Page, persistentStorage = true, existing?: {
+  readonly recoveryHandle: string;
+  readonly reportKeyBase64: string;
+}) {
+  let opened = Boolean(existing);
   let restarted = false;
-  let recoveryHandle = "";
-  let reportKeyBase64 = "";
+  let recoveryHandle = existing?.recoveryHandle ?? "";
+  let reportKeyBase64 = existing?.reportKeyBase64 ?? "";
   let grantConsumed = false;
   let reauthenticated = false;
   let currentSession = session;
@@ -145,7 +148,10 @@ async function installRoutes(page: Page, persistentStorage = true) {
     await route.fulfill({ json: { id: reportId, status: "draft", revision } });
   });
   await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({ status: 304 }));
-  return { restart: () => { restarted = true; } };
+  return {
+    restart: () => { restarted = true; },
+    recovery: () => ({ recoveryHandle, reportKeyBase64 }),
+  };
 }
 
 async function encryptedRecords(page: Page): Promise<Array<Record<string, unknown>>> {
@@ -186,6 +192,73 @@ test("denied persistence falls back to encrypted best-effort IndexedDB", async (
   await page.getByRole("button", { name: "Add to timeline" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
   await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(0);
+});
+
+test("a second browser recovers its own offline copy without replacing the first", async ({ page, browser }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  const first = await installRoutes(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  const original = (await encryptedRecords(page))[0]!;
+  await page.getByRole("button", { name: "Save & close" }).click();
+
+  const otherContext = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "en-US" });
+  try {
+    const second = await otherContext.newPage();
+    const secondRoutes = await installRoutes(second, true, first.recovery());
+    secondRoutes.restart();
+    await second.route(`**/api/reports/${reportId}/protected-key-envelope`, (route) => route.fulfill({ status: 409 }));
+    let browserScopedReceipts = 0;
+    await second.route(`**/api/reports/${reportId}/protected-ciphertext-receipt`, (route) => {
+      const command = route.request().postDataJSON() as { localRecordId?: string };
+      expect(command.localRecordId).toMatch(/^[0-9a-f-]{36}$/);
+      browserScopedReceipts += 1;
+      return route.fulfill({ json: { schemaVersion: 1, recoveryDeadline: "2099-09-18T12:00:00.000Z" } });
+    });
+    await second.goto(page.url());
+    await expect(second.getByRole("heading", { name: "Open reports" })).toBeVisible();
+    await second.getByRole("button", { name: "Reopen report" }).click();
+    await expect(second.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
+    await second.getByLabel("Current password").fill("current-password");
+    await second.getByRole("button", { name: "Confirm and recover" }).click();
+    await expect(second.locator(".active-report-notice")).toHaveAttribute("data-report-id", reportId);
+    await expect.poll(async () => (await encryptedRecords(second)).length).toBe(1);
+    const adopted = (await encryptedRecords(second))[0]!;
+    expect(adopted.checkpointScope).toBe("browser");
+    expect(adopted.localRecordId).not.toBe(original.localRecordId);
+    expect(browserScopedReceipts).toBeGreaterThan(0);
+    await otherContext.setOffline(true);
+    await second.evaluate(() => window.dispatchEvent(new Event("offline")));
+    await second.getByRole("button", { name: "Add clinical note" }).click();
+    await second.getByLabel("Note summary").fill("Second browser offline copy");
+    await second.getByRole("button", { name: "Add to timeline" }).click();
+    await expect(second.locator(".sync-status")).toHaveText("Pending sync");
+    await expect.poll(async () => Number((await encryptedRecords(second))[0]?.ciphertextRevision))
+      .toBeGreaterThan(Number(adopted.ciphertextRevision));
+    expect((await encryptedRecords(page))[0]!.localRecordId).toBe(original.localRecordId);
+  } finally {
+    await otherContext.close();
+  }
+});
+
+test("switching to Stationary preserves a queued draft save", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  let draftSaves = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith(`/api/reports/${reportId}/draft-changes`)) draftSaves += 1;
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Save during presentation switch");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saving");
+  await page.getByRole("group", { name: "Documentation presentation" })
+    .getByRole("button", { name: "Stationary" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 10_000 });
+  expect(draftSaves).toBeGreaterThan(0);
 });
 
 test("one online-opened report remains editable through connection loss using only authenticated IndexedDB ciphertext", async ({ page, context }) => {
