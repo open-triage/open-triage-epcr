@@ -777,7 +777,9 @@ integrationTest("authorized Admin context resolves only the session organization
     { action: "form.draft_delete", form_version_id: null, revision: 2, deletedFormVersionId: auditedFormDraft.id }
   ]);
   const authoring = new CatalogAuthoringService(transactionalDatabase, sessions);
-  const draft = await authoring.cloneActive(active.sessionToken, { displayName: "Integration catalog" });
+  const draft = await authoring.cloneActive(active.sessionToken, {
+    sourceVersionId: release.rows[0].id, displayName: "Integration catalog"
+  });
   assert.equal(draft.revision, 1);
   const changedElement = draft.definition.elements[0];
   const changedList = draft.definition.codeLists.find((list) => list.classification !== "inline");

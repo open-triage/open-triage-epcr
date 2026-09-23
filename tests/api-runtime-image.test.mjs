@@ -34,6 +34,7 @@ test("the pruned runtime explicitly retains approved database operations and the
 
   for (const script of [
     "bootstrap-synthetic-installation",
+    "catalog-artifact-sha256",
     "synthetic-stationary-definition",
     "load-nemsis-catalog",
     "migrate",

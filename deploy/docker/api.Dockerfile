@@ -41,6 +41,7 @@ COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs pac
 # Assets intentionally retained for deployment jobs and operator runbooks.
 COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/database/scripts/
 COPY packages/database/scripts/synthetic-stationary-definition.mjs packages/database/scripts/
+COPY packages/database/scripts/catalog-artifact-sha256.mjs packages/database/scripts/
 COPY packages/database/scripts/load-nemsis-catalog.mjs packages/database/scripts/
 COPY packages/database/scripts/seed-initial-validation-versions.mjs packages/database/scripts/
 COPY packages/database/scripts/seed-install-definitions.mjs packages/database/scripts/
