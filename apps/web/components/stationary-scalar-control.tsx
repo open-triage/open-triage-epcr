@@ -1,24 +1,22 @@
 "use client";
 
 import type { ScalarEncounterValue } from "@open-triage/contracts";
-import React, { useId } from "react";
+import React, { useId, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
+import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "../app/stationary-date-time";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import { TimePicker } from "./time-picker";
 
-function localOffset(): string {
-  const minutes = -new Date().getTimezoneOffset();
-  const sign = minutes < 0 ? "-" : "+";
-  const absolute = Math.abs(minutes);
-  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, "0")}:${String(absolute % 60).padStart(2, "0")}`;
-}
-
-function dateTimeParts(value: string): { date: string; time: string; offset: string } | undefined {
+function sourceDateTimeParts(value: string): { date: string; time: string; offset: string } | undefined {
   const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/.exec(value);
-  if (match) return { date: match[1]!, time: match[2]!, offset: match[3] ?? localOffset() };
+  if (match) return { date: match[1]!, time: match[2]!, offset: match[3] ?? "" };
   return undefined;
 }
+
+const subscribeToClientClock = () => () => undefined;
+const clientClockReady = () => true;
+const serverClockReady = () => false;
 
 export function StationaryScalarControl({ presentation, value, inputValue, defaultDateTime, findings = [], disabled = false, initialFocus = false, embedded = false, onInput, onBlur }: {
   readonly presentation: ScalarControlPresentation;
@@ -33,6 +31,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
   readonly onBlur?: (input: string | boolean) => void;
 }) {
   const id = useId();
+  const localClockReady = useSyncExternalStore(subscribeToClientClock, clientClockReady, serverClockReady);
   const errorId = `${id}-error`;
   const helpId = `${id}-help`;
   const readBinary = (event: ChangeEvent<HTMLInputElement>) => {
@@ -44,8 +43,11 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
   };
   if (presentation.family === "datetime") {
     const candidate = inputValue ?? value?.value;
-    const selected = dateTimeParts(String(candidate ?? ""));
-    const initial = dateTimeParts(defaultDateTime ?? "");
+    // Server-render and first hydration use the source clock; after mount the
+    // browser converts it to local time without a timezone hydration mismatch.
+    const parts = localClockReady ? localStationaryDateTimeParts : sourceDateTimeParts;
+    const selected = parts(String(candidate ?? ""));
+    const initial = parts(defaultDateTime ?? "");
     const control = <>
       <TimePicker
         label={presentation.label}
@@ -58,7 +60,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
         initialFocus={initialFocus}
         hideLabel
         onChange={() => undefined}
-        onDateTimeChange={(date, time) => onInput(`${date}T${time}:00${selected?.offset ?? initial?.offset ?? localOffset()}`)}
+        onDateTimeChange={(date, time) => onInput(stationaryLocalDateTimeInput(date, time))}
       />
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;

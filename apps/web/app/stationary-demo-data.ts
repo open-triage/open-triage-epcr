@@ -93,7 +93,10 @@ function demoDateTime(document: EncounterDocument, elementId: string): string {
   const notifiedTime = notified?.kind === "scalar" && !hasDemoProvenance(notified.attributes)
     ? Date.parse(String(notified.value)) : Number.NaN;
   const baseTime = Number.isFinite(notifiedTime) ? notifiedTime : Date.parse(DEMO_TIME);
-  return new Date(baseTime + (demoTimeMinutes[elementId] ?? 30) * 60_000).toISOString().replace("Z", "+00:00");
+  const createdTime = Date.parse(document.encounter.createdAt);
+  const elapsedMinutes = Number.isFinite(createdTime) ? Math.max(0, (createdTime - baseTime) / 60_000) : 0;
+  const offsetMinutes = Math.min(demoTimeMinutes[elementId] ?? 30, elapsedMinutes);
+  return new Date(baseTime + offsetMinutes * 60_000).toISOString().replace("Z", "+00:00");
 }
 
 function demoValue(document: EncounterDocument, element: NemsisDataElement, instanceId: string): EncounterValue {

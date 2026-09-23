@@ -135,6 +135,20 @@ test("the populated report satisfies all enabled canonical NEMSIS validation rul
   assert.deepEqual(populateStationaryDemoData(generatedTimeline), generatedTimeline,
     "a demo-generated dispatch time does not move the timeline on a second Populate");
   assert.deepEqual(validateStationaryRecord(generatedTimeline, clinicalForm, "2026-09-22T18:00:00.000Z"), []);
+
+  const justOpened = { ...syntheticEncounter.document,
+    encounter: { ...syntheticEncounter.document.encounter, createdAt: "2026-09-22T14:49:05Z" },
+    groups: syntheticEncounter.document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
+      ...instance, elements: instance.elements.map((element) => element.id === "eTimes.03"
+        ? { ...element, values: element.values.map((value) => value.kind === "scalar"
+          ? { ...value, value: "2026-09-22T14:49:00+00:00" } : value) } : element),
+    })) })),
+  };
+  const freshPopulation = populateStationaryDemoData(justOpened);
+  const backInService = freshPopulation.groups.find(({ id }) => id === "eTimesSection")!.instances[0]!
+    .elements.find(({ id }) => id === "eTimes.13")!.values[0]!;
+  assert.equal(backInService.kind === "scalar" ? backInService.value : undefined, "2026-09-22T14:49:05.000+00:00");
+  assert.deepEqual(validateStationaryRecord(freshPopulation, clinicalForm, "2026-09-22T14:50:00.000Z"), []);
 });
 
 test("Clear removes only explicitly provenanced demo values and group instances", () => {
