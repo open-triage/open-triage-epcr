@@ -46,6 +46,7 @@ COPY packages/database/scripts/load-nemsis-catalog.mjs packages/database/scripts
 COPY packages/database/scripts/seed-initial-validation-versions.mjs packages/database/scripts/
 COPY packages/database/scripts/seed-install-definitions.mjs packages/database/scripts/
 COPY packages/database/scripts/migrate.mjs packages/database/scripts/
+COPY packages/database/scripts/lib/install-definitions.mjs packages/database/scripts/lib/
 COPY packages/database/scripts/provision-workload-logins.mjs packages/database/scripts/
 COPY packages/database/scripts/project-analytics.mjs packages/database/scripts/
 COPY packages/database/scripts/purge-synthetic-records.mjs packages/database/scripts/

@@ -36,3 +36,9 @@ test("development reset discovers its default and available options from defines
   assert.match(source, /definitions\.defaultPair\.key/);
   assert.match(source, /definitions\.pairs\.map/);
 });
+
+test("the pruned API runtime includes shared installation-definition discovery", async () => {
+  const dockerfile = await readFile(path.join(repository, "deploy/docker/api.Dockerfile"), "utf8");
+  assert.match(dockerfile,
+    /COPY packages\/database\/scripts\/lib\/install-definitions\.mjs packages\/database\/scripts\/lib\//);
+});

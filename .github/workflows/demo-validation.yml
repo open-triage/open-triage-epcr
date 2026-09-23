@@ -178,9 +178,10 @@ jobs:
               node --check "/workspace/packages/database/scripts/$script.mjs"
             done
             test -f /workspace/supabase/migrations/202608300001_initial.sql
-            test -f /workspace/defines/catalog/catalog_nemsis-3.5.1.json
-            test -f /workspace/defines/forms/form_nemsis-full.json
-            test -f /workspace/defines/validation/validation_nemsis-full.json
+            test -f /workspace/packages/database/scripts/lib/install-definitions.mjs
+            find /workspace/defines/catalog -maxdepth 1 -name "catalog_*.json" -print -quit | grep -q .
+            find /workspace/defines/forms -maxdepth 1 -name "form_*.json" -print -quit | grep -q .
+            find /workspace/defines/validation -maxdepth 1 -name "validation_*.json" -print -quit | grep -q .
             test -f /workspace/packages/database/config/database-operations-policy.json
           '
       - name: Stop the runtime API
