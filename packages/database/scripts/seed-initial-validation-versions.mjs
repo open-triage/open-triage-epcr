@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
 import { compileValidationRule, compiledValidationBundleSha256 } from "@open-triage/contracts";
+import { readInstallDefinitions } from "./lib/install-definitions.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const lockName = "open-triage-initial-validation-rollout-v1";
@@ -136,11 +136,8 @@ async function seedTarget(client, target, importedRules) {
 export async function seedInitialValidationVersions({ databaseUrl = process.env.DATABASE_URL,
   Client = pg.Client, log = console } = {}) {
   if (!databaseUrl) throw new Error("DATABASE_URL is required to seed initial Validation versions");
-  const definition = JSON.parse(await readFile(path.resolve(scriptDirectory,
-    "../../../defines/validation/validation_nemsis-full.json"), "utf8"));
-  if (definition.schemaVersion !== 1 || definition.key !== "nemsis-full" || !Array.isArray(definition.rules)) {
-    throw new Error("The default NEMSIS validation definition is invalid");
-  }
+  const definition = (await readInstallDefinitions(path.resolve(scriptDirectory, "../../../defines")))
+    .defaultPair.validation;
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   try {

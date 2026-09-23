@@ -6,7 +6,7 @@ import pg from "pg";
 import { SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import { createPasswordVerifier } from "../../../apps/api/dist/identity/password.js";
 import { applyMigrations, readMigrations } from "./migrate.mjs";
-import { syntheticStationaryDefinition } from "./synthetic-stationary-definition.mjs";
+import { syntheticStationaryInstallDefinition } from "./synthetic-stationary-definition.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -40,7 +40,8 @@ function sha256(value) {
 }
 
 async function ensureBaselineConfiguration(client, actorId) {
-  const definition = await syntheticStationaryDefinition();
+  const installation = await syntheticStationaryInstallDefinition();
+  const definition = installation.definition;
   const definitionSha256 = sha256(definition);
   const active = await client.query(`select active.form_version_id, version.form_id, version.definition_sha256,
       version.catalog_release_id
@@ -57,9 +58,10 @@ async function ensureBaselineConfiguration(client, actorId) {
   }
 
   const release = await client.query(`select id from catalog.release
-    where standard = 'NEMSIS' and version = '3.5.1' and dataset = 'EMSDataSet' and sealed
-    limit 1`);
-  if (!release.rows[0]) throw new Error("Load the sealed NEMSIS 3.5.1 EMSDataSet catalog before bootstrapping the demo configuration");
+    where standard = $1 and version = $2 and dataset = $3 and sealed limit 1`,
+  [installation.catalog.standard, installation.catalog.definition.release,
+    installation.catalog.definition.dataset]);
+  if (!release.rows[0]) throw new Error(`Load the sealed ${installation.catalogKey} catalog before bootstrapping the demo configuration`);
   const catalogReleaseId = release.rows[0].id;
   const existing = await client.query(`select fv.id, fv.definition_sha256
     from forms.form_version fv join forms.form f on f.id = fv.form_id
@@ -74,14 +76,16 @@ async function ensureBaselineConfiguration(client, actorId) {
     const formId = upgraded ? completeBaselineFormId : baselineFormId;
     formVersionId = upgraded ? completeBaselineFormVersionId : baselineFormVersionId;
     await client.query(`insert into forms.form (id, organization_id, slug, name)
-      values ($1, $2, $3, 'NEMSIS full') on conflict (id) do nothing`,
-    [formId, SYNTHETIC_DEMO_FIXTURE.organizationId, upgraded ? "stationary-complete" : "stationary"]);
+      values ($1, $2, $3, $4) on conflict (id) do nothing`,
+    [formId, SYNTHETIC_DEMO_FIXTURE.organizationId, upgraded ? "stationary-complete" : "stationary",
+      installation.displayName]);
     const inserted = await client.query(`insert into forms.form_version
       (id, form_id, catalog_release_id, version, status, canonical_definition, definition_sha256,
        created_by, display_name)
-      values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, 'NEMSIS full')
+      values ($1, $2, $3, 1, 'draft', $4::jsonb, $5, $6, $7)
       on conflict (id) do nothing returning id`,
-    [formVersionId, formId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId]);
+    [formVersionId, formId, catalogReleaseId, JSON.stringify(definition), definitionSha256, actorId,
+      installation.displayName]);
     if (!inserted.rows[0]) throw new Error("The reserved complete Stationary form version is unavailable");
     const sectionRows = definition.sections.map((section, position) => ({
       id: randomUUID(), stableKey: section.key, position, presentation: section.presentation,

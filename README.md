@@ -29,6 +29,22 @@ The clinical and analytical database design is documented in
 [`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
 load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
 
+To completely rebuild a local development database from the current contents of
+`defines/`, load the private values and run the guarded reset command:
+
+```sh
+set -a
+source ./.env.local
+set +a
+npm run db:reset:development -- --confirm-reset
+```
+
+The command refuses non-local database hosts. It recreates the schema, loads the
+catalog referenced by the form marked `default: true`, activates that matching
+form/validation pair, and publishes every other matching pair as an inactive
+option. It recreates the synthetic demo account but deliberately leaves owner
+bootstrap as a separate, password-prompting operation.
+
 For database-backed demonstration journeys, first apply migrations and create the
 ordinary installation organization. Then seed the two optional fixture accounts:
 

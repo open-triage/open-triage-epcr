@@ -88,8 +88,9 @@ test("rollout marks signed artifacts truthfully without assigning a retroactive 
   assert.doesNotMatch(rolloutSql, /update clinical\.report[\s\S]*set validation_version_id/);
 });
 
-test("initial seeding is replay-safe, reads the NEMSIS definition, publishes, and activates a compatible bundle", () => {
-  assert.match(seedScript, /defines\/validation\/validation_nemsis-full\.json/);
+test("initial seeding is replay-safe, discovers the default definition, publishes, and activates a compatible bundle", () => {
+  assert.match(seedScript, /readInstallDefinitions/);
+  assert.match(seedScript, /defaultPair\.validation/);
   assert.match(seedScript, /status: "already-active"/);
   assert.match(seedScript, /insert into validation\.version/);
   assert.match(seedScript, /insert into app_identity\.active_configuration_bundle/);

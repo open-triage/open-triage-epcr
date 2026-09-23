@@ -4,11 +4,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { catalogArtifactSha256 } from "./catalog-artifact-sha256.mjs";
+import { readInstallDefinitions } from "./lib/install-definitions.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
-const catalogPath = path.join(repoRoot, "defines/catalog/catalog_nemsis-3.5.1.json");
-const mappingPath = path.join(packageRoot, "generated/nemsis-3.5.1-analytics-mapping.json");
+const definitions = await readInstallDefinitions(path.join(repoRoot, "defines"));
+const selectedCatalog = definitions.defaultPair.catalog;
+const catalogPath = path.join(repoRoot, "defines/catalog", selectedCatalog.file);
+const mappingPath = path.join(packageRoot, `generated/${selectedCatalog.key}-analytics-mapping.json`);
+const catalogStandard = selectedCatalog.standard;
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) throw new Error("DATABASE_URL is required to load the NEMSIS catalog");
@@ -54,16 +58,16 @@ try {
 
   const existing = await client.query(
     "select id, artifact_sha256 from catalog.release where standard = $1 and version = $2 and dataset = $3 for update",
-    ["NEMSIS", catalog.release, catalog.dataset]
+    [catalogStandard, catalog.release, catalog.dataset]
   );
   if (existing.rows[0] && existing.rows[0].artifact_sha256 !== catalogSha256) {
     throw new Error(
-      `NEMSIS ${catalog.release} is already loaded with a different checksum (${existing.rows[0].artifact_sha256})`
+      `${catalogStandard} ${catalog.release} is already loaded with a different checksum (${existing.rows[0].artifact_sha256})`
     );
   }
   if (existing.rows[0]) {
     await client.query("commit");
-    console.log(`NEMSIS ${catalog.release} is already loaded with the expected checksum.`);
+    console.log(`${catalogStandard} ${catalog.release} is already loaded with the expected checksum.`);
     await client.end();
     process.exit(0);
   }
@@ -71,24 +75,25 @@ try {
   const releaseResult = await client.query(
     `insert into catalog.release
        (standard, version, dataset, artifact_schema_version, artifact_sha256, provenance, sealed)
-     values ('NEMSIS', $1, $2, $3, $4, $5::jsonb, false)
+     values ($1, $2, $3, $4, $5, $6::jsonb, false)
      on conflict (standard, version, dataset) do update
        set artifact_sha256 = excluded.artifact_sha256,
            provenance = excluded.provenance
      returning id`,
-    [catalog.release, catalog.dataset, catalog.schemaVersion, catalogSha256, JSON.stringify(catalog.provenance)]
+    [catalogStandard, catalog.release, catalog.dataset, catalog.schemaVersion, catalogSha256, JSON.stringify(catalog.provenance)]
   );
   const releaseId = releaseResult.rows[0].id;
 
   await client.query(
     `insert into catalog.element_identity (id, namespace, canonical_key)
-     select x.application_id::uuid, 'NEMSIS', x.element_id
+     select x.application_id::uuid, $2, x.element_id
      from jsonb_to_recordset($1::jsonb) as x(application_id text, element_id text)
      on conflict (namespace, canonical_key) do nothing`,
     [
       JSON.stringify(
         elementRows.map((element) => ({ application_id: element.applicationId, element_id: element.id }))
-      )
+      ),
+      catalogStandard,
     ]
   );
 
@@ -339,7 +344,7 @@ try {
 
   await client.query("commit");
   console.log(
-    `Loaded NEMSIS ${catalog.release}: ${catalog.groups.length} groups, ${catalog.elements.length} elements, ${elementOptions.length} element options, and ${valueSetOptions.length} bundled-list options.`
+    `Loaded ${catalogStandard} ${catalog.release}: ${catalog.groups.length} groups, ${catalog.elements.length} elements, ${elementOptions.length} element options, and ${valueSetOptions.length} bundled-list options.`
   );
 } catch (error) {
   await client.query("rollback");

@@ -53,7 +53,7 @@ test("installation seeding publishes options without activation and runs after b
   assert.doesNotMatch(script, /insert into app_identity\.active_configuration_bundle/);
   assert.doesNotMatch(script, /insert into forms\.agency_stationary_default/);
   assert.doesNotMatch(script, /CatalogAuthoringService|catalog\.authoring_draft/);
-  assert.match(script, /readdir\(path\.join\(root, "forms"\)\)/);
+  assert.match(script, /readInstallDefinitions\(root\)/);
   assert.match(migrate, /await seedInitialValidationVersions\(\);[\s\S]*await seedInstallDefinitions\(\);/);
   assert.match(packageJson.scripts["bootstrap:synthetic"], /seed:validation && npm run seed:install-definitions/);
 });

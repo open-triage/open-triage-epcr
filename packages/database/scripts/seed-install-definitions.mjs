@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
@@ -7,6 +6,7 @@ import { FormAuthoringService } from "../../../apps/api/dist/admin/form-authorin
 import { ValidationAuthoringService } from "../../../apps/api/dist/admin/validation-authoring.service.js";
 import { FormPublicationService } from "../../../apps/api/dist/forms/form-publication.service.js";
 import { canonicalDefinitionSha256, validateCanonicalFormDefinition } from "../../../apps/api/dist/forms/form-publication.validation.js";
+import { readInstallDefinitions } from "./lib/install-definitions.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const definitionsRoot = path.join(repository, "defines");
@@ -80,8 +80,7 @@ async function seedOne(source, template, target) {
     return { organizationId, status: "already-available", formVersionId: existingPair.form_id,
       validationVersionId: existingPair.validation_id };
   }
-  if (template.catalogKey !== "nemsis-3.5.1"
-      || target.catalog_standard !== "NEMSIS" || target.catalog_version !== "3.5.1") {
+  if (template.catalogKey !== `${target.catalog_standard.toLowerCase()}-${target.catalog_version}`) {
     return { organizationId, status: "requires-base-nemsis-configuration" };
   }
   try {
@@ -159,36 +158,10 @@ async function seedOne(source, template, target) {
 }
 
 export async function readInstallOptions(root = definitionsRoot) {
-  const catalog = JSON.parse(await readFile(path.join(root, "catalog", "catalog_nemsis-3.5.1.json"), "utf8"));
-  if (catalog.schemaVersion !== "1.0.0" || catalog.release !== "3.5.1"
-      || catalog.dataset !== "EMSDataSet" || !Array.isArray(catalog.elements)) {
-    throw new Error("The NEMSIS 3.5.1 catalog definition is invalid");
-  }
-  const files = (await readdir(path.join(root, "forms"))).filter((file) => /^form_.+\.json$/.test(file)).sort();
-  const options = [];
-  let defaultCount = 0;
-  for (const file of files) {
-    const key = file.slice("form_".length, -".json".length);
-    const form = JSON.parse(await readFile(path.join(root, "forms", file), "utf8"));
-    const validation = JSON.parse(await readFile(path.join(root, "validation", `validation_${key}.json`), "utf8"));
-    if (form.schemaVersion !== 1 || validation.schemaVersion !== 1 || form.key !== validation.key
-        || form.catalogKey !== validation.catalogKey || validation.formKey !== form.key
-        || form.catalogKey !== "nemsis-3.5.1"
-        || !Array.isArray(form.definition?.sections) || !Array.isArray(validation.rules)) {
-      throw new Error(`Invalid installation definition pair: ${file}`);
-    }
-    if (form.default) {
-      defaultCount += 1;
-      if (form.key !== "nemsis-full" || form.catalogKey !== "nemsis-3.5.1") {
-        throw new Error("NEMSIS full must be the default installation definition");
-      }
-      continue;
-    }
-    options.push({ key: form.key, name: form.name, catalogKey: form.catalogKey,
-      formDefinition: form.definition, validationRules: validation.rules });
-  }
-  if (defaultCount !== 1) throw new Error("Exactly one NEMSIS full default form is required");
-  return options;
+  const definitions = await readInstallDefinitions(root);
+  return definitions.pairs.filter(({ form }) => form.default !== true).map(({ key, name, catalogKey, form, validation }) => ({
+    key, name, catalogKey, formDefinition: form.definition, validationRules: validation.rules,
+  }));
 }
 
 export async function seedInstallDefinitions({ databaseUrl = process.env.DATABASE_URL,
