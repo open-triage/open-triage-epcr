@@ -8,6 +8,7 @@
     "generate": "node scripts/generate-nemsis-analytics.mjs",
     "check": "node scripts/generate-nemsis-analytics.mjs --check",
     "migrate": "npm run build -w @open-triage/api && node scripts/migrate.mjs",
+    "migrate:runtime": "node scripts/migrate.mjs",
     "provision:workload-logins": "node scripts/provision-workload-logins.mjs",
     "bootstrap:synthetic": "npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run migrate && npm run load:catalog && npm run bootstrap:synthetic:runtime && npm run seed:validation && npm run seed:install-definitions",
     "bootstrap:synthetic:runtime": "node scripts/bootstrap-synthetic-installation.mjs",

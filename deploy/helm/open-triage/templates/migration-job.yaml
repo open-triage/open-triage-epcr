@@ -27,7 +27,7 @@ spec:
           {{- if .Values.migration.bootstrapSynthetic }}
           command: ["npm", "run", "bootstrap:synthetic:runtime", "-w", "@open-triage/database"]
           {{- else }}
-          command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
+          command: ["npm", "run", "migrate:runtime", "-w", "@open-triage/database"]
           {{- end }}
           env:
             - name: DATABASE_URL

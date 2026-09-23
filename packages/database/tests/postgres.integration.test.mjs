@@ -1076,7 +1076,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
 
     const elementIds = [
       "eRecord.01", "eDisposition.11", "eExam.01", "ePatient.17", "eTimes.01",
-      "eArrest.01", "eDispatch.03", "eDispatch.04", "eDispatch.06", "eVitals.01",
+      "eArrest.01", "eDispatch.02", "eDispatch.03", "eExam.02", "eVitals.01",
       "eVitals.02", "eVitals.06", "eVitals.07", "eVitals.08", "eVitals.13",
       "eVitals.16", "eHistory.01", "ePayment.60", "eDevice.02", "eDevice.05"
     ];
@@ -1124,11 +1124,11 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       value_kind: "coded", code: "3001003", code_system: "urn:nemsis:3.5.1",
       code_display: "No", terminology_version: "3.5.1"
     });
-    await addOccurrence("eDispatch.03", null, 0,
+    await addOccurrence("eDispatch.02", null, 0,
       { value_kind: "null", absence_code: "7701003", absence_display: "Not Recorded" });
-    await addOccurrence("eDispatch.04", null, 0,
+    await addOccurrence("eExam.02", null, 0,
       { value_kind: "pertinent-negative", absence_code: "8801019", absence_display: "Denied" });
-    await addOccurrence("eDispatch.06", null, 0, { value_kind: "absent" });
+    await addOccurrence("eDispatch.03", null, 0, { value_kind: "absent" });
 
     await addOccurrence("eVitals.01", ids.vitalGroup, 0, {
       value_kind: "datetime", value_datetime: "2042-02-03T14:25:00-05:00",
@@ -1147,9 +1147,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       documented_precision: "second", server_received_time: "2042-02-03T19:31:01Z"
     });
     await addOccurrence("eVitals.07", ids.bloodPressureGroup, 0,
-      { value_kind: "null", absence_code: "7701003", absence_display: "Not Recorded" });
-    await addOccurrence("eVitals.08", ids.bloodPressureGroup, 0,
       { value_kind: "pertinent-negative", absence_code: "8801019", absence_display: "Denied" });
+    await addOccurrence("eVitals.08", ids.bloodPressureGroup, 0,
+      { value_kind: "null", absence_code: "7701003", absence_display: "Not Recorded" });
     await addOccurrence("eVitals.13", ids.vitalGroup, 0, { value_kind: "absent" });
     await addOccurrence("eVitals.16", ids.vitalGroup, 0,
       { value_kind: "numeric", value_numeric: "14.000", value_lexical: "14.000",
@@ -1254,9 +1254,17 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     assert.equal(wide.rows[0].etimes_01.toISOString(), "2042-02-03T19:00:00.000Z");
     assert.deepEqual(wide.rows[0].element_statuses, {
-      "eDispatch.03": { kind: "null", code: "7701003", display: "Not Recorded" },
-      "eDispatch.04": { kind: "pertinent-negative", code: "8801019", display: "Denied" },
-      "eDispatch.06": { kind: "absent", code: null, display: null }
+      "eDispatch.02": {
+        kind: "null", code: "7701003", display: "Not Recorded",
+        notValue: { code: "7701003", display: "Not Recorded" }, pertinentNegative: null
+      },
+      "eDispatch.03": {
+        kind: "absent", code: null, display: null, notValue: null, pertinentNegative: null
+      },
+      "eExam.02": {
+        kind: "pertinent-negative", code: "8801019", display: "Denied", notValue: null,
+        pertinentNegative: { code: "8801019", display: "Denied" }
+      }
     });
     assert.equal(wide.rows[0].signed_snapshot_id, ids.snapshot);
     assert.equal(wide.rows[0].signed_snapshot_sha256, "a".repeat(64));
@@ -1417,7 +1425,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       repeatById.get("eVitals.07").absence_kind,
       repeatById.get("eVitals.08").absence_kind,
       repeatById.get("eVitals.13").absence_kind
-    ], ["null", "pertinent-negative", "absent"]);
+    ], ["pertinent-negative", "null", "absent"]);
 
     const amendmentId = "37000000-0000-4000-8000-000000000001";
     const addedOccurrenceId = "37000000-0000-4000-8000-000000000002";

@@ -17,7 +17,7 @@ test("migration Job gates install and upgrade before application rollout", () =>
   assert.match(job, /"helm\.sh\/hook": pre-install,pre-upgrade/);
   assert.match(job, /"helm\.sh\/hook-weight": "-5"/);
   assert.match(job, /backoffLimit: 0/);
-  assert.match(job, /command: \["npm", "run", "migrate", "-w", "@open-triage\/database"\]/);
+  assert.match(job, /command: \["npm", "run", "migrate:runtime", "-w", "@open-triage\/database"\]/);
   assert.match(job, /secretKeyRef: \{ name: open-triage-migration-database, key: DATABASE_URL \}/);
 });
 
