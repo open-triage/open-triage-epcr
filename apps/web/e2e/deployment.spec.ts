@@ -10,8 +10,24 @@ const installationUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/installation`;
 test("the built static export starts and is served from the domain root", async ({ page, request }) => {
   const response = await request.get("/");
   expect(response.status()).toBe(200);
+  const headers = response.headers();
+  expect(headers["content-security-policy"]).toContain("default-src 'none'");
+  expect(headers["content-security-policy"]).toContain(`connect-src 'self' ${new URL(apiBaseUrl).origin}`);
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(headers["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=()");
+  expect(headers["x-frame-options"]).toBe("DENY");
+
+  const html = await response.text();
+  const staticAsset = [...html.matchAll(/(?:src|href)="([^"]*\/_next\/static\/[^"]+)"/g)][0]?.[1];
+  expect(staticAsset, "the root document must reference a versioned static asset").toBeTruthy();
+  const assetResponse = await request.get(staticAsset!);
+  expect(assetResponse.status()).toBe(200);
+  expect(Number(assetResponse.headers()["content-length"] ?? 0)).toBeGreaterThan(0);
+
   const serviceWorker = await request.get("/sw.js");
   expect(serviceWorker.status()).toBe(200);
+  expect(Number(serviceWorker.headers()["content-length"] ?? 0)).toBeGreaterThan(0);
   expect(await serviceWorker.text()).not.toContain("demo-assigned-calls.json");
 
   const installationRequest = page.waitForRequest(installationUrl);

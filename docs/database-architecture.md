@@ -121,6 +121,20 @@ writer to clinical and configuration data. Supabase can provide infrastructure,
 but no clinical table depends on `auth.users`, PostgREST, or another hosted-only
 feature.
 
+CI retains two clean-install lanes on the pinned `postgres:15.14-bookworm`
+engine. The portability lane uses stock PostgreSQL extension placement. The
+managed-compatible lane installs `pgcrypto` in an `extensions` schema, creates
+the `anon`, `authenticated`, `service_role`, and `authenticator` role topology,
+and removes implicit extension access. Both lanes run migrations through a
+database-scoped, non-superuser migration owner, then load the catalog, bootstrap
+the demonstration fixture, and start the API with an isolated runtime login.
+The migration identity has `CREATEROLE` only because the forward-only migrations
+own and maintain the portable `NOLOGIN` workload contracts; it is neither a
+superuser nor permitted to create databases or bypass row-level security.
+The versioned N-1 upgrade fixture, immutable migration checks, runtime-artifact
+upgrade lane, and clean-versus-upgraded schema comparison are documented in
+[Forward-only database upgrades](database-forward-upgrades.md).
+
 ## Data boundaries
 
 The initial migration creates purpose-specific schemas:
