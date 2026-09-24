@@ -65,11 +65,14 @@ adminUrl.pathname = "/postgres";
 const admin = new pg.Client({ connectionString: adminUrl.toString(), application_name: "open-triage-scale-setup" });
 let adminConnected = false;
 let client;
+let scaleFailure;
 
 async function bootstrapProductionDatabase() {
   await admin.connect();
   adminConnected = true;
-  await admin.query(`create database ${quoteIdentifier(scratchDatabaseName)}`);
+  const owner = (await admin.query("select current_user")).rows[0]?.current_user;
+  if (!owner) throw new Error("scale validation could not determine its scratch database owner");
+  await admin.query(`create database ${quoteIdentifier(scratchDatabaseName)} with owner ${quoteIdentifier(owner)} template template0`);
   const environment = {
     ...process.env,
     DATABASE_URL: scratchDatabaseUrl,
@@ -392,7 +395,7 @@ try {
   const result = {
     schemaVersion: 2, policyVersion: policy.policyVersion,
     policySha256: createHash("sha256").update(policyText).digest("hex"), executedAt: new Date().toISOString(),
-    profile: options.profile,
+    profile: options.profile, databaseLane: process.env.DATABASE_TEST_LANE ?? "scale-validation",
     runClassification: options.profile === "production" ? "production-scale" : "resource-bounded-representative",
     environment: { ...environment, scratchDatabase: scratchDatabaseName }, configuration: profile,
     distribution: { reports: schema.wide_rows, onlineYears: profile.years,
@@ -424,6 +427,15 @@ try {
     pending: thresholdResults.filter((item) => item.status.startsWith("pending")).length,
     output: options.output }));
   if (result.overallStatus === "failed") process.exitCode = 1;
+} catch (error) {
+  scaleFailure = error;
 } finally {
-  await removeScratchDatabase();
+  try {
+    await removeScratchDatabase();
+  } catch (cleanupFailure) {
+    if (!scaleFailure) throw cleanupFailure;
+    console.error(JSON.stringify({ event: "scale_database_cleanup_failed", lane: process.env.DATABASE_TEST_LANE ?? "scale-validation",
+      message: cleanupFailure.message }));
+  }
 }
+if (scaleFailure) throw scaleFailure;

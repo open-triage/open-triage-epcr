@@ -15,6 +15,17 @@ appropriate:
 | `npm run test:e2e:critical` | The sign-in, assigned-call opening, and clinical-note capture journey against a built static web export | A demo-enabled web build and Chromium |
 | `npm run test:e2e` | Every maintained non-deployment Playwright test | Chromium |
 
+Each stateful PostgreSQL suite gets a newly created database owned by the
+maintenance user from `DATABASE_URL`. The runner creates that database from
+`template0`, passes only its URL to the suite, and force-drops it afterward.
+Database, API, and bounded scale validation run as named CI matrix lanes with
+separate PostgreSQL services. Within the database lane, every integration file
+also has its own database and deterministic setup/teardown lifecycle, so a
+failed file cannot leave fixtures for the next file. CI retains a JSON report
+for every attempted lane under `packages/database/artifacts/database-lanes`;
+when both a suite and cleanup fail, the suite failure remains the primary
+cause and the cleanup failure is recorded separately.
+
 The deployment workflow runs for every pull request. Pull-request validation
 builds the web application with `next build`, serves the exported artifact with
 the production static server, and runs `critical-clinical-journey.spec.ts` at
