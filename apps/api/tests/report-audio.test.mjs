@@ -9,12 +9,15 @@ import { REPORT_AUDIO_MAX_DURATION_MILLISECONDS, ReportAudioValidationError,
 
 const validCommand = () => ({ commandId: randomUUID(), expectedRevision: 4, noteId: randomUUID(),
   capturedAt: "2026-09-24T12:00:00.000+02:00", capturedUtcOffsetMinutes: 120, caption: "Airway reassessment",
-  sourceContentType: "audio/webm", sourceBase64: Buffer.from("decodable-source").toString("base64") });
+  sourceContentType: "audio/webm", sourceBase64: Buffer.from("decodable-source").toString("base64"),
+  settingsRevision: 4, effectiveAllowanceBytes: 50_000_000 });
 
 test("audio command validation accepts only bounded live-recorder formats", () => {
   assert.equal(validateCreateReportAudioNoteCommand(validCommand()).sourceContentType, "audio/webm");
   assert.throws(() => validateCreateReportAudioNoteCommand({ ...validCommand(), sourceContentType: "audio/wav" }), /audio\/webm, audio\/ogg, or audio\/mp4/);
   assert.throws(() => validateCreateReportAudioNoteCommand({ ...validCommand(), sourceBase64: "not base64" }), /canonical base64/);
+  assert.throws(() => validateCreateReportAudioNoteCommand({ ...validCommand(), settingsRevision: 0 }), /positive safe integer/);
+  assert.throws(() => validateCreateReportAudioNoteCommand({ ...validCommand(), effectiveAllowanceBytes: 0 }), /positive safe integer/);
 });
 
 test("normalization requires mono AAC, a full decode, and removes source and output temp files", async () => {
@@ -63,9 +66,10 @@ test("audio creation counts aggregate media, verifies authorized stored bytes, a
   const statements = [];
   const manager = { async query(sql, parameters = []) {
     statements.push({ sql, parameters });
-    if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 4, report_media_allowance_bytes: 10_000 }];
+    if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 4, report_media_allowance_bytes: 1 }];
     if (/from clinical\.command_receipt/.test(sql)) return [];
     if (/coalesce\(\(select sum\(byte_size\).*report_photo_note/s.test(sql)) return [{ used_bytes: 100 }];
+    if (/from app_identity\.agency_settings/.test(sql)) return [{ allowance: command.effectiveAllowanceBytes }];
     if (/select blob\.canonical_bytes/.test(sql)) return [{ canonical_bytes: canonical, content_type: "audio/mp4", sha256 }];
     if (/from clinical\.report_note note/.test(sql) || /from clinical\.report_photo_note note/.test(sql)) return [];
     if (/from clinical\.report_audio_note note/.test(sql)) return [{ id: command.noteId, report_id: reportId, caption: command.caption,
@@ -83,4 +87,5 @@ test("audio creation counts aggregate media, verifies authorized stored bytes, a
   assert.ok(statements.some(({ sql }) => /insert into clinical\.report_audio_blob/.test(sql)));
   assert.ok(statements.some(({ sql }) => /select blob\.canonical_bytes/.test(sql)));
   assert.ok(statements.some(({ sql }) => /report_photo_note[\s\S]*report_audio_note/.test(sql)));
+  assert.ok(statements.some(({ sql }) => /agency_settings_change_event/.test(sql)));
 });

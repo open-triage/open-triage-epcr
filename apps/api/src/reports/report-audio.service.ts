@@ -40,7 +40,8 @@ export class ReportAudioService {
           coalesce((select sum(byte_size) from clinical.report_photo_note where report_id = $1), 0) +
           coalesce((select sum(byte_size) from clinical.report_audio_note where report_id = $1), 0) as used_bytes`, [report.id]);
         const usedBytes = Number(usage[0]?.used_bytes ?? 0);
-        const allowance = Number(report.report_media_allowance_bytes);
+        const allowance = await this.captureAllowance(manager, report.organization_id,
+          command.settingsRevision, command.effectiveAllowanceBytes);
         if (usedBytes + normalized.bytes.byteLength > allowance) {
           throw new ConflictException({ message: "The recording exceeds the report's remaining media allowance", allowanceBytes: allowance,
             usedBytes, remainingBytes: Math.max(0, allowance - usedBytes) });
@@ -173,6 +174,30 @@ export class ReportAudioService {
       insert into clinical.report_change (report_id, revision, idempotency_key, author_id, client_time, changes)
       select updated.id, $2, $3, $4, $5, $6::jsonb from updated`,
     [reportId, revision, commandId, actorId, clientTime, JSON.stringify({ audio: [{ action, noteId }] })]);
+  }
+
+  /** Resolve the immutable policy value for the revision observed when recording began. */
+  private async captureAllowance(manager: EntityManager, organizationId: string,
+    settingsRevision: number, claimedAllowance: number): Promise<number> {
+    const rows = await manager.query<Array<{ allowance: string | number }>>(`
+      select allowance from (
+        select report_media_allowance_bytes as allowance
+        from app_identity.agency_settings
+        where organization_id = $1 and revision = $2
+        union all
+        select case when revision = $2 then new_report_media_allowance_bytes
+                         else old_report_media_allowance_bytes end as allowance
+        from app_identity.agency_settings_change_event
+        where organization_id = $1 and (revision = $2 or prior_revision = $2)
+        order by allowance
+        limit 1
+      ) policy
+    `, [organizationId, settingsRevision]);
+    const allowance = rows[0] ? Number(rows[0].allowance) : null;
+    if (allowance === null || allowance !== claimedAllowance) {
+      throw new ConflictException("The capture's agency media settings revision could not be verified");
+    }
+    return allowance;
   }
 
   private validated<T>(validate: () => T): T {

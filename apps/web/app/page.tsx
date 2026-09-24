@@ -45,13 +45,15 @@ import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
-import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedPhotoEntries, subscribeProtectedPhotos, updateProtectedPhoto } from "./protected-clinical-storage";
+import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAudioEntries, protectedPhotoEntries,
+  subscribeProtectedAudio, subscribeProtectedPhotos, updateProtectedAudio, updateProtectedPhoto } from "./protected-clinical-storage";
 import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote } from "./report-text-notes";
 import { EncounterTimeline } from "../components/encounter-timeline";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
 import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
 import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
+import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -76,8 +78,8 @@ const quickActionText = {
 } as const;
 const structuredQuickActions = ["vitals", "medication", "procedure"] as const;
 
-function mergeProtectedPhotos(notes: ReadonlyArray<ReportNote>, reportId: string): ReadonlyArray<ReportNote> {
-  const local = protectedPhotoEntries(reportId).map(({ note }) => note);
+function mergeProtectedMedia(notes: ReadonlyArray<ReportNote>, reportId: string): ReadonlyArray<ReportNote> {
+  const local = [...protectedPhotoEntries(reportId), ...protectedAudioEntries(reportId)].map(({ note }) => note);
   const localIds = new Set(local.map(({ id }) => id));
   return [...local, ...notes.filter(({ id }) => !localIds.has(id))]
     .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt) || right.id.localeCompare(left.id));
@@ -126,8 +128,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const timelineToggle = useRef<HTMLButtonElement>(null);
-  const photoUploadActive = useRef(false);
+  const mediaUploadActive = useRef(false);
   const [photoQueueVersion, setPhotoQueueVersion] = useState(0);
+  const [audioQueueVersion, setAudioQueueVersion] = useState(0);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
@@ -167,34 +170,39 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     validationErrorCount: reviewErrors.length, online,
     onSessionEnded,
     onReportCompleted,
-    onNotesChange: (notes) => setReportNotes(report ? mergeProtectedPhotos(notes, report.id) : notes),
+    onNotesChange: (notes) => setReportNotes(report ? mergeProtectedMedia(notes, report.id) : notes),
   });
   useEffect(() => subscribeProtectedPhotos((reportId) => {
     if (reportId !== report?.id) return;
     setPhotoQueueVersion((version) => version + 1);
-    setReportNotes((notes) => mergeProtectedPhotos(notes, reportId));
+    setReportNotes((notes) => mergeProtectedMedia(notes, reportId));
+  }), [report]);
+  useEffect(() => subscribeProtectedAudio((reportId) => {
+    if (reportId !== report?.id) return;
+    setAudioQueueVersion((version) => version + 1);
+    setReportNotes((notes) => mergeProtectedMedia(notes, reportId));
   }), [report]);
   useEffect(() => {
     queueMicrotask(() => {
       setPhotoDialog(null);
       setAudioDialog(null);
       stopActiveAudio();
-      setReportNotes(report ? mergeProtectedPhotos(report.notes ?? [], report.id) : []);
+      setReportNotes(report ? mergeProtectedMedia(report.notes ?? [], report.id) : []);
       setTextNoteDraft(null);
     });
   }, [report]);
 
   useEffect(() => {
-    if (!report || !restored || !online || photoUploadActive.current) return;
-    const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState === "saved-on-device");
+    if (!report || !restored || !online || mediaUploadActive.current) return;
+    const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
     if (!pending) return;
     let active = true;
-    photoUploadActive.current = true;
+    mediaUploadActive.current = true;
     void (async () => {
       try {
         await flushSave();
         while (active && navigator.onLine) {
-          const entry = protectedPhotoEntries(report.id).find(({ note }) => note.persistenceState === "saved-on-device");
+          const entry = protectedPhotoEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
           if (!entry) break;
           const attemptCommand = entry.attempted ? entry.command : {
             ...entry.command, expectedRevision: revisionRef.current,
@@ -216,7 +224,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
             }
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
               note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
-            setReportNotes((notes) => mergeProtectedPhotos([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
+            setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The photo upload failed.";
             const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
@@ -226,10 +234,62 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
             break;
           }
         }
-      } finally { photoUploadActive.current = false; }
+      } finally {
+        mediaUploadActive.current = false;
+        setPhotoQueueVersion((version) => version + 1);
+        setAudioQueueVersion((version) => version + 1);
+      }
     })();
     return () => { active = false; };
-  }, [flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  useEffect(() => {
+    if (!report || !restored || !online || mediaUploadActive.current) return;
+    const pending = protectedAudioEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+    if (!pending) return;
+    let active = true;
+    mediaUploadActive.current = true;
+    void (async () => {
+      try {
+        await flushSave();
+        while (active && navigator.onLine) {
+          const entry = protectedAudioEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+          if (!entry) break;
+          const attemptCommand = entry.attempted ? entry.command : { ...entry.command, expectedRevision: revisionRef.current };
+          await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+            command: attemptCommand, attempted: true,
+            note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
+          try {
+            const response = await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand);
+            revisionRef.current = response.revision;
+            advanceCachedReportRevision(window.localStorage, report.id, response.revision);
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+              serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
+            const verified = await fetchReportAudio(report.id, entry.note.id);
+            const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await verified.arrayBuffer()))]
+              .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+            if (verified.type !== "audio/mp4" || verified.size !== response.note.byteSize || digest !== response.note.sha256) {
+              throw new Error("The server audio copy could not be verified.");
+            }
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+              note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
+            setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "The audio upload failed.";
+            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current, failure: message,
+              note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
+            if (message === "session") onSessionEnded();
+            break;
+          }
+        }
+      } finally {
+        mediaUploadActive.current = false;
+        setPhotoQueueVersion((version) => version + 1);
+        setAudioQueueVersion((version) => version + 1);
+      }
+    })();
+    return () => { active = false; };
+  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
   useEffect(() => {
     queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
   }, [session.user.id]);
@@ -248,6 +308,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const signingBlockers = stationarySigningBlockers({
     presentationMode, restored, online, syncStatus, errorCount: reviewErrors.length,
     warnings: reviewWarnings, unresolvedDispatchConflictCount: unresolvedDispatchConflicts.length,
+    pendingMedia: report ? hasPendingProtectedMedia(report.id) : false,
   });
   const canFinish = signingBlockers.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
@@ -666,7 +727,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
             }
           }}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
           <button type="button" onClick={async () => {
-            if (report && hasPendingProtectedMedia(report.id) && !window.confirm("Photo uploads may pause after closing. Saved-on-device media will resume while the app is open or in your next authenticated session. Save and close anyway?")) return;
+            if (report && hasPendingProtectedMedia(report.id) && !window.confirm("Media uploads may pause after closing. Saved-on-device photos and audio will resume while the app is open or in your next authenticated session. Save and close anyway?")) return;
             await flushSave(); onSaveAndClose();
           }}>Save &amp; close</button>
         </div>}
@@ -678,7 +739,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{quickActionText[id]}</span></button>)}
         <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label="Text note" title="Text note" type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">Text</span></button>
         <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label="Add photo note" title="Photo note" type="button" disabled={!report || editingBlocked} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">Photo</span></button>
-        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label="Add audio note" title="Spoken-audio note" type="button" disabled={!report || !online} onClick={startAudio}><span className="audio-action-icon" aria-hidden="true" /><span aria-hidden="true">Audio</span></button>
+        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label="Add audio note" title="Spoken-audio note" type="button" disabled={!report || editingBlocked} onClick={startAudio}><span className="audio-action-icon" aria-hidden="true" /><span aria-hidden="true">Audio</span></button>
       </nav>}
 
       {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
@@ -781,6 +842,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           blockedReason={!restored ? "The report is still loading."
             : !online ? "Signing is unavailable while offline. Reconnect and finish synchronization."
               : syncStatus !== "Saved" ? "Signing is unavailable until all changes finish synchronizing."
+                : report && hasPendingProtectedMedia(report.id) ? "Signing is unavailable until all media finishes processing and playback verification."
                 : unresolvedDispatchConflicts.length ? "Resolve every dispatch difference before signing."
                   : undefined}
         />
@@ -802,9 +864,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 
       {audioDialog && report && <AudioNoteDialog dialogRef={dialog} reportId={report.id}
         note={audioDialog === "new" ? null : audioDialog} csrfToken={sessionRequestToken(session)} revision={audioExpectedRevision}
+        mediaPolicy={mediaPolicy ?? report.mediaPolicy ?? { settingsRevision: 1, reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES }}
+        author={session.user}
         onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
         onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
           .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(audioDialog === "new" ? "Audio note ready." : "Audio caption ready."); }}
+        onQueued={(saved) => { setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? "Audio upload failed." : "Audio saved on this device."); }}
         onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setAudioDialog(null); setNoteStatusMessage("Audio note deleted."); }} />}
 
       {textNoteDraft && textNoteValidation && (

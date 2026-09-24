@@ -55,5 +55,5 @@ test("workspace permits offline capture and warns before closing with pending me
   const source = await readFile(path.join(webRoot, "app/page.tsx"), "utf8");
   assert.match(source, /aria-label="Add photo note"[^\n]+disabled={!report \|\| editingBlocked}/);
   assert.match(source, /hasPendingProtectedMedia/);
-  assert.match(source, /Photo uploads may pause after closing/);
+  assert.match(source, /Media uploads may pause after closing/);
 });

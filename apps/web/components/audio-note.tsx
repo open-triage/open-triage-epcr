@@ -1,11 +1,26 @@
 "use client";
 
-import type { ReportAudioNote, ReportAudioSourceContentType } from "@open-triage/contracts";
+import type { CreateReportAudioNoteCommand, ReportAudioNote, ReportAudioSourceContentType, ReportMediaPolicy } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createReportAudioNote, deleteReportAudioNote, fetchReportAudio, updateReportAudioCaption } from "../app/report-audio-api";
 import { audioCaptureConstraints, blobToBase64, formatAudioDuration, normalizeAudioCaption,
   REPORT_AUDIO_CAPTION_MAX_CHARACTERS, REPORT_AUDIO_MAX_MILLISECONDS, REPORT_AUDIO_WARNING_MILLISECONDS,
   supportedAudioRecorderType } from "../app/report-audio-notes";
+import {
+  finishProtectedAudioPreview,
+  protectedAudioBlob,
+  protectedAudioEntries,
+  protectedAudioPreview,
+  protectedAudioPreviewBlob,
+  protectedStorageActive,
+  removeProtectedAudio,
+  removeProtectedAudioPreview,
+  stageProtectedAudio,
+  stageProtectedAudioChunk,
+  startProtectedAudioPreview,
+  updateProtectedAudio,
+  updateProtectedAudioPreview,
+} from "../app/protected-clinical-storage";
 
 const PLAYBACK_EVENT = "open-triage-audio-playback";
 let activeAudio: { key: string; element: HTMLAudioElement; url: string } | null = null;
@@ -39,7 +54,7 @@ export function AuthorizedAudioButton({ reportId, noteId, label = "Play audio no
     if (activeAudio?.key === key) { stopActiveAudio(); return; }
     setLoading(true); setError(null); stopActiveAudio();
     try {
-      const blob = await fetchReportAudio(reportId, noteId);
+      const blob = protectedAudioBlob(reportId, noteId) ?? await fetchReportAudio(reportId, noteId);
       const url = URL.createObjectURL(blob);
       const element = new Audio(url);
       element.preload = "auto";
@@ -60,15 +75,20 @@ export function AuthorizedAudioButton({ reportId, noteId, label = "Play audio no
 type Capture = { blob: Blob; previewUrl: string; capturedAt: string; capturedUtcOffsetMinutes: number;
   durationMilliseconds: number; sourceContentType: ReportAudioSourceContentType; interrupted: boolean };
 
-export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision, onClose, onSaved, onDeleted, onSessionEnded }: {
+export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision, mediaPolicy, author,
+  onClose, onSaved, onQueued, onDeleted, onSessionEnded }: {
   readonly dialogRef: RefObject<HTMLElement | null>; readonly reportId: string; readonly note: ReportAudioNote | null;
   readonly csrfToken: string; readonly revision: number; readonly onClose: () => void;
+  readonly mediaPolicy: ReportMediaPolicy; readonly author: ReportAudioNote["author"];
   readonly onSaved: (note: ReportAudioNote, revision: number) => void; readonly onDeleted: (noteId: string, revision: number) => void;
+  readonly onQueued: (note: ReportAudioNote) => void;
   readonly onSessionEnded: () => void;
 }) {
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const chunkWrites = useRef<Promise<void>>(Promise.resolve());
+  const chunkSequence = useRef(0);
   const startedAt = useRef(0);
   const elapsedRef = useRef(0);
   const interruptedRef = useRef(false);
@@ -86,6 +106,21 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const validation = normalizeAudioCaption(caption);
   const recorderSupport = supportedAudioRecorderType();
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    if (note) return;
+    const preview = protectedAudioPreview(reportId);
+    const blob = protectedAudioPreviewBlob(reportId);
+    if (!preview) return;
+    if (!blob || !preview.chunks.length) { void removeProtectedAudioPreview(reportId); return; }
+    queueMicrotask(() => {
+      setCapture({ blob, previewUrl: URL.createObjectURL(blob), capturedAt: preview.capturedAt,
+        capturedUtcOffsetMinutes: preview.capturedUtcOffsetMinutes, durationMilliseconds: preview.durationMilliseconds,
+        sourceContentType: preview.sourceContentType, interrupted: true });
+      setCaption(preview.caption);
+      setMode("preview");
+    });
+  }, [note, reportId]);
 
   const finishRecording = useCallback((interrupted = false) => {
     interruptedRef.current ||= interrupted;
@@ -112,32 +147,56 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
 
   async function startRecording() {
     if (!recorderSupport) { setError("Spoken-audio capture is unavailable in this browser. Text notes remain available."); return; }
-    setError(null); setCapture(null); setElapsed(0); elapsedRef.current = 0; interruptedRef.current = false; chunks.current = [];
+    setError(null); setCapture(null); setElapsed(0); elapsedRef.current = 0; interruptedRef.current = false;
+    chunks.current = []; chunkWrites.current = Promise.resolve(); chunkSequence.current = 0;
     try {
       const nextStream = await navigator.mediaDevices.getUserMedia(audioCaptureConstraints());
       stream.current = nextStream;
       nextStream.getAudioTracks()[0]?.addEventListener("ended", () => finishRecording(true), { once: true });
       const nextRecorder = new MediaRecorder(nextStream, { mimeType: recorderSupport.recorderType, audioBitsPerSecond: 64_000 });
       recorder.current = nextRecorder;
-      nextRecorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.current.push(event.data); });
-      nextRecorder.addEventListener("stop", () => {
+      startedAt.current = Date.now();
+      if (protectedStorageActive(reportId)) await startProtectedAudioPreview(reportId, {
+        recorderContentType: recorderSupport.recorderType, sourceContentType: recorderSupport.sourceContentType,
+        capturedAt: new Date(startedAt.current).toISOString(), capturedUtcOffsetMinutes: -new Date(startedAt.current).getTimezoneOffset(),
+        durationMilliseconds: 0, caption, interrupted: true, complete: false,
+      });
+      nextRecorder.addEventListener("dataavailable", (event) => {
+        if (!event.data.size) return;
+        chunks.current.push(event.data);
+        if (!protectedStorageActive(reportId)) return;
+        const sequence = chunkSequence.current++;
+        const duration = Math.max(1, elapsedRef.current);
+        chunkWrites.current = chunkWrites.current.then(async () => stageProtectedAudioChunk(reportId,
+          { sequence, sourceBase64: await blobToBase64(event.data) }, duration));
+      });
+      nextRecorder.addEventListener("stop", () => { void (async () => {
         const durationMilliseconds = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Math.max(1, elapsedRef.current));
+        await chunkWrites.current;
         const blob = new Blob(chunks.current, { type: recorderSupport.recorderType });
         nextStream.getTracks().forEach((track) => track.stop()); stream.current = null;
         cancelAnimationFrame(animation.current); void audioContext.current?.close(); audioContext.current = null;
-        if (!blob.size || durationMilliseconds < 250) { setMode("ready"); setError("No usable speech was captured. Try again."); return; }
+        if (!blob.size || durationMilliseconds < 250) {
+          await removeProtectedAudioPreview(reportId);
+          setMode("ready"); setError("No usable speech was captured. Try again."); return;
+        }
+        await finishProtectedAudioPreview(reportId, { durationMilliseconds,
+          interrupted: interruptedRef.current, complete: true });
         setCapture({ blob, previewUrl: URL.createObjectURL(blob), capturedAt: new Date(startedAt.current).toISOString(),
           capturedUtcOffsetMinutes: -new Date(startedAt.current).getTimezoneOffset(), durationMilliseconds,
           sourceContentType: recorderSupport.sourceContentType, interrupted: interruptedRef.current });
         setMode("preview");
-      }, { once: true });
+      })().catch((caught) => {
+        setMode("ready");
+        setError(caught instanceof Error ? caught.message : "The interrupted recording could not be protected.");
+      }); }, { once: true });
       const Context = window.AudioContext || window.webkitAudioContext;
       if (Context) {
         const context = new Context(); audioContext.current = context;
         const source = context.createMediaStreamSource(nextStream); const nextAnalyser = context.createAnalyser(); nextAnalyser.fftSize = 256;
         source.connect(nextAnalyser); analyser.current = nextAnalyser;
       }
-      startedAt.current = Date.now(); setMode("recording"); nextRecorder.start(1000);
+      setMode("recording"); nextRecorder.start(1000);
       const sample = () => {
         const nextElapsed = Math.min(REPORT_AUDIO_MAX_MILLISECONDS, Date.now() - startedAt.current);
         elapsedRef.current = nextElapsed; setElapsed(nextElapsed);
@@ -150,6 +209,8 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       };
       animation.current = requestAnimationFrame(sample);
     } catch (caught) {
+      stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null;
+      await removeProtectedAudioPreview(reportId);
       setMode("ready"); setError(caught instanceof DOMException && caught.name === "NotAllowedError"
         ? "Microphone permission is required to add a spoken-audio note." : "The microphone is unavailable. Check it and try again.");
     }
@@ -158,6 +219,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   function discard() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setCapture(null); setMode("ready"); setError(null);
+    void removeProtectedAudioPreview(reportId);
   }
 
   async function save() {
@@ -165,14 +227,42 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     setSaving(true); setError(null);
     try {
       if (note) {
+        if (note.persistenceState !== "ready") {
+          await updateProtectedAudio(reportId, note.id, (entry) => ({ ...entry,
+            command: { ...entry.command, caption: validation.caption },
+            note: { ...entry.note, caption: validation.caption, updatedAt: new Date().toISOString() },
+          }));
+          onQueued({ ...note, caption: validation.caption, updatedAt: new Date().toISOString() });
+          return;
+        }
         const response = await updateReportAudioCaption(csrfToken, reportId, note.id, { commandId: crypto.randomUUID(), expectedRevision: revision, caption: validation.caption });
+        if (protectedAudioEntries(reportId).some(({ note: candidate }) => candidate.id === note.id)) {
+          await updateProtectedAudio(reportId, note.id, (entry) => ({ ...entry, note: response.note }));
+        }
         onSaved(response.note, response.revision);
       } else {
         if (!capture) return;
-        const response = await createReportAudioNote(csrfToken, reportId, { commandId: crypto.randomUUID(), expectedRevision: revision,
+        const sourceBase64 = await blobToBase64(capture.blob);
+        const command: CreateReportAudioNoteCommand = { commandId: crypto.randomUUID(), expectedRevision: revision,
           noteId: crypto.randomUUID(), capturedAt: capture.capturedAt, capturedUtcOffsetMinutes: capture.capturedUtcOffsetMinutes,
-          caption: validation.caption, sourceContentType: capture.sourceContentType, sourceBase64: await blobToBase64(capture.blob) });
-        onSaved(response.note, response.revision);
+          caption: validation.caption, sourceContentType: capture.sourceContentType, sourceBase64,
+          settingsRevision: mediaPolicy.settingsRevision, effectiveAllowanceBytes: mediaPolicy.reportMediaAllowanceBytes };
+        if (protectedStorageActive(reportId)) {
+          const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await capture.blob.arrayBuffer()))]
+            .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+          const localNote: ReportAudioNote = {
+            id: command.noteId, reportId, type: "audio", caption: validation.caption,
+            capturedAt: command.capturedAt, capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes,
+            author, serverReceivedAt: command.capturedAt, updatedAt: command.capturedAt,
+            persistenceState: "saved-on-device", contentType: "audio/mp4", byteSize: capture.blob.size,
+            sha256: digest, durationMilliseconds: capture.durationMilliseconds,
+          };
+          await stageProtectedAudio(reportId, { note: localNote, command });
+          onQueued(localNote);
+        } else {
+          const response = await createReportAudioNote(csrfToken, reportId, command);
+          onSaved(response.note, response.revision);
+        }
       }
     } catch (caught) {
       if (caught instanceof Error && caught.message === "session") onSessionEnded();
@@ -184,13 +274,41 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     if (!note || saving) return;
     setSaving(true);
     try {
+      if (note.persistenceState !== "ready") {
+        const entry = protectedAudioEntries(reportId).find(({ note: candidate }) => candidate.id === note.id);
+        if (entry?.attempted) {
+          const created = await createReportAudioNote(csrfToken, reportId, entry.command);
+          const deleted = await deleteReportAudioNote(csrfToken, reportId, note.id, {
+            commandId: crypto.randomUUID(), expectedRevision: created.revision,
+          });
+          await removeProtectedAudio(reportId, note.id);
+          onDeleted(note.id, deleted.revision);
+          return;
+        }
+        await removeProtectedAudio(reportId, note.id);
+        onDeleted(note.id, revision);
+        return;
+      }
       const response = await deleteReportAudioNote(csrfToken, reportId, note.id, { commandId: crypto.randomUUID(), expectedRevision: revision });
+      await removeProtectedAudio(reportId, note.id);
       stopActiveAudio(); onDeleted(note.id, response.revision);
     } catch (caught) {
       if (caught instanceof Error && caught.message === "session") onSessionEnded();
       else setError(caught instanceof Error ? caught.message : "The recording could not be deleted.");
       setConfirmingDelete(false);
     } finally { setSaving(false); }
+  }
+
+  async function retry() {
+    if (!note || note.persistenceState !== "failed") return;
+    await updateProtectedAudio(reportId, note.id, (entry) => ({ ...entry,
+      ...(entry.failure === "server-conflict" ? {
+        attempted: false, command: { ...entry.command, commandId: crypto.randomUUID(), expectedRevision: revision },
+      } : {}),
+      failure: undefined, note: { ...entry.note, persistenceState: "saved-on-device" },
+    }));
+    onQueued({ ...note, persistenceState: "saved-on-device" });
+    onClose();
   }
 
   const remaining = REPORT_AUDIO_MAX_MILLISECONDS - elapsed;
@@ -201,7 +319,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       if (confirmingDelete) { event.preventDefault(); event.stopPropagation(); setConfirmingDelete(false); }
       else if (mode === "recording") { event.preventDefault(); event.stopPropagation(); finishRecording(true); }
     }}>
-    <div className="note-dialog-heading"><div><p className="eyebrow">{note ? "Ready audio note" : mode === "recording" ? "Recording spoken observation" : mode === "preview" ? capture?.interrupted ? "Interrupted recording — choose Use or Discard" : "Review recording" : "Live microphone"}</p>
+    <div className="note-dialog-heading"><div><p className="eyebrow">{note ? `${note.persistenceState === "ready" ? "Ready" : note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)} audio note` : mode === "recording" ? "Recording spoken observation" : mode === "preview" ? capture?.interrupted ? "Interrupted recording — choose Use or Discard" : "Review recording" : "Live microphone"}</p>
       <h2 id="audio-dialog-title">Audio note</h2></div>{note && !confirmingDelete && <button className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete audio</button>}</div>
     {confirmingDelete ? <><p id="audio-delete-description">Delete this recording and its caption from the draft report? Saved bytes cannot be recovered or replaced.</p>
       <div className="note-dialog-actions"><button data-dialog-initial-focus type="button" onClick={() => setConfirmingDelete(false)}>Keep audio</button>
@@ -216,11 +334,13 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       {mode === "preview" && capture && <div className="audio-preview"><p role={capture.interrupted ? "alert" : "status"}>{capture.interrupted ? "Recording interrupted. Review it, then explicitly Use or Discard it." : `Captured ${formatAudioDuration(capture.durationMilliseconds)}.`}</p>
         <PreviewAudioButton source={capture.previewUrl} /></div>}
       {mode === "viewer" && note && <div className="audio-preview"><AuthorizedAudioButton reportId={reportId} noteId={note.id} label="Play complete audio note" />
-        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · Ready</p></div>}
+        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+        {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>Retry upload</button>}</div>}
       {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">Caption <small>(optional)</small></label>
         <textarea id="report-audio-caption" rows={3} maxLength={REPORT_AUDIO_CAPTION_MAX_CHARACTERS} value={caption}
           aria-invalid={Boolean(validation.error || error)} aria-describedby="report-audio-caption-count report-audio-error"
-          onChange={(event) => { setCaption(event.target.value); setError(null); }} />
+          onChange={(event) => { const value = event.target.value; setCaption(value); setError(null);
+            if (capture && protectedStorageActive(reportId)) updateProtectedAudioPreview(reportId, { caption: value }); }} />
         <small id="report-audio-caption-count">{validation.characterCount.toLocaleString()} / {REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters</small></>}
       <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : undefined}>{validation.error ?? error}</p>
       <div className="note-dialog-actions">{mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>Discard</button> : <button type="button" disabled={saving || mode === "recording"} onClick={onClose}>Close</button>}
