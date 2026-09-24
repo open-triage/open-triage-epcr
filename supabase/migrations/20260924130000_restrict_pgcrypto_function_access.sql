@@ -5,7 +5,7 @@
 do $$
 declare
   extension_schema text;
-  extension_function regprocedure;
+  extension_function record;
   workload_role text;
 begin
   select namespace.nspname into extension_schema
@@ -18,7 +18,9 @@ begin
   end if;
 
   for extension_function in
-    select procedure.oid::regprocedure
+    select procedure.oid::regprocedure signature,
+      procedure.proowner owner_oid,
+      procedure.proacl privileges
     from pg_depend dependency
     join pg_extension extension on extension.oid = dependency.refobjid
     join pg_proc procedure on procedure.oid = dependency.objid
@@ -27,7 +29,21 @@ begin
       and dependency.refclassid = 'pg_extension'::regclass
       and dependency.deptype = 'e'
   loop
-    execute format('revoke all on function %s from public', extension_function);
+    if extension_function.owner_oid = (select oid from pg_roles where rolname = current_user) then
+      execute format('revoke all on function %s from public', extension_function.signature);
+    elsif exists (
+      select 1
+      from aclexplode(coalesce(
+        extension_function.privileges,
+        acldefault('f', extension_function.owner_oid)
+      )) privilege
+      where privilege.grantee = 0
+        and privilege.privilege_type = 'EXECUTE'
+    ) then
+      raise exception
+        'platform-owned pgcrypto function % still grants EXECUTE to PUBLIC',
+        extension_function.signature;
+    end if;
   end loop;
 
   foreach workload_role in array array[

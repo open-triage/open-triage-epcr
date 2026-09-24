@@ -20,7 +20,9 @@ test("portable pgcrypto access is limited to hashing workloads and digest overlo
 test("pgcrypto defaults are reduced to the extension calls used at runtime", () => {
   assert.match(restrictedMigration, /join pg_extension extension/);
   assert.match(restrictedMigration, /dependency\.deptype = 'e'/);
+  assert.match(restrictedMigration, /extension_function\.owner_oid =/);
   assert.match(restrictedMigration, /revoke all on function %s from public/);
+  assert.match(restrictedMigration, /platform-owned pgcrypto function % still grants EXECUTE to PUBLIC/);
   assert.match(restrictedMigration, /grant execute on function %I\.digest\(bytea, text\) to %I/);
   assert.match(restrictedMigration, /grant execute on function %I\.digest\(text, text\) to %I/);
   assert.doesNotMatch(restrictedMigration, /grant execute on all functions/i);

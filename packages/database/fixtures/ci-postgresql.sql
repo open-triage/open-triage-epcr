@@ -44,9 +44,9 @@ create schema if not exists extensions authorization postgres;
 revoke all on schema extensions from public;
 create extension if not exists pgcrypto with schema extensions;
 revoke all on all functions in schema extensions from public;
-grant usage on schema extensions to open_triage_ci_migration;
+grant usage on schema extensions to open_triage_ci_migration with grant option;
 grant execute on function extensions.digest(bytea, text),
-  extensions.digest(text, text) to open_triage_ci_migration;
+  extensions.digest(text, text) to open_triage_ci_migration with grant option;
 
 -- Supabase roles can resolve installed extensions even though the objects are
 -- kept out of public. The migration owner mirrors that lookup behavior.
