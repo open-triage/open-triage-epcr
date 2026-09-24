@@ -70,8 +70,7 @@ test("the workflow promotes the validated web digest and separately publishes th
   );
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(publishing, /^    needs: \[validation-gate, browser-e2e-validation\]$/m);
-  assert.match(publishing, /needs\.browser-e2e-validation\.result == 'success'/);
+  assert.match(publishing, /^    needs: deployment-authorization$/m);
   assert.match(publishing, /^      packages: write$/m);
   assert.match(publishing, /^          platforms: linux\/amd64$/m);
   assert.match(publishing, /^          push: true$/m);
@@ -84,13 +83,13 @@ test("the workflow promotes the validated web digest and separately publishes th
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf("jobs:")), /packages: write/);
   assert.match(webValidation, /docker build\n\s+--file deploy\/docker\/web\.Dockerfile/);
   assert.match(webValidation, /--platform linux\/amd64/);
-  assert.match(webValidation, /docker push "\$WEB_CANDIDATE_IMAGE"/);
-  assert.match(webValidation, /--output image-identities\/web\.json/);
-  assert.match(webPromotion, /node scripts\/demo-image-identity\.mjs verify/);
-  assert.match(webPromotion, /needs\.browser-e2e-validation\.result == 'success'/);
-  assert.match(webPromotion, /^      - browser-e2e-validation$/m);
-  assert.match(webPromotion, /docker buildx imagetools create/);
-  assert.match(webPromotion, /test "\$promoted_digest" = "\$image_digest"/);
+  assert.match(webValidation, /docker save "\$WEB_CANDIDATE_IMAGE" \| gzip/);
+  assert.doesNotMatch(webValidation, /docker push|docker\/login-action|packages: write/);
+  assert.match(webPromotion, /^    needs: deployment-authorization$/m);
+  assert.match(webPromotion, /gunzip --stdout .* \| docker load/);
+  assert.match(webPromotion, /docker image inspect --format .*org\.opencontainers\.image\.revision/);
+  assert.match(webPromotion, /docker push "\$WEB_RELEASE_IMAGE"/);
+  assert.match(webPromotion, /--output image-identities\/web\.json/);
   assert.doesNotMatch(webPromotion, /docker build(?:\s|$)|docker\/build-push-action/);
   assert.match(
     publishing,
