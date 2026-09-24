@@ -68,7 +68,9 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
     if (state.restarted && !state.reauthenticated) return route.fulfill({ status: 428 });
     return route.fallback();
   });
-  await context.route(`**/api/reports/${reportId}/active`, route => route.fulfill({ status: state.completed ? 404 : 304 }));
+  // This journey discovers completion through the explicit report-list refresh.
+  // Keep the active poll unchanged so it cannot race ahead and mask list cleanup.
+  await context.route(`**/api/reports/${reportId}/active`, route => route.fulfill({ status: 304 }));
   const openAssignment = (route: Route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     state.assignmentOpened = true;
