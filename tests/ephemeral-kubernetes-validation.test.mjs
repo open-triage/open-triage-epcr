@@ -21,11 +21,13 @@ test("CI validates Kubernetes schemas and installs the exact candidate images in
     workflow.indexOf("  validation-gate:"),
   );
 
-  assert.match(workflow, /ghcr\.io\/yannh\/kubeconform:v0\.8\.0-alpine/);
+  assert.match(workflow,
+    /ghcr\.io\/yannh\/kubeconform:v0\.8\.0-alpine@sha256:[0-9a-f]{64}/);
   assert.match(workflow, /-strict -summary -kubernetes-version 1\.35\.0/);
-  assert.match(validation, /uses: helm\/kind-action@v1\.14\.0/);
+  assert.match(validation, /uses: helm\/kind-action@[0-9a-f]{40} # v1\.14\.0/);
   assert.match(validation, /version: v0\.31\.0/);
   assert.match(validation, /kubectl_version: v1\.35\.0/);
+  assert.match(validation, /node_image: kindest\/node:v1\.35\.0@sha256:[0-9a-f]{64}/);
   assert.match(validation, /name: validated-api-image-/);
   assert.match(validation, /name: validated-web-image-/);
   assert.match(validation, /kind load docker-image --name open-triage-validation/);
