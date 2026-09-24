@@ -90,12 +90,20 @@ test("the gate depends on every application, database, web, and Helm validation"
   assert.match(workflow, /^    uses: \.\/\.github\/workflows\/database-postgresql\.yml$/m);
   for (const command of [
     "npm run check:database",
+    "npm run migrate -w @open-triage/database",
     "npm run test:integration -w @open-triage/database",
     "npm run test:integration -w @open-triage/api",
+    "npm run load:catalog -w @open-triage/database",
+    "npm run bootstrap:synthetic:runtime -w @open-triage/database",
     "npm run scale:test:ci -w @open-triage/database",
   ]) {
     assert.ok(databaseWorkflow.includes(command), `missing required database workflow command: ${command}`);
   }
+  assert.match(databaseWorkflow, /image: postgres:15\.14-bookworm/);
+  assert.match(databaseWorkflow, /fixture: plain/);
+  assert.match(databaseWorkflow, /fixture: managed/);
+  assert.match(databaseWorkflow, /packages\/database\/fixtures\/ci-postgresql\.sql/);
+  assert.match(databaseWorkflow, /Start the API through its least-privileged runtime login/);
 });
 
 test("database validation is reused once across non-overlapping event coverage", async () => {
