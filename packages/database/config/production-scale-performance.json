@@ -1,5 +1,5 @@
 {
-  "policyVersion": "production-scale-performance-1.1.0",
+  "policyVersion": "production-scale-performance-1.2.0",
   "policyStatus": "approved-under-requesting-owner-delegation",
   "approval": {
     "approvedOn": "2026-09-10",
@@ -28,6 +28,21 @@
     "connectionUtilizationPercentMax": 70,
     "storageHeadroomPercentMin": 30,
     "commonQueryTempBytesMax": 0
+  },
+  "ciThresholdApproval": {
+    "approvedOn": "2026-09-24",
+    "approvedBy": "requesting-product-and-operations-owner",
+    "context": "Owner requested more generous scale gates for shared CI runners; double measured latency limits and halve minimum throughput without changing production targets."
+  },
+  "ciThresholds": {
+    "commonWideQueryP95Ms": 500,
+    "commonRepeatableQueryP95Ms": 1000,
+    "partitionPrunedQueryP95Ms": 500,
+    "signingWritesPerSecond": 50,
+    "projectorReportsPerSecond": 17.5,
+    "projectorBatchMaxMs": 26000,
+    "reconciliationReportsPerSecond": 25,
+    "amendmentReplayReportsPerSecond": 8.5
   },
   "productionSchemaCalibration": {
     "recordedOn": "2026-09-10",
