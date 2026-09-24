@@ -145,7 +145,10 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {
     // Fulfilled Playwright routes bypass context.setOffline(). An autosave
     // already in flight may try to drain more queued changes after disconnect.
-    if (!await page.evaluate(() => navigator.onLine)) return route.abort("internetdisconnected");
+    // Reload/logout can destroy the frame while this request is intercepted;
+    // treat that cancelled transport as unavailable too.
+    const online = await page.evaluate(() => navigator.onLine).catch(() => false);
+    if (!online) return route.abort("internetdisconnected");
     const command = route.request().postDataJSON() as { expectedRevision: number };
     revision = command.expectedRevision + 1;
     await route.fulfill({ json: { id: reportId, status: "draft", revision } });
