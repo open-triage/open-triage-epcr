@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { authorizeDemoDeployment } from "../scripts/require-demo-provenance.mjs";
+import { authorizeDemoDeployment, requireOwnerAuthorization } from "../scripts/require-demo-provenance.mjs";
 
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
 const sha = "0123456789abcdef0123456789abcdef01234567";
@@ -71,6 +71,41 @@ test("a direct push is ineligible even after diagnostics pass", async () => {
   const { fetchImpl } = fetchSequence(jsonResponse([]));
 
   await assert.rejects(authorize({ fetchImpl }), /exactly one merged pull request/);
+});
+
+const ownerPermission = { permission: "admin", user: { login: "owner" } };
+function ownerComment(overrides = {}) {
+  return { id: 1, user: { login: "owner", type: "User" },
+    body: `authorize-demo-deployment ${headSha}`, created_at: "2026-09-24T09:00:00Z",
+    updated_at: "2026-09-24T09:00:00Z", ...overrides };
+}
+
+test("an explicitly configured administrator can authorize their own final PR commit", async () => {
+  const { fetchImpl } = fetchSequence(jsonResponse([mergedPull()]), jsonResponse([]),
+    jsonResponse(ownerPermission), jsonResponse([ownerComment()]));
+  assert.deepEqual(await authorize({ ownerLogin: "owner", fetchImpl }), { pullNumber: 506, targetSha: sha });
+});
+
+test("owner authorization rejects wrong identities, stale SHAs, edits after merge, and revocation", () => {
+  for (const comment of [
+    ownerComment({ user: { login: "someone-else", type: "User" } }),
+    ownerComment({ user: { login: "owner", type: "Bot" } }),
+    ownerComment({ body: `authorize-demo-deployment ${"a".repeat(40)}` }),
+    ownerComment({ updated_at: "2026-09-24T11:00:00Z" }),
+  ]) {
+    assert.throws(() => requireOwnerAuthorization([comment], mergedPull(), "owner", ownerPermission), /no current owner authorization/);
+  }
+  assert.throws(() => requireOwnerAuthorization([ownerComment()], mergedPull(), "owner",
+    { ...ownerPermission, permission: "write" }), /administrator/);
+  assert.throws(() => requireOwnerAuthorization([ownerComment(), ownerComment({ id: 2,
+    body: `revoke-demo-deployment ${headSha}`, updated_at: "2026-09-24T09:30:00Z" })],
+    mergedPull(), "owner", ownerPermission), /no current owner authorization/);
+});
+
+test("owner configuration alone cannot authorize deployment", async () => {
+  const { fetchImpl } = fetchSequence(jsonResponse([mergedPull()]), jsonResponse([]),
+    jsonResponse(ownerPermission), jsonResponse([]));
+  await assert.rejects(authorize({ ownerLogin: "owner", fetchImpl }), /no current owner authorization/);
 });
 
 test("mismatched or stale evidence is rejected", async () => {

@@ -63,7 +63,27 @@ export function requireCurrentApproval(reviews, pull) {
     (review) => review.state === "APPROVED" && review.commit_id === pull.head.sha,
   );
   if (approvals.length === 0) {
-    throw new Error(`Pull request #${pull.number} has no current approval for ${pull.head.sha}.`);
+    const error = new Error(`Pull request #${pull.number} has no current approval for ${pull.head.sha}.`);
+    error.code = "MISSING_APPROVAL";
+    throw error;
+  }
+}
+
+export function requireOwnerAuthorization(comments, pull, ownerLogin, permission) {
+  if (permission?.permission !== "admin" || permission.user?.login !== ownerLogin) {
+    throw new Error("Deployment owner must be a current repository administrator.");
+  }
+  const mergedAt = Date.parse(pull.merged_at);
+  if (!Number.isFinite(mergedAt)) throw new Error("Invalid pull-request merge time.");
+  const decisions = comments.filter((comment) => {
+    const created = Date.parse(comment.created_at);
+    const updated = Date.parse(comment.updated_at);
+    return comment.user?.login === ownerLogin && comment.user?.type === "User" &&
+      Number.isFinite(created) && Number.isFinite(updated) && created <= mergedAt && updated <= mergedAt &&
+      ["authorize", "revoke"].some((action) => comment.body?.trim() === `${action}-demo-deployment ${pull.head.sha}`);
+  }).sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at) || a.id - b.id);
+  if (decisions.at(-1)?.body?.trim() !== `authorize-demo-deployment ${pull.head.sha}`) {
+    throw new Error(`Pull request #${pull.number} has no current owner authorization for ${pull.head.sha}.`);
   }
 }
 
@@ -165,6 +185,7 @@ export async function authorizeDemoDeployment({
   apiUrl = DEFAULT_API_URL,
   browserValidationResult,
   eventName,
+  ownerLogin,
   fetchImpl = fetch,
   repository,
   runId,
@@ -201,7 +222,17 @@ export async function authorizeDemoDeployment({
     (payload) => payload,
     "review provenance",
   );
-  requireCurrentApproval(reviews, pull);
+  try {
+    requireCurrentApproval(reviews, pull);
+  } catch (error) {
+    if (error.code !== "MISSING_APPROVAL" || !ownerLogin) throw error;
+    const permission = await githubJson(fetchImpl,
+      `${apiUrl}/repos/${repoPath}/collaborators/${encodeURIComponent(ownerLogin)}/permission`, token);
+    const comments = await githubPages(fetchImpl,
+      `${apiUrl}/repos/${repoPath}/issues/${pull.number}/comments`, token,
+      (payload) => payload, "owner authorization");
+    requireOwnerAuthorization(comments, pull, ownerLogin, permission);
+  }
 
   if (eventName === "workflow_dispatch") {
     await requireHistoricalValidation({
@@ -225,6 +256,7 @@ async function run() {
     apiUrl: process.env.GITHUB_API_URL,
     browserValidationResult: process.env.BROWSER_VALIDATION_RESULT,
     eventName: process.env.GITHUB_EVENT_NAME,
+    ownerLogin: process.env.DEMO_DEPLOYMENT_OWNER_LOGIN,
     repository: process.env.GITHUB_REPOSITORY,
     runId: process.env.GITHUB_RUN_ID,
     targetSha: process.env.TARGET_REVISION,
@@ -234,7 +266,7 @@ async function run() {
     workflowId: process.env.WORKFLOW_ID,
   });
   console.log(
-    `Authorized deployment of ${authorization.targetSha} from approved pull request #${authorization.pullNumber}.`,
+    `Authorized deployment of ${authorization.targetSha} from reviewed or owner-authorized pull request #${authorization.pullNumber}.`,
   );
 }
 

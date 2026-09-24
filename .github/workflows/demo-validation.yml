@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       deployment_revision:
-        description: Full 40-character SHA of a commit reachable from main
+        description: Full 40-character SHA of the current main tip
         required: true
         type: string
 
@@ -27,13 +27,14 @@ jobs:
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
           fetch-depth: 0
-      - name: Require manual revisions to belong to main
+      - name: Require manual revisions to match current main
         if: github.event_name == 'workflow_dispatch'
         env:
           DEPLOYMENT_REVISION: ${{ inputs.deployment_revision }}
         run: |
           [[ "$DEPLOYMENT_REVISION" =~ ^[0-9a-f]{40}$ ]]
           git merge-base --is-ancestor "$DEPLOYMENT_REVISION" origin/main
+          test "$DEPLOYMENT_REVISION" = "$(git rev-parse origin/main)"
 
   application-validation:
     name: Validate / Application
@@ -676,7 +677,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - name: Require approved merge and matching validation provenance
+      - name: Require reviewed or owner-authorized merge and matching validation provenance
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_REVISION: ${{ inputs.deployment_revision || github.sha }}
@@ -684,6 +685,7 @@ jobs:
           VALIDATION_RESULT: ${{ needs.validation-gate.result }}
           BROWSER_VALIDATION_RESULT: ${{ needs.browser-e2e-validation.result }}
           WORKFLOW_ID: demo-validation.yml
+          DEMO_DEPLOYMENT_OWNER_LOGIN: ${{ vars.DEMO_DEPLOYMENT_OWNER_LOGIN }}
         run: |
           mkdir -p deployment-provenance-evidence
           printf '{"targetRevision":"%s","validatedRevision":"%s","validationResult":"%s","browserValidationResult":"%s"}\n' \

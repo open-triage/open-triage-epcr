@@ -37,7 +37,9 @@ Database changes are forward-only and are not undone by Helm rollback. A failed
 application rollout therefore leaves the completed preparation Job, source
 revision, preparation mode, safe summary, and redacted logs available for
 diagnosis. Rerun the workflow at the same eligible revision after correcting the
-application or infrastructure fault. Do not use this path for a production
+application or infrastructure fault, provided it remains the current `main`
+tip. Manual deployment rejects older revisions because their application may
+be incompatible with database migrations that have already run. Do not use this path for a production
 database. Repository guards reduce accidents but do not replace protected GitHub
 environments, scoped cluster credentials, Supabase access controls, backups, or
 branch protection against a deliberately malicious writer.

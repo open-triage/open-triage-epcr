@@ -3,8 +3,8 @@
 The `Demo validation` GitHub Actions workflow is the only automated path to the
 DigitalOcean Kubernetes (DOKS) demo. Every push to `main` validates the
 application, PostgreSQL integration, deployable web artifact, and Helm chart.
-Only the exact merge commit of one approved pull request into `main`, with an
-approval for that pull request's final head commit, may then publish immutable
+Only the exact merge commit of one reviewed or owner-authorized pull request into
+`main`, with authorization for that pull request's final head commit, may publish immutable
 API and web `linux/amd64` images, run the explicit database-preparation phase,
 and atomically deploy the exact image tags recorded in that run's artifact. A direct
 push still produces diagnostics but cannot publish or deploy. Missing,
@@ -76,9 +76,18 @@ private-registry access or public TLS configuration.
 
 ## Manual redeployment
 
+Independent review and explicit owner authorization are both supported permanently.
+Set the repository variable `DEMO_DEPLOYMENT_OWNER_LOGIN` to the designated owner's
+GitHub login. Before merging, that owner can comment exactly
+`authorize-demo-deployment <full PR head SHA>` on the PR. The workflow verifies
+that the author is the configured human account and still has repository admin
+permission. An authorization for an older head, a comment edited after merge,
+or a later `revoke-demo-deployment <full PR head SHA>` comment does not authorize
+deployment. Setting the variable alone does not authorize any commit.
+
 Run `Demo validation` with **Run workflow** and supply the full 40-character
-SHA of a commit reachable from `main`. The workflow rejects non-main commits,
-direct-push commits, commits without a current pull-request approval, and
+SHA of the current `main` tip. The workflow rejects older or non-main commits,
+direct-push commits, commits without current review or owner authorization, and
 revisions without an earlier push run whose successful validation and
 provenance jobs name that exact SHA. It then repeats validation, republishes the
 immutable images, and deploys only the image identities recorded by that run.
@@ -149,9 +158,9 @@ kubectl get pods,jobs --namespace open-triage
   infrastructure repair. If application code must change, ship a forward fix on
   `main`.
 
-An operator may redeploy an earlier full SHA reachable from `main`, but this
-rolls back application images only—not database migrations. Prefer a forward
-fix whenever a newer migration has committed. Preserve the failed workflow logs
+Manual deployment cannot select an older SHA because database migrations are
+forward-only. Ship a forward fix when application changes are required.
+Preserve the failed workflow logs
 and Helm history for diagnosis, but never copy login responses, bearer tokens,
 kubeconfigs, or Secret contents into tickets or chat.
 

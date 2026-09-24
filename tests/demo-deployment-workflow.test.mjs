@@ -105,12 +105,13 @@ test("Helm validation uses the same committed values as the demo deployment", as
   assert.doesNotMatch(workflow, /--reuse-values/);
 });
 
-test("manual redeploy accepts only a full revision reachable from main", async () => {
+test("manual redeploy accepts only the full current main revision", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /^      deployment_revision:$/m);
   assert.match(workflow, /\[\[ "\$DEPLOYMENT_REVISION" =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
   assert.match(workflow, /git merge-base --is-ancestor "\$DEPLOYMENT_REVISION" origin\/main/);
+  assert.ok(workflow.includes('test "$DEPLOYMENT_REVISION" = "$(git rev-parse origin/main)"'));
 });
 
 test("one-replica demo deployments explicitly allow replacement downtime", async () => {
