@@ -1,7 +1,7 @@
 # Production-scale performance policy and evidence
 
 Status: approved under owner delegation; production-schema rebaseline on 2026-09-10
-Version: `production-scale-performance-1.1.0`
+Version: `production-scale-performance-1.2.0`
 
 The requesting product and operations owner instructed the implementation agent to complete the
 feature without further input and authorized defensible operating thresholds. The exact approved
@@ -23,6 +23,17 @@ CPU must remain at or below 70%, peak CPU at or below 80%, connection use at or 
 storage headroom at or above 30%.
 
 ## Reproducible exercise
+
+On 2026-09-24, the owner requested more generous shared-runner CI gates. The `ci`
+profile now allows twice the production latency limits and half its minimum
+throughput: 500/1,000/500 ms for wide/repeatable/partition queries, 50 signing
+reports/second, 17.5 projector reports/second with a 26-second batch limit, 25
+reconciliation reports/second, and 8.5 amendment reports/second. Dataset and batch
+sizes, correctness checks, no-temp-spill requirements, and all production targets
+remain unchanged. The explicit `ciThresholds` are versioned with the policy;
+measured results record both the applied threshold and its production counterpart.
+The production profile never uses the CI overrides. This is a CI tolerance change,
+not new calibration evidence or a production capacity claim.
 
 `npm run scale:test:ci -w @open-triage/database` creates a uniquely named scratch database, applies
 the production migration and synthetic bootstrap path, loads a deterministic bounded distribution
