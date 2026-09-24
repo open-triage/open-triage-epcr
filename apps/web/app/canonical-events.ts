@@ -1,5 +1,6 @@
 import type { EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import { DEMO_FALLBACK_DATE, hasDemoProvenance } from "./demo-provenance";
+import { stableDraftId } from "./draft-report";
 import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent, MedicationAdministration, VitalValues } from "./standard-encounter";
@@ -10,6 +11,11 @@ const eventGroups = new Set([
   "eNarrativeSection", "eVitals.VitalGroup", "eMedications.MedicationGroup",
   "eMedications.DosageGroup", "eProcedures.ProcedureGroup",
 ]);
+const eventSections = {
+  vitals: "eVitalsSection",
+  procedure: "eProceduresSection",
+  medication: "eMedicationsSection",
+} as const;
 
 function timestamp(date: string | undefined, time: string): string {
   return `${date ?? DEMO_FALLBACK_DATE}T${time.slice(0, 5)}:00-04:00`;
@@ -65,6 +71,35 @@ function owned(instanceId: string, documentedTime: string, elements: EncounterGr
   };
 }
 
+function eventSection(event: EncounterEvent): string | undefined {
+  if (event.vitals) return eventSections.vitals;
+  if (event.procedure) return eventSections.procedure;
+  if (event.medication) return eventSections.medication;
+  return undefined;
+}
+
+/** Ensures mobile-authored event groups have the canonical section ancestry expected by Populate. */
+function ensureEventSection(document: EncounterDocument, event: EncounterEvent): EncounterDocument {
+  const groupId = eventSection(event);
+  if (!groupId || document.groups.find(({ id }) => id === groupId)?.instances.length) return document;
+  const parentInstanceId = document.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.instanceId;
+  const instance: EncounterGroupInstance = {
+    instanceId: stableDraftId(document.encounter.id, `canonical-event-section:${groupId}:${parentInstanceId ?? "root"}`),
+    ...(parentInstanceId ? { parentInstanceId } : {}),
+    elements: [],
+  };
+  const existing = document.groups.find(({ id }) => id === groupId);
+  const groups = existing
+    ? document.groups.map((group) => group === existing ? { ...group, instances: [...group.instances, instance] } : group)
+    : [...document.groups, { id: groupId, instances: [instance] }];
+  return { ...document, groups };
+}
+
+function eventSectionInstanceId(document: EncounterDocument, event: EncounterEvent): string | undefined {
+  const groupId = eventSection(event);
+  return groupId ? document.groups.find(({ id }) => id === groupId)?.instances[0]?.instanceId : undefined;
+}
+
 function optionCode(elementId: string, label: string) {
   return resolveNemsisElementValues(requireNemsisDataElement(elementId)).permissibleValues
     .find((item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
@@ -88,6 +123,7 @@ function vitalDetail(values: VitalValues, definition: EncounterDefinition): stri
 
 function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
   const observedAt = timestamp(event.date, event.time);
+  const sectionInstanceId = eventSectionInstanceId(document, event);
   if (event.kind === "note") return [{
     groupId: "eNarrativeSection",
     instance: owned(event.id, observedAt, [{ id: "eNarrative.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:narrative`, value: event.detail }] }]),
@@ -111,9 +147,8 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
       }
       if (targetGroupId !== "eVitals.VitalGroup") nestedElements.set(targetGroupId, elements);
     });
-    const sectionId = document.groups.find(({ id }) => id === "eVitalsSection")?.instances[0]?.instanceId;
     return [
-      { groupId: "eVitals.VitalGroup", instance: owned(event.id, observedAt, rootElements, sectionId) },
+      { groupId: "eVitals.VitalGroup", instance: owned(event.id, observedAt, rootElements, sectionInstanceId) },
       ...[...nestedElements].map(([groupId, elements]) => ({
         groupId,
         instance: owned(`${event.id}:${groupId}`, observedAt, elements, event.id),
@@ -133,7 +168,7 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
       ...(success ? [{ id: "eProcedures.06", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:success`, code: success.code, display: success.label }] }] : []),
       ...(outcome ? [{ id: "eProcedures.08", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:outcome`, code: outcome.code, display: outcome.label }] }] : []),
       ...(procedure.complications.length ? [{ id: "eProcedures.07", values: procedure.complications.map((code, index) => ({ kind: "coded" as const, occurrenceId: `${event.id}:complication:${index}`, code })) }] : []),
-    ]) }];
+    ], sectionInstanceId) }];
   }
   if (event.medication) {
     const medication = event.medication;
@@ -146,7 +181,7 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
         { id: "eMedications.03", values: [{ kind: "coded", occurrenceId: `${event.id}:medication`, code: medication.medicationCode, system: medication.codeType, display: medication.label, attributes: { dose: medication.dose, unit: medication.unit, route: medication.route, response: medication.response, warningAcknowledged: medication.warningAcknowledged } }] },
         ...(route ? [{ id: "eMedications.04", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:route`, code: route.code, display: route.label }] }] : []),
         ...(response ? [{ id: "eMedications.07", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:response`, code: response.code, display: response.label }] }] : []),
-      ]) },
+      ], sectionInstanceId) },
       { groupId: "eMedications.DosageGroup", instance: owned(`${event.id}:dosage`, observedAt, [
         ...(medication.dose ? [{ id: "eMedications.05", values: [{ kind: "scalar" as const, occurrenceId: `${event.id}:dose`, value: Number(medication.dose) }] }] : []),
         ...(unit ? [{ id: "eMedications.06", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:unit`, code: unit.code, display: unit.label }] }] : []),
@@ -187,6 +222,7 @@ function saveNarrative(document: EncounterDocument, event: EncounterEvent): Enco
 
 export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): EncounterDocument {
   if (event.kind === "note") return saveNarrative(document, event);
+  document = ensureEventSection(document, event);
   const updatedAt = timestamp(event.date, event.time);
   const removedIds = eventSubtreeIds(document, event.id);
   let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
