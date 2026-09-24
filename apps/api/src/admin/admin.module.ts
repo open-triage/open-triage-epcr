@@ -22,6 +22,7 @@ import { AgencySettingsService } from "./agency-settings.service.js";
   providers: [AdminService, CatalogAuthoringService, FormAuthoringService, RoleAuthoringService,
     UserRoleReadService, UserProvisioningService, UserLifecycleService, UserRoleAssignmentService,
     SessionAdministrationService, RolePackageService, OwnershipTransferService, ValidationAuthoringService,
-    AgencySettingsService]
+    AgencySettingsService],
+  exports: [AgencySettingsService]
 })
 export class AdminModule {}

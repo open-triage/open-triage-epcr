@@ -5,6 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { updateAgencyMediaSettings } from "../app/admin-context";
 import { AgencySettingsPanel, showsStorageGrowthWarning } from "../components/agency-settings";
 
+const appearance = {
+  brandText: "County EMS", helperText: "Use your agency-issued credentials.", logoPngDataUrl: null,
+  accentColor: "#00783a", accentDarkColor: "#006b34", browserThemeColor: "#00783a",
+  pwaBackgroundColor: "#dfe5df", pwaName: "County EMS", pwaShortName: "EMS",
+};
+const demographics = { agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36",
+  stateDisplay: "New York", stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null };
+
 test("Agency Settings uses an explicit revisioned save with CSRF proof", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -15,15 +23,20 @@ test("Agency Settings uses an explicit revisioned save with CSRF proof", async (
     assert.deepEqual(JSON.parse(String(init?.body)), {
       expectedRevision: 4,
       reportMediaAllowanceBytes: 80 * 1024 * 1024,
+      appearance,
+      demographics,
     });
     return Response.json({
       organizationId: "organization-id", reportMediaAllowanceBytes: 80 * 1024 * 1024,
+      appearance, demographics: { ...demographics, versionId: "version-id", version: 2,
+        catalogReleaseId: "catalog-id", effectiveFrom: "2026-09-24T10:00:00.000Z" },
       revision: 5, defaultReportMediaAllowanceBytes: 50 * 1024 * 1024,
       storageGrowthWarning: true, updatedAt: "2026-09-24T10:00:00.000Z",
     });
   };
   const result = await updateAgencyMediaSettings("csrf-proof", {
     expectedRevision: 4, reportMediaAllowanceBytes: 80 * 1024 * 1024,
+    appearance, demographics,
   });
   assert.equal(result.revision, 5);
   assert.equal(result.storageGrowthWarning, true);
