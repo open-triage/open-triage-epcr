@@ -62,6 +62,12 @@ export function validateCreateReportAudioNoteCommand(value: unknown): CreateRepo
   } else if (Buffer.byteLength(candidate.sourceBase64, "base64") > REPORT_AUDIO_MAX_SOURCE_BYTES) {
     findings.push("source recording is too large");
   }
+  if (!Number.isSafeInteger(candidate.settingsRevision) || Number(candidate.settingsRevision) < 1) {
+    findings.push("settingsRevision must be a positive safe integer");
+  }
+  if (!Number.isSafeInteger(candidate.effectiveAllowanceBytes) || Number(candidate.effectiveAllowanceBytes) < 1) {
+    findings.push("effectiveAllowanceBytes must be a positive safe integer");
+  }
   let caption: string | null = null;
   try { caption = normalizeAudioCaption(candidate.caption); }
   catch (error) { if (error instanceof ReportAudioValidationError) findings.push(...error.findings); else throw error; }

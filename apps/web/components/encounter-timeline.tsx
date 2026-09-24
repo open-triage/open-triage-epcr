@@ -59,14 +59,16 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
         }
         if (event.kind === "audio-note") {
           const duration = formatAudioDuration(event.note.durationMilliseconds);
+          const audioState = event.note.persistenceState === "saved-on-device" ? "Saved on this device"
+            : event.note.persistenceState[0]!.toUpperCase() + event.note.persistenceState.slice(1);
           return <li key={event.id} className="editable-event audio-note-event">
             <time dateTime={event.note.capturedAt}>{event.time}</time>
-            <span className="event-dot validation-clear" role="img" aria-label="Audio note ready" />
+            <span className={`event-dot validation-${event.note.persistenceState === "failed" ? "error" : "clear"}`} role="img" aria-label={`Audio note ${audioState}`} />
             <div className="audio-timeline-content">
               <button aria-label={`Open audio note at ${event.time} by ${event.note.author.displayName}. ${duration}. ${event.note.caption ?? "No caption"}`}
                 className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenAudio(event.note, clickEvent.currentTarget)}>
                 <span className="event-title">Audio note · {duration}</span><span className="event-detail">{event.note.caption || "No caption"}</span>
-                <small>{event.note.author.displayName} · Ready · Open audio</small>
+                <small>{event.note.author.displayName} · {audioState} · Open audio</small>
               </button>
               <AuthorizedAudioButton reportId={event.note.reportId} noteId={event.note.id} label={`Play audio note, ${duration}`} className="timeline-audio-action" />
             </div>

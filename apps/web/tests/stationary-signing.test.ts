@@ -12,6 +12,7 @@ test("stationary signing opens only after every independent gate passes", () => 
   assert.deepEqual(stationarySigningBlockers({ ...clear, presentationMode: "mobile" }), ["mobile"]);
   assert.deepEqual(stationarySigningBlockers({ ...clear, online: false }), ["offline"]);
   assert.deepEqual(stationarySigningBlockers({ ...clear, syncStatus: "Pending sync" }), ["synchronization"]);
+  assert.deepEqual(stationarySigningBlockers({ ...clear, pendingMedia: true }), ["media"]);
   assert.deepEqual(stationarySigningBlockers({ ...clear, errorCount: 1 }), ["error"]);
   assert.deepEqual(stationarySigningBlockers({ ...clear, warnings: [{ acknowledged: false }] }), ["warning"]);
   assert.deepEqual(stationarySigningBlockers({ ...clear, unresolvedDispatchConflictCount: 1 }), ["dispatch-conflict"]);

@@ -1215,6 +1215,9 @@ export interface CreateReportAudioNoteCommand {
   caption?: string | null;
   sourceContentType: ReportAudioSourceContentType;
   sourceBase64: string;
+  /** Agency policy observed when the recording was staged. */
+  settingsRevision: number;
+  effectiveAllowanceBytes: number;
 }
 
 export interface UpdateReportAudioCaptionCommand {

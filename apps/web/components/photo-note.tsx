@@ -177,6 +177,9 @@ export function PhotoNoteDialog({
         const response = await updateReportPhotoCaption(csrfToken, reportId, note.id, {
           commandId: crypto.randomUUID(), expectedRevision: revision, caption: validation.caption,
         });
+        if (protectedPhotoEntries(reportId).some(({ note: candidate }) => candidate.id === note.id)) {
+          await updateProtectedPhoto(reportId, note.id, (entry) => ({ ...entry, note: response.note }));
+        }
         onSaved(response.note, response.revision);
       } else {
         if (!capture) return;
@@ -233,6 +236,7 @@ export function PhotoNoteDialog({
       const response = await deleteReportPhotoNote(csrfToken, reportId, note.id, {
         commandId: crypto.randomUUID(), expectedRevision: revision,
       });
+      await removeProtectedPhoto(reportId, note.id);
       onDeleted(note.id, response.revision);
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
