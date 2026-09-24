@@ -140,10 +140,10 @@ test("the authorization job is the only path from validation to registry mutatio
   const workflow = await readFile(workflowPath, "utf8");
   const authorization = workflow.slice(
     workflow.indexOf("  deployment-authorization:"),
-    workflow.indexOf("  publish-images:"),
+    workflow.indexOf("  promote-api-image:"),
   );
   const publishing = workflow.slice(
-    workflow.indexOf("  publish-images:"),
+    workflow.indexOf("  promote-api-image:"),
     workflow.indexOf("  publish-image-manifest:"),
   );
 

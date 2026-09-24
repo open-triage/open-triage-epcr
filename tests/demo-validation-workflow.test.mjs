@@ -80,7 +80,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "npm run test:deployment -w @open-triage/web",
     "npm run test:e2e:critical -w @open-triage/web",
     "npm run test:helm",
-    "docker build -f deploy/docker/api.Dockerfile",
+    "--file deploy/docker/api.Dockerfile",
     "helm lint",
     "helm template",
   ]) {

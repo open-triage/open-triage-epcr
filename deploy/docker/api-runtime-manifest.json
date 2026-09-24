@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "entrypoint": "apps/api/dist/main.js"
+  },
+  "operations": [
+    { "name": "migrate:runtime", "entrypoint": "packages/database/scripts/migrate.mjs" },
+    { "name": "load:catalog", "entrypoint": "packages/database/scripts/load-nemsis-catalog.mjs" },
+    { "name": "bootstrap:synthetic:runtime", "entrypoint": "packages/database/scripts/bootstrap-synthetic-installation.mjs" },
+    { "name": "seed:validation", "entrypoint": "packages/database/scripts/seed-initial-validation-versions.mjs" },
+    { "name": "seed:install-definitions", "entrypoint": "packages/database/scripts/seed-install-definitions.mjs" },
+    { "name": "provision:workload-logins", "entrypoint": "packages/database/scripts/provision-workload-logins.mjs" },
+    { "name": "project", "entrypoint": "packages/database/scripts/project-analytics.mjs" },
+    { "name": "project:health", "entrypoint": "packages/database/scripts/projection-health.mjs" },
+    { "name": "retention", "entrypoint": "packages/database/scripts/retention.mjs" },
+    { "name": "purge:synthetic", "entrypoint": "packages/database/scripts/purge-synthetic-records.mjs" },
+    { "name": "rotate:patient-keys", "entrypoint": "packages/database/scripts/rotate-patient-keys.mjs" },
+    { "name": "rotate:offline-recovery-keys", "entrypoint": "packages/database/scripts/rotate-offline-recovery-keys.mjs" },
+    { "name": "verify:recovery", "entrypoint": "packages/database/scripts/verify-recovery.mjs" },
+    { "name": "verify:replica", "entrypoint": "packages/database/scripts/verify-reporting-replica.mjs" }
+  ],
+  "assets": [
+    "apps/api/dist",
+    "packages/contracts/dist",
+    "packages/contracts/config",
+    "packages/contracts/examples/dispatch",
+    "packages/contracts/patient-key.mjs",
+    "packages/contracts/quality-rules.mjs",
+    "packages/contracts/quality-normalization-policy.json",
+    "packages/database/config/database-operations-policy.json",
+    "packages/database/config/retention-policy.json",
+    "packages/database/generated",
+    "defines",
+    "supabase/migrations",
+    "deploy/docker/validate-api-runtime.mjs"
+  ]
+}
