@@ -16,8 +16,8 @@
     "test:unit": "node --import tsx --test tests/*.test.ts",
     "generate:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts",
     "check:demo-fixtures": "tsx scripts/generate-demo-fixtures.ts --check",
-    "test:a11y": "playwright test --config playwright.config.ts accessibility-journey.spec.ts stationary-navigation.spec.ts stationary-completion-journey.spec.ts",
-    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:a11y": "OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test --config playwright.config.ts accessibility-journey.spec.ts stationary-navigation.spec.ts stationary-completion-journey.spec.ts",
+    "test:e2e": "OPEN_TRIAGE_E2E_SERVER_MODE=false playwright test --config playwright.config.ts && OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test --config playwright.config.ts",
     "test:e2e:critical": "playwright test --config playwright.critical.config.ts",
     "test:deployment": "playwright test --config playwright.deployment.config.ts",
     "typecheck": "tsc --noEmit"
