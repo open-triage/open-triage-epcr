@@ -15,10 +15,10 @@ async function bootstrap() {
   }
   app.set("trust proxy", trustProxyHops);
   app.use(securityHeaders);
-  // A fully populated canonical encounter currently produces a draft command
-  // around 175 KB. Keep a bounded limit, but make it large enough for a whole
+  // A canonical photo or fully populated encounter can produce a large command.
+  // Keep one bounded JSON limit large enough for a normalized 2560 px JPEG or whole
   // NEMSIS document mutation rather than Express's 100 KB default.
-  app.useBodyParser("json", { limit: "1mb" });
+  app.useBodyParser("json", { limit: "64mb" });
   app.useBodyParser("urlencoded", { limit: "1mb", extended: true });
   app.setGlobalPrefix("api");
   app.enableCors({

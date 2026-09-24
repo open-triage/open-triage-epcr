@@ -1,25 +1,27 @@
-import type { ReportTextNote } from "@open-triage/contracts";
+import type { ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { useId, useState } from "react";
 import { DEMO_FALLBACK_DATE } from "../app/demo-provenance";
 import { encounterEventDetail, encounterEventPresentation, type EncounterEvent } from "../app/standard-encounter";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { validateProcedure } from "../app/procedure";
-import { reportTextNoteExcerpt, type NativeTextNoteTimelineItem } from "../app/report-text-notes";
+import { reportTextNoteExcerpt, type NativePhotoNoteTimelineItem, type NativeTextNoteTimelineItem } from "../app/report-text-notes";
+import { AuthorizedPhotoImage } from "./photo-note";
 
-export type EncounterTimelineItem = (EncounterEvent & { readonly sortTime: string }) | NativeTextNoteTimelineItem;
+export type EncounterTimelineItem = (EncounterEvent & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem;
 export type EncounterTimelineFilter = "all" | "notes";
 
 export function filterEncounterTimeline(events: ReadonlyArray<EncounterTimelineItem>, filter: EncounterTimelineFilter): ReadonlyArray<EncounterTimelineItem> {
-  return filter === "notes" ? events.filter(({ kind }) => kind === "text-note") : events;
+  return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note") : events;
 }
 
-export function EncounterTimeline({ events, validationStatuses, definition, headingId, className, onOpenTextNote, onOpenEvent }: {
+export function EncounterTimeline({ events, validationStatuses, definition, headingId, className, onOpenTextNote, onOpenPhoto, onOpenEvent }: {
   readonly events: ReadonlyArray<EncounterTimelineItem>;
   readonly validationStatuses: ReadonlyMap<string, "warning" | "error">;
   readonly definition: EncounterDefinition;
   readonly headingId: string;
   readonly className?: string;
   readonly onOpenTextNote: (note: ReportTextNote, trigger: HTMLElement) => void;
+  readonly onOpenPhoto: (note: ReportPhotoNote, trigger: HTMLElement) => void;
   readonly onOpenEvent: (event: EncounterEvent, trigger: HTMLElement) => void;
 }) {
   const [filter, setFilter] = useState<EncounterTimelineFilter>("all");
@@ -39,6 +41,17 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
     </div>
     {visibleEvents.length === 0 ? <p className="timeline-empty">{filter === "notes" ? "No notes have been added." : "No timeline events are available."}</p> : <ol className="timeline-list">
       {visibleEvents.map((event) => {
+        if (event.kind === "photo-note") {
+          return <li key={event.id} className="editable-event photo-note-event">
+            <time dateTime={event.note.capturedAt}>{event.time}</time>
+            <span className="event-dot validation-clear" role="img" aria-label="Photo note ready" />
+            <button aria-label={`Open photo note at ${event.time} by ${event.note.author.displayName}. ${event.note.caption ?? "No caption"}`} className="timeline-event-button photo-timeline-button" type="button" onClick={(clickEvent) => onOpenPhoto(event.note, clickEvent.currentTarget)}>
+              <AuthorizedPhotoImage reportId={event.note.reportId} noteId={event.note.id} alt="" className="photo-thumbnail" />
+              <span className="photo-timeline-copy"><span className="event-title">Photo note</span><span className="event-detail">{event.note.caption || "No caption"}</span>
+                <small>{event.note.author.displayName} · Ready · Open photo</small></span>
+            </button>
+          </li>;
+        }
         if (event.kind === "text-note") {
           const excerpt = reportTextNoteExcerpt(event.note.content);
           return <li key={event.id} className="editable-event text-note-event">

@@ -37,6 +37,7 @@ createServer(async (request, response) => {
     response.writeHead(200, {
       "content-length": file.size,
       "content-type": contentTypes[extname(filePath)] ?? "application/octet-stream",
+      "permissions-policy": "camera=(self), microphone=(), geolocation=()",
     });
     createReadStream(filePath).pipe(response);
   } catch {

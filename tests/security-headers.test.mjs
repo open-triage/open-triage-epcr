@@ -47,7 +47,7 @@ test("generated nginx config contains the restrictive CSP and browser hardening 
   assert.match(output, /frame-ancestors 'none'/);
   assert.match(output, /add_header X-Content-Type-Options "nosniff" always/);
   assert.match(output, /add_header Referrer-Policy "strict-origin-when-cross-origin" always/);
-  assert.match(output, /add_header Permissions-Policy "camera=\(\), microphone=\(\), geolocation=\(\)" always/);
+  assert.match(output, /add_header Permissions-Policy "camera=\(self\), microphone=\(\), geolocation=\(\)" always/);
   assert.match(output, /add_header X-Frame-Options "DENY" always/);
 });
 

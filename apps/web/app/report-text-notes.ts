@@ -1,3 +1,5 @@
+import type { ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
+
 export const REPORT_TEXT_NOTE_MAX_CHARACTERS = 10_000;
 const UNSAFE_CONTROL_CHARACTER = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\p{Cf}]/u;
 
@@ -35,6 +37,15 @@ export type NativeTextNoteTimelineItem = {
   readonly note: ReportTextNote;
 };
 
+export type NativePhotoNoteTimelineItem = {
+  readonly id: string;
+  readonly kind: "photo-note";
+  readonly date: string;
+  readonly time: string;
+  readonly sortTime: string;
+  readonly note: ReportPhotoNote;
+};
+
 function noteTimelineTime(capturedAt: string, agencyTimeZone?: string): { date: string; time: string } {
   const parts = new Intl.DateTimeFormat("sv-SE", {
     ...(agencyTimeZone ? { timeZone: agencyTimeZone } : {}),
@@ -46,21 +57,20 @@ function noteTimelineTime(capturedAt: string, agencyTimeZone?: string): { date: 
 
 export function completeReportTimeline<T extends { readonly id: string; readonly date?: string; readonly time: string; readonly dateTime?: string }>(
   structuredEvents: ReadonlyArray<T>,
-  notes: ReadonlyArray<ReportTextNote>,
+  notes: ReadonlyArray<ReportNote>,
   agencyTimeZone?: string,
-): ReadonlyArray<(T & { readonly sortTime: string }) | NativeTextNoteTimelineItem> {
+): ReadonlyArray<(T & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem> {
   const structured = structuredEvents.map((event) => ({
     ...event,
     sortTime: event.dateTime ?? `${event.date ?? "1970-01-01"}T${event.time}:00`,
   }));
-  const nativeNotes = notes.map((note): NativeTextNoteTimelineItem => ({
+  const nativeNotes = notes.map((note): NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem => ({
     id: note.id,
-    kind: "text-note",
+    kind: note.type === "text" ? "text-note" : "photo-note",
     ...noteTimelineTime(note.capturedAt, agencyTimeZone),
     sortTime: note.capturedAt,
     note,
-  }));
+  } as NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem));
   return [...structured, ...nativeNotes]
     .sort((a, b) => Date.parse(b.sortTime) - Date.parse(a.sortTime) || b.id.localeCompare(a.id));
 }
-import type { ReportTextNote } from "@open-triage/contracts";

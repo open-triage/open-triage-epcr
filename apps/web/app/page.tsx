@@ -33,7 +33,7 @@ import {
   dispatchCancellationNotice,
   updateReportTextNote,
 } from "./draft-report";
-import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue, ReportTextNote } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue, ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
@@ -49,6 +49,7 @@ import { holdProtectedReportForCompletion } from "./protected-clinical-storage";
 import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote } from "./report-text-notes";
 import { EncounterTimeline } from "../components/encounter-timeline";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
+import { PhotoNoteDialog } from "../components/photo-note";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -101,8 +102,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const [signError, setSignError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
-  const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportTextNote>>(report?.notes ?? []);
+  const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportNote>>(report?.notes ?? []);
   const [textNoteDraft, setTextNoteDraft] = useState<TextNoteDraft | null>(null);
+  const [photoDialog, setPhotoDialog] = useState<ReportPhotoNote | "new" | null>(null);
+  const [photoExpectedRevision, setPhotoExpectedRevision] = useState(0);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
@@ -155,6 +158,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   });
   useEffect(() => {
     queueMicrotask(() => {
+      setPhotoDialog(null);
       setReportNotes(report?.notes ?? []);
       setTextNoteDraft(null);
     });
@@ -182,7 +186,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const activeDialog = textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
   const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
     ? { severity: editingFinding.severity, message: editingFinding.message }
@@ -217,7 +221,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "note") {
+    if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
+    else if (activeDialog === "note") {
       setTextNoteDraft(null);
       setNoteError(null);
       setConfirmingNoteDelete(false);
@@ -343,6 +348,21 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     dispatch({ type: "review-finding-selected", id: finding.id });
+  }
+
+  function startPhoto(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
+    setEditingFinding(null);
+    setNoteStatusMessage(null);
+    setPhotoExpectedRevision(revisionRef.current);
+    setPhotoDialog("new");
+  }
+
+  function openPhoto(note: ReportPhotoNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setPhotoExpectedRevision(revisionRef.current);
+    setPhotoDialog(note);
   }
 
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
@@ -568,6 +588,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 
       {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
         {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
+        <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label="Add photo note" title="Photo note" type="button" disabled={!report || !online} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">Photo</span></button>
       </nav>}
 
       {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
@@ -611,6 +632,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         definition={bundledEncounterDefinition}
         headingId="timeline-heading"
         onOpenTextNote={openTextNote}
+        onOpenPhoto={openPhoto}
         onOpenEvent={openTimelineEvent}
       />}
       {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label="Encounter timeline" onKeyDown={(event) => {
@@ -621,9 +643,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         timelineToggle.current?.focus();
       }}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
-          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenEvent={openTimelineEvent} />
+          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenEvent={openTimelineEvent} />
       </aside>}
-
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
@@ -676,6 +697,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </>
       )}
+
+      {photoDialog && report && <PhotoNoteDialog dialogRef={dialog} reportId={report.id}
+        note={photoDialog === "new" ? null : photoDialog} csrfToken={sessionRequestToken(session)} revision={photoExpectedRevision}
+        onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
+        onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(photoDialog === "new" ? "Photo note ready." : "Photo caption ready."); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setPhotoDialog(null); setNoteStatusMessage("Photo note deleted."); }} />}
 
       {textNoteDraft && textNoteValidation && (
         <div className="dialog-backdrop" role="presentation">
