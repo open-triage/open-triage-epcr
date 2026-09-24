@@ -7,7 +7,7 @@ mkdir -p "$output_directory/logs" "$output_directory/pods"
 
 redact() {
   sed --regexp-extended \
-    -e 's#(postgres(ql)?://)[^[:space:]"'"']+#\1[REDACTED]#gI' \
+    -e 's#(postgres(ql)?://)[[:graph:]]+#\1[REDACTED]#gI' \
     -e 's#((password|secret([_-]?key)?|token|private[_-]?key)[=:])[[:graph:]]+#\1[REDACTED]#gI' \
     -e 's#(authorization:[[:space:]]*bearer[[:space:]]+)[[:graph:]]+#\1[REDACTED]#gI'
 }

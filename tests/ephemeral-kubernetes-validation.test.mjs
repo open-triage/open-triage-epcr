@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
 const validatorPath = new URL("../scripts/validate-ephemeral-kubernetes.sh", import.meta.url);
@@ -102,4 +104,20 @@ test("failure artifacts contain cluster events, pod descriptions, and redacted l
   assert.match(diagnostics, /kubectl describe pod/);
   assert.match(diagnostics, /kubectl logs/);
   assert.match(diagnostics, /\[REDACTED\]/);
+
+  const diagnosticsSyntax = spawnSync("bash", ["-n", fileURLToPath(diagnosticsPath)], {
+    encoding: "utf8",
+  });
+  assert.equal(diagnosticsSyntax.status, 0, diagnosticsSyntax.stderr);
+
+  const captureStepStart = workflow.indexOf("      - name: Capture database preparation status");
+  const runMarker = "        run: |\n";
+  const runStart = workflow.indexOf(runMarker, captureStepStart) + runMarker.length;
+  const runEnd = workflow.indexOf("      - name:", runStart);
+  const captureScript = workflow.slice(runStart, runEnd).replace(/^ {10}/gm, "");
+  const captureSyntax = spawnSync("bash", ["-n"], {
+    encoding: "utf8",
+    input: captureScript,
+  });
+  assert.equal(captureSyntax.status, 0, captureSyntax.stderr);
 });

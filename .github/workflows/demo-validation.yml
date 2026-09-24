@@ -915,7 +915,7 @@ jobs:
             > database-preparation-evidence/job.json 2>&1 || true
           kubectl logs "job/$job" --namespace open-triage --all-containers=true \
             --tail=300 --limit-bytes=262144 2>&1 | sed --regexp-extended \
-            -e 's#(postgres(ql)?://)[^[:space:]"'"']+#\1[REDACTED]#gI' \
+            -e 's#(postgres(ql)?://)[[:graph:]]+#\1[REDACTED]#gI' \
             -e 's#((password|secret([_-]?key)?|token|private[_-]?key)[=:])[[:graph:]]+#\1[REDACTED]#gI' \
             -e 's#(authorization:[[:space:]]*bearer[[:space:]]+)[[:graph:]]+#\1[REDACTED]#gI' \
             > database-preparation-evidence/job.log || true
