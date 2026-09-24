@@ -62,6 +62,16 @@ Before the first deployment, operators must provide:
 - the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
   workload Secrets, initialized only with fictional demo data.
 
+The read-only capacity preflight calculates each scheduled active pod using
+Kubernetes scheduling semantics: concurrent application containers are summed,
+sequential init containers contribute their peak, restartable init sidecars
+remain part of the running total, and pod overhead is included. For a deployment
+whose live strategy is explicitly `Recreate`, it then
+credits only the requests of pods in the target namespace that match that
+deployment's selector, because Kubernetes removes those pods before scheduling
+their replacements. It does not credit `RollingUpdate` deployments, unmatched
+pods, terminal pods, or workloads in another namespace.
+
 The fixed automated targets are Helm release `open-triage`, namespace
 `open-triage`, web host `https://demo.opentriage.org`, and API host
 `https://api.demo.opentriage.org`. Changing any of them requires a reviewed

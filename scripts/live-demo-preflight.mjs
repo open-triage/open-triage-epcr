@@ -88,18 +88,73 @@ export function memoryBytes(value = "0") {
   return Number.parseFloat(match[1]) * (units[match[2]] ?? 1);
 }
 
-function podRequests(pod) {
-  const containers = [...(pod.spec?.containers ?? []), ...(pod.spec?.initContainers ?? [])];
-  return containers.reduce(
-    (total, container) => ({
-      cpu: total.cpu + cpuMillis(container.resources?.requests?.cpu),
-      memory: total.memory + memoryBytes(container.resources?.requests?.memory),
-    }),
-    { cpu: 0, memory: 0 },
-  );
+function addRequests(left, right) {
+  return { cpu: left.cpu + right.cpu, memory: left.memory + right.memory };
 }
 
-export function availableCapacity(nodes, pods) {
+function maxRequests(left, right) {
+  return { cpu: Math.max(left.cpu, right.cpu), memory: Math.max(left.memory, right.memory) };
+}
+
+function containerRequests(container) {
+  return {
+    cpu: cpuMillis(container.resources?.requests?.cpu),
+    memory: memoryBytes(container.resources?.requests?.memory),
+  };
+}
+
+/** Mirrors Kubernetes scheduling: app containers run together; ordinary init
+ * containers run sequentially; restartable init sidecars remain active. */
+export function podRequests(pod) {
+  const regular = (pod.spec?.containers ?? []).reduce(
+    (total, container) => addRequests(total, containerRequests(container)),
+    { cpu: 0, memory: 0 },
+  );
+  let restartableInit = { cpu: 0, memory: 0 };
+  let initPeak = { cpu: 0, memory: 0 };
+  for (const container of pod.spec?.initContainers ?? []) {
+    const request = containerRequests(container);
+    if (container.restartPolicy === "Always") {
+      restartableInit = addRequests(restartableInit, request);
+      initPeak = maxRequests(initPeak, restartableInit);
+    } else {
+      initPeak = maxRequests(initPeak, addRequests(restartableInit, request));
+    }
+  }
+  const scheduled = maxRequests(addRequests(regular, restartableInit), initPeak);
+  return addRequests(scheduled, {
+    cpu: cpuMillis(pod.spec?.overhead?.cpu),
+    memory: memoryBytes(pod.spec?.overhead?.memory),
+  });
+}
+
+function labelsMatch(selector = {}, labels = {}) {
+  return Object.entries(selector).every(([name, value]) => labels[name] === value);
+}
+
+/**
+ * Recreate deployments terminate their selected pods before scheduling replacements.
+ * Those requests are therefore available to the rollout, unlike requests owned by
+ * RollingUpdate deployments or unrelated workloads.
+ */
+export function recreateDeploymentCapacity(pods, deployments, namespace) {
+  const recreateSelectors = deployments.items
+    .filter((deployment) => deployment.metadata?.namespace === namespace
+      && deployment.spec?.strategy?.type === "Recreate")
+    .map((deployment) => deployment.spec?.selector?.matchLabels ?? {})
+    .filter((selector) => Object.keys(selector).length > 0);
+  return pods.items
+    .filter((pod) => pod.metadata?.namespace === namespace
+      && pod.spec?.nodeName
+      && !["Succeeded", "Failed"].includes(pod.status?.phase)
+      && recreateSelectors.some((selector) => labelsMatch(selector, pod.metadata?.labels)))
+    .reduce((total, pod) => {
+      const request = podRequests(pod);
+      return { cpu: total.cpu + request.cpu, memory: total.memory + request.memory };
+    }, { cpu: 0, memory: 0 });
+}
+
+export function availableCapacity(nodes, pods, { deployments = { items: [] }, namespace } = {}) {
   const allocatable = nodes.items
     .filter((node) => !node.spec?.unschedulable)
     .reduce(
@@ -115,7 +170,13 @@ export function availableCapacity(nodes, pods) {
       const request = podRequests(pod);
       return { cpu: total.cpu + request.cpu, memory: total.memory + request.memory };
     }, { cpu: 0, memory: 0 });
-  return { cpu: allocatable.cpu - requested.cpu, memory: allocatable.memory - requested.memory };
+  const reclaimable = namespace
+    ? recreateDeploymentCapacity(pods, deployments, namespace)
+    : { cpu: 0, memory: 0 };
+  return {
+    cpu: allocatable.cpu - requested.cpu + reclaimable.cpu,
+    memory: allocatable.memory - requested.memory + reclaimable.memory,
+  };
 }
 
 export function rolloutConflicts(jobs, cronJobs, now = Date.now()) {
@@ -243,7 +304,8 @@ async function runPreflight(args) {
   checks.push(check("capacity", () => {
     const nodes = json(kubectl, ["get", "nodes", "--output=json"]);
     const pods = json(kubectl, ["get", "pods", "--all-namespaces", "--output=json"]);
-    const available = availableCapacity(nodes, pods);
+    const deployments = json(kubectl, ["get", "deployments", "--namespace", namespace, "--output=json"]);
+    const available = availableCapacity(nodes, pods, { deployments, namespace });
     const requiredCpu = Number(process.env.PREFLIGHT_REQUIRED_CPU_M ?? 210);
     const requiredMemory = Number(process.env.PREFLIGHT_REQUIRED_MEMORY_BYTES ?? 608 * 2 ** 20);
     if (available.cpu < requiredCpu || available.memory < requiredMemory) {
