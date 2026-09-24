@@ -13,6 +13,9 @@ COPY packages/contracts packages/contracts
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 
 FROM node:22-bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
 ENV NODE_ENV=production

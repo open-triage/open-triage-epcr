@@ -481,7 +481,7 @@ input, select, textarea { touch-action: manipulation; }
 .event-title { font-size: var(--text-control); line-height: 1.25; font-weight: 650; }
 .event-detail { color: var(--muted); font-size: var(--text-body); line-height: 1.35; }
 .warning-pill { justify-self: start; padding: 3px 7px; border: 1px solid #b27a12; border-radius: 999px; color: #754d00; background: #fff8dd; font-size: var(--text-caption); font-weight: 750; }
-.quick-actions { position: sticky; z-index: 18; top: 38px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; width: 100%; margin: 0; padding: 8px 10px; border-block: 1px solid var(--line); background: rgb(251 251 249 / 96%); backdrop-filter: blur(10px); }
+.quick-actions { position: sticky; z-index: 18; top: 38px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; width: 100%; margin: 0; padding: 8px 10px; border-block: 1px solid var(--line); background: rgb(251 251 249 / 96%); backdrop-filter: blur(10px); }
 .quick-actions button { --icon-surface: #fff; --icon-accent: #202320; display: grid; align-content: center; min-width: 0; min-height: 64px; aspect-ratio: 1.12 / 1; gap: 3px; place-items: center; padding: 4px 2px; border: 2px solid #c9cbc5; border-radius: 10px; color: #202320; background: white; cursor: pointer; }
 .quick-actions button:hover { --icon-surface: #edf6f0; --icon-accent: #005f2e; border-color: #7bad8c; color: var(--green-dark); background: #edf6f0; }
 .quick-actions button.active { --icon-surface: var(--green); --icon-accent: #004d25; border-color: var(--green); color: white; background: var(--green); }
@@ -759,3 +759,21 @@ input, select, textarea { touch-action: manipulation; }
 .photo-timeline-copy { display: grid; min-width: 0; }
 .photo-loading, .photo-unavailable { display: grid; min-height: 58px; place-items: center; color: var(--muted); font-size: var(--text-caption); }
 @media (prefers-reduced-motion: reduce) { .photo-preview-frame img { transition: none; } }
+.audio-action-icon { position: relative; display: block; width: 18px; height: 26px; border: 2px solid currentColor; border-radius: 10px; }
+.audio-action-icon::before { position: absolute; right: -7px; bottom: -5px; left: -7px; height: 14px; border: 2px solid currentColor; border-top: 0; border-radius: 0 0 12px 12px; content: ""; }
+.audio-action-icon::after { position: absolute; bottom: -9px; left: 7px; width: 2px; height: 5px; background: currentColor; content: ""; }
+.audio-note-dialog { height: min(150vw, 680px, calc(100dvh - max(16px, env(safe-area-inset-top)))); }
+.audio-purpose { padding: 10px 12px; border-left: 4px solid #916700; color: #513d08; background: #fff8dd; font-size: var(--text-caption); line-height: 1.4; }
+.audio-capture-stage, .audio-preview { display: grid; gap: 14px; min-height: 190px; place-items: center; align-content: center; margin-top: 14px; padding: 20px; border-radius: 10px; background: #eef3ef; text-align: center; }
+.audio-capture-stage > button, .audio-preview > button, .audio-playback-control > button { min-height: 48px; padding: 0 18px; border: 1px solid var(--green); border-radius: 6px; color: #fff; background: var(--green); font-weight: 750; cursor: pointer; }
+.microphone-icon { width: 34px; height: 50px; border: 3px solid var(--green-dark); border-radius: 18px; }
+.audio-timer { font-size: 2rem; font-variant-numeric: tabular-nums; }
+.audio-level { width: min(280px, 100%); height: 18px; overflow: hidden; border: 1px solid #8d948c; border-radius: 9px; background: #fff; }
+.audio-level > span { display: block; height: 100%; background: var(--green); transition: width 80ms linear; }
+.audio-warning { margin: 0; color: #7d280f; font-weight: 800; }
+.audio-preview audio { display: none; }
+.audio-timeline-content { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.audio-playback-control { display: grid; gap: 3px; justify-items: center; }
+.audio-playback-control .timeline-audio-action { min-width: 68px; min-height: 44px; padding: 0 10px; }
+.audio-playback-control small { color: #9b2c25; }
+@media (prefers-reduced-motion: reduce) { .audio-level > span { transition: none; } }

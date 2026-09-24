@@ -1,20 +1,22 @@
-import type { ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
+import type { ReportAudioNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { useId, useState } from "react";
 import { DEMO_FALLBACK_DATE } from "../app/demo-provenance";
 import { encounterEventDetail, encounterEventPresentation, type EncounterEvent } from "../app/standard-encounter";
 import type { EncounterDefinition } from "../app/encounter-definition";
 import { validateProcedure } from "../app/procedure";
-import { reportTextNoteExcerpt, type NativePhotoNoteTimelineItem, type NativeTextNoteTimelineItem } from "../app/report-text-notes";
+import { formatAudioDuration } from "../app/report-audio-notes";
+import { reportTextNoteExcerpt, type NativeAudioNoteTimelineItem, type NativePhotoNoteTimelineItem, type NativeTextNoteTimelineItem } from "../app/report-text-notes";
 import { AuthorizedPhotoImage } from "./photo-note";
+import { AuthorizedAudioButton } from "./audio-note";
 
-export type EncounterTimelineItem = (EncounterEvent & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem;
+export type EncounterTimelineItem = (EncounterEvent & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem;
 export type EncounterTimelineFilter = "all" | "notes";
 
 export function filterEncounterTimeline(events: ReadonlyArray<EncounterTimelineItem>, filter: EncounterTimelineFilter): ReadonlyArray<EncounterTimelineItem> {
-  return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note") : events;
+  return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note" || kind === "audio-note") : events;
 }
 
-export function EncounterTimeline({ events, validationStatuses, definition, headingId, className, onOpenTextNote, onOpenPhoto, onOpenEvent }: {
+export function EncounterTimeline({ events, validationStatuses, definition, headingId, className, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
   readonly events: ReadonlyArray<EncounterTimelineItem>;
   readonly validationStatuses: ReadonlyMap<string, "warning" | "error">;
   readonly definition: EncounterDefinition;
@@ -22,6 +24,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
   readonly className?: string;
   readonly onOpenTextNote: (note: ReportTextNote, trigger: HTMLElement) => void;
   readonly onOpenPhoto: (note: ReportPhotoNote, trigger: HTMLElement) => void;
+  readonly onOpenAudio: (note: ReportAudioNote, trigger: HTMLElement) => void;
   readonly onOpenEvent: (event: EncounterEvent, trigger: HTMLElement) => void;
 }) {
   const [filter, setFilter] = useState<EncounterTimelineFilter>("all");
@@ -50,6 +53,21 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
               <span className="photo-timeline-copy"><span className="event-title">Photo note</span><span className="event-detail">{event.note.caption || "No caption"}</span>
                 <small>{event.note.author.displayName} · Ready · Open photo</small></span>
             </button>
+          </li>;
+        }
+        if (event.kind === "audio-note") {
+          const duration = formatAudioDuration(event.note.durationMilliseconds);
+          return <li key={event.id} className="editable-event audio-note-event">
+            <time dateTime={event.note.capturedAt}>{event.time}</time>
+            <span className="event-dot validation-clear" role="img" aria-label="Audio note ready" />
+            <div className="audio-timeline-content">
+              <button aria-label={`Open audio note at ${event.time} by ${event.note.author.displayName}. ${duration}. ${event.note.caption ?? "No caption"}`}
+                className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenAudio(event.note, clickEvent.currentTarget)}>
+                <span className="event-title">Audio note · {duration}</span><span className="event-detail">{event.note.caption || "No caption"}</span>
+                <small>{event.note.author.displayName} · Ready · Open audio</small>
+              </button>
+              <AuthorizedAudioButton reportId={event.note.reportId} noteId={event.note.id} label={`Play audio note, ${duration}`} className="timeline-audio-action" />
+            </div>
           </li>;
         }
         if (event.kind === "text-note") {

@@ -50,7 +50,7 @@ test("photo creation reserves aggregate quota while the report row is locked and
     statements.push({ sql, parameters });
     if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 4, report_media_allowance_bytes: 10_000 }];
     if (/select \* from clinical\.command_receipt/.test(sql)) return [];
-    if (/coalesce\(sum\(byte_size\)/.test(sql)) return [{ used_bytes: 100 }];
+    if (/as used_bytes/.test(sql)) return [{ used_bytes: 100 }];
     if (/from clinical\.report_note note/.test(sql)) return [];
     if (/from clinical\.report_photo_note note/.test(sql)) return [{
       id: noteId, report_id: reportId, caption: "Scene", captured_at: "2026-09-24T12:00:00Z",
@@ -87,7 +87,7 @@ test("aggregate quota rejection occurs before either metadata or bytes are inser
     statements.push({ sql, parameters });
     if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 1, report_media_allowance_bytes: bytes.length }];
     if (/select \* from clinical\.command_receipt/.test(sql)) return [];
-    if (/coalesce\(sum\(byte_size\)/.test(sql)) return [{ used_bytes: 1 }];
+    if (/as used_bytes/.test(sql)) return [{ used_bytes: 1 }];
     return [];
   } };
   const service = new ReportPhotoService({ transaction: async (_isolation, work) => work(manager) }, {

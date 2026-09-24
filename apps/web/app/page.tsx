@@ -7,7 +7,7 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
+import type { QuickActionId } from "./encounter-definition";
 import {
   INITIAL_SHELL_STATE,
   MISSING_VITALS_FINDING_ID,
@@ -33,7 +33,7 @@ import {
   dispatchCancellationNotice,
   updateReportTextNote,
 } from "./draft-report";
-import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue, ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue, ReportAudioNote, ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
@@ -50,6 +50,7 @@ import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReport
 import { EncounterTimeline } from "../components/encounter-timeline";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
+import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -67,12 +68,12 @@ const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "checklist", label: "Checklist" },
 ];
 
-const quickActionText: Record<QuickActionId, string> = {
+const quickActionText = {
   vitals: "Vitals",
   medication: "Medications",
   procedure: "Procedures",
-  note: "Text note",
-};
+} as const;
+const structuredQuickActions = ["vitals", "medication", "procedure"] as const;
 
 function localClinicalTime(): string {
   const now = new Date();
@@ -106,6 +107,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const [textNoteDraft, setTextNoteDraft] = useState<TextNoteDraft | null>(null);
   const [photoDialog, setPhotoDialog] = useState<ReportPhotoNote | "new" | null>(null);
   const [photoExpectedRevision, setPhotoExpectedRevision] = useState(0);
+  const [audioDialog, setAudioDialog] = useState<ReportAudioNote | "new" | null>(null);
+  const [audioExpectedRevision, setAudioExpectedRevision] = useState(0);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
@@ -159,6 +162,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   useEffect(() => {
     queueMicrotask(() => {
       setPhotoDialog(null);
+      setAudioDialog(null);
+      stopActiveAudio();
       setReportNotes(report?.notes ?? []);
       setTextNoteDraft(null);
     });
@@ -186,7 +191,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const activeDialog = photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = audioDialog ? "audio" : photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
   const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
     ? { severity: editingFinding.severity, message: editingFinding.message }
@@ -221,7 +226,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
+    if (activeDialog === "audio") { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    else if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
     else if (activeDialog === "note") {
       setTextNoteDraft(null);
       setNoteError(null);
@@ -363,6 +369,21 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     setEditingFinding(null);
     setPhotoExpectedRevision(revisionRef.current);
     setPhotoDialog(note);
+  }
+
+  function startAudio(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
+    setEditingFinding(null);
+    setNoteStatusMessage(null);
+    setAudioExpectedRevision(revisionRef.current);
+    setAudioDialog("new");
+  }
+
+  function openAudio(note: ReportAudioNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setAudioExpectedRevision(revisionRef.current);
+    setAudioDialog(note);
   }
 
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
@@ -587,8 +608,12 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       </header>
 
       {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
+        {structuredQuickActions.map((id) => <button key={id} className={activeDialog === id ? "active" : undefined} aria-pressed={activeDialog === id}
+          title={id === "vitals" ? "Vital signs" : id === "medication" ? "Medication" : "Procedure"} aria-label={`Add ${id === "vitals" ? "vital signs" : id}`}
+          type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{quickActionText[id]}</span></button>)}
+        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label="Text note" title="Text note" type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">Text</span></button>
         <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label="Add photo note" title="Photo note" type="button" disabled={!report || !online} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">Photo</span></button>
+        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label="Add audio note" title="Spoken-audio note" type="button" disabled={!report || !online} onClick={startAudio}><span className="audio-action-icon" aria-hidden="true" /><span aria-hidden="true">Audio</span></button>
       </nav>}
 
       {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
@@ -633,6 +658,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         headingId="timeline-heading"
         onOpenTextNote={openTextNote}
         onOpenPhoto={openPhoto}
+        onOpenAudio={openAudio}
         onOpenEvent={openTimelineEvent}
       />}
       {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label="Encounter timeline" onKeyDown={(event) => {
@@ -643,7 +669,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         timelineToggle.current?.focus();
       }}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
-          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenEvent={openTimelineEvent} />
+          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </aside>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
@@ -704,6 +730,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
           .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(photoDialog === "new" ? "Photo note ready." : "Photo caption ready."); }}
         onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setPhotoDialog(null); setNoteStatusMessage("Photo note deleted."); }} />}
+
+      {audioDialog && report && <AudioNoteDialog dialogRef={dialog} reportId={report.id}
+        note={audioDialog === "new" ? null : audioDialog} csrfToken={sessionRequestToken(session)} revision={audioExpectedRevision}
+        onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
+        onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(audioDialog === "new" ? "Audio note ready." : "Audio caption ready."); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setAudioDialog(null); setNoteStatusMessage("Audio note deleted."); }} />}
 
       {textNoteDraft && textNoteValidation && (
         <div className="dialog-backdrop" role="presentation">
