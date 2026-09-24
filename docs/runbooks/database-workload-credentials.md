@@ -11,7 +11,7 @@ evidence.
 | Workload | Portable role | Allowed contract | Kubernetes Secret |
 | --- | --- | --- | --- |
 | API | `open_triage_api_runtime` | Runtime application schemas; no `analytics_private` or `operations`; no DDL or role/grant authority | `open-triage-api-database` |
-| Database preparation | installation migration owner | Forward-only schema and disposable-demo fixture preparation; present only in the explicit pre-rollout Job | `open-triage-migration-database` |
+| Migration hook | installation migration owner | Forward-only schema changes; present only in the short-lived pre-rollout Job | `open-triage-migration-database` |
 | Analytics projector | `open_triage_analytics_projector` | Projection queue, private projection tables, and the identified signed source needed to build the documented analytical contracts | `open-triage-analytics-projector-database` |
 | Analytics health | `open_triage_analytics_health` | Aggregate `operations.projection_health` view only | `open-triage-analytics-health-database` |
 | Retention/purge | `open_triage_retention` | Approved retention functions and synthetic purge function | `open-triage-retention-database` |
@@ -40,7 +40,7 @@ or migration Secret when that gateway is installed.
    old login yet.
 3. Roll only the affected Deployment, CronJob, or external gateway. For the
    migration credential, update the Secret between releases and confirm no
-   database-preparation Job is running before rotation.
+   migration Job is running before rotation.
 4. Verify readiness or run one successful scheduled Job, and confirm new
    connections use the new credential identifier.
 5. Allow at most 24 hours of overlap for connection drain (normally one rollout

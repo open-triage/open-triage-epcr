@@ -1,4 +1,4 @@
-FROM node:22.23.3-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS build
+FROM node:22-bookworm-slim AS build
 
 WORKDIR /workspace
 ARG NEXT_PUBLIC_API_URL
@@ -22,7 +22,7 @@ COPY deploy/docker/generate-nginx-config.mjs deploy/docker/generate-nginx-config
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web
 RUN node deploy/docker/generate-nginx-config.mjs deploy/docker/nginx.conf apps/web/out /tmp/nginx.conf
 
-FROM nginx:1.29.8-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+FROM nginx:1.29-alpine
 COPY --from=build /tmp/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/apps/web/out /usr/share/nginx/html
 EXPOSE 80

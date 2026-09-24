@@ -7,7 +7,6 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { assertScratchDatabaseTarget } from "./lib/scale-test-guard.mjs";
-import { evaluateScaleThreshold } from "./lib/scale-performance-policy.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,14 +65,11 @@ adminUrl.pathname = "/postgres";
 const admin = new pg.Client({ connectionString: adminUrl.toString(), application_name: "open-triage-scale-setup" });
 let adminConnected = false;
 let client;
-let scaleFailure;
 
 async function bootstrapProductionDatabase() {
   await admin.connect();
   adminConnected = true;
-  const owner = (await admin.query("select current_user")).rows[0]?.current_user;
-  if (!owner) throw new Error("scale validation could not determine its scratch database owner");
-  await admin.query(`create database ${quoteIdentifier(scratchDatabaseName)} with owner ${quoteIdentifier(owner)} template template0`);
+  await admin.query(`create database ${quoteIdentifier(scratchDatabaseName)}`);
   const environment = {
     ...process.env,
     DATABASE_URL: scratchDatabaseUrl,
@@ -265,7 +261,10 @@ async function sample(sql, parameters) {
 }
 
 function thresholdResult(name, observed, comparator, evidence) {
-  return evaluateScaleThreshold(policy, options.profile, name, observed, comparator, evidence);
+  const threshold = policy.thresholds[name];
+  const passed = comparator === "max" ? observed <= threshold : observed >= threshold;
+  return { name, status: passed ? "pass" : "fail", observed, comparator, threshold, evidence,
+    followUp: passed ? null : `Investigate ${name}; the approved target remains unchanged.` };
 }
 
 try {
@@ -393,7 +392,7 @@ try {
   const result = {
     schemaVersion: 2, policyVersion: policy.policyVersion,
     policySha256: createHash("sha256").update(policyText).digest("hex"), executedAt: new Date().toISOString(),
-    profile: options.profile, databaseLane: process.env.DATABASE_TEST_LANE ?? "scale-validation",
+    profile: options.profile,
     runClassification: options.profile === "production" ? "production-scale" : "resource-bounded-representative",
     environment: { ...environment, scratchDatabase: scratchDatabaseName }, configuration: profile,
     distribution: { reports: schema.wide_rows, onlineYears: profile.years,
@@ -425,15 +424,6 @@ try {
     pending: thresholdResults.filter((item) => item.status.startsWith("pending")).length,
     output: options.output }));
   if (result.overallStatus === "failed") process.exitCode = 1;
-} catch (error) {
-  scaleFailure = error;
 } finally {
-  try {
-    await removeScratchDatabase();
-  } catch (cleanupFailure) {
-    if (!scaleFailure) throw cleanupFailure;
-    console.error(JSON.stringify({ event: "scale_database_cleanup_failed", lane: process.env.DATABASE_TEST_LANE ?? "scale-validation",
-      message: cleanupFailure.message }));
-  }
+  await removeScratchDatabase();
 }
-if (scaleFailure) throw scaleFailure;

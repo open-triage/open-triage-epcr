@@ -27,19 +27,6 @@ if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
 
 const integrationTest = databaseUrl ? test : test.skip;
 
-async function causalSubtest(parent, name, operation) {
-  let firstFailure;
-  await parent.test(name, async (context) => {
-    try {
-      return await operation(context);
-    } catch (error) {
-      firstFailure = error;
-      throw error;
-    }
-  });
-  if (firstFailure) throw firstFailure;
-}
-
 async function rejectsSql(client, sql, params, expectedCode) {
   await client.query("savepoint expected_failure");
   try {
@@ -87,7 +74,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     await grantRoleForTesting(client, role);
   }
 
-  await causalSubtest(t, "keeps workload database roles inside their approved privilege contracts", async () => {
+  await t.test("keeps workload database roles inside their approved privilege contracts", async () => {
     await client.query("begin");
     try {
       await client.query("set local role open_triage_api_runtime");
@@ -153,7 +140,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "enforces role-resolved authorization invariants", async () => {
+  await t.test("enforces role-resolved authorization invariants", async () => {
     const capabilityKeys = (await client.query(
       "select key from app_identity.capability order by key"
     )).rows.map(({ key }) => key);
@@ -297,7 +284,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "retires roles atomically and reconstructs reactivation without restoring assignments", async () => {
+  await t.test("retires roles atomically and reconstructs reactivation without restoring assignments", async () => {
     const organizationId = randomUUID();
     const actorId = randomUUID();
     const assigneeId = randomUUID();
@@ -419,7 +406,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   assert.deepEqual(identitiesAfterReplay.rows, identitiesBeforeReplay.rows);
   assert.deepEqual(definitionsAfterReplay.rows, definitionsBeforeReplay.rows);
 
-  await causalSubtest(t, "loads the checksummed catalog with complete, unique analytical mappings", async () => {
+  await t.test("loads the checksummed catalog with complete, unique analytical mappings", async () => {
     const result = await client.query(`
       select
         count(*) filter (where e.group_path @> array['PatientCareReportGroup'])::integer as patient_care_elements,
@@ -443,7 +430,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.match(release.rows[0].artifact_sha256, /^[a-f0-9]{64}$/);
   });
 
-  await causalSubtest(t, "rejects incompatible datatypes while reusing stable element identities", async () => {
+  await t.test("rejects incompatible datatypes while reusing stable element identities", async () => {
     await client.query("begin");
     try {
       const existing = await client.query(`
@@ -472,7 +459,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "enforces UUID, typed-value, and immutability constraints", async () => {
+  await t.test("enforces UUID, typed-value, and immutability constraints", async () => {
     await client.query("begin");
     try {
       const organizationId = "10000000-0000-4000-8000-000000000001";
@@ -532,7 +519,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "retains immutable dispatch receipts with tenant and source isolation", async () => {
+  await t.test("retains immutable dispatch receipts with tenant and source isolation", async () => {
     await client.query("begin");
     try {
       const organizationA = "11000000-0000-4000-8000-000000000001";
@@ -620,7 +607,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "classifies repeating-group time and provisions range partitions", async () => {
+  await t.test("classifies repeating-group time and provisions range partitions", async () => {
     const mappings = await client.query(`
       select resolution, count(*)::integer as count
       from catalog.repeating_group_time_mapping
@@ -637,7 +624,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     assert.deepEqual(partitions.rows[0], { annual: true, monthly: true });
   });
 
-  await causalSubtest(t, "keeps private analytics isolated and grants portable database roles", async () => {
+  await t.test("keeps private analytics isolated and grants portable database roles", async () => {
     const grants = await client.query(`
       select
         has_table_privilege('open_triage_analyst', 'analytics.epcr', 'select') as analyst_view,
@@ -667,7 +654,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
   });
 
-  await causalSubtest(t, "bootstraps only production-equivalent demonstration accounts and preserves later administration", async () => {
+  await t.test("bootstraps only production-equivalent demonstration accounts and preserves later administration", async () => {
     const bootstrap = path.join(packageRoot, "scripts/bootstrap-synthetic-installation.mjs");
     const environment = { ...process.env, DATABASE_URL: databaseUrl };
     await client.query(`insert into app_identity.organization
@@ -775,7 +762,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     [SYNTHETIC_DEMO_FIXTURE.organizationId, releaseId, SYNTHETIC_DEMO_FIXTURE.userId]);
   });
 
-  await causalSubtest(t, "keeps recovered browsers' ciphertext checkpoints independent", async () => {
+  await t.test("keeps recovered browsers' ciphertext checkpoints independent", async () => {
     await client.query("begin");
     try {
       const reportId = "32000000-0000-4000-8000-00000000000e";
@@ -840,7 +827,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "lets the API discard an authorized synthetic draft without retention authority", async () => {
+  await t.test("lets the API discard an authorized synthetic draft without retention authority", async () => {
     await client.query("begin");
     try {
       const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
@@ -905,7 +892,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "activation cannot rewrite an older report's configuration pins", async () => {
+  await t.test("activation cannot rewrite an older report's configuration pins", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";
     const original = (await client.query(`select organization_id, incident_id, patient_id,
       agency_demographic_version_id, form_version_id, catalog_release_id, documenting_user_id
@@ -947,7 +934,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "isolates live unsigned work and immutable report history by role", async () => {
+  await t.test("isolates live unsigned work and immutable report history by role", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";
     const incidentId = "32000000-0000-4000-8000-00000000000c";
     const clinicianId = SYNTHETIC_DEMO_FIXTURE.userId;
@@ -1033,7 +1020,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
-  await causalSubtest(t, "projects one signed report from the outbox into lossless analyst contracts", async (projectionTest) => {
+  await t.test("projects one signed report from the outbox into lossless analyst contracts", async (projectionTest) => {
     const ids = {
       report: "36000000-0000-4000-8000-000000000001",
       incident: "36000000-0000-4000-8000-000000000002",
@@ -1651,7 +1638,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     assert.equal(JSON.parse(healthy.stdout).healthy, true);
 
-    await causalSubtest(projectionTest, "verifies recovery, replica roles, and metadata-only query auditing", async () => {
+    await projectionTest.test("verifies recovery, replica roles, and metadata-only query auditing", async () => {
       const recoveryBefore = (await client.query("select * from operations.recovery_readiness")).rows[0];
       assert.deepEqual({
         missing_snapshot_count: Number(recoveryBefore.missing_snapshot_count),
@@ -1737,7 +1724,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal(Number(health.failures_last_hour), 0);
     });
 
-    await causalSubtest(projectionTest, "enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
+    await projectionTest.test("enforces approved retention, legal holds, archive verification, and durable deletion evidence", async () => {
       const heldReportId = "39000000-0000-4000-8000-000000000001";
       const heldSnapshotId = "39000000-0000-4000-8000-000000000002";
       await client.query(`insert into clinical.report

@@ -53,6 +53,5 @@ test("checkpoint and demo deletion regressions stay covered by executable Postgr
   assert.match(apiIntegration,
     /protected-ciphertext-checkpoint[\s\S]*driverError: \{ code: "40001" \}[\s\S]*signed = await sign\(signCommand\)[\s\S]*state: "completed"/);
   assert.match(databaseWorkflow,
-    /lane: database-integration[\s\S]*lane: api-integration/);
-  assert.match(databaseWorkflow, /Run isolated \$\{\{ matrix\.lane \}\} suite/);
+    /Run database integration tests[\s\S]*Run API integration tests/);
 });

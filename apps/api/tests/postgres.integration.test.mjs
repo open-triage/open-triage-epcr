@@ -46,19 +46,6 @@ if (process.env.REQUIRE_DATABASE_INTEGRATION && !databaseUrl) {
 
 const integrationTest = databaseUrl ? test : test.skip;
 
-async function causalSubtest(parent, name, operation) {
-  let firstFailure;
-  await parent.test(name, async (context) => {
-    try {
-      return await operation(context);
-    } catch (error) {
-      firstFailure = error;
-      throw error;
-    }
-  });
-  if (firstFailure) throw firstFailure;
-}
-
 async function ensureFoundation(client) {
   const existing = await client.query("select to_regclass('forms.form_version') as form_version");
   if (!existing.rows[0].form_version) {
@@ -1265,7 +1252,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     }]
   };
 
-  await causalSubtest(t, "publishes canonical content and matching searchable projections", async () => {
+  await t.test("publishes canonical content and matching searchable projections", async () => {
     const draft = await seedDraft(client, organizationId, userId, validDefinition);
     const { response, payload } = await publish(draft.versionId, {
       publishedBy: userId,
@@ -1315,7 +1302,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     assert.equal(conflict.response.status, 409);
   });
 
-  await causalSubtest(t, "rejects unknown elements and invalid rules without partial projections", async () => {
+  await t.test("rejects unknown elements and invalid rules without partial projections", async () => {
     const invalidDefinitions = [
       {
         schemaVersion: 1,
@@ -1347,7 +1334,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     }
   });
 
-  await causalSubtest(t, "rolls back relational projections when the final publication write fails", async () => {
+  await t.test("rolls back relational projections when the final publication write fails", async () => {
     const draft = await seedDraft(client, organizationId, userId, validDefinition);
     await client.query(`
       create or replace function forms.integration_reject_publication()
@@ -1381,7 +1368,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     assert.deepEqual(state.rows[0], { status: "draft", sections: 0, fields: 0, rules: 0, locales: 0 });
   });
 
-  await causalSubtest(t, "rejects a custom clinical repeating group without exactly its one date-time field", async () => {
+  await t.test("rejects a custom clinical repeating group without exactly its one date-time field", async () => {
     const timeElementId = randomUUID();
     const textElementId = randomUUID();
     const groupId = randomUUID();

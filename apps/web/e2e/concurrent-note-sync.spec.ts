@@ -149,10 +149,7 @@ test("a repeatedly rejected note save stops after one recovery request and remai
       report: { ...demoOpenAssignment.report, revision: 1, document: noteDocument("Original shared note") },
     }),
   }));
-  // Introduce the competing revision only after the attempted edit. Otherwise
-  // the initial background read can replace the note before the test opens it.
-  await page.route(`**/api/reports/${reportId}/active`, (route) => saveRequests === 0
-    ? route.fulfill({ status: 304 }) : route.fulfill({
+  await page.route(`**/api/reports/${reportId}/active`, (route) => route.fulfill({
     contentType: "application/json",
     headers: { etag: '"report-2-dispatch-0"' },
     body: JSON.stringify({ reportId, reportRevision: 2, dispatchRevision: 0,

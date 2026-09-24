@@ -162,10 +162,10 @@ test("Validation readers can inspect drafts while write and publish controls fol
   const validationDraft = {
     id: "51000000-0000-4000-8000-000000000001", catalogReleaseId: "catalog-id", revision: 3,
     displayName: "Agency required fields", updatedAt: new Date().toISOString(),
-    rules: [{ id: "52000000-0000-4000-8000-000000000001", name: "Require incident number",
+    rule: { id: "52000000-0000-4000-8000-000000000001", name: "Require incident number",
       enabled: true, severity: "error", executionTargets: ["live", "sign"],
       primaryTargetElementId: "eResponse.03", message: "Incident number is required",
-      source: 'require present("eResponse.03")', sourceKind: "agency" }]
+      source: 'assert present("eResponse.03")' }
   };
   await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",
     body: JSON.stringify({ settings: productionSettings }) }));
@@ -179,29 +179,20 @@ test("Validation readers can inspect drafts while write and publish controls fol
   }) }));
   await page.route("**/api/admin/validation-draft", (route) => route.fulfill({ contentType: "application/json",
     body: JSON.stringify(validationDraft) }));
-  for (const path of ["catalog-definition", "catalog-versions/catalog-id"]) {
-    await page.route(`**/api/admin/${path}`, route => route.fulfill({ json: catalogDraft }));
-  }
-  for (const path of ["validation-versions", "form-versions"]) {
-    await page.route(`**/api/admin/${path}`, route => route.fulfill({ json: [] }));
-  }
-  await page.route("**/api/admin/validation-rules**", route => route.fulfill({ json: {
-    items: validationDraft.rules.map(rule => ({ rule, valid: true, diagnostics: [] })), total: 1,
-  } }));
 
   await signInAsCombinedOwner(page, ["validation:read", "validation:write", "validation:publish"]);
   await page.getByRole("button", { name: "Admin" }).click();
-  await expect(page.getByRole("button", { name: "Validation rules", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Validation rules", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Validation", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
   await expect(page.getByLabel("Validation version display name")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Validate draft" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Validate rule" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Save Validation draft" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toHaveCount(0);
 
   resolvedCapabilities = ["validation:read", "validation:write"];
   await signInAsCombinedOwner(page, resolvedCapabilities);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Validation rules", exact: true }).click();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
   await expect(page.getByLabel("Validation version display name")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Save Validation draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toHaveCount(0);
@@ -209,7 +200,7 @@ test("Validation readers can inspect drafts while write and publish controls fol
   resolvedCapabilities = ["validation:read", "validation:write", "validation:publish"];
   await signInAsCombinedOwner(page, resolvedCapabilities);
   await page.getByRole("button", { name: "Admin" }).click();
-  await page.getByRole("button", { name: "Validation rules", exact: true }).click();
+  await page.getByRole("button", { name: "Validation", exact: true }).click();
   await expect(page.getByRole("button", { name: "Publish immutable Validation version" })).toBeVisible();
 });
 
@@ -299,7 +290,7 @@ test("Users and Roles preserve asymmetric visibility and read-only accessible na
   }] }) }));
   await signInAsCombinedOwner(page, ["roles:read"]);
   await expect(page.getByRole("button", { name: "Roles", exact: true })).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("columnheader", { name: /Administrator.*4 assignees/ })).toBeVisible();
+  await expect(page.getByText("4", { exact: true })).toBeVisible();
   await expect(page.getByText("users:read", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Users", exact: true })).toHaveCount(0);
   expect(requested.some((url) => /\/api\/admin\/users(?:\?|$)/.test(url))).toBe(false);
@@ -499,7 +490,7 @@ test("a role author creates an immediately active immutable version from the saf
   await expect(page.getByRole("checkbox", { name: /^clinical:document/ })).toBeDisabled();
   await page.getByLabel(/Change note/).fill("Approved operational access");
   await page.getByRole("button", { name: "Save and activate" }).click();
-  await expect(page.getByRole("columnheader", { name: /Dispatch Lead.*version 1/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dispatch Lead" })).toBeVisible();
   expect(submitted).toMatchObject({ capabilityKeys: ["users:read", "users:write"], note: "Approved operational access" });
   expect(submitted).not.toHaveProperty("expectedVersion");
 });

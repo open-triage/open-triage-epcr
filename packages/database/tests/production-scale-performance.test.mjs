@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { evaluateScaleThreshold } from "../scripts/lib/scale-performance-policy.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -15,7 +14,7 @@ const [policy, harness, evidencePolicy, workflow] = await Promise.all([
 ]);
 
 test("records approved production scale capacity and measurable thresholds", () => {
-  assert.equal(policy.policyVersion, "production-scale-performance-1.2.0");
+  assert.equal(policy.policyVersion, "production-scale-performance-1.1.0");
   assert.equal(policy.policyStatus, "approved-under-requesting-owner-delegation");
   assert.deepEqual(policy.capacityModel, {
     onlineYears: 10,
@@ -49,28 +48,6 @@ test("records approved production scale capacity and measurable thresholds", () 
   }
 });
 
-test("CI has explicit generous margins without weakening production or correctness gates", () => {
-  const latency = ["commonWideQueryP95Ms", "commonRepeatableQueryP95Ms", "partitionPrunedQueryP95Ms", "projectorBatchMaxMs"];
-  const throughput = ["signingWritesPerSecond", "projectorReportsPerSecond", "reconciliationReportsPerSecond", "amendmentReplayReportsPerSecond"];
-  assert.deepEqual(Object.keys(policy.ciThresholds).sort(), [...latency, ...throughput].sort());
-  for (const name of latency) assert.equal(policy.ciThresholds[name], policy.thresholds[name] * 2);
-  for (const name of throughput) assert.equal(policy.ciThresholds[name], policy.thresholds[name] / 2);
-  const evaluate = (profile, name, value, comparator = "max") =>
-    evaluateScaleThreshold(policy, profile, name, value, comparator, { profile });
-  assert.equal(evaluate("ci", "projectorBatchMaxMs", 13021.419).status, "pass");
-  assert.equal(evaluate("production", "projectorBatchMaxMs", 13021.419).status, "fail");
-  assert.equal(evaluate("ci", "projectorBatchMaxMs", 26000).status, "pass");
-  assert.equal(evaluate("ci", "projectorBatchMaxMs", 26001).status, "fail");
-  assert.equal(evaluate("ci", "projectorReportsPerSecond", 17.5, "min").status, "pass");
-  assert.equal(evaluate("ci", "projectorReportsPerSecond", 17.4, "min").status, "fail");
-  assert.equal(evaluate("production", "projectorReportsPerSecond", 17.5, "min").status, "fail");
-  assert.equal(evaluate("ci", "commonQueryTempBytesMax", 1).status, "fail");
-  assert.equal(evaluate("ci", "projectorBatchMaxMs", 13021.419).productionThreshold, 13000);
-  assert.equal(evaluate("ci", "projectorBatchMaxMs", 13021.419).thresholdProfile, "ci");
-  assert.throws(() => evaluate("unknown", "projectorBatchMaxMs", 1), /unknown scale-test profile/);
-  assert.match(harness, /evaluateScaleThreshold\(policy, options.profile/);
-});
-
 test("scale harness covers representative distributions and preserves executable plans", () => {
   for (const expected of [
     '"migrate"', '"load:catalog"', "scripts/project-analytics.mjs",
@@ -94,9 +71,7 @@ test("scale harness covers representative distributions and preserves executable
 
 test("CI runs and retains bounded evidence without claiming the production exercise", () => {
   assert.match(workflow, /npm run scale:test:ci -w @open-triage\/database/);
-  assert.match(workflow,
-    /validation-\$\{\{ inputs\.checkout_ref \|\| github\.sha \}\}-\$\{\{ matrix\.lane \}\}-results/);
-  assert.match(workflow, /packages\/database\/artifacts\/database-lanes\/\*\.json/);
+  assert.match(workflow, /database-scale-test-ci/);
   assert.match(evidencePolicy, /measured, resource-bounded representative run, not a ten-million-report claim/i);
   assert.match(evidencePolicy, /run the production profile before production readiness sign-off/i);
   assert.match(evidencePolicy, /never rewrites or relaxes policy/i);

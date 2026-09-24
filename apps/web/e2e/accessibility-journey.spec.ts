@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "./server-fixture";
+import { expect, test, type Page } from "@playwright/test";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import { incidentSummary } from "../app/incident-document";
@@ -42,7 +42,7 @@ async function expectPhoneLayout(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }),
+    body: JSON.stringify(demoOpenAssignment),
   }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "./server-fixture";
+import { expect, test, type Page } from "@playwright/test";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
 const session = {

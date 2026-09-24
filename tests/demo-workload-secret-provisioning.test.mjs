@@ -23,7 +23,6 @@ test("the demo transition preserves keys and creates separate workload Secrets",
   assert.match(script, /Refusing to overwrite a partial credential transition/);
   assert.match(script, /normalize_workload_secret/);
   assert.match(script, /kubectl patch secret/);
-  assert.doesNotMatch(script, /migrate:runtime|name: migration|credential-migration/);
 });
 
 test("the transition does not print or trace credential values", () => {

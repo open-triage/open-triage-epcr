@@ -79,10 +79,7 @@ test("single-occurrence nested groups are flattened into their parent dialog", a
   const heartRate = dialog.locator('[data-group-id="eVitals.HeartRateGroup"]');
   await expect(heartRate).toHaveCount(1);
   await expect(heartRate.locator(":scope > .section-heading")).toHaveCount(0);
-  await expect(heartRate.locator('[data-element-id="eVitals.10"]')).toHaveCount(0);
-  await heartRate.getByRole("button", { name: "Add Heart Rate Group fields" }).click();
-  await expect(heartRate.getByRole("group", { name: "Heart Rate", exact: true })).toBeVisible();
-  await dialog.locator('[data-group-id="eVitals.CardiacRhythmGroup"]').getByRole("button", { name: "Add Cardiac Rhythm Group fields" }).click();
+  await expect(heartRate.locator('fieldset[data-element-id="eVitals.10"]')).toBeVisible();
   await expect(dialog.locator('[data-group-id="eVitals.CardiacRhythmGroup"] fieldset[data-element-id="eVitals.03"]')).toBeVisible();
 
   const etco2 = dialog.getByLabel("End Tidal Carbon Dioxide (ETCO2)");
