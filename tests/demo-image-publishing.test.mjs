@@ -70,7 +70,8 @@ test("the workflow promotes the validated web digest and separately publishes th
   );
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(publishing, /^    needs: validation-gate$/m);
+  assert.match(publishing, /^    needs: \[validation-gate, browser-e2e-validation\]$/m);
+  assert.match(publishing, /needs\.browser-e2e-validation\.result == 'success'/);
   assert.match(publishing, /^      packages: write$/m);
   assert.match(publishing, /^          platforms: linux\/amd64$/m);
   assert.match(publishing, /^          push: true$/m);
@@ -86,6 +87,8 @@ test("the workflow promotes the validated web digest and separately publishes th
   assert.match(webValidation, /docker push "\$WEB_CANDIDATE_IMAGE"/);
   assert.match(webValidation, /--output image-identities\/web\.json/);
   assert.match(webPromotion, /node scripts\/demo-image-identity\.mjs verify/);
+  assert.match(webPromotion, /needs\.browser-e2e-validation\.result == 'success'/);
+  assert.match(webPromotion, /^      - browser-e2e-validation$/m);
   assert.match(webPromotion, /docker buildx imagetools create/);
   assert.match(webPromotion, /test "\$promoted_digest" = "\$image_digest"/);
   assert.doesNotMatch(webPromotion, /docker build(?:\s|$)|docker\/build-push-action/);

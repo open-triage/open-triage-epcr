@@ -6,6 +6,8 @@ packages/database/artifacts/
 apps/web/out/
 /apps/web/public/sw.js
 playwright-report/
+playwright-artifacts/
+playwright-results/
 test-results/
 .env
 .env.local

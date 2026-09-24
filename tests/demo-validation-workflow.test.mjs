@@ -64,6 +64,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "application-validation",
     "database-validation",
     "web-deployment-validation",
+    "browser-critical-validation",
     "api-runtime-image-validation",
     "helm-validation",
   ]) {
@@ -73,9 +74,12 @@ test("the gate depends on every application, database, web, and Helm validation"
   for (const command of [
     "npm run typecheck",
     "npm run lint",
-    "npm test",
+    "npm run test:unit",
+    "npm run test:workflow",
     "npm run build",
     "npm run test:deployment -w @open-triage/web",
+    "npm run test:e2e:critical -w @open-triage/web",
+    "npm run test:helm",
     "docker build -f deploy/docker/api.Dockerfile",
     "helm lint",
     "helm template",
@@ -101,9 +105,9 @@ test("database validation is reused once across non-overlapping event coverage",
   ]);
 
   assert.match(demoWorkflow, /^  push:\n    branches: \[main\]$/m);
-  assert.match(demoWorkflow, /^  pull_request:\n    branches: \[main, feature\/ci-cd-deployment\]$/m);
+  assert.match(demoWorkflow, /^  pull_request:$/m);
   assert.match(databaseWorkflow, /^  push:\n    branches: \[feature\/database-foundation\]$/m);
-  assert.match(databaseWorkflow, /^  pull_request:\n    branches: \[feature\/database-foundation\]$/m);
+  assert.doesNotMatch(databaseWorkflow, /^  pull_request:/m);
   assert.match(databaseWorkflow, /^  workflow_dispatch:$/m);
   assert.match(databaseWorkflow, /^  workflow_call:$/m);
   assert.doesNotMatch(databaseWorkflow, /branches: \[[^\]]*main/);
@@ -121,6 +125,39 @@ test("database validation is reused once across non-overlapping event coverage",
       `${command} must have exactly one workflow definition`,
     );
   }
+});
+
+test("pull requests run the critical artifact journey and main runs the complete browser suite", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const critical = workflow.slice(
+    workflow.indexOf("  browser-critical-validation:"),
+    workflow.indexOf("  browser-e2e-validation:"),
+  );
+  const complete = workflow.slice(
+    workflow.indexOf("  browser-e2e-validation:"),
+    workflow.indexOf("  api-runtime-image-validation:"),
+  );
+
+  assert.match(critical, /Build the production-style web artifact/);
+  assert.match(critical, /npm run test:e2e:critical -w @open-triage\/web/);
+  assert.match(critical, /apps\/web\/playwright-results\/critical/);
+  assert.match(critical, /apps\/web\/playwright-artifacts\/critical-server\.log/);
+  assert.match(complete, /^    if: github\.event_name != 'pull_request'$/m);
+  assert.match(complete, /npm run test:e2e -w @open-triage\/web/);
+  assert.match(complete, /apps\/web\/playwright-results\/e2e/);
+  assert.match(workflow, /needs\.browser-e2e-validation\.result == 'success'/);
+});
+
+test("Helm validation pins its CLI and runs every maintained behavior test", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const helm = workflow.slice(
+    workflow.indexOf("  helm-validation:"),
+    workflow.indexOf("  validation-gate:"),
+  );
+
+  assert.match(helm, /uses: azure\/setup-helm@v4/);
+  assert.match(helm, /version: v3\.19\.0/);
+  assert.match(helm, /npm run test:helm/);
 });
 
 test("the Kubernetes web artifact is built for root hosting", async () => {

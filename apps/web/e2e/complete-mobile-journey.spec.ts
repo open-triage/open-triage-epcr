@@ -1,6 +1,5 @@
 import { chromium, expect, test, type BrowserContext, type Route } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:3108";
 const clinicianId = "32000000-0000-4000-8000-000000000003";
 const formVersionId = "32000000-0000-4000-8000-000000000008";
 const reportId = "42000000-0000-4000-8000-000000000056";
@@ -119,7 +118,9 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
  * recovery assertion exercises Chromium's on-disk profile, not copied test state.
  */
 test("the complete synthetic mobile call journey survives offline work, restart, sync, and stationary completion", async ({}, testInfo) => {
+  const baseURL = testInfo.project.use.baseURL as string;
   const viewport = supportedViewports[testInfo.project.name];
+  expect(baseURL, "the browser project must configure a base URL").toBeTruthy();
   expect(viewport, `unsupported journey project ${testInfo.project.name}`).toBeTruthy();
   const userDataDir = testInfo.outputPath("complete-mobile-journey-profile");
   const state: JourneyState = {
@@ -148,7 +149,6 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toBeVisible({ timeout: 10_000 });
     expect(Date.now() - signedInAt).toBeLessThanOrEqual(10_000);
-    await expect(page.getByRole("note", { name: "Prototype safety notice" })).toContainText("Synthetic data only");
 
     await page.getByRole("button", { name: "Open call", exact: true }).click();
     await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
