@@ -20,7 +20,7 @@ test("web start serves the static export instead of launching a Next server", as
   assert.equal(webPackage.scripts["serve:static"], "node scripts/serve-static.mjs");
   assert.doesNotMatch(webPackage.scripts.start, /next start/);
   assert.match(nextConfig, /output: "export"/);
-  assert.match(deploymentConfig, /command: "npm start"/);
+  assert.match(deploymentConfig, /command: ".*npm start.*deployment-server\.log/);
 });
 
 test("deployment validation builds, starts, and fetches the exported application through Nginx", async () => {
