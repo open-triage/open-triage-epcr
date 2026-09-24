@@ -34,9 +34,6 @@ test("Timeline and Checklist navigation preserves the encounter", () => {
 });
 
 test("drafts started without an explicit date fall back to the shared demo fallback date", () => {
-  const noteState = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "no-date-note", time: "09:01" });
-  assert.equal(noteState.noteDraft?.date, DEMO_FALLBACK_DATE);
-
   const procedureState = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "no-date-procedure", time: "09:02" });
   assert.equal(procedureState.procedureDraft?.date, DEMO_FALLBACK_DATE);
 
@@ -46,10 +43,4 @@ test("drafts started without an explicit date fall back to the shared demo fallb
   const vitalsState = transitionShell(INITIAL_SHELL_STATE, { type: "vitals-started", id: "no-date-vitals", time: "09:04" });
   assert.equal(vitalsState.vitalDraft?.date, DEMO_FALLBACK_DATE);
 
-  const savedNoteState = transitionShell(
-    transitionShell(noteState, { type: "note-draft-changed", field: "summary", value: "Undated note" }),
-    { type: "note-saved" },
-  );
-  const savedEvent = encounterEvents(savedNoteState.encounter.document, standardEncounterDefinition).find(({ id }) => id === "no-date-note");
-  assert.equal(savedEvent?.date, DEMO_FALLBACK_DATE);
 });

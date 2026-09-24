@@ -11,7 +11,7 @@ import { bundledEncounterDefinition, INITIAL_SHELL_STATE, transitionShell } from
 
 const reportId = "42000000-0000-4000-8000-000000000013";
 
-test("server inbound changes merge with unsaved clinician groups by stable identity", () => {
+test("server inbound changes never reconcile app-native notes through the NEMSIS document", () => {
   let local = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "local-note", date: "2026-09-03", time: "12:01" });
   local = transitionShell(local, { type: "note-draft-changed", field: "summary", value: "Unsaved local correction" });
   local = transitionShell(local, { type: "note-saved" });
@@ -28,7 +28,7 @@ test("server inbound changes merge with unsaved clinician groups by stable ident
   }] }] } as EncounterDocument;
 
   const merged = reconcileActiveReportDocument(reportId, local.encounter.document, changedServer);
-  assert.equal(encounterEvents(merged, bundledEncounterDefinition).find(({ id }) => id === "local-note")?.detail, "Unsaved local correction");
+  assert.equal(encounterEvents(merged, bundledEncounterDefinition).some(({ id }) => id === "local-note"), false);
   assert.equal(merged.groups.find(({ id }) => id === "eNarrativeSection")?.instances.length, 1);
   const lastName = merged.groups.find(({ id }) => id === "ePatient.PatientNameGroup")!.instances[0]!.elements.find(({ id }) => id === "ePatient.02")!.values[0];
   assert.equal(lastName?.kind === "scalar" ? lastName.value : null, "Dispatch update");

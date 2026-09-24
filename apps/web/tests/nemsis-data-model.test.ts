@@ -85,7 +85,7 @@ test("pins all official defined and suggested lists without treating them as exh
 
 test("every field rendered by the app resolves entirely through the generated catalog", () => {
   const renderedElementIds = new Set(JSON.stringify(standardEncounterDefinition).match(/e[A-Za-z]+\.\d{2}/g) ?? []);
-  assert.ok(renderedElementIds.size > 20);
+  assert.ok(renderedElementIds.size >= 20);
   for (const id of renderedElementIds) {
     const element = getNemsisDataElement(id);
     assert.ok(element, `${id} is absent from the generated catalog`);

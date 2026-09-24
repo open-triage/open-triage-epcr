@@ -10,6 +10,7 @@ import { SignReportService } from "./sign-report.service.js";
 import type { SignedReportResult } from "./sign-report.types.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
+import { ReportNoteService } from "./report-note.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -21,6 +22,7 @@ export class DraftReportController {
     private readonly signing: SignReportService,
     private readonly protectedKeys: ProtectedReportKeyService,
     private readonly reviewValidation: ReviewValidationService,
+    private readonly reportNotes: ReportNoteService,
   ) {}
 
   @Post()
@@ -112,6 +114,46 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string
   ): Promise<SaveDraftReportResult> {
     return this.reports.save(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/notes")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  createTextNote(
+    @Param("id", uuidV4) id: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportNotes.create(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/notes/:noteId")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  updateTextNote(
+    @Param("id", uuidV4) id: string,
+    @Param("noteId", uuidV4) noteId: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportNotes.update(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Delete(":id/notes/:noteId")
+  @Header("Cache-Control", "no-store, private")
+  deleteTextNote(
+    @Param("id", uuidV4) id: string,
+    @Param("noteId", uuidV4) noteId: string,
+    @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string,
+    @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportNotes.delete(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
   }
 
   @Post(":id/reopen")

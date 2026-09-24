@@ -160,6 +160,7 @@ test("raw draft loading assembles report metadata and content in one repeatable-
     }];
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-at-6" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-at-6" }];
+    if (normalized.includes("from clinical.report_note")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
 
@@ -208,6 +209,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.report_note")) return [];
     if (normalized.includes("from clinical.call_assignment ca")) return [{
       call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
       dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
@@ -299,6 +301,7 @@ test("changed active report polling returns the provenance-merged canonical docu
       value_kind: "text", value_text: "CAD-UPDATED", provenance_kind: "dispatch", provenance_detail: { sourceValue: { kind: "scalar", occurrenceId: "source-cad", value: "CAD-UPDATED" } }, source_attributes: null
     }];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.report_note")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new DraftReportService(transactional(manager, isolations), sessions());
@@ -336,6 +339,7 @@ test("a concurrent save cannot pair revision R with document content from R+1", 
         provenance_detail: null, source_attributes: null
       }];
       if (normalized.includes("from clinical.dispatch_conflict")) return [];
+      if (normalized.includes("from clinical.report_note")) return [];
       throw new Error(`Unexpected SQL: ${normalized}`);
     } };
     return work(manager);

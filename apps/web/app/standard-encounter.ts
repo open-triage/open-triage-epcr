@@ -217,14 +217,6 @@ export function encounterEventDetail(event: EncounterEvent, definition: Encounte
   return event.vitals ? vitalSummary(event.vitals, definition) : event.detail;
 }
 
-export function validateNoteEvent(event: EncounterEvent, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<{ readonly reference: string; readonly message: string }> {
-  if (event.kind !== "note") return [];
-  const note = definition.events.note;
-  const findings: Array<{ reference: string; message: string }> = [];
-  if (note.required.summary && !event.detail.trim()) findings.push({ reference: note.references.summary, message: note.validationMessages.summaryRequired });
-  return findings;
-}
-
 function eventFinding(
   state: ShellState,
   event: EncounterEvent,
@@ -268,7 +260,7 @@ function definitionGroup(eventType: ConfiguredEventType): string {
   if (eventType === "vitals") return "eVitals.VitalGroup";
   if (eventType === "medication") return "eMedications.MedicationGroup";
   if (eventType === "procedure") return "eProcedures.ProcedureGroup";
-  return "eNarrativeSection";
+  return "app:report-note";
 }
 
 /** Consolidates validation for timeline entries before signing. */
@@ -309,12 +301,6 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
         ...validation.errors.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "error", procedureDefinition.labels.category, referenceFor(message), message, index)),
         ...validation.warnings.map((message, index) => eventFinding(state, { ...event, ...presentation }, "procedure", "warning", procedureDefinition.labels.category, procedureDefinition.references.complications, message, index, event.procedure!.warningAcknowledged)),
       ];
-    }
-    if (event.kind === "note") {
-      const presentation = encounterEventPresentation(event, definition);
-      return validateNoteEvent(event, definition).map((finding, index) => eventFinding(
-        state, { ...event, ...presentation }, "note", "error", definition.events.note.labels.category, finding.reference, finding.message, index,
-      ));
     }
     return [];
   });

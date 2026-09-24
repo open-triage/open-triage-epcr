@@ -66,8 +66,9 @@ test("a test-only definition changes capture, validation, review, and vital summ
     { id: "pain", label: "Discomfort score" },
     { id: "systolic", label: "Systolic BP" },
   ]);
-  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure"]);
+  assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure", "note"]);
   assert.equal(configuredQuickActions(definition)[0]?.label, "Record field observations");
+  assert.deepEqual(configuredQuickActions(definition).at(-1), { id: "note", label: "Text note", title: "Text note" });
 
   const missingRequired = validateVitals("09:00", EMPTY_VITALS, definition);
   assert.match(missingRequired.errors.pain!, /eVitals\.27 requires a value/);
