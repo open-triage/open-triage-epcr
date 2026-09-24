@@ -52,5 +52,9 @@ grant execute on function extensions.digest(bytea, text),
 -- kept out of public. The migration owner mirrors that lookup behavior.
 alter role open_triage_ci_migration set search_path = '"$user"', public, extensions;
 \else
+create extension if not exists pgcrypto with schema public;
+revoke all on all functions in schema public from public;
+grant execute on function public.digest(bytea, text),
+  public.digest(text, text) to open_triage_ci_migration with grant option;
 alter role open_triage_ci_migration set search_path = '"$user"', public;
 \endif

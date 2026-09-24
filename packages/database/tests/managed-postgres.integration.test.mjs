@@ -69,6 +69,7 @@ integrationTest("runtime roles receive only required pgcrypto access", async (t)
     random_bytes: false,
   });
 
+  await client.query("grant open_triage_api_runtime to current_user");
   await client.query("begin");
   try {
     await client.query("set local role open_triage_api_runtime");

@@ -122,7 +122,7 @@ but no clinical table depends on `auth.users`, PostgREST, or another hosted-only
 feature.
 
 CI retains two clean-install lanes on the pinned `postgres:15.14-bookworm`
-engine. The portability lane uses stock PostgreSQL defaults. The
+engine. The portability lane uses stock PostgreSQL extension placement. The
 managed-compatible lane installs `pgcrypto` in an `extensions` schema, creates
 the `anon`, `authenticated`, `service_role`, and `authenticator` role topology,
 and removes implicit extension access. Both lanes run migrations through a
