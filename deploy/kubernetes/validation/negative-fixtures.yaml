@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: negative-missing-key
+  namespace: open-triage-validation
+type: Opaque
+stringData:
+  PRESENT_KEY: intentionally-not-the-required-key
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: negative-missing-secret-key
+  namespace: open-triage-validation
+  labels:
+    open-triage.dev/negative-fixture: missing-secret-key
+spec:
+  restartPolicy: Never
+  containers:
+    - name: api
+      image: OPEN_TRIAGE_API_CANDIDATE
+      imagePullPolicy: Never
+      command: ["node", "--version"]
+      env:
+        - name: REQUIRED_KEY
+          valueFrom:
+            secretKeyRef:
+              name: negative-missing-key
+              key: REQUIRED_KEY
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: negative-invalid-command
+  namespace: open-triage-validation
+  labels:
+    open-triage.dev/negative-fixture: invalid-command
+spec:
+  activeDeadlineSeconds: 45
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        open-triage.dev/negative-fixture: invalid-command
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: invalid-command
+          image: OPEN_TRIAGE_API_CANDIDATE
+          imagePullPolicy: Never
+          command: ["/open-triage-command-that-does-not-exist"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: negative-unschedulable
+  namespace: open-triage-validation
+  labels:
+    open-triage.dev/negative-fixture: unschedulable
+spec:
+  restartPolicy: Never
+  containers:
+    - name: api
+      image: OPEN_TRIAGE_API_CANDIDATE
+      imagePullPolicy: Never
+      command: ["node", "--version"]
+      resources:
+        requests:
+          cpu: "100000"
+          memory: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: negative-failed-probe
+  namespace: open-triage-validation
+  labels:
+    open-triage.dev/negative-fixture: failed-probe
+spec:
+  restartPolicy: Never
+  containers:
+    - name: web
+      image: OPEN_TRIAGE_WEB_CANDIDATE
+      imagePullPolicy: Never
+      ports:
+        - name: http
+          containerPort: 80
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 81
+        initialDelaySeconds: 1
+        periodSeconds: 1
+        failureThreshold: 2
