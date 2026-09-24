@@ -131,6 +131,9 @@ the demonstration fixture, and start the API with an isolated runtime login.
 The migration identity has `CREATEROLE` only because the forward-only migrations
 own and maintain the portable `NOLOGIN` workload contracts; it is neither a
 superuser nor permitted to create databases or bypass row-level security.
+The versioned N-1 upgrade fixture, immutable migration checks, runtime-artifact
+upgrade lane, and clean-versus-upgraded schema comparison are documented in
+[Forward-only database upgrades](database-forward-upgrades.md).
 
 ## Data boundaries
 

@@ -6,6 +6,7 @@
 --
 -- psql variables:
 --   managed              true for the Supabase-compatible lane
+--   database_name        database whose ownership is assigned to the migration login
 --   migration_password   password for the short-lived migration login
 
 do $$
@@ -18,7 +19,7 @@ end;
 $$;
 
 alter role open_triage_ci_migration password :'migration_password';
-alter database open_triage_test owner to open_triage_ci_migration;
+alter database :"database_name" owner to open_triage_ci_migration;
 
 \if :managed
 do $$
