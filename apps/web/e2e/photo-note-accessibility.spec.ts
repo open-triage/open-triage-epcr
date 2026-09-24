@@ -57,3 +57,16 @@ test("live camera and rotation preview remain accessible without exposing librar
   results = await new AxeBuilder({ page }).include(".photo-note-dialog").analyze();
   expect(results.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
 });
+
+test("denied camera access gives recovery steps and leaves Text note available", async ({ page }) => {
+  await page.evaluate(() => {
+    navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("denied", "NotAllowedError"); };
+  });
+  await page.getByRole("button", { name: "Add photo note" }).click();
+  const dialog = page.getByRole("dialog", { name: "Photo note" });
+  await expect(dialog.getByRole("alert")).toContainText("Allow camera access for this site in browser settings");
+  await expect(dialog.getByRole("alert")).toContainText("Text notes remain available");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Text note" }).click();
+  await expect(page.getByLabel("Note text")).toBeFocused();
+});

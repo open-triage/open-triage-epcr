@@ -21,6 +21,7 @@ import {
   updateProtectedAudio,
   updateProtectedAudioPreview,
 } from "../app/protected-clinical-storage";
+import { browserMediaCapturePreflight, mediaCaptureErrorMessage } from "../app/media-capture-capability";
 
 const PLAYBACK_EVENT = "open-triage-audio-playback";
 let activeAudio: { key: string; element: HTMLAudioElement; url: string } | null = null;
@@ -95,6 +96,8 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const animation = useRef(0);
   const analyser = useRef<AnalyserNode | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const keepAfterDelete = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState<"ready" | "recording" | "preview" | "viewer">(note ? "viewer" : "ready");
   const [capture, setCapture] = useState<Capture | null>(null);
   const [caption, setCaption] = useState(note?.caption ?? "");
@@ -105,7 +108,17 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const validation = normalizeAudioCaption(caption);
   const recorderSupport = supportedAudioRecorderType();
+  const captureUnavailable = note ? null : browserMediaCapturePreflight("microphone", Boolean(recorderSupport));
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    if (confirmingDelete) keepAfterDelete.current?.focus();
+  }, [confirmingDelete]);
+
+  function cancelDelete() {
+    setConfirmingDelete(false);
+    window.requestAnimationFrame(() => deleteTrigger.current?.focus());
+  }
 
   useEffect(() => {
     if (note) return;
@@ -146,7 +159,10 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   }, [previewUrl]);
 
   async function startRecording() {
-    if (!recorderSupport) { setError("Spoken-audio capture is unavailable in this browser. Text notes remain available."); return; }
+    if (!recorderSupport || captureUnavailable) {
+      setError(captureUnavailable ?? "Spoken-audio recording is not supported by this browser. Text notes remain available.");
+      return;
+    }
     setError(null); setCapture(null); setElapsed(0); elapsedRef.current = 0; interruptedRef.current = false;
     chunks.current = []; chunkWrites.current = Promise.resolve(); chunkSequence.current = 0;
     try {
@@ -211,8 +227,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     } catch (caught) {
       stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null;
       await removeProtectedAudioPreview(reportId);
-      setMode("ready"); setError(caught instanceof DOMException && caught.name === "NotAllowedError"
-        ? "Microphone permission is required to add a spoken-audio note." : "The microphone is unavailable. Check it and try again.");
+      setMode("ready"); setError(mediaCaptureErrorMessage("microphone", caught));
     }
   }
 
@@ -314,19 +329,20 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   const remaining = REPORT_AUDIO_MAX_MILLISECONDS - elapsed;
   return <div className="dialog-backdrop" role="presentation"><section ref={dialogRef} className="note-dialog audio-note-dialog"
     role={confirmingDelete ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby="audio-dialog-title"
-    aria-describedby={confirmingDelete ? "audio-delete-description" : "audio-purpose-description"} onKeyDown={(event) => {
+    aria-describedby={confirmingDelete ? "audio-delete-description" : "audio-purpose-description"} onKeyDownCapture={(event) => {
       if (event.key !== "Escape") return;
-      if (confirmingDelete) { event.preventDefault(); event.stopPropagation(); setConfirmingDelete(false); }
+      if (confirmingDelete) { event.preventDefault(); event.stopPropagation(); cancelDelete(); }
       else if (mode === "recording") { event.preventDefault(); event.stopPropagation(); finishRecording(true); }
     }}>
     <div className="note-dialog-heading"><div><p className="eyebrow">{note ? `${note.persistenceState === "ready" ? "Ready" : note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)} audio note` : mode === "recording" ? "Recording spoken observation" : mode === "preview" ? capture?.interrupted ? "Interrupted recording — choose Use or Discard" : "Review recording" : "Live microphone"}</p>
-      <h2 id="audio-dialog-title">Audio note</h2></div>{note && !confirmingDelete && <button className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete audio</button>}</div>
+      <h2 id="audio-dialog-title">Audio note</h2></div>{note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete audio</button>}</div>
     {confirmingDelete ? <><p id="audio-delete-description">Delete this recording and its caption from the draft report? Saved bytes cannot be recovered or replaced.</p>
-      <div className="note-dialog-actions"><button data-dialog-initial-focus type="button" onClick={() => setConfirmingDelete(false)}>Keep audio</button>
+      <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>Keep audio</button>
         <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? "Deleting…" : "Delete audio"}</button></div></> : <>
       <p id="audio-purpose-description" className="audio-purpose">For spoken clinical observations only. This is not a diagnostic-sound recorder and it does not transcribe speech.</p>
       {mode === "ready" && <div className="audio-capture-stage"><span className="microphone-icon" aria-hidden="true" /><p>Record up to 5:00. Recording stops if this page is hidden.</p>
-        <button data-dialog-initial-focus type="button" disabled={!recorderSupport} onClick={() => void startRecording()}>Start recording</button></div>}
+        <button data-dialog-initial-focus type="button" disabled={Boolean(captureUnavailable)} aria-describedby={captureUnavailable ? "report-audio-error" : undefined}
+          onClick={() => void startRecording()}>Start recording</button></div>}
       {mode === "recording" && <div className="audio-capture-stage"><strong className="audio-timer" role="status" aria-live="polite">Recording {formatAudioDuration(elapsed)}</strong>
         <span className="audio-level" aria-label={`Microphone input level ${Math.round(level * 100)} percent`}><span style={{ width: `${Math.max(2, level * 100)}%` }} /></span>
         {remaining <= REPORT_AUDIO_WARNING_MILLISECONDS && <p className="audio-warning">Recording stops in {formatAudioDuration(remaining)}.</p>}
@@ -342,7 +358,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
           onChange={(event) => { const value = event.target.value; setCaption(value); setError(null);
             if (capture && protectedStorageActive(reportId)) updateProtectedAudioPreview(reportId, { caption: value }); }} />
         <small id="report-audio-caption-count">{validation.characterCount.toLocaleString()} / {REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters</small></>}
-      <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : undefined}>{validation.error ?? error}</p>
+      <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : captureUnavailable ? "status" : undefined}>{validation.error ?? error ?? captureUnavailable}</p>
       <div className="note-dialog-actions">{mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>Discard</button> : <button type="button" disabled={saving || mode === "recording"} onClick={onClose}>Close</button>}
         {mode === "preview" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? "Processing…" : capture?.interrupted ? "Use interrupted recording" : "Use recording"}</button>}
         {mode === "viewer" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? "Saving…" : "Save caption"}</button>}</div>

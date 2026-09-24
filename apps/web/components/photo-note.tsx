@@ -27,6 +27,7 @@ import {
   updateProtectedPhotoPreview,
   updateProtectedPhoto,
 } from "../app/protected-clinical-storage";
+import { browserMediaCapturePreflight, mediaCaptureErrorMessage } from "../app/media-capture-capability";
 
 export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
   readonly reportId: string; readonly noteId: string; readonly alt: string; readonly className?: string;
@@ -82,6 +83,8 @@ export function PhotoNoteDialog({
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const keepAfterDelete = useRef<HTMLButtonElement>(null);
   const [capture, setCapture] = useState<Capture | null>(null);
   const [caption, setCaption] = useState(note?.caption ?? "");
   const [deviceIds, setDeviceIds] = useState<ReadonlyArray<string>>([]);
@@ -93,6 +96,15 @@ export function PhotoNoteDialog({
   const validation = normalizePhotoCaption(caption);
   const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    if (confirmingDelete) keepAfterDelete.current?.focus();
+  }, [confirmingDelete]);
+
+  function cancelDelete() {
+    setConfirmingDelete(false);
+    window.requestAnimationFrame(() => deleteTrigger.current?.focus());
+  }
 
   useEffect(() => {
     if (note) return;
@@ -118,6 +130,8 @@ export function PhotoNoteDialog({
     let active = true;
     async function startCamera() {
       stream.current?.getTracks().forEach((track) => track.stop());
+      const unavailable = browserMediaCapturePreflight("camera");
+      if (unavailable) { setCameraError(unavailable); return; }
       try {
         const next = await navigator.mediaDevices.getUserMedia(cameraRequestConstraints(selectedDeviceId));
         if (!active) { next.getTracks().forEach((track) => track.stop()); return; }
@@ -129,11 +143,7 @@ export function PhotoNoteDialog({
         setDeviceIds(ids);
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
-      } catch (error) {
-        setCameraError(error instanceof DOMException && error.name === "NotAllowedError"
-          ? "Camera permission is required to add a photo note."
-          : "The live camera is unavailable. Check the camera and try again.");
-      }
+      } catch (error) { setCameraError(mediaCaptureErrorMessage("camera", error)); }
     }
     void startCamera();
     return () => { active = false; stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null; };
@@ -258,15 +268,16 @@ export function PhotoNoteDialog({
 
   return <div className="dialog-backdrop" role="presentation">
     <section ref={dialogRef} className="note-dialog photo-note-dialog" role={confirmingDelete ? "alertdialog" : "dialog"}
-      aria-modal="true" aria-labelledby="photo-dialog-title" aria-describedby={confirmingDelete ? "photo-delete-description" : undefined}>
+      aria-modal="true" aria-labelledby="photo-dialog-title" aria-describedby={confirmingDelete ? "photo-delete-description" : undefined}
+      onKeyDownCapture={(event) => { if (confirmingDelete && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelDelete(); } }}>
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{note ? `${note.persistenceState === "ready" ? "Ready" : note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)} photo note` : mode === "camera" ? "Live camera" : "Review captured photo"}</p>
           <h2 id="photo-dialog-title">Photo note</h2></div>
-        {note && !confirmingDelete && <button className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete photo</button>}
+        {note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete photo</button>}
       </div>
       {confirmingDelete ? <>
         <p id="photo-delete-description">Delete this photo and its caption from the draft report? Saved bytes cannot be recovered or replaced.</p>
-        <div className="note-dialog-actions"><button data-dialog-initial-focus type="button" onClick={() => setConfirmingDelete(false)}>Keep photo</button>
+        <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>Keep photo</button>
           <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? "Deleting…" : "Delete photo"}</button></div>
       </> : <>
         {mode === "camera" && <div className="camera-stage">

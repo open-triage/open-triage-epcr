@@ -63,3 +63,17 @@ test("spoken-audio capture explains scope, exposes recording feedback, and requi
   const results = await new AxeBuilder({ page }).include(".audio-note-dialog").analyze();
   expect(results.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
 });
+
+test("denied microphone access gives recovery steps and leaves Text note available", async ({ page }) => {
+  await page.evaluate(() => {
+    navigator.mediaDevices.getUserMedia = async () => { throw new DOMException("denied", "NotAllowedError"); };
+  });
+  await page.getByRole("button", { name: "Add audio note" }).click();
+  const dialog = page.getByRole("dialog", { name: "Audio note" });
+  await dialog.getByRole("button", { name: "Start recording" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Allow microphone access for this site in browser settings");
+  await expect(dialog.getByRole("alert")).toContainText("Text notes remain available");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Text note" }).click();
+  await expect(page.getByLabel("Note text")).toBeFocused();
+});
