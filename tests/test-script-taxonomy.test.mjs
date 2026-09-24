@@ -41,3 +41,15 @@ test("workspace scripts distinguish unit, integration, accessibility, deployment
   }
   assert.notEqual(web.scripts["test:a11y"], web.scripts["test:e2e"]);
 });
+
+test("the complete browser command covers static and protected server modes with fresh servers", async () => {
+  const web = await readPackage("apps/web/package.json");
+  const config = await readFile(new URL("apps/web/playwright.config.ts", root), "utf8");
+  assert.match(web.scripts["test:e2e"], /^OPEN_TRIAGE_E2E_SERVER_MODE=false playwright test .* && OPEN_TRIAGE_E2E_SERVER_MODE=true playwright test /);
+  assert.match(web.scripts["test:a11y"], /^OPEN_TRIAGE_E2E_SERVER_MODE=true /);
+  assert.match(config, /serverBackedMock \? \{ testMatch: serverTests \} : \{ testIgnore: \["deployment.spec.ts", \.\.\.serverTests\] \}/);
+  assert.match(config, /reuseExistingServer: false/);
+  for (const spec of ["browser-persistence.spec.ts", "complete-mobile-journey.spec.ts", "assigned-calls.spec.ts"]) {
+    assert.ok(config.includes(`"${spec}"`), `${spec} must run with protected server persistence`);
+  }
+});

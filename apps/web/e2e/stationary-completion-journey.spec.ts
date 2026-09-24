@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { addRespiratoryWarning, cachedReports, expect, test } from "./server-fixture";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 
@@ -13,7 +13,7 @@ test("mobile capture reconciles into a complete stationary record that alone can
   let signAttempts = 0;
   let signCommand: { expectedRevision: number; signerId: string; warningAcknowledgements: Record<string, boolean> } | undefined;
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(demoOpenAssignment),
+    contentType: "application/json", body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }),
   }));
   await page.route(`**/api/reports/${reportId}/reopen`, (route) => route.abort("internetdisconnected"));
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
@@ -79,20 +79,21 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await page.getByRole("button", { name: "Populate" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await page.getByRole("button", { name: "Return to record" }).click();
+  await addRespiratoryWarning(page);
   await page.getByRole("textbox", { name: "First Name", exact: true }).fill("EDITED AFTER POPULATE");
   await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Saving");
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
-  await expect(page.getByText("0 errors · 5 warnings")).toBeVisible();
+  await expect(page.getByText("0 errors · 1 warning")).toBeVisible();
   for (const acknowledgement of await page.getByLabel("I reviewed and acknowledge this warning").all()) await acknowledgement.check();
   const audit = await new AxeBuilder({ page }).include(".review-panel").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(audit.violations.filter(({ impact }) => impact === "critical" || impact === "serious")).toEqual([]);
   await page.getByRole("button", { name: "Sign record" }).click();
   await expect(page.getByText("The record could not be signed.", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible();
-  expect(await page.evaluate((id) => localStorage.getItem(`open-triage:standard-encounter-v1:report:${id}`), reportId)).not.toBeNull();
+  expect((await cachedReports(page)).some(item => item.report.id === reportId)).toBe(true);
   await page.getByRole("button", { name: "Sign record" }).click();
 
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
@@ -100,11 +101,8 @@ test("mobile capture reconciles into a complete stationary record that alone can
   await expect(completionNotice).toBeFocused();
   await expect(completionNotice).toHaveClass(/transient-notice/);
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
-  const cache = await page.evaluate((id) => ({
-    shell: localStorage.getItem(`open-triage:standard-encounter-v1:report:${id}`),
-    offline: JSON.parse(localStorage.getItem("open-triage:offline-reports-v1") ?? "[]").some((item: { report: { id: string } }) => item.report.id === id),
-  }), reportId);
-  expect(cache).toEqual({ shell: null, offline: false });
+  await expect.poll(async () => (await cachedReports(page)).some(item => item.report.id === reportId)).toBe(false);
+  expect(await page.evaluate(() => localStorage.getItem("open-triage:offline-reports-v1"))).toBeNull();
   expect(savedCommands.some(({ occurrences }) => occurrences.some(({ elementId, value }) =>
     elementId === "ePatient.03" && value?.value === "EDITED AFTER POPULATE"))).toBe(true);
   expect(signCommand).toBeDefined();
