@@ -49,6 +49,7 @@ function fetchSequence(...responses) {
 
 function authorize(options = {}) {
   return authorizeDemoDeployment({
+    browserValidationResult: "success",
     eventName: "push",
     repository,
     runId: "901",
@@ -80,6 +81,10 @@ test("mismatched or stale evidence is rejected", async () => {
     authorize({ fetchImpl: unusedFetch, validatedSha: "f".repeat(40) }),
     /does not match/,
   );
+  await assert.rejects(
+    authorize({ browserValidationResult: "failure", fetchImpl: unusedFetch }),
+    /does not match/,
+  );
 
   const staleApproval = fetchSequence(
     jsonResponse([mergedPull()]),
@@ -106,6 +111,7 @@ test("manual redeployment requires prior matching validation and provenance jobs
     jsonResponse({
       jobs: [
         { name: "Required / Demo validation gate", conclusion: "success" },
+        { name: "Validate / Complete browser suite", conclusion: "success" },
         { name: "Authorize / Deployment provenance", conclusion: "success" },
       ],
     }),
@@ -141,10 +147,15 @@ test("the authorization job is the only path from validation to registry mutatio
     workflow.indexOf("  publish-image-manifest:"),
   );
 
-  assert.match(authorization, /^    needs: validation-gate$/m);
+  assert.match(authorization, /^    needs: \[validation-gate, browser-e2e-validation\]$/m);
   assert.match(authorization, /^      actions: read$/m);
   assert.match(authorization, /^      pull-requests: read$/m);
   assert.match(authorization, /node scripts\/require-demo-provenance\.mjs/);
+  assert.match(authorization, /BROWSER_VALIDATION_RESULT: \$\{\{ needs\.browser-e2e-validation\.result \}\}/);
   assert.match(publishing, /^    needs: deployment-authorization$/m);
   assert.match(publishing, /needs\.deployment-authorization\.result == 'success'/);
+  assert.doesNotMatch(
+    workflow.slice(workflow.indexOf("  web-deployment-validation:"), workflow.indexOf("  deployment-authorization:")),
+    /docker push|docker\/login-action|packages: write/,
+  );
 });

@@ -116,6 +116,13 @@ async function main() {
     });
     return;
   }
+  if (command === "verify") {
+    validateImageIdentity(JSON.parse(await readFile(args.input, "utf8")), {
+      owner: args.owner,
+      sha: args.sha,
+    });
+    return;
+  }
   throw new Error(`Unknown command: ${command ?? "(missing)"}`);
 }
 

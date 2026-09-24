@@ -6,6 +6,7 @@ const localUrl = "http://127.0.0.1:3109";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: "deployment.spec.ts",
+  outputDir: "playwright-results/deployment",
   reporter: "line",
   use: {
     baseURL: deployedUrl ?? localUrl,
@@ -16,7 +17,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: deployedUrl ? undefined : {
-    command: "npm start",
+    command: "mkdir -p playwright-artifacts && exec npm start > playwright-artifacts/deployment-server.log 2>&1",
     env: { PORT: "3109" },
     url: localUrl,
     reuseExistingServer: false,

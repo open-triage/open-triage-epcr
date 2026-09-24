@@ -3,8 +3,6 @@ name: Verify database foundation
 on:
   push:
     branches: [feature/database-foundation]
-  pull_request:
-    branches: [feature/database-foundation]
   workflow_dispatch:
   workflow_call:
     inputs:

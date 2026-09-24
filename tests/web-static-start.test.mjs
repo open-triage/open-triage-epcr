@@ -20,10 +20,10 @@ test("web start serves the static export instead of launching a Next server", as
   assert.equal(webPackage.scripts["serve:static"], "node scripts/serve-static.mjs");
   assert.doesNotMatch(webPackage.scripts.start, /next start/);
   assert.match(nextConfig, /output: "export"/);
-  assert.match(deploymentConfig, /command: "npm start"/);
+  assert.match(deploymentConfig, /command: ".*npm start.*deployment-server\.log/);
 });
 
-test("deployment validation builds, starts, and fetches the exported application", async () => {
+test("deployment validation builds, starts, and fetches the exported application through Nginx", async () => {
   const [workflow, deploymentSpec] = await Promise.all([
     readFile(workflowPath, "utf8"),
     readFile(deploymentSpecPath, "utf8"),
@@ -33,8 +33,13 @@ test("deployment validation builds, starts, and fetches the exported application
     workflow.indexOf("  helm-validation:"),
   );
 
-  assert.match(validation, /npm run build -w @open-triage\/web/);
+  assert.match(validation, /docker build\n\s+--file deploy\/docker\/web\.Dockerfile/);
+  assert.match(validation, /docker run --detach --name open-triage-web-validation/);
+  assert.match(validation, /PLAYWRIGHT_BASE_URL: http:\/\/127\.0\.0\.1:3109/);
   assert.match(validation, /npm run test:deployment -w @open-triage\/web/);
   assert.match(deploymentSpec, /request\.get\("\/"\)/);
   assert.match(deploymentSpec, /expect\(response\.status\(\)\)\.toBe\(200\)/);
+  assert.match(deploymentSpec, /content-security-policy/);
+  assert.match(deploymentSpec, /\/_next\\\/static/);
+  assert.match(deploymentSpec, /waitForRequest\(installationUrl\)/);
 });

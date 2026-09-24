@@ -4,6 +4,7 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DEFAULT_API_URL = "https://api.github.com";
 const DEFAULT_WORKFLOW_ID = "demo-validation.yml";
 const VALIDATION_JOB = "Required / Demo validation gate";
+const BROWSER_VALIDATION_JOB = "Validate / Complete browser suite";
 const PROVENANCE_JOB = "Authorize / Deployment provenance";
 
 function requireSha(value, label) {
@@ -146,7 +147,11 @@ export async function requireHistoricalValidation({
     const successfulJobs = new Set(
       jobs.filter((job) => job.conclusion === "success").map((job) => job.name),
     );
-    if (successfulJobs.has(VALIDATION_JOB) && successfulJobs.has(PROVENANCE_JOB)) {
+    if (
+      successfulJobs.has(VALIDATION_JOB) &&
+      successfulJobs.has(BROWSER_VALIDATION_JOB) &&
+      successfulJobs.has(PROVENANCE_JOB)
+    ) {
       matchingRuns += 1;
     }
   }
@@ -158,6 +163,7 @@ export async function requireHistoricalValidation({
 
 export async function authorizeDemoDeployment({
   apiUrl = DEFAULT_API_URL,
+  browserValidationResult,
   eventName,
   fetchImpl = fetch,
   repository,
@@ -170,7 +176,11 @@ export async function authorizeDemoDeployment({
 }) {
   requireSha(targetSha, "Target revision");
   requireSha(validatedSha, "Validated revision");
-  if (validatedSha !== targetSha || validationResult !== "success") {
+  if (
+    validatedSha !== targetSha ||
+    validationResult !== "success" ||
+    browserValidationResult !== "success"
+  ) {
     throw new Error("Successful validation evidence does not match the target revision.");
   }
   if (!token) throw new Error("GITHUB_TOKEN is required for deployment provenance.");
@@ -213,6 +223,7 @@ export async function authorizeDemoDeployment({
 async function run() {
   const authorization = await authorizeDemoDeployment({
     apiUrl: process.env.GITHUB_API_URL,
+    browserValidationResult: process.env.BROWSER_VALIDATION_RESULT,
     eventName: process.env.GITHUB_EVENT_NAME,
     repository: process.env.GITHUB_REPOSITORY,
     runId: process.env.GITHUB_RUN_ID,
