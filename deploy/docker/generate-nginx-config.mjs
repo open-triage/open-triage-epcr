@@ -38,7 +38,7 @@ export function contentSecurityPolicy(scriptHashes, apiUrl) {
     "img-src 'self' data:",
     `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""}`,
     "font-src 'self'",
-    "manifest-src 'self'",
+    "manifest-src 'self' data:",
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'none'",

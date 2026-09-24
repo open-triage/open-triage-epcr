@@ -234,6 +234,43 @@ export const DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES = 50 * 1024 * 1024;
 export const MIN_REPORT_MEDIA_ALLOWANCE_BYTES = 1024 * 1024;
 export const MAX_REPORT_MEDIA_ALLOWANCE_BYTES = 2 * 1024 * 1024 * 1024;
 
+export interface AgencyAppearance {
+  brandText: string;
+  helperText: string;
+  logoPngDataUrl: string | null;
+  accentColor: string;
+  accentDarkColor: string;
+  browserThemeColor: string;
+  pwaBackgroundColor: string;
+  pwaName: string;
+  pwaShortName: string;
+}
+
+export const DEFAULT_AGENCY_APPEARANCE: Readonly<AgencyAppearance> = Object.freeze({
+  brandText: "OpenTriage ePCR",
+  helperText: "Sign in with your agency-issued credentials.",
+  logoPngDataUrl: null,
+  accentColor: "#00783a",
+  accentDarkColor: "#006b34",
+  browserThemeColor: "#00783a",
+  pwaBackgroundColor: "#dfe5df",
+  pwaName: "OpenTriage",
+  pwaShortName: "OpenTriage",
+});
+
+export interface AgencyDemographics {
+  versionId: string;
+  version: number;
+  catalogReleaseId: string;
+  agencyUniqueStateId: string;
+  agencyNumber: string;
+  stateCode: string;
+  stateDisplay: string | null;
+  stateCodeSystem: string | null;
+  stateTerminologyVersion: string | null;
+  effectiveFrom: string;
+}
+
 /** Policy identity captured by clients and pinned onto each new report. */
 export interface ReportMediaPolicy {
   reportMediaAllowanceBytes: number;
@@ -243,6 +280,8 @@ export interface ReportMediaPolicy {
 export interface AgencyMediaSettings {
   organizationId: string;
   reportMediaAllowanceBytes: number;
+  appearance: AgencyAppearance;
+  demographics: AgencyDemographics;
   revision: number;
   defaultReportMediaAllowanceBytes: number;
   /** True when Postgres, WAL, replica, backup, and restore growth needs review. */
@@ -253,6 +292,10 @@ export interface AgencyMediaSettings {
 export interface UpdateAgencyMediaSettingsCommand {
   expectedRevision: number;
   reportMediaAllowanceBytes: number;
+  appearance: AgencyAppearance;
+  demographics: Pick<AgencyDemographics,
+    "agencyUniqueStateId" | "agencyNumber" | "stateCode" | "stateDisplay" |
+    "stateCodeSystem" | "stateTerminologyVersion">;
 }
 
 export interface AdminContext {

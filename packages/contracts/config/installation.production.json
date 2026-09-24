@@ -2,7 +2,7 @@
   "schemaVersion": "1.0.0",
   "signIn": {
     "brandText": "OpenTriage ePCR",
-    "helperText": "Demo credentials: username **demo**, password **opentriagedemo**"
+    "helperText": "Sign in with your agency-issued credentials."
   },
   "clinicalRetention": {
     "durationHours": 87600,
