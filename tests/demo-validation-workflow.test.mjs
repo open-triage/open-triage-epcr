@@ -151,6 +151,7 @@ test("database validation proves immutable forward upgrades from N-1", async () 
   assert.match(demoWorkflow, /compare-schema-dumps\.mjs/);
   assert.match(demoWorkflow, /verify-upgraded-database\.mjs/);
   assert.match(demoWorkflow, /Start the upgraded API through its runtime login/);
+  assert.match(demoWorkflow, /127\.0\.0\.1:3002\/api\/health > \/dev\/null/);
   assert.match(demoWorkflow, /database-forward-upgrade-schemas/);
 });
 

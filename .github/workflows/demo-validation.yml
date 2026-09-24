@@ -387,7 +387,7 @@ jobs:
           ANALYTICS_HEALTH_DATABASE_URL: postgresql://open_triage_demo_upgrade_analytics_health_012345abcdef:open-triage-ci-health-password-0123456789@localhost:5432/open_triage_upgrade_test
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3002/api/health/details > /dev/null; then
+            if curl --fail --silent http://127.0.0.1:3002/api/health > /dev/null; then
               break
             fi
             if [ "$attempt" = 30 ]; then
@@ -415,6 +415,7 @@ jobs:
             ${{ runner.temp }}/current-clean-schema.sql
             ${{ runner.temp }}/current-upgraded-schema.sql
           if-no-files-found: warn
+          retention-days: 14
       - name: Run migrations from the runtime image
         run: >-
           docker run --rm --network host
