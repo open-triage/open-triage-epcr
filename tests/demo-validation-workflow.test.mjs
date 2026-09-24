@@ -100,7 +100,7 @@ test("the gate depends on every application, database, web, and Helm validation"
   ]) {
     assert.ok(databaseWorkflow.includes(command), `missing required database workflow command: ${command}`);
   }
-  assert.match(databaseWorkflow, /image: postgres:15\.14-bookworm/);
+  assert.match(databaseWorkflow, /image: postgres:15\.19-bookworm@sha256:[0-9a-f]{64}/);
   assert.match(databaseWorkflow, /fixture: plain/);
   assert.match(databaseWorkflow, /fixture: managed/);
   assert.match(databaseWorkflow, /packages\/database\/fixtures\/ci-postgresql\.sql/);
@@ -164,7 +164,7 @@ test("Helm validation pins its CLI and runs every maintained behavior test", asy
     workflow.indexOf("  validation-gate:"),
   );
 
-  assert.match(helm, /uses: azure\/setup-helm@v4/);
+  assert.match(helm, /uses: azure\/setup-helm@[0-9a-f]{40} # v4\.3\.1/);
   assert.match(helm, /version: v3\.19\.0/);
   assert.match(helm, /npm run test:helm/);
 });

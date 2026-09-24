@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS build
+FROM node:22.23.3-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS build
 
 WORKDIR /workspace
 COPY package.json package-lock.json tsconfig.base.json ./
@@ -20,7 +20,7 @@ RUN npm run build -w @open-triage/contracts \
     && npm run build -w @open-triage/api \
     && node deploy/docker/generate-api-runtime.mjs deploy/docker/api-runtime-manifest.json /api-runtime
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.23.3-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS runtime
 
 WORKDIR /workspace
 ENV NODE_ENV=production

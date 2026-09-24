@@ -12,7 +12,7 @@ const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.
 
 test("the API container installs production dependencies around one generated runtime artifact", async () => {
   const dockerfile = await readFile(dockerfilePath, "utf8");
-  const runtime = dockerfile.slice(dockerfile.indexOf("FROM node:22-bookworm-slim AS runtime"));
+  const runtime = dockerfile.slice(dockerfile.indexOf(" AS runtime"));
 
   assert.equal((dockerfile.match(/^FROM /gm) ?? []).length, 2);
   assert.match(dockerfile, /generate-api-runtime\.mjs deploy\/docker\/api-runtime-manifest\.json \/api-runtime/);
