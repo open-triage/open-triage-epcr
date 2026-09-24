@@ -668,10 +668,13 @@ test("completion discovered while a form is active stops editing and returns to 
   completed = true;
   await page.getByRole("button", { name: "Refresh calls" }).click();
 
-  await expect(page.locator(".transient-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
+  // Completion may legitimately show a notice after the refresh click. Dismiss
+  // it only after the completed workspace has closed, then verify it is gone.
+  await page.getByRole("heading", { name: "Assigned calls" }).click();
+  await expect(page.locator(".transient-notice")).toHaveCount(0);
 });
 
 test("an Android-sized browser closes and reopens an edited call offline, then syncs it on reconnect", async ({ page, context }) => {
