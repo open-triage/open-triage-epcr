@@ -7,15 +7,13 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import { validateProcedure } from "./procedure";
 import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
 import {
   INITIAL_SHELL_STATE,
   MISSING_VITALS_FINDING_ID,
-  encounterEventDetail,
-  encounterEventPresentation,
   reviewEncounter,
   standardEncounterReducer,
+  type EncounterEvent,
   type ReviewFinding,
   type ShellView,
   type VitalField,
@@ -40,7 +38,7 @@ import { sessionRequestToken } from "./clinician-session";
 import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
-import { DEMO_CLEAR_EVENT, DEMO_FALLBACK_DATE, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
@@ -48,7 +46,9 @@ import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
 import { holdProtectedReportForCompletion } from "./protected-clinical-storage";
-import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, reportTextNoteExcerpt, validateReportTextNote } from "./report-text-notes";
+import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote } from "./report-text-notes";
+import { EncounterTimeline } from "../components/encounter-timeline";
+import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -107,9 +107,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const [noteError, setNoteError] = useState<string | null>(null);
   const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
   const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
+  const [stationaryTimelineOpen, setStationaryTimelineOpen] = useState(false);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const timelineToggle = useRef<HTMLButtonElement>(null);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
@@ -157,6 +159,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       setTextNoteDraft(null);
     });
   }, [report?.id, report?.notes]);
+  useEffect(() => {
+    queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
+  }, [session.user.id]);
   useEffect(() => {
     onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError));
   }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
@@ -231,7 +236,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 
   useEffect(() => {
     if (!activeDialog) {
-      returnFocus.current?.focus();
+      const trigger = returnFocus.current;
+      if (trigger?.isConnected) trigger.focus();
+      else if (presentationMode === "stationary" && stationaryTimelineOpen) timelineToggle.current?.focus();
       returnFocus.current = null;
       return;
     }
@@ -272,7 +279,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, openNullField]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, openNullField, presentationMode, stationaryTimelineOpen]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -359,6 +366,21 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       content: note.content, author: note.author, persistenceState: note.persistenceState, isNew: false,
     });
   }
+
+  function openTimelineEvent(event: EncounterEvent, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    if (event.vitals) setOpenNullField(null);
+    dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
+  }
+
+  function toggleStationaryTimeline() {
+    setStationaryTimelineOpen((open) => {
+      const next = !open;
+      storeStationaryTimelineOpen(window.localStorage, session.user.id, next);
+      return next;
+    });
+  }
+
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -503,7 +525,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   };
 
   return (
-    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}
+    <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
@@ -532,6 +554,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </>}
         {report && <div className="draft-actions">
           <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
+          {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>Timeline <span aria-hidden="true">· {timelineEvents.length}</span></button>}
           {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => {
             if (shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
             else {
@@ -582,82 +605,25 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </div>
       )}
 
-      {presentationMode === "mobile" && shell.view === "timeline" && (
-        <section className="content-panel" aria-labelledby="timeline-heading">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Newest first</p>
-              <h1 id="timeline-heading">Timeline</h1>
-            </div>
-            <span>{timelineEvents.length} events</span>
-          </div>
-          <ol className="timeline-list">
-            {timelineEvents.map((event) => {
-              if (event.kind === "text-note") {
-                const excerpt = reportTextNoteExcerpt(event.note.content);
-                return <li key={event.id} className="editable-event text-note-event">
-                  <time dateTime={event.note.capturedAt}>{event.time}</time>
-                  <span className="event-dot validation-clear" role="img" aria-label="Text note ready" />
-                  <button
-                    aria-label={`Open text note at ${event.time} by ${event.note.author.displayName}. ${excerpt}`}
-                    className="timeline-event-button"
-                    type="button"
-                    onClick={(clickEvent) => openTextNote(event.note, clickEvent.currentTarget)}
-                  >
-                    <span className="event-title">Text note</span>
-                    <span className="event-detail">{excerpt}</span>
-                    <small>{event.note.author.displayName} · Ready · Tap to open</small>
-                  </button>
-                </li>;
-              }
-              const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
-              const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
-              const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
-              return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
-                <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
-                {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
-                  <button
-                    aria-label={`Edit ${presentation.title} at ${event.time}. ${eventDetail}`}
-                    className="timeline-event-button"
-                    type="button"
-                    onClick={(clickEvent) => {
-                      rememberTrigger(clickEvent.currentTarget);
-                      if (event.vitals) setOpenNullField(null);
-                      dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
-                    }}
-                  >
-                    <span className="event-title">{presentation.title}</span>
-                    <span className="event-detail">{eventDetail}</span>
-                    <small>{presentation.reference} · Tap to edit</small>
-                    {event.procedure && validateProcedure({
-                      id: event.id,
-                      date: event.date ?? DEMO_FALLBACK_DATE,
-                      time: event.time,
-                      procedureCode: event.procedure.code,
-                      procedureLabel: event.procedure.label,
-                      attempts: String(event.procedure.attempts),
-                      success: event.procedure.success,
-                      outcome: event.procedure.outcome,
-                      complications: event.procedure.complications,
-                      warningAcknowledged: event.procedure.warningAcknowledged,
-                      isNew: false,
-                    }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && (
-                      <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>
-                    )}
-                  </button>
-                ) : (
-                  <div>
-                    <h2>{event.title}</h2>
-                    <p>{event.detail}</p>
-                    <small>{event.reference}</small>
-                  </div>
-                )}
-              </li>;
-            })}
-          </ol>
-        </section>
-      )}
+      {presentationMode === "mobile" && shell.view === "timeline" && <EncounterTimeline
+        events={timelineEvents}
+        validationStatuses={eventValidationStatuses}
+        definition={bundledEncounterDefinition}
+        headingId="timeline-heading"
+        onOpenTextNote={openTextNote}
+        onOpenEvent={openTimelineEvent}
+      />}
+      {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label="Encounter timeline" onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        setStationaryTimelineOpen(false);
+        storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
+        timelineToggle.current?.focus();
+      }}>
+        <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
+          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenEvent={openTimelineEvent} />
+      </aside>}
+
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
