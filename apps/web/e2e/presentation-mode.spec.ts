@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { cachedReports, expect, test, type Page, type Route } from "./server-fixture";
 import type { AssignedCall } from "@open-triage/contracts";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
@@ -22,7 +22,7 @@ async function signIn(page: Page) {
 }
 
 test("explicit workflow mode survives reload and viewport changes without changing visible calls", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/calls/assigned", assignedCalls);
   await signIn(page);
 
   const selector = page.getByRole("group", { name: "Documentation presentation" });
@@ -51,10 +51,10 @@ test("explicit workflow mode survives reload and viewport changes without changi
 });
 
 test("mobile reports retain Save and close without review or signing actions", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/calls/assigned", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(demoOpenAssignment),
+    body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }),
   }));
   await signIn(page);
 
@@ -81,10 +81,10 @@ test("mobile reports retain Save and close without review or signing actions", a
 });
 
 test("stationary pickers use through-border labels, multi-value controls, and label-only help", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/calls/assigned", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(demoOpenAssignment),
+    body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }),
   }));
   await signIn(page);
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
@@ -124,10 +124,10 @@ test("stationary pickers use through-border labels, multi-value controls, and la
 });
 
 test("stationary scalar fields retain typing and validate only after blur", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/calls/assigned", assignedCalls);
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify(demoOpenAssignment),
+    body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }),
   }));
   await signIn(page);
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
@@ -166,11 +166,11 @@ test("a mobile report reopens offline for stationary scalar editing through the 
   let opened = false;
   let revision = demoOpenAssignment.report.revision;
   const savedCommands: Array<{ deviceId: string; occurrences: Array<{ id: string; elementId: string; value?: { value?: string } }> }> = [];
-  await page.route("**/demo-assigned-calls.json", (route) => route.fulfill({
+  await page.route("**/api/calls/assigned", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ assignedCalls: opened ? [] : [assignedCall], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() }),
   }));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+  await page.route("**/api/reports/open", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       openCalls: opened ? [{
@@ -183,7 +183,7 @@ test("a mobile report reopens offline for stationary scalar editing through the 
   }));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => {
     opened = true;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(demoOpenAssignment) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...demoOpenAssignment, report: { ...demoOpenAssignment.report, demoMutable: true } }) });
   });
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route) => {
     const command = route.request().postDataJSON() as typeof savedCommands[number] & { expectedRevision: number };
@@ -196,12 +196,11 @@ test("a mobile report reopens offline for stationary scalar editing through the 
   await signIn(page);
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 4_000 });
-  const originalIdentity = await page.evaluate(({ expectedReportId }) => {
-    const envelope = JSON.parse(localStorage.getItem(`open-triage:standard-encounter-v1:report:${expectedReportId}`)!);
-    const group = envelope.document.groups.find((candidate: { id: string }) => candidate.id === "ePatient.PatientNameGroup");
-    const value = group.instances[0].elements.find((candidate: { id: string }) => candidate.id === "ePatient.03").values[0];
-    return { groupId: group.instances[0].instanceId, occurrenceId: value.occurrenceId };
-  }, { expectedReportId: reportId });
+  await expect.poll(async () => (await cachedReports(page)).length).toBe(1);
+  const originalDocument = (await cachedReports(page))[0]!.report.document!;
+  const originalGroup = originalDocument.groups.find(candidate => candidate.id === "ePatient.PatientNameGroup")!.instances[0]!;
+  const originalValue = originalGroup.elements.find(candidate => candidate.id === "ePatient.03")!.values[0]!;
+  const originalIdentity = { groupId: originalGroup.instanceId, occurrenceId: originalValue.occurrenceId };
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await page.getByLabel("Note summary").fill("Started on mobile");
   await page.getByRole("button", { name: "Add to timeline" }).click();
@@ -217,18 +216,17 @@ test("a mobile report reopens offline for stationary scalar editing through the 
   await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
 
-  const offlineIdentity = await page.evaluate(({ expectedReportId }) => {
-    const envelope = JSON.parse(localStorage.getItem(`open-triage:standard-encounter-v1:report:${expectedReportId}`)!);
-    const group = envelope.document.groups.find((candidate: { id: string }) => candidate.id === "ePatient.PatientNameGroup");
-    const value = group.instances[0].elements.find((candidate: { id: string }) => candidate.id === "ePatient.03").values[0];
-    return { groupId: group.instances[0].instanceId, occurrenceId: value.occurrenceId, value: value.value };
-  }, { expectedReportId: reportId });
-  expect(offlineIdentity).toEqual({ ...originalIdentity, value: "STATIONARY" });
+  await expect.poll(async () => {
+    const document = (await cachedReports(page))[0]!.report.document!;
+    const group = document.groups.find(candidate => candidate.id === "ePatient.PatientNameGroup")!.instances[0]!;
+    const value = group.elements.find(candidate => candidate.id === "ePatient.03")!.values[0]!;
+    return { groupId: group.instanceId, occurrenceId: value.occurrenceId, value: value.value };
+  }).toEqual({ ...originalIdentity, value: "STATIONARY" });
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 4_000 });
-  const stationaryCommand = savedCommands.findLast(({ deviceId, occurrences }) => deviceId.includes(":stationary:")
+  const stationaryCommand = savedCommands.findLast(({ deviceId, occurrences }) => deviceId === `web:${reportId}`
     && occurrences.some(({ elementId, value }) => elementId === "ePatient.03" && value?.value === "STATIONARY"));
   expect(stationaryCommand).toBeTruthy();
 });

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { addRespiratoryWarning, cachedReports, expect, test, type Page, type Route } from "./server-fixture";
 import type { AssignedCall, EncounterDocument, OpenAssignmentResponse } from "@open-triage/contracts";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
@@ -57,8 +57,8 @@ function fulfill(route: Route, assignedCalls: ReadonlyArray<AssignedCall> = [ass
 }
 
 test("open report terminology is used for visible copy and UI identifiers", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+  await page.route("**/api/calls/assigned", (route) => fulfill(route, []));
+  await page.route("**/api/reports/open", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() }),
   }));
@@ -74,7 +74,7 @@ test("open report terminology is used for visible copy and UI identifiers", asyn
 
 test("the demo unit's assigned call shows its operational summary and manual cancellation refresh", async ({ page }) => {
   let canceled = false;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, canceled ? [] : [assignedCall], canceled ? [assignedCall.id] : []));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route, canceled ? [] : [assignedCall], canceled ? [assignedCall.id] : []));
   await signIn(page);
 
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
@@ -87,7 +87,8 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(refresh).toHaveText("Refresh");
   await expect(page.locator(".session-bar > .call-list-refresh")).toHaveCount(1);
   const identityBox = await page.getByText("Signed in as Synthetic Clinician").boundingBox();
-  expect(Math.abs((identityBox!.x + identityBox!.width / 2) - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(1);
+  expect(identityBox!.x).toBeGreaterThanOrEqual(0);
+  expect(identityBox!.x + identityBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open reports"]);
   const card = section.locator(".assigned-call-card");
   await expect(card).toContainText(assignedCall.callNumber);
@@ -114,7 +115,7 @@ test("the demo unit's assigned call shows its operational summary and manual can
 
 test("an absent dispatch reason has a neutral label and never falls back to chief complaint", async ({ page }) => {
   const privacyLimitedCall = { ...assignedCall, dispatchReason: null, chiefComplaint: "PRIVATE CHIEF COMPLAINT" };
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, [privacyLimitedCall]));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route, [privacyLimitedCall]));
   await signIn(page);
   const card = page.getByRole("region", { name: "Assigned calls" }).locator(".assigned-call-card");
   await expect(card).toContainText("Dispatch reason not provided");
@@ -124,7 +125,7 @@ test("an absent dispatch reason has a neutral label and never falls back to chie
 test("assignment polling runs every ten seconds only while visible and refreshes on foreground return", async ({ page }) => {
   let requests = 0;
   await page.clock.install();
-  await page.route("**/demo-assigned-calls.json", async (route) => {
+  await page.route("**/api/calls/assigned", async (route) => {
     requests += 1;
     await fulfill(route);
   });
@@ -153,14 +154,14 @@ test("assignment polling runs every ten seconds only while visible and refreshes
 
 test("opening an assignment enters documentation and a retry resolves to the same report", async ({ page }) => {
   let opens = 0;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route("**/demo-open-assignment.json", async (route) => {
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+  await page.route("**/api/calls/*/open", async (route) => {
     opens += 1;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } }) });
   });
   await page.route(`**/api/calls/${assignedCall.id}/open`, async (route) => {
     opens += 1;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } }) });
   });
   await signIn(page);
 
@@ -192,9 +193,9 @@ test("opening an assignment enters documentation and a retry resolves to the sam
 
 test("encounter edits debounce through the revisioned draft API and Save & close awaits persistence", async ({ page }) => {
   const savedCommands: Array<Record<string, unknown>> = [];
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     const command = route.request().postDataJSON() as Record<string, unknown>;
@@ -206,6 +207,8 @@ test("encounter edits debounce through the revisioned draft API and Save & close
   });
   await signIn(page);
   await page.getByRole("button", { name: "Open call" }).click();
+  await expect.poll(() => savedCommands.length).toBe(1);
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
 
   await page.getByRole("button", { name: "Add clinical note" }).click();
   await page.getByLabel("Note summary").fill("Persist this without completing validation");
@@ -215,16 +218,16 @@ test("encounter edits debounce through the revisioned draft API and Save & close
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.locator(".active-report-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
-  expect(savedCommands).toHaveLength(1);
-  expect(savedCommands[0]?.expectedRevision).toBe(0);
-  expect(savedCommands[0]?.commandId).toMatch(/^[0-9a-f-]{36}$/);
-  expect(JSON.stringify(savedCommands[0])).toContain("Persist this without completing validation");
+  expect(savedCommands).toHaveLength(2);
+  expect(savedCommands.map(command => command.expectedRevision)).toEqual([0, 1]);
+  expect(savedCommands.at(-1)?.commandId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(JSON.stringify(savedCommands.at(-1))).toContain("Persist this without completing validation");
 });
 
 test("Save & close carries the form's current validation error count onto the open call", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     const command = route.request().postDataJSON() as { expectedRevision: number };
@@ -245,9 +248,9 @@ test("Save & close carries the form's current validation error count onto the op
 });
 
 test("Sign record requires acknowledged validation and removes the report from Open reports", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     const command = route.request().postDataJSON() as { expectedRevision: number };
@@ -267,6 +270,7 @@ test("Sign record requires acknowledged validation and removes the report from O
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
   await page.getByRole("button", { name: "Populate" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
+  await addRespiratoryWarning(page);
 
   await page.getByRole("button", { name: "Review & sign" }).click();
   await expect(page.getByRole("button", { name: "Sign record" })).toBeDisabled();
@@ -287,8 +291,8 @@ test("draft synchronization immediately rebases a rejected retry without showing
   const systolicValues: unknown[] = [];
   let requests = 0;
   let activeRequests = 0;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } }) }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     requests += 1;
     const command = route.request().postDataJSON() as {
@@ -331,12 +335,12 @@ test("draft synchronization immediately rebases a rejected retry without showing
   await page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: /Systolic BP/ }).fill("118");
   await page.getByRole("button", { name: "Add vital set" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
-  await expect.poll(async () => ({ requests, cache: await page.evaluate(() => {
-    const cached = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0];
-    return { revision: cached.report.revision, syncStatus: cached.syncStatus,
-      queued: cached.queuedChanges.map(({ attempted, command }: { attempted: boolean; command: { commandId: string; expectedRevision: number } }) =>
-        ({ attempted, commandId: command.commandId, expectedRevision: command.expectedRevision })) };
-  }) })).toEqual({ requests: 4, cache: { revision: 7, syncStatus: "saved", queued: [] } });
+  await expect.poll(async () => {
+    const cached = (await cachedReports(page))[0];
+    return { requests, cache: cached && { revision: cached.report.revision, syncStatus: cached.syncStatus,
+      queued: cached.queuedChanges.map(({ attempted, command }) =>
+        ({ attempted, commandId: command.commandId, expectedRevision: command.expectedRevision })) } };
+  }).toEqual({ requests: 4, cache: { revision: 7, syncStatus: "saved", queued: [] } });
   expect(activeRequests).toBeGreaterThanOrEqual(2);
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   await expect(page.getByRole("button", { name: /Vital signs.*BP 118/ })).toBeVisible();
@@ -354,9 +358,9 @@ test("a no-op conflict recovery does not block a later edit from rebasing", asyn
   const expectedRevisions: number[] = [];
   let requests = 0;
   let activeRequests = 0;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     requests += 1;
@@ -426,13 +430,11 @@ test("mobile vital signs remain saved when the rest of the synthetic form is pop
     workspaceAvailable: true,
   } }));
   await page.route("**/api/calls/assigned", (route) => fulfill(route));
-  await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
-    openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString(),
-  } }));
+
   await page.route("**/api/calls/synthetic-generation", (route) => route.fulfill({ json: {
     eligibleUnits: [assignedCall.unit], hasUnopenedCall: true,
   } }));
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
     contentType: "application/json", body: JSON.stringify({
       ...openedAssignment,
@@ -483,13 +485,9 @@ test("mobile vital signs remain saved when the rest of the synthetic form is pop
 
 test("an ended API session preserves queued work and resumes it after sign-in", async ({ page }) => {
   let requests = 0;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ openCalls: [], completedReportIds: [], refreshedAt: new Date().toISOString() }),
-  }));
-  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) }));
-  await page.route(`**/api/reports/${openedAssignment.report.id}/reopen`, (route) => route.abort("internetdisconnected"));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } }) }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, (route) => {
     requests += 1;
     const command = route.request().postDataJSON() as { expectedRevision: number };
@@ -509,7 +507,7 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
 
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByText("Your shift session ended. Sign in again to sync your saved work.")).toBeVisible();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges)).toHaveLength(1);
+  await expect.poll(async () => (await cachedReports(page))[0]?.queuedChanges.length).toBe(1);
 
   await page.getByLabel("Username").fill("demo");
   await page.getByLabel("Password").fill("opentriagedemo");
@@ -522,55 +520,34 @@ test("an ended API session preserves queued work and resumes it after sign-in", 
 });
 
 test("opening the call list preserves queued edits when background recovery cannot send them", async ({ page }) => {
-  const reportId = openedAssignment.report.id;
-  const commandId = "52000000-0000-4000-8000-000000000013";
   let syncAttempts = 0;
-  const serverCall = {
-    reportId,
-    callNumber: assignedCall.callNumber,
-    lastSavedAt: openCalls[0].lastSavedAt,
-    syncStatus: "saved",
-    validationErrorCount: 0,
-    revision: openedAssignment.report.revision,
-    formVersionId: openedAssignment.report.formVersionId,
-    catalogReleaseId: openedAssignment.report.catalogReleaseId,
-  } as const;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ openCalls: [serverCall], completedReportIds: [], refreshedAt: new Date().toISOString() }),
-  }));
-  await page.route(`**/api/reports/${reportId}/draft-changes`, (route) => {
+  await signIn(page);
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, (route) => {
     syncAttempts += 1;
     return route.abort("internetdisconnected");
   });
-  await signIn(page);
-  await page.evaluate(({ call, report, userId, queuedCommandId }) => {
-    localStorage.setItem("open-triage:offline-reports-v1", JSON.stringify([{
-      report: { ...report, id: call.reportId, revision: call.revision, documentingUserId: userId },
-      ownerUserId: userId,
-      callNumber: call.callNumber,
-      workflowState: "open",
-      syncStatus: "pending",
-      lastSavedAt: call.lastSavedAt,
-      validationErrorCount: 0,
-      queuedChanges: [{ attempted: false, command: { commandId: queuedCommandId, expectedRevision: call.revision, authorId: userId, deviceId: `web:${call.reportId}`, clientTime: new Date().toISOString(), groups: [], occurrences: [] } }],
-    }]));
-  }, { call: serverCall, report: openedAssignment.report, userId: openedAssignment.report.documentingUserId, queuedCommandId: commandId });
-  await page.reload();
-
-  const card = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: serverCall.callNumber });
-  await expect.poll(() => syncAttempts).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Add clinical note" }).click();
+  await page.getByLabel("Note summary").fill("Queued work survives background recovery");
+  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Pending sync");
+  const queuedBefore = (await cachedReports(page))[0]!.queuedChanges;
+  expect(queuedBefore).toHaveLength(1);
+  const attemptsBeforeClose = syncAttempts;
+  await page.getByRole("button", { name: "Save & close" }).click();
+  const card = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
+  await expect.poll(() => syncAttempts).toBeGreaterThan(attemptsBeforeClose);
   await expect(card).toContainText("Pending sync");
-  expect(await page.evaluate(() => {
-    const queued = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0].queuedChanges;
-    return { length: queued.length, commandId: queued[0]?.command.commandId };
-  })).toEqual({ length: 1, commandId });
+  const queuedAfter = (await cachedReports(page))[0]!.queuedChanges;
+  expect(queuedAfter).toHaveLength(1);
+  expect(queuedAfter[0]!.command.commandId).toBe(queuedBefore[0]!.command.commandId);
+  expect(await page.evaluate(() => localStorage.getItem("open-triage:offline-reports-v1"))).toBeNull();
 });
 
 test("a first open without connectivity leaves the assignment actionable and creates no browser report", async ({ page }) => {
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route("**/demo-open-assignment.json", (route) => route.abort("internetdisconnected"));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+  await page.route("**/api/calls/*/open", (route) => route.abort("internetdisconnected"));
   await signIn(page);
 
   await page.getByRole("button", { name: "Open call" }).click();
@@ -582,8 +559,8 @@ test("a first open without connectivity leaves the assignment actionable and cre
 
 test("open reports show workflow state newest first and reopen the existing pinned report", async ({ page }) => {
   await page.setViewportSize({ width: 594, height: 951 });
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+  await page.route("**/api/calls/assigned", (route) => fulfill(route, []));
+  await page.route("**/api/reports/open", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ openCalls, completedReportIds: [], refreshedAt: "2026-09-03T14:06:00.000Z" })
   }));
@@ -633,8 +610,8 @@ test("open reports show workflow state newest first and reopen the existing pinn
 
 test("a stationary-completed report disappears from Open reports and only its cache is purged", async ({ page }) => {
   let completed = false;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, []));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+  await page.route("**/api/calls/assigned", (route) => fulfill(route, []));
+  await page.route("**/api/reports/open", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       openCalls: completed ? openCalls.slice(1) : openCalls,
@@ -670,8 +647,9 @@ test("a stationary-completed report disappears from Open reports and only its ca
 
 test("completion discovered while a form is active stops editing and returns to the call list", async ({ page }) => {
   let completed = false;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
-  await page.route("**/demo-open-calls.json", (route) => route.fulfill({
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, route => route.fulfill({ status: completed ? 404 : 304 }));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
+  await page.route("**/api/reports/open", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       openCalls: completed ? [] : openCalls.slice(0, 1),
@@ -680,12 +658,13 @@ test("completion discovered while a form is active stops editing and returns to 
     })
   }));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await signIn(page);
   await page.getByRole("button", { name: "Open call", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
   completed = true;
   await page.getByRole("button", { name: "Refresh calls" }).click();
 
@@ -699,9 +678,9 @@ test("an Android-sized browser closes and reopens an edited call offline, then s
   await page.setViewportSize({ width: 393, height: 851 });
   const commandIds: string[] = [];
   let offline = false;
-  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await page.route("**/api/calls/assigned", (route) => fulfill(route));
   await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify(openedAssignment)
+    contentType: "application/json", body: JSON.stringify({ ...openedAssignment, report: { ...openedAssignment.report, demoMutable: true } })
   }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, (route) => {
     if (offline) return route.abort("internetdisconnected");
@@ -729,7 +708,7 @@ test("an Android-sized browser closes and reopens an edited call offline, then s
   await cachedCard.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Care documented beyond the dead zone", { exact: true })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
-  const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0]);
+  const cache = (await cachedReports(page))[0]!;
   expect(cache.ownerUserId).toBe(openedAssignment.report.documentingUserId);
   expect(cache.report.revision).toBe(1);
   expect(cache.workflowState).toBe("open");

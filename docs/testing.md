@@ -39,6 +39,18 @@ and on manually dispatched deployment validation. Image publication waits for
 that suite on those events. Browser jobs retain Playwright traces, and a failed
 job uploads its trace output together with the corresponding web-server log.
 
+`test:e2e` starts a fresh development server for each of two sequential modes:
+local-demo/admin scenarios, then server-backed clinical scenarios with mocked
+APIs. Both modes run at both supported phone sizes. Protected persistence tests
+run in the server-backed mode: they inspect encrypted IndexedDB records with
+test-server keys, and browser-restart recovery requires authentication rather
+than reading legacy plaintext local storage. The API mocks do not replace the
+separate PostgreSQL-backed integration lanes.
+
+For a focused clinical browser run, use
+`OPEN_TRIAGE_E2E_SERVER_MODE=true npx playwright test --config playwright.config.ts assigned-calls.spec.ts`
+from `apps/web`. `npm run test:a11y` selects that mode automatically.
+
 CI installs Helm 3.19.0 before linting and rendering the chart and before
 running `npm run test:helm`. Adding a `*.test.mjs` file below
 `deploy/helm/open-triage/tests` automatically includes it in that command.
