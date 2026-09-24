@@ -110,7 +110,7 @@ test("authorized image retrieval scopes private bytes to the organization and do
   const bytes = jpeg();
   let query;
   const service = new ReportPhotoService({ transaction: async (work) => work({ query: async (sql, parameters) => {
-    query = { sql, parameters };
+    if (/select blob\.canonical_bytes/.test(sql)) query = { sql, parameters };
     return [{ canonical_bytes: bytes, content_type: "image/jpeg", sha256: "b".repeat(64) }];
   } }) }, {
     requireCapability: async () => ({ user: { id: userId }, organization: { id: organizationId } }),
