@@ -23,7 +23,7 @@ jobs:
     name: Validate / Deployment revision
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
           fetch-depth: 0
@@ -41,10 +41,10 @@ jobs:
     needs: validate-deployment-revision
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
           cache: npm
@@ -69,7 +69,7 @@ jobs:
         run: npm run build
       - name: Upload application validation failure evidence
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-application-failure
           path: validation-results
@@ -92,10 +92,10 @@ jobs:
       SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
       WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
           cache: npm
@@ -157,7 +157,7 @@ jobs:
           docker logs open-triage-web-validation > apps/web/playwright-artifacts/deployment-server.log 2>&1 || true
       - name: Upload deployment browser failure artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-deployment-failure
           path: |
@@ -172,7 +172,7 @@ jobs:
       - name: Retain the exact validated web image
         run: docker save "$WEB_CANDIDATE_IMAGE" | gzip > "$RUNNER_TEMP/validated-web-image.tar.gz"
       - name: Upload the exact validated web image
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
           path: ${{ runner.temp }}/validated-web-image.tar.gz
@@ -189,10 +189,10 @@ jobs:
       NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: "true"
       OPEN_TRIAGE_BUILD_SHA: ${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
           cache: npm
@@ -207,7 +207,7 @@ jobs:
         run: npm run test:e2e:critical -w @open-triage/web
       - name: Upload critical browser failure artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-critical-failure
           path: |
@@ -222,10 +222,10 @@ jobs:
     needs: validate-deployment-revision
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
           cache: npm
@@ -238,7 +238,7 @@ jobs:
         run: npm run test:e2e -w @open-triage/web
       - name: Upload complete browser-suite failure artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-e2e-failure
           path: |
@@ -289,7 +289,7 @@ jobs:
       PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
       AUTH_RATE_LIMIT_SECRET_BASE64: MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI=
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Build the API runtime image
@@ -409,7 +409,7 @@ jobs:
         run: docker rm --force open-triage-upgraded-api 2>/dev/null || true
       - name: Upload schema equivalence evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: database-forward-upgrade-schemas-${{ inputs.deployment_revision || github.sha }}
           path: |
@@ -487,7 +487,7 @@ jobs:
           docker image inspect "$API_RUNTIME_IMAGE" > api-runtime-evidence/api-image-identity.json 2>/dev/null || true
       - name: Upload API runtime failure evidence
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-api-runtime-failure
           path: api-runtime-evidence
@@ -499,7 +499,7 @@ jobs:
       - name: Retain the exact validated API image
         run: docker save "$API_RUNTIME_IMAGE" | gzip > "$RUNNER_TEMP/validated-api-image.tar.gz"
       - name: Upload the exact validated API image
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
           path: ${{ runner.temp }}/validated-api-image.tar.gz
@@ -512,10 +512,10 @@ jobs:
     needs: validate-deployment-revision
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
       - name: Lint chart
@@ -544,7 +544,7 @@ jobs:
           npm run test:helm 2>&1 | tee helm-validation-evidence/tests.tap
       - name: Upload Helm validation failure evidence
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-helm-failure
           path: helm-validation-evidence
@@ -562,14 +562,14 @@ jobs:
       API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
       WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
       - name: Create a Kubernetes 1.35 kind cluster
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           version: v0.31.0
           kubectl_version: v1.35.0
@@ -577,12 +577,12 @@ jobs:
           cluster_name: open-triage-validation
           wait: 120s
       - name: Download the exact validated API image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
           path: validated-api-image
       - name: Download the exact validated web image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
           path: validated-web-image
@@ -616,7 +616,7 @@ jobs:
           "$RUNNER_TEMP/kubernetes-diagnostics"
       - name: Upload Kubernetes failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-ephemeral-kubernetes-failure
           path: ${{ runner.temp }}/kubernetes-diagnostics
@@ -636,7 +636,7 @@ jobs:
       - ephemeral-kubernetes-validation
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Require every validation job to pass
@@ -649,7 +649,7 @@ jobs:
           node scripts/require-demo-validation.mjs 2>&1 | tee validation-gate-evidence/gate.log
       - name: Upload validation-gate failure evidence
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-gate-failure
           path: validation-gate-evidence
@@ -669,7 +669,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Require reviewed or owner-authorized merge and matching validation provenance
@@ -690,7 +690,7 @@ jobs:
           node scripts/require-demo-provenance.mjs 2>&1 | tee deployment-provenance-evidence/provenance.log
       - name: Upload deployment-provenance failure evidence
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-deployment-provenance-failure
           path: deployment-provenance-evidence
@@ -712,16 +712,16 @@ jobs:
       API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
       API_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Download the exact validated API image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
           path: validated-api-image
       - name: Authenticate to the private GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -745,7 +745,7 @@ jobs:
             --owner "${{ github.repository_owner }}" \
             --output image-identities/api.json
       - name: Upload published image identity fragment
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: demo-image-identity-api-${{ inputs.deployment_revision || github.sha }}
           path: image-identities/api.json
@@ -767,16 +767,16 @@ jobs:
       WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
       WEB_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Download the exact validated web image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
           path: validated-web-image
       - name: Authenticate to the private GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -800,7 +800,7 @@ jobs:
             --owner "${{ github.repository_owner }}" \
             --output image-identities/web.json
       - name: Upload published image identity fragment
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: demo-image-identity-web-${{ inputs.deployment_revision || github.sha }}
           path: image-identities/web.json
@@ -820,11 +820,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Download published image identities
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: demo-image-identity-*-${{ inputs.deployment_revision || github.sha }}
           path: image-identities
@@ -837,7 +837,7 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --owner "${{ github.repository_owner }}"
       - name: Upload exact deployment image manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
           path: demo-images.json
@@ -855,14 +855,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
       - name: Download exact deployment image manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
       - name: Verify and select the tested API image
@@ -921,7 +921,7 @@ jobs:
             > database-preparation-evidence/job.log || true
       - name: Upload database preparation evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: database-preparation-${{ inputs.deployment_revision || github.sha }}
           path: database-preparation-evidence
@@ -940,14 +940,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.23.3
       - name: Download exact deployment image manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
       - name: Verify and select tested images
@@ -959,7 +959,7 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --output "$GITHUB_OUTPUT"
       - name: Install Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.0
       - name: Install doctl with scoped demo credentials
@@ -1009,7 +1009,7 @@ jobs:
           cp demo-images.json deployment-diagnostics/deployed-image-identities.json
       - name: Upload failed deployment diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: validation-${{ inputs.deployment_revision || github.sha }}-kubernetes-deployment-failure
           path: deployment-diagnostics
