@@ -3,8 +3,6 @@ name: Verify database foundation
 on:
   push:
     branches: [feature/database-foundation]
-  pull_request:
-    branches: [feature/database-foundation]
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -17,12 +15,38 @@ permissions:
   contents: read
 
 jobs:
+  migration-integrity:
+    name: Validate / Forward-only migration history
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+          fetch-depth: 0
+      - name: Verify the N-1 migration checksum lock
+        run: node packages/database/scripts/verify-forward-only-migrations.mjs
+      - name: Reject edits to migrations already present on the pull-request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: node packages/database/scripts/verify-forward-only-migrations.mjs --base-ref "$BASE_REF"
+
   postgresql-15:
-    name: Validate / PostgreSQL 15
-    runs-on: ubuntu-latest
+    name: Validate / PostgreSQL 15 / ${{ matrix.lane }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: database-integration
+            command: npm run test:integration -w @open-triage/database
+          - lane: api-integration
+            command: npm run test:integration -w @open-triage/api
+          - lane: scale-validation
+            command: npm run scale:test:ci -w @open-triage/database
     services:
       postgres:
-        image: postgres:15
+        image: postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f
         env:
           POSTGRES_DB: open_triage_test
           POSTGRES_USER: postgres
@@ -37,24 +61,137 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 22
+          node-version: 22.23.3
           cache: npm
       - run: npm ci
       - name: Verify generated database artifacts
         run: npm run check:database
-      - name: Run database integration tests
-        run: npm run test:integration -w @open-triage/database
-      - name: Run API integration tests
-        run: npm run test:integration -w @open-triage/api
-      - name: Run CI scale checks
-        run: npm run scale:test:ci -w @open-triage/database
-      - uses: actions/upload-artifact@v4
+      - name: Run isolated ${{ matrix.lane }} suite
+        shell: bash
+        run: |
+          mkdir -p packages/database/artifacts/test-results
+          set -o pipefail
+          ${{ matrix.command }} 2>&1 | tee "packages/database/artifacts/test-results/${{ matrix.lane }}.tap"
+      - name: Retain isolated database lane report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: database-scale-test-ci
-          path: packages/database/artifacts/scale-test-ci.json
+          name: validation-${{ inputs.checkout_ref || github.sha }}-${{ matrix.lane }}-results
+          path: |
+            packages/database/artifacts/database-lanes/*.json
+            packages/database/artifacts/scale-test-ci.json
+            packages/database/artifacts/test-results/${{ matrix.lane }}.tap
+          if-no-files-found: warn
+          retention-days: 14
+
+  clean-install:
+    name: Validate / PostgreSQL 15 / ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: portability-clean-install
+            fixture: plain
+            managed: false
+          - name: managed-clean-install
+            fixture: managed
+            managed: true
+    services:
+      postgres:
+        image: postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f
+        env:
+          POSTGRES_DB: open_triage_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d open_triage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
+      DATABASE_URL: postgresql://open_triage_ci_migration:open-triage-ci-migration-password@localhost:5432/open_triage_test
+      POSTGRES_FIXTURE: ${{ matrix.fixture }}
+      API_DATABASE_LOGIN: open_triage_demo_api_012345abcdef
+      API_DATABASE_PASSWORD: open-triage-ci-api-password-0123456789
+      ANALYTICS_PROJECTOR_DATABASE_LOGIN: open_triage_demo_analytics_projector_012345abcdef
+      ANALYTICS_PROJECTOR_DATABASE_PASSWORD: open-triage-ci-projector-password-0123456789
+      ANALYTICS_HEALTH_DATABASE_LOGIN: open_triage_demo_analytics_health_012345abcdef
+      ANALYTICS_HEALTH_DATABASE_PASSWORD: open-triage-ci-health-password-0123456789
+      RETENTION_DATABASE_LOGIN: open_triage_demo_retention_012345abcdef
+      RETENTION_DATABASE_PASSWORD: open-triage-ci-retention-password-0123456789
+      OPERATIONAL_AUDIT_DATABASE_LOGIN: open_triage_demo_operational_audit_012345abcdef
+      OPERATIONAL_AUDIT_DATABASE_PASSWORD: open-triage-ci-audit-password-0123456789
+      PATIENT_KEY_INSTALLATION_ID: 00000000-0000-4000-8000-000000000001
+      PATIENT_KEY_VERSION: "1"
+      PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
+      AUTH_RATE_LIMIT_SECRET_BASE64: MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI=
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.23.3
+          cache: npm
+      - run: npm ci
+      - name: Prepare the ${{ matrix.fixture }} database fixture
+        run: >-
+          psql "$DATABASE_ADMIN_URL"
+          --set managed=${{ matrix.managed }}
+          --set database_name=open_triage_test
+          --set migration_password=open-triage-ci-migration-password
+          --file packages/database/fixtures/ci-postgresql.sql
+      - name: Run clean forward-only migrations
+        run: npm run migrate -w @open-triage/database
+      - name: Verify managed-compatible role and extension semantics
+        shell: bash
+        run: |
+          mkdir -p packages/database/artifacts/test-results
+          set -o pipefail
+          REQUIRE_DATABASE_INTEGRATION=1 node --test packages/database/tests/managed-postgres.integration.test.mjs \
+            2>&1 | tee "packages/database/artifacts/test-results/${{ matrix.name }}.tap"
+      - name: Load the NEMSIS catalog
+        run: npm run load:catalog -w @open-triage/database
+      - name: Prepare the ordinary demonstration organization
+        run: >-
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c
+          "insert into app_identity.organization (id, name, deployment_timezone)
+          values ('32000000-0000-4000-8000-000000000001', 'Demonstration EMS', 'UTC')
+          on conflict (id) do nothing"
+      - name: Bootstrap fixture accounts and installation definitions
+        run: npm run bootstrap:synthetic:runtime -w @open-triage/database
+      - name: Provision isolated runtime logins
+        run: npm run provision:workload-logins -w @open-triage/database
+      - name: Start the API through its least-privileged runtime login
+        env:
+          API_RUNTIME_DATABASE_URL: postgresql://open_triage_demo_api_012345abcdef:open-triage-ci-api-password-0123456789@localhost:5432/open_triage_test
+        run: |
+          export DATABASE_URL="$API_RUNTIME_DATABASE_URL"
+          npm run start -w @open-triage/api > "$RUNNER_TEMP/api-${POSTGRES_FIXTURE}.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3001/api/health/details > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/api-${POSTGRES_FIXTURE}.log"
+          exit 1
+      - name: Retain clean-install lane report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validation-${{ inputs.checkout_ref || github.sha }}-${{ matrix.name }}-results
+          path: packages/database/artifacts/test-results/${{ matrix.name }}.tap
+          if-no-files-found: warn
+          retention-days: 14

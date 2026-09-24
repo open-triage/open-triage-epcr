@@ -13,8 +13,6 @@ ingress:
 secrets:
   api:
     existingSecret: open-triage-api-database
-  migration:
-    existingSecret: open-triage-migration-database
   analyticsProjector:
     existingSecret: open-triage-analytics-projector-database
   analyticsHealth:
@@ -23,19 +21,6 @@ secrets:
     existingSecret: open-triage-retention-database
   operationalAudit:
     existingSecret: open-triage-operational-audit-database
-
-migration:
-  bootstrapSynthetic: true
-  # The public demo runs on a single small node. Keep the pre-upgrade hook
-  # schedulable while the existing minute-level maintenance jobs wind down;
-  # the container may still burst to the chart's 500m CPU limit.
-  resources:
-    requests:
-      cpu: 10m
-      memory: 64Mi
-  # Surface database lock contention promptly instead of letting the atomic
-  # deployment expire without the statement that is waiting.
-  pgOptions: "-c lock_timeout=45s -c statement_timeout=8min"
 
 analytics:
   # Avoid starving future hooks when the projector overlaps the health and

@@ -1,12 +1,16 @@
 # Demo deployment operations
 
 The `Demo validation` GitHub Actions workflow is the only automated path to the
-DigitalOcean Kubernetes (DOKS) demo. A push to `main` validates the application,
-PostgreSQL integration, deployable web artifact, and Helm chart; publishes
-immutable API and web `linux/amd64` images; runs the forward-only migration
-hook; and atomically deploys the exact image tags recorded in that run's
-artifact. Deployment runs are serialized and are never cancelled by a newer
-run.
+DigitalOcean Kubernetes (DOKS) demo. Every push to `main` validates the
+application, PostgreSQL integration, deployable web artifact, and Helm chart.
+Only the exact merge commit of one reviewed or owner-authorized pull request into
+`main`, with authorization for that pull request's final head commit, may publish immutable
+API and web `linux/amd64` images, run the explicit database-preparation phase,
+and atomically deploy the exact image tags recorded in that run's artifact. A direct
+push still produces diagnostics but cannot publish or deploy. Missing,
+ambiguous, mismatched, or unavailable GitHub provenance fails closed before the
+workflow authenticates to the registry or cluster. Deployment runs are
+serialized and are never cancelled by a newer run.
 
 After the Helm rollout, the same job verifies the frontend certificate and
 public Ingress routes, API health, synthetic login, and an authenticated
@@ -20,6 +24,13 @@ The `demo` GitHub environment must allow deployments from `main` and define:
 - secret `DIGITALOCEAN_ACCESS_TOKEN`, restricted in DigitalOcean to the demo
   cluster resources required by `doctl`;
 - variable `DOKS_CLUSTER_NAME`, naming the existing demo cluster.
+- variables `DEMO_DATABASE_EXPECTED_HOST` and `DEMO_DATABASE_PROJECT_REF`,
+  identifying the one disposable Supabase project the preparation phase may
+  target;
+- variable `DEMO_DATABASE_PREPARE_MODE`, normally `migrate`. An intentional
+  reset additionally requires `DEMO_DATABASE_RESET_CONFIRMATION` with the exact
+  value documented in the
+  [database rollout runbook](./runbooks/disposable-demo-database-rollout.md).
 
 `GITHUB_TOKEN` is supplied by Actions and receives `packages: write` only in the
 two image-publishing jobs. The deployment job has only `contents: read`. It
@@ -44,8 +55,8 @@ Before the first deployment, operators must provide:
   projector, analytics health, retention, and operational-audit database
   Secrets. Although Helm is invoked with
   `--create-namespace`, a usable first deployment requires operators to create
-  the namespace and Secrets in advance because the pre-install migration hook
-  needs its dedicated Secret before Helm-managed resources exist. Follow the
+  the namespace and Secrets in advance so the explicit preparation phase can
+  use its dedicated Secret before Helm-managed resources exist. Follow the
   [chart instructions](../deploy/helm/open-triage/README.md) for the required
   keys and safe creation procedure;
 - the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
@@ -65,15 +76,26 @@ private-registry access or public TLS configuration.
 
 ## Manual redeployment
 
-Run `Demo validation` with **Run workflow** and supply the full 40-character
-SHA of a commit reachable from `main`. The workflow rejects non-main commits,
-repeats validation, republishes the immutable images, and deploys only the
-image identities recorded by that run.
+Independent review and explicit owner authorization are both supported permanently.
+Set the repository variable `DEMO_DEPLOYMENT_OWNER_LOGIN` to the designated owner's
+GitHub login. Before merging, that owner can comment exactly
+`authorize-demo-deployment <full PR head SHA>` on the PR. The workflow verifies
+that the author is the configured human account and still has repository admin
+permission. An authorization for an older head, a comment edited after merge,
+or a later `revoke-demo-deployment <full PR head SHA>` comment does not authorize
+deployment. Setting the variable alone does not authorize any commit.
 
-Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Failed migrations,
-readiness probes, or rollouts fail the workflow and restore the prior Helm
-release. Database migrations are forward-only and remain committed as
-documented in the chart README. Both one-replica Deployments use `Recreate`, so
+Run `Demo validation` with **Run workflow** and supply the full 40-character
+SHA of the current `main` tip. The workflow rejects older or non-main commits,
+direct-push commits, commits without current review or owner authorization, and
+revisions without an earlier push run whose successful validation and
+provenance jobs name that exact SHA. It then repeats validation, republishes the
+immutable images, and deploys only the image identities recorded by that run.
+
+Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Database preparation
+must complete before Helm starts; failed readiness probes or rollouts fail the
+workflow and restore the prior Helm release. Database migrations are
+forward-only and remain committed as documented in the chart README. Both one-replica Deployments use `Recreate`, so
 the one-node demo may be briefly unavailable while pods are replaced.
 
 Smoke verification logs only named pass/fail stages and HTTP status codes. It
@@ -122,10 +144,10 @@ kubectl get pods,jobs --namespace open-triage
 - **Validation or image publication failure:** nothing is deployed. Correct the
   failure on `main`; the next push performs the complete validation and release
   sequence again.
-- **Migration failure:** the migration's transaction is rolled back, the Helm
-  pre-upgrade hook stops the release, and `--atomic` retains the prior workloads.
-  Fix the migration with a new commit and redeploy. Never edit an already applied
-  migration or attempt to reverse it manually.
+- **Database preparation failure:** the failing migration transaction is rolled
+  back and Helm never starts. Inspect the separately retained preparation Job
+  and artifact, fix the migration with a new commit, and redeploy. Never edit an
+  already applied migration or attempt to reverse it manually.
 - **Rollout or readiness failure:** Helm removes failed new resources and
   restores the prior Helm release. Any migration that completed before the
   rollout remains committed. Diagnose whether the prior application is
@@ -136,9 +158,9 @@ kubectl get pods,jobs --namespace open-triage
   infrastructure repair. If application code must change, ship a forward fix on
   `main`.
 
-An operator may redeploy an earlier full SHA reachable from `main`, but this
-rolls back application images only—not database migrations. Prefer a forward
-fix whenever a newer migration has committed. Preserve the failed workflow logs
+Manual deployment cannot select an older SHA because database migrations are
+forward-only. Ship a forward fix when application changes are required.
+Preserve the failed workflow logs
 and Helm history for diagnosis, but never copy login responses, bearer tokens,
 kubeconfigs, or Secret contents into tickets or chat.
 
@@ -181,7 +203,13 @@ Protect `main` in GitHub and require **Required / Demo validation gate** before
 merge. Require pull requests, block force pushes and branch deletion, dismiss
 stale approvals when new commits are pushed, and require branches to be up to
 date. Restrict changes to `.github/workflows/demo-validation.yml` and
-`deploy/helm/open-triage/**` with CODEOWNERS or an equivalent review rule. The
-deployment job should remain assigned to the protected `demo` environment;
-optionally add a required reviewer there when unattended deployment is not
-appropriate.
+`scripts/require-demo-provenance.mjs` and `deploy/helm/open-triage/**` with
+CODEOWNERS or an equivalent review rule. The deployment job should remain
+assigned to the protected `demo` environment; optionally add a required
+reviewer there when unattended deployment is not appropriate.
+
+These code-level checks limit accidental and ordinary unauthorized publication;
+they cannot defend against a repository writer who deliberately changes or
+removes the workflow guard and pushes that change. Server-side branch
+protection, protected environments, and restricted workflow changes remain the
+security boundary against a malicious writer.

@@ -23,15 +23,6 @@ api:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 500m, memory: 512Mi }
 
-migration:
-  enabled: true
-  bootstrapSynthetic: false
-  activeDeadlineSeconds: 600
-  pgOptions: ""
-  resources:
-    requests: { cpu: 100m, memory: 128Mi }
-    limits: { cpu: 500m, memory: 512Mi }
-
 analytics:
   enabled: true
   schedule: "*/2 * * * *"
@@ -64,8 +55,7 @@ ingress:
 
 secrets:
   # Production Secrets are cluster-owned and contain one workload credential.
-  # Empty existingSecret values opt into Helm-managed Secrets for non-hook
-  # workloads; the migration hook always requires a pre-existing Secret.
+  # Empty existingSecret values opt into Helm-managed workload Secrets.
   api:
     existingSecret: open-triage-api-database
     databaseUrl: ""
@@ -77,9 +67,6 @@ secrets:
     authRateLimitSecretBase64: ""
     offlineRecoveryKeyVersion: "1"
     offlineRecoverySecretBase64: ""
-  migration:
-    existingSecret: open-triage-migration-database
-    databaseUrl: ""
   analyticsProjector:
     existingSecret: open-triage-analytics-projector-database
     databaseUrl: ""

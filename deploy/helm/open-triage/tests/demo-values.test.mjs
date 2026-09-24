@@ -21,8 +21,8 @@ test("demo values preserve private image access for every workload", () => {
 
   assert.equal(
     output.match(/imagePullSecrets:\n\s+- name: ghcr-pull/g)?.length,
-    6,
-    "web, API, migration, synthetic expiry, and both analytics workloads must use the GHCR pull Secret",
+    5,
+    "web, API, synthetic expiry, and both analytics workloads must use the GHCR pull Secret",
   );
 });
 
@@ -31,7 +31,7 @@ test("demo values preserve public TLS and workload-specific cluster-owned databa
 
   assert.match(output, /tls:\n\s+- hosts:\n\s+- demo\.opentriage\.org\n\s+- api\.demo\.opentriage\.org\n\s+secretName: open-triage-tls/);
   for (const name of [
-    "open-triage-api-database", "open-triage-migration-database",
+    "open-triage-api-database",
     "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
     "open-triage-retention-database"
   ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
@@ -41,14 +41,10 @@ test("demo values preserve public TLS and workload-specific cluster-owned databa
 
 test("demo batch workloads remain schedulable on the single-node cluster", () => {
   const output = renderDemo();
-  const migration = output.slice(
-    output.indexOf("# Source: open-triage/templates/migration-job.yaml"),
-  );
   const projector = output.slice(
     output.indexOf("name: open-triage-analytics-projector"),
     output.indexOf("name: open-triage-analytics-health"),
   );
 
-  assert.match(migration, /requests:\n\s+cpu: 10m\n\s+memory: 64Mi/);
   assert.match(projector, /requests:\n\s+cpu: 25m\n\s+memory: 128Mi/);
 });

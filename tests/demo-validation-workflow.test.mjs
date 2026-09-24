@@ -64,8 +64,10 @@ test("the gate depends on every application, database, web, and Helm validation"
     "application-validation",
     "database-validation",
     "web-deployment-validation",
+    "browser-critical-validation",
     "api-runtime-image-validation",
     "helm-validation",
+    "ephemeral-kubernetes-validation",
   ]) {
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"));
   }
@@ -73,10 +75,13 @@ test("the gate depends on every application, database, web, and Helm validation"
   for (const command of [
     "npm run typecheck",
     "npm run lint",
-    "npm test",
+    "npm run test:unit",
+    "npm run test:workflow",
     "npm run build",
     "npm run test:deployment -w @open-triage/web",
-    "docker build -f deploy/docker/api.Dockerfile",
+    "npm run test:e2e:critical -w @open-triage/web",
+    "npm run test:helm",
+    "--file deploy/docker/api.Dockerfile",
     "helm lint",
     "helm template",
   ]) {
@@ -86,12 +91,20 @@ test("the gate depends on every application, database, web, and Helm validation"
   assert.match(workflow, /^    uses: \.\/\.github\/workflows\/database-postgresql\.yml$/m);
   for (const command of [
     "npm run check:database",
+    "npm run migrate -w @open-triage/database",
     "npm run test:integration -w @open-triage/database",
     "npm run test:integration -w @open-triage/api",
+    "npm run load:catalog -w @open-triage/database",
+    "npm run bootstrap:synthetic:runtime -w @open-triage/database",
     "npm run scale:test:ci -w @open-triage/database",
   ]) {
     assert.ok(databaseWorkflow.includes(command), `missing required database workflow command: ${command}`);
   }
+  assert.match(databaseWorkflow, /image: postgres:15\.19-bookworm@sha256:[0-9a-f]{64}/);
+  assert.match(databaseWorkflow, /fixture: plain/);
+  assert.match(databaseWorkflow, /fixture: managed/);
+  assert.match(databaseWorkflow, /packages\/database\/fixtures\/ci-postgresql\.sql/);
+  assert.match(databaseWorkflow, /Start the API through its least-privileged runtime login/);
 });
 
 test("database validation is reused once across non-overlapping event coverage", async () => {
@@ -101,9 +114,9 @@ test("database validation is reused once across non-overlapping event coverage",
   ]);
 
   assert.match(demoWorkflow, /^  push:\n    branches: \[main\]$/m);
-  assert.match(demoWorkflow, /^  pull_request:\n    branches: \[main, feature\/ci-cd-deployment\]$/m);
+  assert.match(demoWorkflow, /^  pull_request:$/m);
   assert.match(databaseWorkflow, /^  push:\n    branches: \[feature\/database-foundation\]$/m);
-  assert.match(databaseWorkflow, /^  pull_request:\n    branches: \[feature\/database-foundation\]$/m);
+  assert.doesNotMatch(databaseWorkflow, /^  pull_request:/m);
   assert.match(databaseWorkflow, /^  workflow_dispatch:$/m);
   assert.match(databaseWorkflow, /^  workflow_call:$/m);
   assert.doesNotMatch(databaseWorkflow, /branches: \[[^\]]*main/);
@@ -123,6 +136,58 @@ test("database validation is reused once across non-overlapping event coverage",
   }
 });
 
+test("database validation proves immutable forward upgrades from N-1", async () => {
+  const [demoWorkflow, databaseWorkflow] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(databaseWorkflowPath, "utf8"),
+  ]);
+
+  assert.match(databaseWorkflow, /name: Validate \/ Forward-only migration history/);
+  assert.match(databaseWorkflow, /verify-forward-only-migrations\.mjs --base-ref/);
+  assert.match(databaseWorkflow, /Reject edits to migrations already present/);
+  assert.match(demoWorkflow, /Materialize the sanitized N-1 database fixture/);
+  assert.match(demoWorkflow, /Upgrade N-1 with the current runtime migration artifact/);
+  assert.match(demoWorkflow, /Require the upgraded migrator to be idempotent/);
+  assert.match(demoWorkflow, /compare-schema-dumps\.mjs/);
+  assert.match(demoWorkflow, /verify-upgraded-database\.mjs/);
+  assert.match(demoWorkflow, /Start the upgraded API through its runtime login/);
+  assert.match(demoWorkflow, /127\.0\.0\.1:3002\/api\/health > \/dev\/null/);
+  assert.match(demoWorkflow, /database-forward-upgrade-schemas/);
+});
+
+test("pull requests run the critical artifact journey and main runs the complete browser suite", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const critical = workflow.slice(
+    workflow.indexOf("  browser-critical-validation:"),
+    workflow.indexOf("  browser-e2e-validation:"),
+  );
+  const complete = workflow.slice(
+    workflow.indexOf("  browser-e2e-validation:"),
+    workflow.indexOf("  api-runtime-image-validation:"),
+  );
+
+  assert.match(critical, /Build the production-style web artifact/);
+  assert.match(critical, /npm run test:e2e:critical -w @open-triage\/web/);
+  assert.match(critical, /apps\/web\/playwright-results\/critical/);
+  assert.match(critical, /apps\/web\/playwright-artifacts\/critical-server\.log/);
+  assert.match(complete, /^    if: github\.event_name != 'pull_request'$/m);
+  assert.match(complete, /npm run test:e2e -w @open-triage\/web/);
+  assert.match(complete, /apps\/web\/playwright-results\/e2e/);
+  assert.match(workflow, /needs\.browser-e2e-validation\.result == 'success'/);
+});
+
+test("Helm validation pins its CLI and runs every maintained behavior test", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const helm = workflow.slice(
+    workflow.indexOf("  helm-validation:"),
+    workflow.indexOf("  validation-gate:"),
+  );
+
+  assert.match(helm, /uses: azure\/setup-helm@[0-9a-f]{40} # v4\.3\.1/);
+  assert.match(helm, /version: v3\.19\.0/);
+  assert.match(helm, /npm run test:helm/);
+});
+
 test("the Kubernetes web artifact is built for root hosting", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const webValidation = workflow.slice(
@@ -130,6 +195,6 @@ test("the Kubernetes web artifact is built for root hosting", async () => {
     workflow.indexOf("  helm-validation:"),
   );
 
-  assert.match(webValidation, /name: Test the root-hosted web artifact/);
+  assert.match(webValidation, /name: Test the root-hosted Nginx container/);
   assert.doesNotMatch(webValidation, /NEXT_PUBLIC_BASE_PATH|open-triage-epcr-demo/);
 });
