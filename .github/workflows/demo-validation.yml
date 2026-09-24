@@ -609,11 +609,6 @@ jobs:
           bash scripts/validate-ephemeral-kubernetes.sh
           "$API_CANDIDATE_IMAGE"
           "$WEB_CANDIDATE_IMAGE"
-      - name: Exercise live preflight success and negative cases
-        run: >-
-          bash scripts/test-live-demo-preflight.sh
-          "$API_CANDIDATE_IMAGE"
-          "$SOURCE_COMMIT"
       - name: Capture redacted Kubernetes failure diagnostics
         if: failure()
         run: >-
@@ -702,76 +697,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  live-demo-preflight:
-    name: Preflight / Read-only live demo
+  promote-api-image:
+    name: Publish / Exact validated API image
     if: >-
       needs.deployment-authorization.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: deployment-authorization
-    runs-on: ubuntu-24.04
-    environment: demo
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - name: Install doctl with scoped demo credentials
-        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          version: 1.173.0
-      - name: Obtain an expiring DOKS kubeconfig
-        env:
-          DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
-      - name: Authenticate for read-only registry inspection
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Verify every live prerequisite without mutation
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: >-
-          node scripts/live-demo-preflight.mjs run
-          --namespace open-triage
-          --sha "${{ inputs.deployment_revision || github.sha }}"
-          --output live-demo-preflight.json
-      - name: Upload machine-readable preflight summary
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: live-demo-preflight-${{ inputs.deployment_revision || github.sha }}
-          path: live-demo-preflight.json
-          if-no-files-found: error
-          retention-days: 14
-      - name: Capture bounded redacted preflight diagnostics
-        if: failure()
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: >-
-          bash scripts/capture-kubernetes-diagnostics.sh
-          "$RUNNER_TEMP/live-demo-preflight-diagnostics"
-          open-triage
-      - name: Upload preflight failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-live-demo-preflight-failure
-          path: ${{ runner.temp }}/live-demo-preflight-diagnostics
-          if-no-files-found: error
-          retention-days: 14
-
-  promote-api-image:
-    name: Publish / Exact validated API image
-    if: >-
-      needs.live-demo-preflight.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: live-demo-preflight
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -824,9 +755,9 @@ jobs:
   promote-web-image:
     name: Publish / Exact validated web image
     if: >-
-      needs.live-demo-preflight.result == 'success' &&
+      needs.deployment-authorization.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: live-demo-preflight
+    needs: deployment-authorization
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -917,9 +848,8 @@ jobs:
     name: Prepare / Disposable demo database
     if: >-
       needs.publish-image-manifest.result == 'success' &&
-      needs.live-demo-preflight.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [publish-image-manifest, live-demo-preflight]
+    needs: publish-image-manifest
     runs-on: ubuntu-24.04
     environment: demo
     permissions:
@@ -935,11 +865,6 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
-      - name: Download successful live preflight summary
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: live-demo-preflight-${{ inputs.deployment_revision || github.sha }}
-          path: live-demo-preflight
       - name: Verify and select the tested API image
         id: images
         run: >-
@@ -958,16 +883,6 @@ jobs:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
-      - name: Consume the fresh matching preflight result
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: |
-          namespace_uid="$(kubectl get namespace open-triage --output jsonpath='{.metadata.uid}')"
-          node scripts/live-demo-preflight.mjs verify \
-            --summary live-demo-preflight/live-demo-preflight.json \
-            --sha "${{ inputs.deployment_revision || github.sha }}" \
-            --namespace-uid "$namespace_uid" \
-            --max-age-seconds 3600
       - name: Apply migrations and restore deterministic demo fixtures
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
@@ -1017,10 +932,9 @@ jobs:
     name: Deploy / DOKS demo
     if: >-
       needs.publish-image-manifest.result == 'success' &&
-      needs.live-demo-preflight.result == 'success' &&
       needs.prepare-demo-database.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [publish-image-manifest, live-demo-preflight, prepare-demo-database]
+    needs: [publish-image-manifest, prepare-demo-database]
     runs-on: ubuntu-24.04
     environment: demo
     permissions:
@@ -1036,11 +950,6 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
-      - name: Download successful live preflight summary
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: live-demo-preflight-${{ inputs.deployment_revision || github.sha }}
-          path: live-demo-preflight
       - name: Verify and select tested images
         id: images
         run: >-
@@ -1063,16 +972,6 @@ jobs:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
-      - name: Consume the fresh matching preflight result
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: |
-          namespace_uid="$(kubectl get namespace open-triage --output jsonpath='{.metadata.uid}')"
-          node scripts/live-demo-preflight.mjs verify \
-            --summary live-demo-preflight/live-demo-preflight.json \
-            --sha "${{ inputs.deployment_revision || github.sha }}" \
-            --namespace-uid "$namespace_uid" \
-            --max-age-seconds 3600
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig

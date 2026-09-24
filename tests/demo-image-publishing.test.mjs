@@ -79,7 +79,7 @@ test("the workflow promotes the exact validated API and web digests", async () =
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.match(apiValidation, /docker save "\$API_RUNTIME_IMAGE" \| gzip/);
   assert.doesNotMatch(apiValidation, /docker push|docker\/login-action|packages: write/);
-  assert.match(apiPromotion, /^    needs: live-demo-preflight$/m);
+  assert.match(apiPromotion, /^    needs: deployment-authorization$/m);
   assert.match(apiPromotion, /^      packages: write$/m);
   assert.match(apiPromotion, /gunzip --stdout .* \| docker load/);
   assert.match(apiPromotion, /docker image inspect --format .*org\.opencontainers\.image\.revision/);
@@ -92,7 +92,7 @@ test("the workflow promotes the exact validated API and web digests", async () =
   assert.match(webValidation, /--platform linux\/amd64/);
   assert.match(webValidation, /docker save "\$WEB_CANDIDATE_IMAGE" \| gzip/);
   assert.doesNotMatch(webValidation, /docker push|docker\/login-action|packages: write/);
-  assert.match(webPromotion, /^    needs: live-demo-preflight$/m);
+  assert.match(webPromotion, /^    needs: deployment-authorization$/m);
   assert.match(webPromotion, /gunzip --stdout .* \| docker load/);
   assert.match(webPromotion, /docker image inspect --format .*org\.opencontainers\.image\.revision/);
   assert.match(webPromotion, /docker push "\$WEB_RELEASE_IMAGE"/);

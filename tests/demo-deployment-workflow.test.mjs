@@ -45,7 +45,7 @@ test("deployment follows image publication and uses serialized, scoped DOKS acce
 
   assert.match(workflow, /^concurrency:\n  group: .*'demo-deployment'/m);
   assert.match(workflow, /^  cancel-in-progress: false$/m);
-  assert.match(deploy, /^    needs: \[publish-image-manifest, live-demo-preflight, prepare-demo-database\]$/m);
+  assert.match(deploy, /^    needs: \[publish-image-manifest, prepare-demo-database\]$/m);
   assert.match(deploy, /^    environment: demo$/m);
   assert.match(deploy, /^    permissions:\n      contents: read$/m);
   assert.match(deploy, /token: \$\{\{ secrets\.DIGITALOCEAN_ACCESS_TOKEN \}\}/);
@@ -80,9 +80,8 @@ test("database preparation is independently observable and gates application rol
   const deploy = workflow.slice(workflow.indexOf("  deploy-demo:"));
 
   assert.match(prepare, /name: Prepare \/ Disposable demo database/);
-  assert.match(prepare, /^    needs: \[publish-image-manifest, live-demo-preflight\]$/m);
+  assert.match(prepare, /^    needs: publish-image-manifest$/m);
   assert.match(prepare, /node scripts\/demo-deployment-values\.mjs/);
-  assert.match(prepare, /scripts\/live-demo-preflight\.mjs verify/);
   assert.match(prepare, /bash scripts\/prepare-demo-database\.sh/);
   assert.match(prepare, /Provision isolated demo workload credentials/);
   assert.match(prepare, /DEMO_DATABASE_EXPECTED_HOST: \$\{\{ vars\.DEMO_DATABASE_EXPECTED_HOST \}\}/);
@@ -91,7 +90,7 @@ test("database preparation is independently observable and gates application rol
   assert.match(prepare, /--tail=300 --limit-bytes=262144/);
   assert.match(prepare, /\[REDACTED\]/);
   assert.match(prepare, /retention-days: 14/);
-  assert.ok(deploy.indexOf("helm upgrade --install") > deploy.indexOf("needs: [publish-image-manifest, live-demo-preflight, prepare-demo-database]"));
+  assert.ok(deploy.indexOf("helm upgrade --install") > deploy.indexOf("needs: [publish-image-manifest, prepare-demo-database]"));
 });
 
 test("Helm validation uses the same committed values as the demo deployment", async () => {
