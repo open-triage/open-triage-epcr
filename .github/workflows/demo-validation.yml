@@ -236,7 +236,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      API_RUNTIME_IMAGE: open-triage-api:runtime-validation
+      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+      API_RUNTIME_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_image_test
       PATIENT_KEY_INSTALLATION_ID: 00000000-0000-4000-8000-000000000001
       PATIENT_KEY_VERSION: "1"
@@ -247,7 +248,14 @@ jobs:
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Build the API runtime image
-        run: docker build -f deploy/docker/api.Dockerfile -t "$API_RUNTIME_IMAGE" .
+        run: >-
+          docker build
+          --file deploy/docker/api.Dockerfile
+          --platform linux/amd64
+          --tag "$API_RUNTIME_IMAGE"
+          --label org.opencontainers.image.revision="$SOURCE_COMMIT"
+          --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}"
+          .
       - name: Run migrations from the runtime image
         run: >-
           docker run --rm --network host
@@ -294,27 +302,35 @@ jobs:
           done
           docker logs open-triage-api-runtime
           exit 1
-      - name: Inspect dependencies and operational assets
+      - name: Validate every declared runtime command and generated asset
+        run: >-
+          docker run --rm "$API_RUNTIME_IMAGE"
+          node deploy/docker/validate-api-runtime.mjs
+      - name: Require the pruned production boundary
         run: |
           docker run --rm "$API_RUNTIME_IMAGE" sh -ec '
             for package in typescript @nestjs/cli next react concurrently tsx eslint; do
               test ! -e "/workspace/node_modules/$package"
             done
             test ! -e /workspace/apps/api/src
-            for script in migrate bootstrap-synthetic-installation synthetic-stationary-definition retention verify-recovery verify-reporting-replica; do
-              test -f "/workspace/packages/database/scripts/$script.mjs"
-              node --check "/workspace/packages/database/scripts/$script.mjs"
-            done
-            test -f /workspace/supabase/migrations/202608300001_initial.sql
-            test -f /workspace/packages/database/scripts/lib/install-definitions.mjs
-            find /workspace/defines/catalog -maxdepth 1 -name "catalog_*.json" -print -quit | grep -q .
-            find /workspace/defines/forms -maxdepth 1 -name "form_*.json" -print -quit | grep -q .
-            find /workspace/defines/validation -maxdepth 1 -name "validation_*.json" -print -quit | grep -q .
-            test -f /workspace/packages/database/config/database-operations-policy.json
+            test ! -e /workspace/packages/database/tests
+            test ! -e /workspace/packages/database/scripts/reset-development-database.mjs
+            test -f /workspace/runtime/api-runtime-manifest.json
           '
       - name: Stop the runtime API
         if: always()
         run: docker rm --force open-triage-api-runtime 2>/dev/null || true
+      - name: Retain the exact validated API image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: docker save "$API_RUNTIME_IMAGE" | gzip > "$RUNNER_TEMP/validated-api-image.tar.gz"
+      - name: Upload the exact validated API image
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
+          path: ${{ runner.temp }}/validated-api-image.tar.gz
+          compression-level: 0
+          if-no-files-found: error
 
   helm-validation:
     name: Validate / Helm chart
@@ -385,8 +401,8 @@ jobs:
           WORKFLOW_ID: demo-validation.yml
         run: node scripts/require-demo-provenance.mjs
 
-  publish-images:
-    name: Publish / API linux/amd64
+  promote-api-image:
+    name: Publish / Exact validated API image
     if: >-
       needs.deployment-authorization.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -395,45 +411,44 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+      API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
+      API_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: docker/setup-buildx-action@v3
+      - name: Download the exact validated API image
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
+          path: validated-api-image
       - name: Authenticate to the private GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and publish immutable image
-        id: image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deploy/docker/api.Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
-          labels: |
-            org.opencontainers.image.revision=${{ inputs.deployment_revision || github.sha }}
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-      - name: Record published image identity
-        env:
-          IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-          SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
-        run: >-
-          node scripts/demo-image-identity.mjs record
-          --component api
-          --tag "$IMAGE_TAG"
-          --digest "$IMAGE_DIGEST"
-          --architecture linux/amd64
-          --sha "$SOURCE_COMMIT"
-          --owner "$REPOSITORY_OWNER"
-          --output image-identities/api.json
-      - name: Upload image identity fragment
+      - name: Publish the validated image without rebuilding
+        run: |
+          gunzip --stdout validated-api-image/validated-api-image.tar.gz | docker load
+          test "$(docker image inspect --format '{{.Architecture}}' "$API_CANDIDATE_IMAGE")" = amd64
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$API_CANDIDATE_IMAGE")" = "$SOURCE_COMMIT"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$API_CANDIDATE_IMAGE")" = "${{ github.server_url }}/${{ github.repository }}"
+          docker tag "$API_CANDIDATE_IMAGE" "$API_RELEASE_IMAGE"
+          docker push "$API_RELEASE_IMAGE" | tee "$RUNNER_TEMP/api-image-push.txt"
+          image_digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]\{64\}\).*$/\1/p' "$RUNNER_TEMP/api-image-push.txt" | tail -1)"
+          test -n "$image_digest"
+          node scripts/demo-image-identity.mjs record \
+            --component api \
+            --tag "$API_RELEASE_IMAGE" \
+            --digest "$image_digest" \
+            --architecture linux/amd64 \
+            --sha "$SOURCE_COMMIT" \
+            --owner "${{ github.repository_owner }}" \
+            --output image-identities/api.json
+      - name: Upload published image identity fragment
         uses: actions/upload-artifact@v4
         with:
           name: demo-image-identity-api-${{ inputs.deployment_revision || github.sha }}
@@ -497,11 +512,11 @@ jobs:
   publish-image-manifest:
     name: Publish / Deployment image manifest
     if: >-
-      needs.publish-images.result == 'success' &&
+      needs.promote-api-image.result == 'success' &&
       needs.promote-web-image.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs:
-      - publish-images
+      - promote-api-image
       - promote-web-image
     runs-on: ubuntu-latest
     permissions:

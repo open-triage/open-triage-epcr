@@ -57,9 +57,16 @@ test("the deployment artifact contains the exact API and web tags and digests", 
   assert.deepEqual(JSON.parse(await readFile(output, "utf8")), manifest);
 });
 
-test("the workflow promotes the validated web digest and separately publishes the API image", async () => {
+test("the workflow promotes the exact validated API and web digests", async () => {
   const workflow = await readFile(workflowPath, "utf8");
-  const publishing = workflow.slice(workflow.indexOf("  publish-images:"));
+  const apiPromotion = workflow.slice(
+    workflow.indexOf("  promote-api-image:"),
+    workflow.indexOf("  promote-web-image:"),
+  );
+  const apiValidation = workflow.slice(
+    workflow.indexOf("  api-runtime-image-validation:"),
+    workflow.indexOf("  helm-validation:"),
+  );
   const webValidation = workflow.slice(
     workflow.indexOf("  web-deployment-validation:"),
     workflow.indexOf("  api-runtime-image-validation:"),
@@ -70,16 +77,16 @@ test("the workflow promotes the validated web digest and separately publishes th
   );
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
-  assert.match(publishing, /^    needs: deployment-authorization$/m);
-  assert.match(publishing, /^      packages: write$/m);
-  assert.match(publishing, /^          platforms: linux\/amd64$/m);
-  assert.match(publishing, /^          push: true$/m);
-  assert.match(
-    publishing,
-    /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-api:\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
-  );
-  assert.doesNotMatch(publishing, /file: deploy\/docker\/web\.Dockerfile/);
-  assert.match(publishing, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+  assert.match(apiValidation, /docker save "\$API_RUNTIME_IMAGE" \| gzip/);
+  assert.doesNotMatch(apiValidation, /docker push|docker\/login-action|packages: write/);
+  assert.match(apiPromotion, /^    needs: deployment-authorization$/m);
+  assert.match(apiPromotion, /^      packages: write$/m);
+  assert.match(apiPromotion, /gunzip --stdout .* \| docker load/);
+  assert.match(apiPromotion, /docker image inspect --format .*org\.opencontainers\.image\.revision/);
+  assert.match(apiPromotion, /docker push "\$API_RELEASE_IMAGE"/);
+  assert.match(apiPromotion, /--output image-identities\/api\.json/);
+  assert.doesNotMatch(apiPromotion, /docker build(?:\s|$)|docker\/build-push-action/);
+  assert.match(apiPromotion, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf("jobs:")), /packages: write/);
   assert.match(webValidation, /docker build\n\s+--file deploy\/docker\/web\.Dockerfile/);
   assert.match(webValidation, /--platform linux\/amd64/);
@@ -91,10 +98,7 @@ test("the workflow promotes the validated web digest and separately publishes th
   assert.match(webPromotion, /docker push "\$WEB_RELEASE_IMAGE"/);
   assert.match(webPromotion, /--output image-identities\/web\.json/);
   assert.doesNotMatch(webPromotion, /docker build(?:\s|$)|docker\/build-push-action/);
-  assert.match(
-    publishing,
-    /name: demo-deployment-images-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
-  );
+  assert.match(workflow, /name: demo-deployment-images-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/);
 });
 
 test("the web image includes the privacy policy consumed by its client build", async () => {

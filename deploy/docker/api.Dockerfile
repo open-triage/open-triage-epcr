@@ -10,7 +10,15 @@ RUN npm ci
 
 COPY apps/api apps/api
 COPY packages/contracts packages/contracts
-RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
+COPY packages/database packages/database
+COPY defines defines
+COPY supabase/migrations supabase/migrations
+COPY deploy/docker/api-runtime-manifest.json deploy/docker/api-runtime-manifest.json
+COPY deploy/docker/generate-api-runtime.mjs deploy/docker/generate-api-runtime.mjs
+COPY deploy/docker/validate-api-runtime.mjs deploy/docker/validate-api-runtime.mjs
+RUN npm run build -w @open-triage/contracts \
+    && npm run build -w @open-triage/api \
+    && node deploy/docker/generate-api-runtime.mjs deploy/docker/api-runtime-manifest.json /api-runtime
 
 FROM node:22-bookworm-slim AS runtime
 
@@ -31,34 +39,9 @@ RUN npm ci --omit=dev \
       --include-workspace-root=false \
     && npm cache clean --force
 
-# Compiled application and contract runtime.
-COPY --from=build /workspace/apps/api/dist apps/api/dist
-COPY --from=build /workspace/packages/contracts/dist packages/contracts/dist
-COPY packages/contracts/config packages/contracts/config
-COPY packages/contracts/examples/dispatch packages/contracts/examples/dispatch
-COPY packages/contracts/patient-key.mjs packages/contracts/quality-rules.mjs packages/contracts/quality-normalization-policy.json packages/contracts/
-
-# Assets intentionally retained for deployment jobs and operator runbooks.
-COPY packages/database/scripts/bootstrap-synthetic-installation.mjs packages/database/scripts/
-COPY packages/database/scripts/synthetic-stationary-definition.mjs packages/database/scripts/
-COPY packages/database/scripts/catalog-artifact-sha256.mjs packages/database/scripts/
-COPY packages/database/scripts/load-nemsis-catalog.mjs packages/database/scripts/
-COPY packages/database/scripts/seed-initial-validation-versions.mjs packages/database/scripts/
-COPY packages/database/scripts/seed-install-definitions.mjs packages/database/scripts/
-COPY packages/database/scripts/migrate.mjs packages/database/scripts/
-COPY packages/database/scripts/lib/install-definitions.mjs packages/database/scripts/lib/
-COPY packages/database/scripts/provision-workload-logins.mjs packages/database/scripts/
-COPY packages/database/scripts/project-analytics.mjs packages/database/scripts/
-COPY packages/database/scripts/purge-synthetic-records.mjs packages/database/scripts/
-COPY packages/database/scripts/projection-health.mjs packages/database/scripts/
-COPY packages/database/scripts/retention.mjs packages/database/scripts/
-COPY packages/database/scripts/rotate-patient-keys.mjs packages/database/scripts/
-COPY packages/database/scripts/verify-recovery.mjs packages/database/scripts/
-COPY packages/database/scripts/verify-reporting-replica.mjs packages/database/scripts/
-COPY packages/database/config/database-operations-policy.json packages/database/config/retention-policy.json packages/database/config/
-COPY packages/database/generated packages/database/generated
-COPY defines defines
-COPY supabase/migrations supabase/migrations
+# One manifest-generated artifact contains the application, every declared
+# operational entrypoint, its local import closure, and required runtime assets.
+COPY --from=build /api-runtime/ ./
 
 USER node
 EXPOSE 3001
