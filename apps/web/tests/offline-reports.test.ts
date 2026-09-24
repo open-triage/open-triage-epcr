@@ -245,14 +245,18 @@ test("an explicitly discarded stale queue resets only that report to the server 
 
 test("completion purges accepted offline metadata but preserves pending commands for recovery", () => {
   const storage = memoryStorage();
+  cacheOpenedReport(storage, session, { ...opened, report: { ...opened.report, id: "other-report" } }, "CALL-52");
   cacheOpenedReport(storage, session, opened, "CALL-51");
   purgeCompletedOfflineReports(storage, [opened.report.id]);
-  assert.equal(cachedOpenReports(storage, session.user.id).length, 0);
+  assert.deepEqual(cachedOpenReports(storage, session.user.id).map(({ report }) => report.id), ["other-report"]);
 
   cacheOpenedReport(storage, session, opened, "CALL-51");
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
   purgeCompletedOfflineReports(storage, [opened.report.id]);
   assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-1");
+  acceptDraftChange(storage, opened.report.id, "command-1", { id: opened.report.id, status: "signed", revision: 5 });
+  purgeCompletedOfflineReports(storage, [opened.report.id]);
+  assert.deepEqual(cachedOpenReports(storage, session.user.id).map(({ report }) => report.id), ["other-report"]);
 });
 
 test("generated report expiry removes its local document and queued work exactly at the boundary", () => {

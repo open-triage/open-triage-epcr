@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { assertScratchDatabaseTarget } from "./lib/scale-test-guard.mjs";
+import { evaluateScaleThreshold } from "./lib/scale-performance-policy.mjs";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -264,10 +265,7 @@ async function sample(sql, parameters) {
 }
 
 function thresholdResult(name, observed, comparator, evidence) {
-  const threshold = policy.thresholds[name];
-  const passed = comparator === "max" ? observed <= threshold : observed >= threshold;
-  return { name, status: passed ? "pass" : "fail", observed, comparator, threshold, evidence,
-    followUp: passed ? null : `Investigate ${name}; the approved target remains unchanged.` };
+  return evaluateScaleThreshold(policy, options.profile, name, observed, comparator, evidence);
 }
 
 try {
