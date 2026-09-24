@@ -45,7 +45,7 @@ test("deployment follows image publication and uses serialized, scoped DOKS acce
 
   assert.match(workflow, /^concurrency:\n  group: .*'demo-deployment'/m);
   assert.match(workflow, /^  cancel-in-progress: false$/m);
-  assert.match(deploy, /^    needs: publish-image-manifest$/m);
+  assert.match(deploy, /^    needs: \[publish-image-manifest, live-demo-preflight\]$/m);
   assert.match(deploy, /^    environment: demo$/m);
   assert.match(deploy, /^    permissions:\n      contents: read$/m);
   assert.match(deploy, /token: \$\{\{ secrets\.DIGITALOCEAN_ACCESS_TOKEN \}\}/);

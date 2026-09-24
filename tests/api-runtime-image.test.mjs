@@ -146,7 +146,7 @@ test("the exact validated API image is published after authorization without ano
 
   assert.match(validation, /docker save "\$API_RUNTIME_IMAGE" \| gzip/);
   assert.doesNotMatch(validation, /docker push|docker\/login-action|packages: write/);
-  assert.match(promotion, /^    needs: deployment-authorization$/m);
+  assert.match(promotion, /^    needs: live-demo-preflight$/m);
   assert.match(promotion, /gunzip --stdout .* \| docker load/);
   assert.match(promotion, /docker image inspect --format .*org\.opencontainers\.image\.revision/);
   assert.match(promotion, /docker push "\$API_RELEASE_IMAGE"/);
