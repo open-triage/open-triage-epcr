@@ -6,6 +6,8 @@ import {
   availableCapacity,
   cpuMillis,
   memoryBytes,
+  podRequests,
+  recreateDeploymentCapacity,
   rolloutConflicts,
   validateSummary,
 } from "../scripts/live-demo-preflight.mjs";
@@ -22,6 +24,55 @@ test("Kubernetes resource quantities produce bounded free capacity", () => {
     { items: [{ spec: { nodeName: "node", containers: [{ resources: { requests: { cpu: "250m", memory: "128Mi" } } }] }, status: { phase: "Running" } }] },
   );
   assert.deepEqual(capacity, { cpu: 1750, memory: 1920 * 2 ** 20 });
+});
+
+test("pod requests follow Kubernetes init-container scheduling semantics", () => {
+  assert.deepEqual(podRequests({ spec: {
+    containers: [
+      { resources: { requests: { cpu: "10m", memory: "32Mi" } } },
+      { resources: { requests: { cpu: "300m", memory: "300Mi" } } },
+    ],
+    initContainers: [
+      { resources: { requests: { cpu: "100m", memory: "100Mi" } } },
+      { resources: { requests: { cpu: "100m", memory: "10Mi" } } },
+    ],
+    overhead: { cpu: "5m", memory: "4Mi" },
+  } }), { cpu: 315, memory: 336 * 2 ** 20 });
+
+  assert.deepEqual(podRequests({ spec: {
+    containers: [{ resources: { requests: { cpu: "100m", memory: "64Mi" } } }],
+    initContainers: [
+      { restartPolicy: "Always", resources: { requests: { cpu: "20m", memory: "16Mi" } } },
+      { resources: { requests: { cpu: "200m", memory: "128Mi" } } },
+    ],
+  } }), { cpu: 220, memory: 144 * 2 ** 20 });
+});
+
+test("capacity credits only pods released by matching Recreate deployments", () => {
+  const pods = { items: [
+    { metadata: { namespace: "open-triage", labels: { component: "api" } }, spec: { nodeName: "node", containers: [{ resources: { requests: { cpu: "100m", memory: "256Mi" } } }] }, status: { phase: "Running" } },
+    { metadata: { namespace: "open-triage", labels: { component: "web" } }, spec: { nodeName: "node", containers: [{ resources: { requests: { cpu: "25m", memory: "32Mi" } } }] }, status: { phase: "Running" } },
+    { metadata: { namespace: "open-triage", labels: { component: "projector" } }, spec: { nodeName: "node", containers: [{ resources: { requests: { cpu: "100m", memory: "128Mi" } } }] }, status: { phase: "Running" } },
+    { metadata: { namespace: "other", labels: { component: "api" } }, spec: { nodeName: "node", containers: [{ resources: { requests: { cpu: "500m", memory: "1Gi" } } }] }, status: { phase: "Running" } },
+  ] };
+  const deployments = { items: [
+    { metadata: { namespace: "open-triage" }, spec: { strategy: { type: "Recreate" }, selector: { matchLabels: { component: "api" } } } },
+    { metadata: { namespace: "open-triage" }, spec: { strategy: { type: "RollingUpdate" }, selector: { matchLabels: { component: "projector" } } } },
+    { metadata: { namespace: "open-triage" }, spec: { strategy: { type: "Recreate" }, selector: { matchLabels: { component: "missing" } } } },
+  ] };
+
+  assert.deepEqual(recreateDeploymentCapacity(pods, deployments, "open-triage"), {
+    cpu: 100,
+    memory: 256 * 2 ** 20,
+  });
+  assert.deepEqual(
+    availableCapacity(
+      { items: [{ spec: {}, status: { allocatable: { cpu: "1", memory: "2Gi" } } }] },
+      pods,
+      { deployments, namespace: "open-triage" },
+    ),
+    { cpu: 375, memory: 864 * 2 ** 20 },
+  );
 });
 
 test("active, failed, and stuck rollout batch work is rejected", () => {
