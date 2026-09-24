@@ -11,9 +11,11 @@ import type { SignedReportResult } from "./sign-report.types.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
 import { ReportNoteService } from "./report-note.service.js";
+import { ReportPhotoService } from "./report-photo.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
+type BinaryResponse = { setHeader(name: string, value: string): unknown; send(body: Buffer): unknown };
 
 @Controller("reports")
 export class DraftReportController {
@@ -23,6 +25,7 @@ export class DraftReportController {
     private readonly protectedKeys: ProtectedReportKeyService,
     private readonly reviewValidation: ReviewValidationService,
     private readonly reportNotes: ReportNoteService,
+    private readonly reportPhotos: ReportPhotoService,
   ) {}
 
   @Post()
@@ -154,6 +157,54 @@ export class DraftReportController {
     @Headers("cookie") cookie?: string,
   ) {
     return this.reportNotes.delete(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Post(":id/photos")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  createPhotoNote(
+    @Param("id", uuidV4) id: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportPhotos.create(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/photos/:noteId")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  updatePhotoCaption(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportPhotos.updateCaption(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Delete(":id/photos/:noteId")
+  @Header("Cache-Control", "no-store, private")
+  deletePhotoNote(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportPhotos.delete(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Get(":id/photos/:noteId/image")
+  async photoImage(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string,
+    @Headers("authorization") authorization: string | undefined, @Headers("cookie") cookie: string | undefined,
+    @Res() response: BinaryResponse,
+  ) {
+    const image = await this.reportPhotos.image(bearerToken(authorization, cookie), id, noteId);
+    response.setHeader("Content-Type", image.contentType);
+    response.setHeader("Content-Length", String(image.bytes.byteLength));
+    response.setHeader("Content-Disposition", `inline; filename="photo-${noteId}.jpg"`);
+    response.setHeader("Cache-Control", "no-store, private");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("ETag", `"sha256-${image.sha256}"`);
+    return response.send(image.bytes);
   }
 
   @Post(":id/reopen")

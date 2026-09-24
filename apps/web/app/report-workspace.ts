@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportTextNote } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
@@ -84,7 +84,7 @@ export function useReportWorkspace({
   readonly online: boolean;
   readonly onSessionEnded: () => void;
   readonly onReportCompleted: () => void;
-  readonly onNotesChange: (notes: ReadonlyArray<ReportTextNote>) => void;
+  readonly onNotesChange: (notes: ReadonlyArray<ReportNote>) => void;
 }): ReportWorkspace {
   const [restored, setRestored] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);

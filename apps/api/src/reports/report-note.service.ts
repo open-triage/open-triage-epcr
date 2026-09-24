@@ -3,6 +3,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type {
   DeleteReportTextNoteResponse,
   ReportTextNoteMutationResponse,
+  ReportTextNote,
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
@@ -38,7 +39,7 @@ export class ReportNoteService {
           command.capturedUtcOffsetMinutes, command.content, actorId]);
         await this.recordRevision(manager, report.id, nextRevision, command.commandId, actorId,
           command.capturedAt, "create", command.noteId);
-        const note = (await reportTextNotes(manager, report.id)).find(({ id }) => id === command.noteId)!;
+        const note = (await reportTextNotes(manager, report.id)).find((candidate): candidate is ReportTextNote => candidate.type === "text" && candidate.id === command.noteId)!;
         return { reportId: report.id, revision: nextRevision, note };
       });
   }
@@ -54,7 +55,7 @@ export class ReportNoteService {
         if (!changed[0]) throw new NotFoundException(`Text note ${noteId} was not found`);
         await this.recordRevision(manager, report.id, nextRevision, command.commandId, actorId,
           null, "update", noteId);
-        const note = (await reportTextNotes(manager, report.id)).find(({ id }) => id === noteId)!;
+        const note = (await reportTextNotes(manager, report.id)).find((candidate): candidate is ReportTextNote => candidate.type === "text" && candidate.id === noteId)!;
         return { reportId: report.id, revision: nextRevision, note };
       });
   }

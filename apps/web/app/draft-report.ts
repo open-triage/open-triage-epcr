@@ -1,4 +1,4 @@
-import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportTextNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -52,7 +52,7 @@ export interface ActiveDraftReport {
   readonly demoMutable?: boolean;
   readonly expiresAt?: string;
   readonly document?: EncounterDocument;
-  readonly notes?: ReadonlyArray<ReportTextNote>;
+  readonly notes?: ReadonlyArray<ReportNote>;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation?: DispatchCancellation | null;
 }

@@ -958,7 +958,7 @@ export interface OpenAssignmentResponse {
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
     /** App-native notes are intentionally outside the NEMSIS encounter document. */
-    notes?: ReadonlyArray<ReportTextNote>;
+    notes?: ReadonlyArray<ReportNote>;
     /** IANA zone used for operational-time presentation. */
     agencyTimeZone?: string;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
@@ -1038,12 +1038,14 @@ export interface ActiveReportResource {
   /** Latest complete dispatch snapshot revision applied to the assignment. */
   dispatchRevision: number;
   document: EncounterDocument;
-  notes?: ReadonlyArray<ReportTextNote>;
+  notes?: ReadonlyArray<ReportNote>;
   dispatchConflicts: ReadonlyArray<DispatchConflict>;
   dispatchCancellation: DispatchCancellation | null;
 }
 
 export type ReportNotePersistenceState = "ready";
+
+export type ReportNote = ReportTextNote | ReportPhotoNote;
 
 export interface ReportTextNote {
   id: string;
@@ -1056,6 +1058,24 @@ export interface ReportTextNote {
   serverReceivedAt: string;
   updatedAt: string;
   persistenceState: ReportNotePersistenceState;
+}
+
+export interface ReportPhotoNote {
+  id: string;
+  reportId: string;
+  type: "photo";
+  caption: string | null;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+  contentType: "image/jpeg";
+  byteSize: number;
+  sha256: string;
+  width: number;
+  height: number;
 }
 
 export interface CreateReportTextNoteCommand {
@@ -1090,6 +1110,34 @@ export interface DeleteReportTextNoteResponse {
   revision: number;
   deleted: true;
 }
+
+export interface CreateReportPhotoNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  caption?: string | null;
+  contentType: "image/jpeg";
+  canonicalBase64: string;
+  sha256: string;
+  width: number;
+  height: number;
+}
+
+export interface UpdateReportPhotoCaptionCommand {
+  commandId: string;
+  expectedRevision: number;
+  caption?: string | null;
+}
+
+export interface ReportPhotoNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportPhotoNote;
+}
+
+export type DeleteReportPhotoNoteResponse = DeleteReportTextNoteResponse;
 
 /**
  * Portable encounter data, deliberately independent of form and UI state.

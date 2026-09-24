@@ -7,11 +7,12 @@ import { SessionsModule } from "../sessions/sessions.module.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
 import { ReportNoteService } from "./report-note.service.js";
+import { ReportPhotoService } from "./report-photo.service.js";
 
 @Module({
   imports: [SessionsModule],
   controllers: [DraftReportController],
   providers: [DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
-    ReviewValidationService, ReportNoteService]
+    ReviewValidationService, ReportNoteService, ReportPhotoService]
 })
 export class ReportsModule {}

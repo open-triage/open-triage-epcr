@@ -123,9 +123,9 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await installTextNoteRoutes(page);
   await openCall(page);
   expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
-    "Add vital signs", "Add medication", "Add procedure", "Text note",
+    "Add vital signs", "Add medication", "Add procedure", "Text note", "Add photo note",
   ]);
-  expect(await page.locator(".quick-actions button span").allTextContents()).toEqual(["Vitals", "Medications", "Procedures", "Text note"]);
+  expect(await page.locator(".quick-actions button > span:last-child").allTextContents()).toEqual(["Vitals", "Medications", "Procedures", "Text note", "Photo"]);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 
