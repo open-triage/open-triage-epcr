@@ -268,6 +268,21 @@ jobs:
       SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
       API_RUNTIME_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_image_test
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      UPGRADE_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/open_triage_upgrade_test
+      UPGRADE_DATABASE_URL: postgresql://open_triage_ci_migration:open-triage-ci-migration-password@localhost:5432/open_triage_upgrade_test
+      UPGRADE_CLEAN_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/open_triage_upgrade_clean
+      UPGRADE_CLEAN_DATABASE_URL: postgresql://open_triage_ci_migration:open-triage-ci-migration-password@localhost:5432/open_triage_upgrade_clean
+      API_DATABASE_LOGIN: open_triage_demo_upgrade_api_012345abcdef
+      API_DATABASE_PASSWORD: open-triage-ci-api-password-0123456789
+      ANALYTICS_PROJECTOR_DATABASE_LOGIN: open_triage_demo_upgrade_analytics_projector_012345abcdef
+      ANALYTICS_PROJECTOR_DATABASE_PASSWORD: open-triage-ci-projector-password-0123456789
+      ANALYTICS_HEALTH_DATABASE_LOGIN: open_triage_demo_upgrade_analytics_health_012345abcdef
+      ANALYTICS_HEALTH_DATABASE_PASSWORD: open-triage-ci-health-password-0123456789
+      RETENTION_DATABASE_LOGIN: open_triage_demo_upgrade_retention_012345abcdef
+      RETENTION_DATABASE_PASSWORD: open-triage-ci-retention-password-0123456789
+      OPERATIONAL_AUDIT_DATABASE_LOGIN: open_triage_demo_upgrade_operational_audit_012345abcdef
+      OPERATIONAL_AUDIT_DATABASE_PASSWORD: open-triage-ci-audit-password-0123456789
       PATIENT_KEY_INSTALLATION_ID: 00000000-0000-4000-8000-000000000001
       PATIENT_KEY_VERSION: "1"
       PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
@@ -289,6 +304,117 @@ jobs:
         run: |
           mkdir -p api-runtime-evidence
           docker image inspect "$API_RUNTIME_IMAGE" > api-runtime-evidence/api-image-identity.json
+      - name: Prepare managed-compatible clean and N-1 upgrade databases
+        run: |
+          psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          create database open_triage_upgrade_test template template0;
+          create database open_triage_upgrade_clean template template0;
+          SQL
+          psql "$UPGRADE_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+            --set managed=true \
+            --set database_name=open_triage_upgrade_test \
+            --set migration_password=open-triage-ci-migration-password \
+            --file packages/database/fixtures/ci-postgresql.sql
+          psql "$UPGRADE_CLEAN_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+            --set managed=true \
+            --set database_name=open_triage_upgrade_clean \
+            --set migration_password=open-triage-ci-migration-password \
+            --file packages/database/fixtures/ci-postgresql.sql
+      - name: Materialize the sanitized N-1 database fixture
+        run: >-
+          docker run --rm --network host
+          --volume "$PWD/packages/database/scripts/materialize-previous-release.mjs:/workspace/packages/database/scripts/materialize-previous-release.mjs:ro"
+          --volume "$PWD/packages/database/scripts/verify-forward-only-migrations.mjs:/workspace/packages/database/scripts/verify-forward-only-migrations.mjs:ro"
+          --volume "$PWD/packages/database/fixtures/previous-release:/workspace/packages/database/fixtures/previous-release:ro"
+          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
+          "$API_RUNTIME_IMAGE"
+          node packages/database/scripts/materialize-previous-release.mjs
+      - name: Upgrade N-1 with the current runtime migration artifact
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
+          "$API_RUNTIME_IMAGE"
+          npm run migrate:runtime -w @open-triage/database
+      - name: Require the upgraded migrator to be idempotent
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
+          "$API_RUNTIME_IMAGE"
+          npm run migrate:runtime -w @open-triage/database
+      - name: Install the current schema cleanly for equivalence
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="$UPGRADE_CLEAN_DATABASE_URL"
+          "$API_RUNTIME_IMAGE"
+          npm run migrate:runtime -w @open-triage/database
+      - name: Compare clean and upgraded schemas
+        run: |
+          pg_dump "$UPGRADE_CLEAN_DATABASE_URL" --schema-only --no-owner --no-comments \
+            --file "$RUNNER_TEMP/current-clean-schema.sql"
+          pg_dump "$UPGRADE_DATABASE_URL" --schema-only --no-owner --no-comments \
+            --file "$RUNNER_TEMP/current-upgraded-schema.sql"
+          node packages/database/scripts/compare-schema-dumps.mjs \
+            "$RUNNER_TEMP/current-clean-schema.sql" \
+            "$RUNNER_TEMP/current-upgraded-schema.sql"
+      - name: Load the catalog into the upgraded database
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
+          "$API_RUNTIME_IMAGE"
+          npm run load:catalog -w @open-triage/database
+      - name: Provision upgraded least-privileged workload logins
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
+          -e API_DATABASE_LOGIN -e API_DATABASE_PASSWORD
+          -e ANALYTICS_PROJECTOR_DATABASE_LOGIN -e ANALYTICS_PROJECTOR_DATABASE_PASSWORD
+          -e ANALYTICS_HEALTH_DATABASE_LOGIN -e ANALYTICS_HEALTH_DATABASE_PASSWORD
+          -e RETENTION_DATABASE_LOGIN -e RETENTION_DATABASE_PASSWORD
+          -e OPERATIONAL_AUDIT_DATABASE_LOGIN -e OPERATIONAL_AUDIT_DATABASE_PASSWORD
+          "$API_RUNTIME_IMAGE"
+          npm run provision:workload-logins -w @open-triage/database
+      - name: Start the upgraded API through its runtime login
+        run: >-
+          docker run --detach --name open-triage-upgraded-api --network host
+          -e PORT=3002
+          -e DATABASE_URL="postgresql://$API_DATABASE_LOGIN:$API_DATABASE_PASSWORD@localhost:5432/open_triage_upgrade_test"
+          -e PATIENT_KEY_INSTALLATION_ID -e PATIENT_KEY_VERSION -e PATIENT_KEY_SECRET_BASE64
+          -e AUTH_RATE_LIMIT_SECRET_BASE64
+          -e WEB_ORIGIN=http://localhost:3000
+          "$API_RUNTIME_IMAGE"
+      - name: Require upgraded application and database smoke behavior
+        env:
+          ANALYTICS_HEALTH_DATABASE_URL: postgresql://open_triage_demo_upgrade_analytics_health_012345abcdef:open-triage-ci-health-password-0123456789@localhost:5432/open_triage_upgrade_test
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3002/api/health/details > /dev/null; then
+              break
+            fi
+            if [ "$attempt" = 30 ]; then
+              docker logs open-triage-upgraded-api
+              exit 1
+            fi
+            sleep 1
+          done
+          docker run --rm --network host \
+            --volume "$PWD/packages/database/scripts/verify-upgraded-database.mjs:/workspace/packages/database/scripts/verify-upgraded-database.mjs:ro" \
+            --volume "$PWD/packages/database/fixtures/previous-release:/workspace/packages/database/fixtures/previous-release:ro" \
+            -e DATABASE_URL="$UPGRADE_DATABASE_URL" \
+            -e ANALYTICS_HEALTH_DATABASE_URL \
+            "$API_RUNTIME_IMAGE" \
+            node packages/database/scripts/verify-upgraded-database.mjs
+      - name: Stop the upgraded API
+        if: always()
+        run: docker rm --force open-triage-upgraded-api 2>/dev/null || true
+      - name: Upload schema equivalence evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: database-forward-upgrade-schemas-${{ inputs.deployment_revision || github.sha }}
+          path: |
+            ${{ runner.temp }}/current-clean-schema.sql
+            ${{ runner.temp }}/current-upgraded-schema.sql
+          if-no-files-found: warn
       - name: Run migrations from the runtime image
         run: >-
           docker run --rm --network host

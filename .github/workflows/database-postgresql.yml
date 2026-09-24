@@ -15,6 +15,22 @@ permissions:
   contents: read
 
 jobs:
+  migration-integrity:
+    name: Validate / Forward-only migration history
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+          fetch-depth: 0
+      - name: Verify the N-1 migration checksum lock
+        run: node packages/database/scripts/verify-forward-only-migrations.mjs
+      - name: Reject edits to migrations already present on the pull-request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: node packages/database/scripts/verify-forward-only-migrations.mjs --base-ref "$BASE_REF"
+
   postgresql-15:
     name: Validate / PostgreSQL 15 / ${{ matrix.lane }}
     runs-on: ubuntu-24.04
@@ -131,6 +147,7 @@ jobs:
         run: >-
           psql "$DATABASE_ADMIN_URL"
           --set managed=${{ matrix.managed }}
+          --set database_name=open_triage_test
           --set migration_password=open-triage-ci-migration-password
           --file packages/database/fixtures/ci-postgresql.sql
       - name: Run clean forward-only migrations

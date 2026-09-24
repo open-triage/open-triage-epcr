@@ -136,6 +136,24 @@ test("database validation is reused once across non-overlapping event coverage",
   }
 });
 
+test("database validation proves immutable forward upgrades from N-1", async () => {
+  const [demoWorkflow, databaseWorkflow] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(databaseWorkflowPath, "utf8"),
+  ]);
+
+  assert.match(databaseWorkflow, /name: Validate \/ Forward-only migration history/);
+  assert.match(databaseWorkflow, /verify-forward-only-migrations\.mjs --base-ref/);
+  assert.match(databaseWorkflow, /Reject edits to migrations already present/);
+  assert.match(demoWorkflow, /Materialize the sanitized N-1 database fixture/);
+  assert.match(demoWorkflow, /Upgrade N-1 with the current runtime migration artifact/);
+  assert.match(demoWorkflow, /Require the upgraded migrator to be idempotent/);
+  assert.match(demoWorkflow, /compare-schema-dumps\.mjs/);
+  assert.match(demoWorkflow, /verify-upgraded-database\.mjs/);
+  assert.match(demoWorkflow, /Start the upgraded API through its runtime login/);
+  assert.match(demoWorkflow, /database-forward-upgrade-schemas/);
+});
+
 test("pull requests run the critical artifact journey and main runs the complete browser suite", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const critical = workflow.slice(

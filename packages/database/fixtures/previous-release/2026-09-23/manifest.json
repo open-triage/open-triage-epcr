@@ -1,0 +1,297 @@
+{
+  "schemaVersion": 1,
+  "release": "n-1-2026-09-23",
+  "description": "Sanitized, deterministic previous-release fixture with no patient data",
+  "lastMigration": "20260923120000",
+  "migrations": [
+    {
+      "file": "202608300001_initial.sql",
+      "sha256": "07ed6d3bbd3fd8b30f94ec3a9b9df930747670977d67f786e70fd38b123078e1"
+    },
+    {
+      "file": "20260906193136_identity_sessions.sql",
+      "sha256": "be5743d4a70618d2f55c26b05f80a9b71ad4b1916ea3991ce692f2d4a65d1f2f"
+    },
+    {
+      "file": "20260906210000_catalog_authoring.sql",
+      "sha256": "1d3d8860f8db49b5ca55571efa2fd1af296d4fab73b1d50d755f3feb54d5956b"
+    },
+    {
+      "file": "20260906230000_code_list_authoring.sql",
+      "sha256": "42fb4aae4c1340a2f076f72ec213e66dea60b39e030c395825007bcffa10c5e8"
+    },
+    {
+      "file": "20260907010000_form_authoring.sql",
+      "sha256": "248f4a7ba682e2e2a709832e71ae9281091d1734e5de56fc9cc52bf885e81d84"
+    },
+    {
+      "file": "20260907020000_form_activation_default.sql",
+      "sha256": "38f430f24dd98808af52f97e59d91c9985ab52c26253020226b445800b551b75"
+    },
+    {
+      "file": "20260907030000_preserve_report_configuration_pins.sql",
+      "sha256": "2e42f11e14f70ae9e91737cf8e70ca8f30c81042e6ec3245d721aff4583ba524"
+    },
+    {
+      "file": "20260908114126_catalog_requiredness_and_inline_options.sql",
+      "sha256": "8cef712f2549b606f1a1a4ca7e05860e8795b24728d3370b56011fbf082268bc"
+    },
+    {
+      "file": "20260908124506_demo_admin_clinician_role.sql",
+      "sha256": "16aa6e7242108a2c64e535fd384978f1686a1dfff5e0f2904f4f801d745b93ca"
+    },
+    {
+      "file": "20260908141346_prototype_synthetic_draft_deletion.sql",
+      "sha256": "bb7997c7a8e3785f98c6c71a369a2bb8e942e298af732b3037d9d8dd3defc5c3"
+    },
+    {
+      "file": "20260908144514_version_display_names.sql",
+      "sha256": "cd593e06ab44e9a4f6834b3dc935ad1d0641dfebc13e263128bdb4337cd3b2c1"
+    },
+    {
+      "file": "20260911164417_role_resolved_authorization.sql",
+      "sha256": "03046978db75d8a977d522aa0dc767d100cea6b63b53e753243df0d3f99310eb"
+    },
+    {
+      "file": "20260911171505_single_installation_owner.sql",
+      "sha256": "c8d459c1e8fec234203668102158c980780079ecd847f2c6d7c81a121de6bbf6"
+    },
+    {
+      "file": "20260911180000_expiring_temporary_credentials.sql",
+      "sha256": "d27e4441386b0ede6ea4e160197b0f5e22f19bbe93f41af96551276f8f7ddd3d"
+    },
+    {
+      "file": "20260911184803_authorized_synthetic_call_generation.sql",
+      "sha256": "79c68382a998b40d309c44d3c3402537b8690ee9ab3ec2c6990cbae2b1e435ab"
+    },
+    {
+      "file": "20260911190000_admin_user_search_indexes.sql",
+      "sha256": "a7337dbe949fc6cbca13053b0459c7225392c80e4c23ccf0aac32241591913db"
+    },
+    {
+      "file": "20260911191329_audit_authorized_synthetic_draft_mutations.sql",
+      "sha256": "8bfe114ed21efe6a4ce97cbc7a4f8412a346a2b18942d2deed4802fba49f7a61"
+    },
+    {
+      "file": "20260911200000_custom_role_authoring.sql",
+      "sha256": "7e62b926ea4d090b27dc4c641933edecda7a87f2356a6453b22fcb61aa1cb832"
+    },
+    {
+      "file": "20260911213000_form_draft_audit.sql",
+      "sha256": "dad82e3d3dcf90b0cb404c691bfb7139279eb4cbf0fd4730aaee9caaded1ccdc"
+    },
+    {
+      "file": "20260911220000_safe_user_lifecycle.sql",
+      "sha256": "e184cd95ebc0ae0841023035a5169931fb30f8b219358b2b2da274754b89bb63"
+    },
+    {
+      "file": "20260911230000_role_retirement_history.sql",
+      "sha256": "608fd8f099c2f3b5a8805156a4e12d47657c9e8f4e137cf82bdd5322d96d6985"
+    },
+    {
+      "file": "20260911231000_role_assignment_reauthentication.sql",
+      "sha256": "7a965949ad56775c7794117c3a6698175d13f1721ca014e39e640c3c5743cdf8"
+    },
+    {
+      "file": "20260911240000_session_administration.sql",
+      "sha256": "2b544680c90ec520c9549951f8d9d9bb42582e2ad6b58bc1a34257b309e65b75"
+    },
+    {
+      "file": "20260911250000_portable_role_packages.sql",
+      "sha256": "3008964883ab8026c4b6927b0c3822960021f363f47e333df332b611dea9c00d"
+    },
+    {
+      "file": "20260911260000_ownership_transfer_nominations.sql",
+      "sha256": "8d8ce7be6a39bfea605de6cdda09dacbcf0d339890c02ff21a0b506f66639ba5"
+    },
+    {
+      "file": "20260911270000_expire_synthetic_records.sql",
+      "sha256": "9ab9b5bed351f3d387701470db84f8c575ae421dfdf87e7b0b8fbda62e16abcd"
+    },
+    {
+      "file": "20260911280000_production_equivalent_demo_fixtures.sql",
+      "sha256": "5c5353f543d4cf963a42ebe33c5fe455eadbd9a23ee14969a76c17c63bdd8788"
+    },
+    {
+      "file": "20260912120000_simplify_protected_demo_role.sql",
+      "sha256": "a94e7492463a45e29089d56e0e1d8c46a31f544efe9af4ea93eabf7e60feeeed"
+    },
+    {
+      "file": "20260913120000_owner_full_permissions.sql",
+      "sha256": "21c49613622b721ff6123d36a99739d0dc32a905bdbb65e58b80aa4e77951a56"
+    },
+    {
+      "file": "20260913143000_owner_intrinsic_authority.sql",
+      "sha256": "ef82238359cb6c13d7d30ea6b9db4c75a66e810e6343adef2226115c1b398df8"
+    },
+    {
+      "file": "20260913150000_administrator_clinical_document.sql",
+      "sha256": "00cc09aebac675bd1b5b5af2523c06d5e637a00121eaa5d0a0e0fc7f2f221ee4"
+    },
+    {
+      "file": "20260916120000_accept_authenticated_feedback.sql",
+      "sha256": "cb173ec51314210d4f585d6d91953018261b5ff875f0e6c21606bd8e93bda898"
+    },
+    {
+      "file": "20260916130000_feedback_delivery_safety.sql",
+      "sha256": "1012b1dd2f532c3a9c7cd0255889ef78f9483fcf26ae90d47b322ed37f561c9d"
+    },
+    {
+      "file": "20260916140000_attach_feedback_diagnostics.sql",
+      "sha256": "2e6bc9e57c411ce3bade2c8556a28b2cab5c94d9e6ea7ee488b05d7a9b927616"
+    },
+    {
+      "file": "20260916160000_feedback_review_reader.sql",
+      "sha256": "4183b21ed5f8ddc30074ffad9a96ed810438b2a15055751e271eb277ff1a1785"
+    },
+    {
+      "file": "20260916170000_human_approved_feedback_triage.sql",
+      "sha256": "db4e9927057947fef5c7728b11749de262acdaf811466bf0aa1cf60f1a6b17c9"
+    },
+    {
+      "file": "20260916180000_complete_feedback_review_flows.sql",
+      "sha256": "4796eb8a964d05bb90b52d7e50749d220af9ec2df48ff6390a1c56b50a85aa72"
+    },
+    {
+      "file": "20260916190000_expire_terminal_feedback_diagnostics.sql",
+      "sha256": "8f2e1728503e2d6d19590a7e69038cb385d23de56adf907123ab274a3da9e5b2"
+    },
+    {
+      "file": "20260917090000_workload_database_roles.sql",
+      "sha256": "0b7aa87e3ef22fed38a3d0ee4f602d07f14df54e57b7c84d4500d73ed4642637"
+    },
+    {
+      "file": "20260917100000_protected_offline_report_envelopes.sql",
+      "sha256": "61ec5ed6f72ae414ea5f48daefb10b79bf84340b826a58e157dceedd90e018a4"
+    },
+    {
+      "file": "20260917110000_protected_offline_ciphertext_checkpoints.sql",
+      "sha256": "5831951873a0bf13161edfb09a9e92ee4d292005a5d6b93b858e7c1a548b28cb"
+    },
+    {
+      "file": "20260917113000_rotate_recovery_secrets_and_audit_key_release_operations.sql",
+      "sha256": "2e238c1a9b0a60e0d0bda9fb770953cbd5b8d5eda7cd0294233eae1b93e03979"
+    },
+    {
+      "file": "20260917114000_enforce_offline_recovery_expiry.sql",
+      "sha256": "3349a61e8d3b0446543721d10324e8079599f65bffa3ae0971ca49980391abb4"
+    },
+    {
+      "file": "20260917120000_authentication_attempt_throttling.sql",
+      "sha256": "da2f9125f40f9463e8435ec928d9a56faa4b664d834a8d919499453570371486"
+    },
+    {
+      "file": "20260917194212_recover_one_protected_report_after_browser_restart.sql",
+      "sha256": "b60d53ce3a013edd7808032e2eace7ee6d4806a69a48075231e9dfde75d8d2d1"
+    },
+    {
+      "file": "20260917210000_reconcile_offline_completion_and_purge.sql",
+      "sha256": "28fa73f4c42fd059e2a7158eb307a128587cb45bb41038ce6a794969b9682b6d"
+    },
+    {
+      "file": "20260917220000_enforce_offline_recovery_lifecycle.sql",
+      "sha256": "ac4d01e02e24bcc04d8f4399cd9b5ab8247e39a83fa745a16b09bc3f48b22d67"
+    },
+    {
+      "file": "20260918142741_grant_offline_runtime_to_api_role.sql",
+      "sha256": "3ee40dd37625193aadc1d05e5cfde349c4949658c8b7746eb8ac0796c123d19f"
+    },
+    {
+      "file": "20260918151111_fix_offline_checkpoint_and_demo_deletion.sql",
+      "sha256": "85e6b58a76a3b6516b4a3b67059d0802247330a46ec9ed30bd834ec91d18e9f5"
+    },
+    {
+      "file": "20260918170000_validation_required_element_rule.sql",
+      "sha256": "c471964d83c89ee19eb8111644f29b263b79a83ac61f547710e73fe122dfb510"
+    },
+    {
+      "file": "20260918180000_combined_occurrence_absence_metadata.sql",
+      "sha256": "17bc736a2727982733f351466a978ccb6660a32a72196904211915e2422ea1fd"
+    },
+    {
+      "file": "20260918183807_validation_capabilities_and_default_grants.sql",
+      "sha256": "a8aa6db68ab1a1d5aac89094db15ec14182f08a0947a36f010c930438c4ceeb5"
+    },
+    {
+      "file": "20260918185000_portable_pgcrypto_digest.sql",
+      "sha256": "b7cd1e7bbd37fa100e943126b3074a4783a5700e0fc9d84650c687351e44483d"
+    },
+    {
+      "file": "20260918190000_validation_version_lifecycle.sql",
+      "sha256": "749dbaeba0710c5742af562291364da7f3a60a5c9f933ca1affe3aa383a61ea7"
+    },
+    {
+      "file": "20260918200000_atomic_configuration_bundles.sql",
+      "sha256": "764f7f9acd54e6ec4867b6203b51fb2427b89c0380772d075f4a81b3cb70bc80"
+    },
+    {
+      "file": "20260918210000_mark_legacy_unversioned_validation_artifacts.sql",
+      "sha256": "5dc14b3e2f4b4b4e212faafd35a2efd38a6cd2b44cef9df1a60bdb4d416ff5de"
+    },
+    {
+      "file": "20260918211904_expose_review_target_server_evaluation.sql",
+      "sha256": "7f294e5f931567760c14875e9ec658fd74526e0b0e6a87426ac12266405de946"
+    },
+    {
+      "file": "20260918220000_enforce_validation_acknowledgements.sql",
+      "sha256": "9c45f3fbba5209618fc56e2d1bb2160a579ac8840efb13cdf5d9d88f6c3a6614"
+    },
+    {
+      "file": "20260921143410_allow_browser_scoped_offline_checkpoints.sql",
+      "sha256": "1ef44ccaf59e5e7bc7efdb719d5bb51d63c796744c362cdcd0b803cf41e4d0df"
+    },
+    {
+      "file": "20260922090000_allow_validation_draft_discard.sql",
+      "sha256": "ec707fd866b3cabe7ca1670ec7b765d385172858c28492cbf703378550749d3b"
+    },
+    {
+      "file": "20260923090000_allow_runtime_append_only_authorization_checks.sql",
+      "sha256": "1ad7250fa67461276a57bf5e9c46b4bbb2c345dc9e7e54aeb5d05294a5eb7144"
+    },
+    {
+      "file": "20260923120000_grant_portable_pgcrypto_digest_access.sql",
+      "sha256": "7b79323273dbdf1c93e8c99f3f05db05dd7925d5c350525f8597ddda844d921a"
+    }
+  ],
+  "database": {
+    "engine": "postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f",
+    "semantics": "managed-compatible",
+    "migrationRole": "open_triage_ci_migration",
+    "platformRoles": [
+      "anon",
+      "authenticated",
+      "authenticator",
+      "service_role"
+    ],
+    "runtimeRoles": [
+      "open_triage_analytics_health",
+      "open_triage_analytics_projector",
+      "open_triage_api_runtime",
+      "open_triage_operational_audit_writer",
+      "open_triage_retention"
+    ],
+    "extensions": {
+      "pgcrypto": {
+        "schema": "extensions"
+      }
+    }
+  },
+  "data": {
+    "file": "data.sql",
+    "sha256": "58a4e01975e810a6968616637ea460805373a80b2a13da971927d573672bb8c6",
+    "containsPhi": false,
+    "expectedRows": {
+      "organizations": 1,
+      "users": 1,
+      "installationOwners": 1,
+      "catalogReleases": 1
+    }
+  },
+  "schemaComparison": {
+    "expectedDifferences": [],
+    "normalization": [
+      "pg_dump restriction tokens",
+      "pg_dump client and server version comments"
+    ]
+  }
+}
