@@ -28,6 +28,26 @@ export function reportTextNoteExcerpt(content: string, maximum = 160): string {
   return characters.length <= maximum ? oneLine : `${characters.slice(0, maximum - 1).join("")}…`;
 }
 
+export type NoteReadinessBlocker = {
+  readonly note: ReportNote;
+  readonly title: string;
+  readonly message: string;
+  readonly action: string;
+};
+
+export function noteReadinessBlockers(notes: ReadonlyArray<ReportNote>): ReadonlyArray<NoteReadinessBlocker> {
+  return notes.filter(({ persistenceState }) => persistenceState !== "ready").map((note) => {
+    const kind = note.type === "audio" ? "Audio" : note.type === "photo" ? "Photo" : "Text";
+    const state = note.persistenceState === "saved-on-device" ? "saved on this device" : note.persistenceState;
+    return {
+      note,
+      title: `${kind} note is not ready`,
+      message: `${kind} note is ${state}. It must be ready or deleted before signing.`,
+      action: note.persistenceState === "failed" ? "Open to retry or delete →" : "Open note actions →",
+    };
+  });
+}
+
 export type NativeTextNoteTimelineItem = {
   readonly id: string;
   readonly kind: "text-note";

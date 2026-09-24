@@ -3,7 +3,7 @@ import test from "node:test";
 import type { ReportTextNote } from "@open-triage/contracts";
 import { encounterEvents, saveCanonicalEvent } from "../app/canonical-events";
 import { configuredQuickActions, type EncounterDefinition } from "../app/encounter-definition";
-import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, reportTextNoteExcerpt, validateReportTextNote } from "../app/report-text-notes";
+import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, reportTextNoteExcerpt, validateReportTextNote } from "../app/report-text-notes";
 import { INITIAL_SHELL_STATE, type EncounterEvent } from "../app/standard-encounter";
 import { standardEncounterDefinition } from "../app/standard-encounter-definition";
 
@@ -32,6 +32,19 @@ test("text-note normalization is required, NFC, bounded, and rejects unsafe cont
   assert.equal(validateReportTextNote("first line\nsecond line").error, null);
   assert.equal(validateReportTextNote("x".repeat(REPORT_TEXT_NOTE_MAX_CHARACTERS)).error, null);
   assert.match(validateReportTextNote("x".repeat(REPORT_TEXT_NOTE_MAX_CHARACTERS + 1)).error!, /10,000/);
+});
+
+test("note readiness blockers stay separate and link non-ready notes to recovery actions", () => {
+  const blockers = noteReadinessBlockers([
+    note(),
+    note({ id: "10000000-0000-4000-8000-000000000002", persistenceState: "uploading" }),
+    note({ id: "10000000-0000-4000-8000-000000000003", persistenceState: "failed" }),
+  ]);
+  assert.deepEqual(blockers.map(({ note: blocked, action }) => ({ id: blocked.id, action })), [
+    { id: "10000000-0000-4000-8000-000000000002", action: "Open note actions →" },
+    { id: "10000000-0000-4000-8000-000000000003", action: "Open to retry or delete →" },
+  ]);
+  assert.ok(blockers.every(({ message }) => /before signing/.test(message)));
 });
 
 test("app-native text notes never change or project from eNarrative.01", () => {

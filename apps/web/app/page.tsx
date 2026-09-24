@@ -47,7 +47,8 @@ import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
 import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAudioEntries, protectedPhotoEntries,
   subscribeProtectedAudio, subscribeProtectedPhotos, updateProtectedAudio, updateProtectedPhoto } from "./protected-clinical-storage";
-import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote } from "./report-text-notes";
+import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote,
+  type NoteReadinessBlocker } from "./report-text-notes";
 import { EncounterTimeline } from "../components/encounter-timeline";
 import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
 import { PhotoNoteDialog } from "../components/photo-note";
@@ -305,10 +306,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     return statuses;
   }, [reviewFindings]);
   const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
+  const noteBlockers = useMemo(() => noteReadinessBlockers(reportNotes), [reportNotes]);
   const signingBlockers = stationarySigningBlockers({
     presentationMode, restored, online, syncStatus, errorCount: reviewErrors.length,
     warnings: reviewWarnings, unresolvedDispatchConflictCount: unresolvedDispatchConflicts.length,
-    pendingMedia: report ? hasPendingProtectedMedia(report.id) : false,
+    pendingMedia: noteBlockers.length > 0 || (report ? hasPendingProtectedMedia(report.id) : false),
   });
   const canFinish = signingBlockers.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
@@ -507,6 +509,12 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     setEditingFinding(null);
     setAudioExpectedRevision(revisionRef.current);
     setAudioDialog(note);
+  }
+
+  function openNoteReadinessBlocker(blocker: NoteReadinessBlocker, trigger: HTMLElement) {
+    if (blocker.note.type === "photo") openPhoto(blocker.note, trigger);
+    else if (blocker.note.type === "audio") openAudio(blocker.note, trigger);
+    else openTextNote(blocker.note, trigger);
   }
 
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
@@ -804,9 +812,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               <p className="eyebrow">Warnings and errors</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
-            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length} open</span>
+            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length} open</span>
           </div>
-          {!reviewFindings.length && !unresolvedDispatchConflicts.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
+          <NoteReadinessList blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
+          {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
@@ -831,18 +840,20 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           findings={configuredStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
+          noteBlockers={noteBlockers}
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
-          validationClear={validationClear}
+          validationClear={validationClear && noteBlockers.length === 0}
           signing={signing}
           signError={signError}
           onFinding={editValidationFinding}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
+          onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
           onSign={() => void signRecord()}
           blockedReason={!restored ? "The report is still loading."
             : !online ? "Signing is unavailable while offline. Reconnect and finish synchronization."
               : syncStatus !== "Saved" ? "Signing is unavailable until all changes finish synchronizing."
-                : report && hasPendingProtectedMedia(report.id) ? "Signing is unavailable until all media finishes processing and playback verification."
+                : noteBlockers.length || (report && hasPendingProtectedMedia(report.id)) ? "Signing is unavailable until every note is ready. Open a Note readiness item to retry or delete it."
                 : unresolvedDispatchConflicts.length ? "Resolve every dispatch difference before signing."
                   : undefined}
         />
@@ -1035,10 +1046,12 @@ function DispatchConflictList({ conflicts, onDispose }: {
   );
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, blockedReason, onFinding, onWarning, onSign }: {
+function ReviewPanel({ findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
+  blockedReason, onFinding, onWarning, onNoteBlocker, onSign }: {
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
   readonly warnings: ReadonlyArray<SigningFinding>;
+  readonly noteBlockers: ReadonlyArray<NoteReadinessBlocker>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly validationClear: boolean;
@@ -1047,6 +1060,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
   readonly blockedReason?: string;
   readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
+  readonly onNoteBlocker: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
   readonly onSign: () => void;
 }) {
   return (
@@ -1057,6 +1071,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       </div>
       <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
 
+      <NoteReadinessList blockers={noteBlockers} onOpen={onNoteBlocker} />
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
       <FindingGroup title="Information" empty="No informational findings." findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
 
@@ -1067,6 +1082,25 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
+}
+
+function NoteReadinessList({ blockers, onOpen }: {
+  readonly blockers: ReadonlyArray<NoteReadinessBlocker>;
+  readonly onOpen: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
+}) {
+  return <section className="review-group note-readiness" aria-labelledby="note-readiness-heading">
+    <h2 id="note-readiness-heading">Note readiness <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
+    {!blockers.length ? <p className="review-empty">✓ All notes are ready.</p> : <ul className="review-findings">
+      {blockers.map((blocker) => <li key={`${blocker.note.type}:${blocker.note.id}`} className="error">
+        <button type="button" onClick={(event) => onOpen(blocker, event.currentTarget)}>
+          <span className="finding-category">Error · Note readiness</span>
+          <strong>{blocker.title}</strong>
+          <span>{blocker.message}</span>
+          <small>{blocker.action}</small>
+        </button>
+      </li>)}
+    </ul>}
+  </section>;
 }
 
 function FindingGroup({ title, empty, findings, onFinding, onWarning }: {

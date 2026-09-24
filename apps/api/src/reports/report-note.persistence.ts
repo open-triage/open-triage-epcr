@@ -30,6 +30,7 @@ type ReportPhotoRow = {
   sha256: string;
   width: string | number;
   height: string | number;
+  processing_state: ReportPhotoNote["persistenceState"];
 };
 
 type ReportAudioRow = {
@@ -46,6 +47,7 @@ type ReportAudioRow = {
   byte_size: string | number;
   sha256: string;
   duration_milliseconds: string | number;
+  processing_state: ReportAudioNote["persistenceState"];
 };
 
 export function reportTextNote(row: ReportNoteRow): ReportTextNote {
@@ -74,7 +76,7 @@ export function reportPhotoNote(row: ReportPhotoRow): ReportPhotoNote {
     author: { id: row.created_by, displayName: row.author_display_name },
     serverReceivedAt: new Date(row.server_received_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
-    persistenceState: "ready",
+    persistenceState: row.processing_state ?? "ready",
     contentType: row.content_type,
     byteSize: Number(row.byte_size),
     sha256: row.sha256,
@@ -94,7 +96,7 @@ export function reportAudioNote(row: ReportAudioRow): ReportAudioNote {
     author: { id: row.created_by, displayName: row.author_display_name },
     serverReceivedAt: new Date(row.server_received_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
-    persistenceState: "ready",
+    persistenceState: row.processing_state ?? "ready",
     contentType: row.content_type,
     byteSize: Number(row.byte_size),
     sha256: row.sha256,
@@ -118,7 +120,7 @@ export async function reportTextNotes(manager: Queryable, reportId: string): Pro
            note.captured_utc_offset_minutes, note.created_by,
            author.display_name as author_display_name,
            note.server_received_at, note.updated_at, note.content_type,
-           note.byte_size, note.sha256, note.width, note.height
+           note.byte_size, note.sha256, note.width, note.height, note.processing_state
     from clinical.report_photo_note note
     join app_identity.app_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
@@ -129,7 +131,7 @@ export async function reportTextNotes(manager: Queryable, reportId: string): Pro
            note.captured_utc_offset_minutes, note.created_by,
            author.display_name as author_display_name,
            note.server_received_at, note.updated_at, note.content_type,
-           note.byte_size, note.sha256, note.duration_milliseconds
+           note.byte_size, note.sha256, note.duration_milliseconds, note.processing_state
     from clinical.report_audio_note note
     join app_identity.app_user author
       on author.organization_id = note.organization_id and author.id = note.created_by
