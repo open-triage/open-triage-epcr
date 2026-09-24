@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportNote } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportMediaPolicy, ReportNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
@@ -58,6 +58,7 @@ export interface ReportWorkspace {
   readonly dispatchCancellation: DispatchCancellation | null;
   readonly conflictError: string | null;
   readonly editingBlocked: boolean;
+  readonly mediaPolicy: ReportMediaPolicy | undefined;
   readonly flushSave: () => Promise<void>;
   readonly completeReport: () => void;
   readonly resolveConflict: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => Promise<void>;
@@ -92,6 +93,7 @@ export function useReportWorkspace({
   const [dispatchConflicts, setDispatchConflicts] = useState<ReadonlyArray<DispatchConflict>>(report?.dispatchConflicts ?? []);
   const [dispatchCancellation, setDispatchCancellation] = useState<DispatchCancellation | null>(report?.dispatchCancellation ?? null);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [mediaPolicy, setMediaPolicy] = useState<ReportMediaPolicy | undefined>(report?.mediaPolicy);
   const [conflictRecoveryRequest, setConflictRecoveryRequest] = useState(0);
   const protectedStatus = useSyncExternalStore(
     useCallback((changed) => subscribeProtectedStorageStatus((reportId) => {
@@ -144,6 +146,7 @@ export function useReportWorkspace({
     persistedDraft.current = report?.document
       ? encounterDocumentToDraftMutations(report.id, report.document)
       : { groups: [], occurrences: [] };
+    queueMicrotask(() => setMediaPolicy(report?.mediaPolicy));
     const result = loadShellStateResult(
       window.localStorage,
       bundledEncounterDefinition,
@@ -424,6 +427,7 @@ export function useReportWorkspace({
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
         setDispatchConflicts(response.resource.dispatchConflicts);
         setDispatchCancellation(response.resource.dispatchCancellation);
+        setMediaPolicy(response.resource.mediaPolicy ?? mediaPolicy);
         onNotesChange(response.resource.notes ?? []);
         dispatch({ type: "document-opened", document: merged });
         if (retryRecoveredChange) queueMicrotask(() => void flushSave());
@@ -459,7 +463,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
+  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, mediaPolicy, onNotesChange, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;
@@ -492,6 +496,7 @@ export function useReportWorkspace({
     conflictError,
     editingBlocked: protectedStatus.mode === "read-only" || protectedStatus.mode === "locked" ||
       (!online && !offlineEditingAvailable(protectedStatus.mode)),
+    mediaPolicy,
     flushSave,
     completeReport,
     resolveConflict,

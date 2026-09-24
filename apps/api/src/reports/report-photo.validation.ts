@@ -62,6 +62,12 @@ export function validateCreateReportPhotoNoteCommand(value: unknown): CreateRepo
       findings.push(`${dimension} must be an integer between 1 and 2560`);
     }
   }
+  if (!Number.isSafeInteger(candidate.settingsRevision) || Number(candidate.settingsRevision) < 1) {
+    findings.push("settingsRevision must be a positive safe integer");
+  }
+  if (!Number.isSafeInteger(candidate.effectiveAllowanceBytes) || Number(candidate.effectiveAllowanceBytes) < 1) {
+    findings.push("effectiveAllowanceBytes must be a positive safe integer");
+  }
   let caption: string | null = null;
   try { caption = normalizePhotoCaption(candidate.caption); }
   catch (error) { if (error instanceof ReportPhotoValidationError) findings.push(...error.findings); else throw error; }

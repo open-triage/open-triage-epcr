@@ -33,6 +33,7 @@ test("photo command validation requires a hash-identified bounded JPEG payload",
     commandId: randomUUID(), expectedRevision: 4, noteId: randomUUID(), capturedAt: "2026-09-24T12:00:00Z",
     capturedUtcOffsetMinutes: 120, caption: null, contentType: "image/jpeg",
     canonicalBase64: bytes.toString("base64"), sha256: createHash("sha256").update(bytes).digest("hex"), width: 2, height: 3,
+    settingsRevision: 3, effectiveAllowanceBytes: 10_000,
   };
   assert.equal(validateCreateReportPhotoNoteCommand(command).sha256, command.sha256);
   assert.throws(() => validateCreateReportPhotoNoteCommand({ ...command, contentType: "image/png" }), /image\/jpeg/);
@@ -50,6 +51,7 @@ test("photo creation reserves aggregate quota while the report row is locked and
     statements.push({ sql, parameters });
     if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 4, report_media_allowance_bytes: 10_000 }];
     if (/select \* from clinical\.command_receipt/.test(sql)) return [];
+    if (/select allowance from/.test(sql)) return [{ allowance: 10_000 }];
     if (/as used_bytes/.test(sql)) return [{ used_bytes: 100 }];
     if (/from clinical\.report_note note/.test(sql)) return [];
     if (/from clinical\.report_photo_note note/.test(sql)) return [{
@@ -68,6 +70,7 @@ test("photo creation reserves aggregate quota while the report row is locked and
     commandId: randomUUID(), expectedRevision: 4, noteId, capturedAt: "2026-09-24T12:00:00Z",
     capturedUtcOffsetMinutes: 120, caption: " Scene ", contentType: "image/jpeg",
     canonicalBase64: bytes.toString("base64"), sha256: createHash("sha256").update(bytes).digest("hex"), width: 2, height: 3,
+    settingsRevision: 2, effectiveAllowanceBytes: 10_000,
   }, "csrf");
   assert.equal(result.note.type, "photo");
   assert.equal(result.revision, 5);
@@ -87,6 +90,7 @@ test("aggregate quota rejection occurs before either metadata or bytes are inser
     statements.push({ sql, parameters });
     if (/from clinical\.report where/.test(sql)) return [{ id: reportId, organization_id: organizationId, status: "draft", revision: 1, report_media_allowance_bytes: bytes.length }];
     if (/select \* from clinical\.command_receipt/.test(sql)) return [];
+    if (/select allowance from/.test(sql)) return [{ allowance: bytes.length }];
     if (/as used_bytes/.test(sql)) return [{ used_bytes: 1 }];
     return [];
   } };
@@ -98,6 +102,7 @@ test("aggregate quota rejection occurs before either metadata or bytes are inser
     commandId: randomUUID(), expectedRevision: 1, noteId: randomUUID(), capturedAt: "2026-09-24T12:00:00Z",
     capturedUtcOffsetMinutes: 0, contentType: "image/jpeg", canonicalBase64: bytes.toString("base64"),
     sha256: createHash("sha256").update(bytes).digest("hex"), width: 2, height: 3,
+    settingsRevision: 1, effectiveAllowanceBytes: bytes.length,
   }, "csrf"), ConflictException);
   assert.equal(statements.some(({ sql }) => /insert into clinical\.report_photo_(?:note|blob)/.test(sql)), false);
 });

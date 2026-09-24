@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReportPhotoNote } from "@open-triage/contracts";
+import type { CreateReportPhotoNoteCommand, ReportMediaPolicy, ReportPhotoNote } from "@open-triage/contracts";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
   createReportPhotoNote,
@@ -15,6 +15,18 @@ import {
   normalizePhotoCaption,
   REPORT_PHOTO_CAPTION_MAX_CHARACTERS,
 } from "../app/report-photo-notes";
+import {
+  protectedPhotoBlob,
+  protectedPhotoEntries,
+  protectedPhotoPreview,
+  protectedStorageActive,
+  removeProtectedPhoto,
+  removeProtectedPhotoPreview,
+  stageProtectedPhoto,
+  stageProtectedPhotoPreview,
+  updateProtectedPhotoPreview,
+  updateProtectedPhoto,
+} from "../app/protected-clinical-storage";
 
 export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
   readonly reportId: string; readonly noteId: string; readonly alt: string; readonly className?: string;
@@ -24,7 +36,8 @@ export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
   useEffect(() => {
     let active = true;
     let objectUrl: string | null = null;
-    void fetchReportPhoto(reportId, noteId).then((blob) => {
+    const local = protectedPhotoBlob(reportId, noteId);
+    void (local ? Promise.resolve(local) : fetchReportPhoto(reportId, noteId)).then((blob) => {
       if (!active) return;
       objectUrl = URL.createObjectURL(blob);
       setSource(objectUrl);
@@ -40,16 +53,30 @@ export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
 
 type Capture = { blob: Blob; previewUrl: string; quarterTurns: number; capturedAt: string; capturedUtcOffsetMinutes: number };
 
+function blobBase64(blob: Blob): Promise<string> {
+  return blob.arrayBuffer().then((buffer) => {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, Math.min(bytes.length, offset + 0x8000)));
+    }
+    return btoa(binary);
+  });
+}
+
 export function PhotoNoteDialog({
-  dialogRef, reportId, note, csrfToken, revision, onClose, onSaved, onDeleted, onSessionEnded,
+  dialogRef, reportId, note, csrfToken, revision, mediaPolicy, author, onClose, onSaved, onQueued, onDeleted, onSessionEnded,
 }: {
   readonly dialogRef: RefObject<HTMLElement | null>;
   readonly reportId: string;
   readonly note: ReportPhotoNote | null;
   readonly csrfToken: string;
   readonly revision: number;
+  readonly mediaPolicy: ReportMediaPolicy;
+  readonly author: ReportPhotoNote["author"];
   readonly onClose: () => void;
   readonly onSaved: (note: ReportPhotoNote, revision: number) => void;
+  readonly onQueued: (note: ReportPhotoNote) => void;
   readonly onDeleted: (noteId: string, revision: number) => void;
   readonly onSessionEnded: () => void;
 }) {
@@ -66,6 +93,20 @@ export function PhotoNoteDialog({
   const validation = normalizePhotoCaption(caption);
   const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
+
+  useEffect(() => {
+    if (note) return;
+    const preview = protectedPhotoPreview(reportId);
+    if (!preview) return;
+    const bytes = Uint8Array.from(atob(preview.sourceBase64), (character) => character.charCodeAt(0));
+    const blob = new Blob([bytes], { type: preview.contentType });
+    queueMicrotask(() => {
+      setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: preview.quarterTurns,
+        capturedAt: preview.capturedAt, capturedUtcOffsetMinutes: preview.capturedUtcOffsetMinutes });
+      setCaption(preview.caption);
+      setMode("preview");
+    });
+  }, [note, reportId]);
 
   useEffect(() => () => {
     stream.current?.getTracks().forEach((track) => track.stop());
@@ -103,7 +144,11 @@ export function PhotoNoteDialog({
     try {
       const blob = await captureVideoFrame(video.current);
       stream.current?.getTracks().forEach((track) => track.stop());
-      setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: 0, capturedAt: new Date().toISOString(), capturedUtcOffsetMinutes: -new Date().getTimezoneOffset() });
+      const capturedAt = new Date().toISOString();
+      const capturedUtcOffsetMinutes = -new Date().getTimezoneOffset();
+      await stageProtectedPhotoPreview(reportId, { sourceBase64: await blobBase64(blob), contentType: "image/png",
+        capturedAt, capturedUtcOffsetMinutes, quarterTurns: 0, caption });
+      setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: 0, capturedAt, capturedUtcOffsetMinutes });
       setMode("preview");
     } catch (error) { setCameraError(error instanceof Error ? error.message : "The frame could not be captured."); }
   }
@@ -112,6 +157,7 @@ export function PhotoNoteDialog({
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setCapture(null);
     setMode("camera");
+    void removeProtectedPhotoPreview(reportId);
   }
 
   async function save() {
@@ -120,6 +166,14 @@ export function PhotoNoteDialog({
     setCameraError(null);
     try {
       if (note) {
+        if (note.persistenceState !== "ready") {
+          await updateProtectedPhoto(reportId, note.id, (entry) => ({ ...entry,
+            command: { ...entry.command, caption: validation.caption },
+            note: { ...entry.note, caption: validation.caption, updatedAt: new Date().toISOString() },
+          }));
+          onQueued({ ...note, caption: validation.caption, updatedAt: new Date().toISOString() });
+          return;
+        }
         const response = await updateReportPhotoCaption(csrfToken, reportId, note.id, {
           commandId: crypto.randomUUID(), expectedRevision: revision, caption: validation.caption,
         });
@@ -127,13 +181,29 @@ export function PhotoNoteDialog({
       } else {
         if (!capture) return;
         const canonical = await normalizeCapturedPhoto(capture.blob, capture.quarterTurns);
-        const response = await createReportPhotoNote(csrfToken, reportId, {
+        const command: CreateReportPhotoNoteCommand = {
           commandId: crypto.randomUUID(), expectedRevision: revision, noteId: crypto.randomUUID(),
           capturedAt: capture.capturedAt, capturedUtcOffsetMinutes: capture.capturedUtcOffsetMinutes,
           caption: validation.caption, contentType: "image/jpeg", canonicalBase64: canonical.canonicalBase64,
           sha256: canonical.sha256, width: canonical.width, height: canonical.height,
-        });
-        onSaved(response.note, response.revision);
+          settingsRevision: mediaPolicy.settingsRevision,
+          effectiveAllowanceBytes: mediaPolicy.reportMediaAllowanceBytes,
+        };
+        if (protectedStorageActive(reportId)) {
+          const localNote: ReportPhotoNote = {
+            id: command.noteId, reportId, type: "photo", caption: validation.caption,
+            capturedAt: command.capturedAt, capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes,
+            author, serverReceivedAt: command.capturedAt, updatedAt: command.capturedAt,
+            persistenceState: "saved-on-device", contentType: "image/jpeg",
+            byteSize: canonical.blob.size, sha256: canonical.sha256, width: canonical.width, height: canonical.height,
+          };
+          await stageProtectedPhoto(reportId, { note: localNote, command });
+          await removeProtectedPhotoPreview(reportId);
+          onQueued(localNote);
+        } else {
+          const response = await createReportPhotoNote(csrfToken, reportId, command);
+          onSaved(response.note, response.revision);
+        }
       }
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
@@ -145,6 +215,21 @@ export function PhotoNoteDialog({
     if (!note || saving) return;
     setSaving(true);
     try {
+      if (note.persistenceState !== "ready") {
+        const entry = protectedPhotoEntries(reportId).find(({ note: candidate }) => candidate.id === note.id);
+        if (entry?.attempted) {
+          const created = await createReportPhotoNote(csrfToken, reportId, entry.command);
+          const deleted = await deleteReportPhotoNote(csrfToken, reportId, note.id, {
+            commandId: crypto.randomUUID(), expectedRevision: created.revision,
+          });
+          await removeProtectedPhoto(reportId, note.id);
+          onDeleted(note.id, deleted.revision);
+          return;
+        }
+        await removeProtectedPhoto(reportId, note.id);
+        onDeleted(note.id, revision);
+        return;
+      }
       const response = await deleteReportPhotoNote(csrfToken, reportId, note.id, {
         commandId: crypto.randomUUID(), expectedRevision: revision,
       });
@@ -156,11 +241,22 @@ export function PhotoNoteDialog({
     } finally { setSaving(false); }
   }
 
+  async function retry() {
+    if (!note || note.persistenceState !== "failed") return;
+    await updateProtectedPhoto(reportId, note.id, (entry) => ({ ...entry,
+      ...(entry.failure === "server-conflict" ? {
+        attempted: false, command: { ...entry.command, commandId: crypto.randomUUID(), expectedRevision: revision },
+      } : {}),
+      failure: undefined, note: { ...entry.note, persistenceState: "saved-on-device" } }));
+    onQueued({ ...note, persistenceState: "saved-on-device" });
+    onClose();
+  }
+
   return <div className="dialog-backdrop" role="presentation">
     <section ref={dialogRef} className="note-dialog photo-note-dialog" role={confirmingDelete ? "alertdialog" : "dialog"}
       aria-modal="true" aria-labelledby="photo-dialog-title" aria-describedby={confirmingDelete ? "photo-delete-description" : undefined}>
       <div className="note-dialog-heading">
-        <div><p className="eyebrow">{note ? "Ready photo note" : mode === "camera" ? "Live camera" : "Review captured photo"}</p>
+        <div><p className="eyebrow">{note ? `${note.persistenceState === "ready" ? "Ready" : note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)} photo note` : mode === "camera" ? "Live camera" : "Review captured photo"}</p>
           <h2 id="photo-dialog-title">Photo note</h2></div>
         {note && !confirmingDelete && <button className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete photo</button>}
       </div>
@@ -184,19 +280,21 @@ export function PhotoNoteDialog({
             <img src={capture.previewUrl} alt="Captured photo preview" style={{ transform: `rotate(${capture.quarterTurns * 90}deg)` }} />
           </div>
           <div className="rotation-actions" aria-label="Photo orientation">
-            <button type="button" onClick={() => setCapture((value) => value && ({ ...value, quarterTurns: value.quarterTurns - 1 }))}>Rotate counterclockwise 90°</button>
-            <button type="button" onClick={() => setCapture((value) => value && ({ ...value, quarterTurns: value.quarterTurns + 1 }))}>Rotate clockwise 90°</button>
+            <button type="button" onClick={() => setCapture((value) => { if (!value) return value; const quarterTurns = value.quarterTurns - 1; updateProtectedPhotoPreview(reportId, { quarterTurns }); return { ...value, quarterTurns }; })}>Rotate counterclockwise 90°</button>
+            <button type="button" onClick={() => setCapture((value) => { if (!value) return value; const quarterTurns = value.quarterTurns + 1; updateProtectedPhotoPreview(reportId, { quarterTurns }); return { ...value, quarterTurns }; })}>Rotate clockwise 90°</button>
           </div>
         </>}
         {mode === "viewer" && note && <>
           <AuthorizedPhotoImage reportId={reportId} noteId={note.id} alt={note.caption || "Clinical photo note"} className="photo-viewer-image" />
-          <p className="note-metadata">Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · Ready</p>
+          <p className="note-metadata">Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+          {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>Retry upload</button>}
         </>}
         {mode !== "camera" && <>
           <label htmlFor="report-photo-caption">Caption <small>(optional)</small></label>
           <textarea id="report-photo-caption" rows={3} maxLength={REPORT_PHOTO_CAPTION_MAX_CHARACTERS}
             value={caption} aria-invalid={Boolean(validation.error || cameraError)} aria-describedby="report-photo-caption-count report-photo-error"
-            onChange={(event) => { setCaption(event.target.value); setCameraError(null); }} />
+            onChange={(event) => { const value = event.target.value; setCaption(value); setCameraError(null);
+              if (capture && protectedStorageActive(reportId)) updateProtectedPhotoPreview(reportId, { caption: value }); }} />
           <small id="report-photo-caption-count">{validation.characterCount.toLocaleString()} / {REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters</small>
           <p id="report-photo-error" className="finish-help" role={validation.error || cameraError ? "alert" : undefined}>{validation.error ?? cameraError}</p>
         </>}
