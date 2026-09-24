@@ -5,6 +5,7 @@
   },
   "operations": [
     { "name": "migrate:runtime", "entrypoint": "packages/database/scripts/migrate.mjs" },
+    { "name": "prepare:demo:runtime", "entrypoint": "packages/database/scripts/prepare-demo-database.mjs" },
     { "name": "load:catalog", "entrypoint": "packages/database/scripts/load-nemsis-catalog.mjs" },
     { "name": "bootstrap:synthetic:runtime", "entrypoint": "packages/database/scripts/bootstrap-synthetic-installation.mjs" },
     { "name": "seed:validation", "entrypoint": "packages/database/scripts/seed-initial-validation-versions.mjs" },

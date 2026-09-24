@@ -73,35 +73,37 @@ The committed demo reference values contain no credentials. They preserve the
 cluster-owned `ghcr-pull` image pull Secret, `open-triage-tls` certificate, and
 workload database Secrets during repeatable upgrades.
 
-Helm runs a forward-only migration Job before each install or upgrade. The Job
-reads `DATABASE_URL` only from the migration Secret and must succeed before Helm
-updates the application Deployments. Applied migration versions and checksums
-are recorded in Supabase's standard
+Helm never prepares or resets the database. The demo deployment workflow runs a
+separate, bounded database-preparation Job from the exact validated API image,
+and Helm starts only after that Job and its post-prepare checks succeed. Its
+status and redacted logs are retained independently, including when the later
+atomic Helm rollout fails. Applied migration versions and checksums are recorded
+in Supabase's standard
 `supabase_migrations.schema_migrations` table. Checksums for migrations applied
 by this runner are stored separately in
 `open_triage_deploy.migration_checksums`, so reruns skip completed migrations
 and reject later edits to files this runner applied. Each new migration is
 committed in its own transaction. A failed migration is rolled back and stops
 the release; a successful migration remains committed if a later application
-rollout fails.
+rollout fails. See the
+[disposable demo rollout runbook](../../../docs/runbooks/disposable-demo-database-rollout.md)
+for the target-identity guard, migrate/reinitialize modes, and safe reruns.
 
-The migration Job defaults to schema migrations only. The public demonstration
-values set `migration.bootstrapSynthetic=true`, which runs the idempotent,
-insert-only fixture bootstrap before every rollout. The target organization must
-already exist; this creates only missing `demo.admin` and `demo.clinician`
-accounts and never changes an existing account. For a one-time manual bootstrap, run:
+The preparation phase loads the current catalog and definitions and runs the
+idempotent synthetic fixture bootstrap before every rollout. It creates only
+missing fixture records and never changes an existing account. For a one-time
+local bootstrap, run:
 
 ```sh
 npm run bootstrap:synthetic -w @open-triage/database
 ```
 
-To use different cluster-owned Secrets, set the `existingSecret` field under
-each `secrets` workload. Helm-managed Secrets remain available by clearing the
-corresponding field and supplying that workload's values privately. Set
-`migration.enabled=false` when managing its Secret through Helm and arrange a
-separate pre-rollout migration mechanism: a Helm hook cannot consume a Secret
-that the same release has not created yet. Never point two workload entries at
-the same Secret.
+To use different cluster-owned workload Secrets, set the `existingSecret` field
+under each `secrets` workload. Helm-managed Secrets remain available by clearing
+the corresponding field and supplying that workload's values privately. The
+migration Secret is deliberately outside the chart and is consumed only by the
+explicit preparation workflow. Never point two workload entries at the same
+Secret.
 
 Set `web.replicas` and `api.replicas` to `3` when the cluster has three worker
 nodes. The current defaults are deliberately one replica for a one-node demo.

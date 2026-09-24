@@ -5,8 +5,8 @@ DigitalOcean Kubernetes (DOKS) demo. Every push to `main` validates the
 application, PostgreSQL integration, deployable web artifact, and Helm chart.
 Only the exact merge commit of one approved pull request into `main`, with an
 approval for that pull request's final head commit, may then publish immutable
-API and web `linux/amd64` images, run the forward-only migration hook, and
-atomically deploy the exact image tags recorded in that run's artifact. A direct
+API and web `linux/amd64` images, run the explicit database-preparation phase,
+and atomically deploy the exact image tags recorded in that run's artifact. A direct
 push still produces diagnostics but cannot publish or deploy. Missing,
 ambiguous, mismatched, or unavailable GitHub provenance fails closed before the
 workflow authenticates to the registry or cluster. Deployment runs are
@@ -24,6 +24,13 @@ The `demo` GitHub environment must allow deployments from `main` and define:
 - secret `DIGITALOCEAN_ACCESS_TOKEN`, restricted in DigitalOcean to the demo
   cluster resources required by `doctl`;
 - variable `DOKS_CLUSTER_NAME`, naming the existing demo cluster.
+- variables `DEMO_DATABASE_EXPECTED_HOST` and `DEMO_DATABASE_PROJECT_REF`,
+  identifying the one disposable Supabase project the preparation phase may
+  target;
+- variable `DEMO_DATABASE_PREPARE_MODE`, normally `migrate`. An intentional
+  reset additionally requires `DEMO_DATABASE_RESET_CONFIRMATION` with the exact
+  value documented in the
+  [database rollout runbook](./runbooks/disposable-demo-database-rollout.md).
 
 `GITHUB_TOKEN` is supplied by Actions and receives `packages: write` only in the
 two image-publishing jobs. The deployment job has only `contents: read`. It
@@ -48,8 +55,8 @@ Before the first deployment, operators must provide:
   projector, analytics health, retention, and operational-audit database
   Secrets. Although Helm is invoked with
   `--create-namespace`, a usable first deployment requires operators to create
-  the namespace and Secrets in advance because the pre-install migration hook
-  needs its dedicated Secret before Helm-managed resources exist. Follow the
+  the namespace and Secrets in advance so the explicit preparation phase can
+  use its dedicated Secret before Helm-managed resources exist. Follow the
   [chart instructions](../deploy/helm/open-triage/README.md) for the required
   keys and safe creation procedure;
 - the external PostgreSQL 15-or-newer/Supabase demo database referenced by the
@@ -76,10 +83,10 @@ revisions without an earlier push run whose successful validation and
 provenance jobs name that exact SHA. It then repeats validation, republishes the
 immutable images, and deploys only the image identities recorded by that run.
 
-Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Failed migrations,
-readiness probes, or rollouts fail the workflow and restore the prior Helm
-release. Database migrations are forward-only and remain committed as
-documented in the chart README. Both one-replica Deployments use `Recreate`, so
+Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Database preparation
+must complete before Helm starts; failed readiness probes or rollouts fail the
+workflow and restore the prior Helm release. Database migrations are
+forward-only and remain committed as documented in the chart README. Both one-replica Deployments use `Recreate`, so
 the one-node demo may be briefly unavailable while pods are replaced.
 
 Smoke verification logs only named pass/fail stages and HTTP status codes. It
@@ -128,10 +135,10 @@ kubectl get pods,jobs --namespace open-triage
 - **Validation or image publication failure:** nothing is deployed. Correct the
   failure on `main`; the next push performs the complete validation and release
   sequence again.
-- **Migration failure:** the migration's transaction is rolled back, the Helm
-  pre-upgrade hook stops the release, and `--atomic` retains the prior workloads.
-  Fix the migration with a new commit and redeploy. Never edit an already applied
-  migration or attempt to reverse it manually.
+- **Database preparation failure:** the failing migration transaction is rolled
+  back and Helm never starts. Inspect the separately retained preparation Job
+  and artifact, fix the migration with a new commit, and redeploy. Never edit an
+  already applied migration or attempt to reverse it manually.
 - **Rollout or readiness failure:** Helm removes failed new resources and
   restores the prior Helm release. Any migration that completed before the
   rollout remains committed. Diagnose whether the prior application is
