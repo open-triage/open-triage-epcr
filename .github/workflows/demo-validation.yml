@@ -145,10 +145,8 @@ jobs:
         if: always()
         run: docker rm --force open-triage-web-validation 2>/dev/null || true
       - name: Retain the exact validated web image
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: docker save "$WEB_CANDIDATE_IMAGE" | gzip > "$RUNNER_TEMP/validated-web-image.tar.gz"
       - name: Upload the exact validated web image
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
@@ -321,10 +319,8 @@ jobs:
         if: always()
         run: docker rm --force open-triage-api-runtime 2>/dev/null || true
       - name: Retain the exact validated API image
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: docker save "$API_RUNTIME_IMAGE" | gzip > "$RUNNER_TEMP/validated-api-image.tar.gz"
       - name: Upload the exact validated API image
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
@@ -351,9 +347,86 @@ jobs:
         run: >-
           helm template open-triage deploy/helm/open-triage
           --values deploy/helm/open-triage/demo-reference.values.yaml
-          > /dev/null
+          > "$RUNNER_TEMP/open-triage-rendered.yaml"
+      - name: Validate Kubernetes 1.35 schemas
+        run: >-
+          docker run --rm --interactive
+          ghcr.io/yannh/kubeconform:v0.8.0-alpine
+          -strict -summary -kubernetes-version 1.35.0
+          < "$RUNNER_TEMP/open-triage-rendered.yaml"
       - name: Run all Helm chart behavior tests
         run: npm run test:helm
+
+  ephemeral-kubernetes-validation:
+    name: Validate / Ephemeral Kubernetes
+    needs:
+      - api-runtime-image-validation
+      - web-deployment-validation
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+      API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
+      WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Create a Kubernetes 1.35 kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          version: v0.31.0
+          kubectl_version: v1.35.0
+          cluster_name: open-triage-validation
+          wait: 120s
+      - name: Download the exact validated API image
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
+          path: validated-api-image
+      - name: Download the exact validated web image
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
+          path: validated-web-image
+      - name: Load the validated candidate images into Kubernetes
+        run: |
+          gunzip --stdout validated-api-image/validated-api-image.tar.gz | docker load
+          gunzip --stdout validated-web-image/validated-web-image.tar.gz | docker load
+          kind load docker-image --name open-triage-validation \
+            "$API_CANDIDATE_IMAGE" "$WEB_CANDIDATE_IMAGE"
+      - name: Require API and web image provenance
+        run: |
+          for image in "$API_CANDIDATE_IMAGE" "$WEB_CANDIDATE_IMAGE"; do
+            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = amd64
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" = "$SOURCE_COMMIT"
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")" = "${{ github.server_url }}/${{ github.repository }}"
+          done
+      - name: Require server-side manifest validation
+        run: |
+          helm template open-triage deploy/helm/open-triage \
+            --values deploy/helm/open-triage/demo-reference.values.yaml \
+            | kubectl apply --dry-run=server --filename=-
+      - name: Install and exercise the chart with validated images
+        run: >-
+          bash scripts/validate-ephemeral-kubernetes.sh
+          "$API_CANDIDATE_IMAGE"
+          "$WEB_CANDIDATE_IMAGE"
+      - name: Capture redacted Kubernetes failure diagnostics
+        if: failure()
+        run: >-
+          bash scripts/capture-kubernetes-diagnostics.sh
+          "$RUNNER_TEMP/kubernetes-diagnostics"
+      - name: Upload Kubernetes failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kubernetes-diagnostics
+          if-no-files-found: error
+          retention-days: 14
 
   validation-gate:
     name: Required / Demo validation gate
@@ -365,6 +438,7 @@ jobs:
       - browser-critical-validation
       - api-runtime-image-validation
       - helm-validation
+      - ephemeral-kubernetes-validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

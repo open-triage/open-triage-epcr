@@ -67,6 +67,7 @@ test("the gate depends on every application, database, web, and Helm validation"
     "browser-critical-validation",
     "api-runtime-image-validation",
     "helm-validation",
+    "ephemeral-kubernetes-validation",
   ]) {
     assert.match(gate, new RegExp(`^      - ${job}$`, "m"));
   }

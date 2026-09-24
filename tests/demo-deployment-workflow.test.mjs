@@ -77,8 +77,8 @@ test("Helm validation uses the same committed values as the demo deployment", as
 
   assert.equal(
     workflow.match(/--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/g)?.length,
-    3,
-    "lint, template, and deployment must share the demo values",
+    4,
+    "lint, template, ephemeral validation, and deployment must share the demo values",
   );
   assert.doesNotMatch(workflow, /--reuse-values/);
 });
