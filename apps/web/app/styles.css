@@ -710,3 +710,23 @@ input, select, textarea { touch-action: manipulation; }
   .stationary-group-add-controls > button { width: 100%; }
   .stationary-group-dialog { width: 100vw; }
 }
+.timeline-filters { display: flex; gap: 6px; padding: 0 20px 12px; border-bottom: 1px solid var(--line); }
+.timeline-filters button { min-height: 36px; padding: 5px 14px; border: 1px solid #aeb4ac; border-radius: 999px; color: #30332f; background: #fff; font-weight: 750; cursor: pointer; }
+.timeline-filters button[aria-pressed="true"] { border-color: var(--green); color: #fff; background: var(--green); }
+.timeline-empty { margin: 0; padding: 24px 20px; color: var(--muted); }
+.stationary-presentation.stationary-timeline-open { max-width: 1800px !important; padding-right: 360px; }
+.stationary-presentation .draft-actions { display: flex; flex-wrap: wrap; }
+.stationary-presentation .draft-actions .sync-status { align-self: center; }
+.stationary-presentation .draft-actions .timeline-toggle-action[aria-expanded="true"] { border-color: var(--green); color: #fff; background: var(--green); }
+.stationary-presentation .draft-actions .review-record-action, .stationary-presentation .draft-actions button:last-child { grid-column: auto; grid-row: auto; }
+.stationary-timeline-sidebar { position: fixed; z-index: 17; top: calc(var(--stationary-top-bars) + var(--stationary-call-header-height)); right: max(0px, calc((100vw - 1800px) / 2)); bottom: 0; width: 360px; overflow-y: auto; overscroll-behavior: contain; border-left: 1px solid var(--line); background: var(--paper); box-shadow: -6px 0 18px rgb(20 39 27 / 12%); }
+.stationary-timeline-sidebar .timeline-heading { position: sticky; z-index: 2; top: 0; background: #fff; border-bottom: 1px solid var(--line); }
+.stationary-timeline-sidebar .timeline-list li { grid-template-columns: 45px 12px minmax(0, 1fr); padding-inline: 14px; }
+@media (max-width: 1100px) {
+  .stationary-presentation.stationary-timeline-open { padding-right: 0; }
+  .stationary-timeline-sidebar { z-index: 21; right: 0; width: min(360px, 100vw); }
+}
+@media (max-width: 620px) {
+  .stationary-presentation .draft-actions { justify-content: flex-end; }
+  .stationary-presentation .draft-actions .sync-status { flex-basis: 100%; text-align: right; }
+}
