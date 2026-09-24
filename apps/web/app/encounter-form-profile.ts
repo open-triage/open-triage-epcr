@@ -28,7 +28,7 @@ const supported: Record<SectionId, ReadonlyArray<string>> = {
   vitals: catalogBackedDefaults.events.vitals.fields.map(({ reference }) => reference),
   medication: catalogBackedDefaults.events.medication.fields.map(({ reference }) => reference),
   procedure: Object.values(catalogBackedDefaults.events.procedure.references),
-  note: [catalogBackedDefaults.events.note.references.summary],
+  note: [],
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -68,7 +68,8 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
       else if (entry.provenance === "custom" && !element.startsWith(`${entry.namespace}.`)) errors.push(`${elementPath}: invalid custom-element namespace for ${element}`);
       if (!supported[id as SectionId].includes(element)) errors.push(`${elementPath}: ${element} is not supported in ${id}`);
     });
-    if (candidate.visible === true && elements.length === 0) errors.push(`${path}.visible: visible sections must contain at least one configured NEMSIS field`);
+    if (id === "note" && elements.length > 0) errors.push(`${path}.elements: app-native text notes cannot configure NEMSIS fields`);
+    if (id !== "note" && candidate.visible === true && elements.length === 0) errors.push(`${path}.visible: visible sections must contain at least one configured NEMSIS field`);
     parsedSections.push({ id: id as SectionId, visible: candidate.visible as boolean, quickActionLabel: candidate.quickActionLabel as string, elements: elements as string[] });
   });
   sectionIds.forEach((id) => { if (!seenSections.has(id)) errors.push(`$.sections: missing supported section ${id}`); });
@@ -118,7 +119,7 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
       review: { groups: profile.review.groups, eventTypeOrder: profile.review.sectionOrder },
     },
     events: {
-      note: { ...catalogBackedDefaults.events.note, quickAction: { visible: section("note").visible, label: section("note").quickActionLabel } },
+      note: catalogBackedDefaults.events.note,
       procedure: { ...catalogBackedDefaults.events.procedure, quickAction: { visible: section("procedure").visible, label: section("procedure").quickActionLabel }, fieldOrder: section("procedure").elements.map((reference) => procedureByReference.get(reference)!), required: procedureMetadata.required, attempts: procedureMetadata.attempts, successOptions: procedureMetadata.successOptions, outcomeOptions: procedureMetadata.outcomeOptions, complicationOptions: procedureMetadata.complicationOptions },
       medication: { ...catalogBackedDefaults.events.medication, quickAction: { visible: section("medication").visible, label: section("medication").quickActionLabel }, fields: medicationFields, doseUnits: medicationMetadata.doseUnits, routes: medicationMetadata.routes },
       vitals: { ...catalogBackedDefaults.events.vitals, quickAction: { visible: section("vitals").visible, label: section("vitals").quickActionLabel }, labels: { ...catalogBackedDefaults.events.vitals.labels, absenceHelp: profile.helpText?.["eVitals.06"] ?? catalogBackedDefaults.events.vitals.labels.absenceHelp }, fields: section("vitals").elements.map((reference) => { const base = vitalByReference.get(reference)!; return { ...base, label: labels[reference] ?? base.label, ...vitalElementMetadata(reference as `e${string}`, base.boundaries.warningLow, base.boundaries.warningHigh) }; }), summary: profile.summary.vitalOrder.map((reference) => vitalSummaryByField.get(vitalByReference.get(reference)!.id)!).filter(Boolean) },

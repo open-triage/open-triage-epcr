@@ -20,27 +20,26 @@ function mutableDefinition(): MutableCompositionDefinition {
   return structuredClone(standardEncounterDefinition) as unknown as MutableCompositionDefinition;
 }
 
-test("configured quick actions control order, visibility, and accessible labels", () => {
+test("configured structured quick actions remain configurable while Text note stays fixed", () => {
   const candidate = mutableDefinition();
   candidate.composition.quickActionOrder = ["note", "procedure", "medication", "vitals"];
   candidate.events.note.quickAction.label = "Record observation";
   candidate.events.procedure.quickAction.visible = false;
 
   const actions = configuredQuickActions(validateEncounterDefinition(candidate));
-  assert.deepEqual(actions.map(({ id }) => id), ["note", "medication", "vitals"]);
-  assert.equal(actions[0]?.label, "Record observation");
+  assert.deepEqual(actions.map(({ id }) => id), ["medication", "vitals", "note"]);
+  assert.deepEqual(actions.at(-1), { id: "note", label: "Text note", title: "Text note" });
 });
 
 test("review event order is independently configurable", () => {
   const candidate = mutableDefinition();
   candidate.composition.review.eventTypeOrder = ["note", "vitals", "procedure", "medication"];
   const definition = validateEncounterDefinition(candidate);
-  const note: EncounterEvent = { id: "note", time: "88:88", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
   const vital: EncounterEvent = { id: "vital", time: "88:88", kind: "care", title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: EMPTY_VITALS };
-  const document = [vital, note].reduce((current, event) => saveCanonicalEvent(current, event, definition), INITIAL_SHELL_STATE.encounter.document);
+  const document = saveCanonicalEvent(INITIAL_SHELL_STATE.encounter.document, vital, definition);
   const state = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document } };
 
-  assert.deepEqual([...new Set(reviewEncounter(state, definition).map(({ eventType }) => eventType))], ["note", "vitals"]);
+  assert.deepEqual([...new Set(reviewEncounter(state, definition).map(({ eventType }) => eventType))], ["vitals"]);
 });
 
 test("invalid composition fails before rendering", () => {

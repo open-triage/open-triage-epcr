@@ -27,11 +27,15 @@ import { documentTimeline, incidentSummary } from "./incident-document";
 import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
+  createReportTextNote,
+  deleteReportTextNote,
+  DraftSaveRejectedError,
   signDraftReport,
   type ActiveDraftReport,
   dispatchCancellationNotice,
+  updateReportTextNote,
 } from "./draft-report";
-import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue, ReportTextNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
@@ -44,8 +48,18 @@ import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
 import { holdProtectedReportForCompletion } from "./protected-clinical-storage";
+import { completeReportTimeline, REPORT_TEXT_NOTE_MAX_CHARACTERS, reportTextNoteExcerpt, validateReportTextNote } from "./report-text-notes";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
+type TextNoteDraft = {
+  readonly id: string;
+  readonly capturedAt: string;
+  readonly capturedUtcOffsetMinutes: number;
+  readonly content: string;
+  readonly author?: ReportTextNote["author"];
+  readonly persistenceState?: ReportTextNote["persistenceState"];
+  readonly isNew: boolean;
+};
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
@@ -56,7 +70,7 @@ const quickActionText: Record<QuickActionId, string> = {
   vitals: "Vitals",
   medication: "Medications",
   procedure: "Procedures",
-  note: "Notes",
+  note: "Text note",
 };
 
 function localClinicalTime(): string {
@@ -87,6 +101,12 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const [signError, setSignError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
+  const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportTextNote>>(report?.notes ?? []);
+  const [textNoteDraft, setTextNoteDraft] = useState<TextNoteDraft | null>(null);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
+  const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -97,9 +117,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     [encounter.document, report?.agencyTimeZone],
   );
   const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
-  const timelineEvents = useMemo(() => [...incidentEvents, ...clinicalEvents].sort((a, b) =>
-    `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
-  ), [incidentEvents, clinicalEvents]);
+  const timelineEvents = useMemo(() => completeReportTimeline(
+    [...incidentEvents, ...clinicalEvents], reportNotes, report?.agencyTimeZone,
+  ), [incidentEvents, clinicalEvents, report?.agencyTimeZone, reportNotes]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -122,14 +142,21 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
-    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision, dispatchConflicts, dispatchCancellation,
+    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision: revisionRef, dispatchConflicts, dispatchCancellation,
     conflictError, editingBlocked, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
     validationErrorCount: reviewErrors.length, online,
     onSessionEnded,
     onReportCompleted,
+    onNotesChange: setReportNotes,
   });
+  useEffect(() => {
+    queueMicrotask(() => {
+      setReportNotes(report?.notes ?? []);
+      setTextNoteDraft(null);
+    });
+  }, [report?.id, report?.notes]);
   useEffect(() => {
     onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError));
   }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
@@ -150,9 +177,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
-  const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
-  const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
     ? { severity: editingFinding.severity, message: editingFinding.message }
     : undefined;
@@ -186,7 +212,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "note") dispatch({ type: "note-cancelled" });
+    if (activeDialog === "note") {
+      setTextNoteDraft(null);
+      setNoteError(null);
+      setConfirmingNoteDelete(false);
+    }
     else if (activeDialog === "medication") dispatch({ type: "medication-cancelled" });
     else if (activeDialog === "procedure") dispatch({ type: "procedure-cancelled" });
     else if (activeDialog === "vitals") {
@@ -196,8 +226,8 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, [activeDialog]);
 
   useEffect(() => {
-    if (shell.noteDraft) noteSummary.current?.focus();
-  }, [shell.noteDraft]);
+    if (textNoteDraft) noteSummary.current?.focus();
+  }, [textNoteDraft]);
 
   useEffect(() => {
     if (!activeDialog) {
@@ -216,6 +246,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (confirmingNoteDelete) {
+          setConfirmingNoteDelete(false);
+          return;
+        }
         closeActiveDialog();
         return;
       }
@@ -238,7 +272,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, openNullField]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, openNullField]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -307,7 +341,23 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
-    dispatch({ type: "note-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+    setNoteError(null);
+    setConfirmingNoteDelete(false);
+    setTextNoteDraft({
+      id: crypto.randomUUID(), capturedAt: new Date().toISOString(),
+      capturedUtcOffsetMinutes: -new Date().getTimezoneOffset(), content: "", isNew: true,
+    });
+  }
+
+  function openTextNote(note: ReportTextNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setNoteError(null);
+    setConfirmingNoteDelete(false);
+    setTextNoteDraft({
+      id: note.id, capturedAt: note.capturedAt, capturedUtcOffsetMinutes: note.capturedUtcOffsetMinutes,
+      content: note.content, author: note.author, persistenceState: note.persistenceState, isNew: false,
+    });
   }
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
@@ -353,7 +403,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     try {
-      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id,
+      await signDraftReport(sessionRequestToken(session), report.id, revisionRef.current, session.user.id,
         reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
           id: finding.id,
           acknowledgement: "acknowledgement" in finding ? finding.acknowledgement : undefined,
@@ -369,6 +419,79 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 
   async function disposeConflict(conflict: DispatchConflict, disposition: DispatchConflictDisposition) {
     await resolveConflict(conflict, disposition);
+  }
+
+  async function saveTextNote() {
+    if (!report || !textNoteDraft || !textNoteValidation || noteSaving) return;
+    if (textNoteValidation.error) {
+      setNoteError(textNoteValidation.error);
+      return;
+    }
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await flushSave();
+      const commandId = crypto.randomUUID();
+      const response = textNoteDraft.isNew
+        ? await createReportTextNote(sessionRequestToken(session), report.id, {
+            commandId,
+            expectedRevision: revisionRef.current,
+            noteId: textNoteDraft.id,
+            capturedAt: textNoteDraft.capturedAt,
+            capturedUtcOffsetMinutes: textNoteDraft.capturedUtcOffsetMinutes,
+            content: textNoteValidation.content,
+          })
+        : await updateReportTextNote(sessionRequestToken(session), report.id, textNoteDraft.id, {
+            commandId,
+            expectedRevision: revisionRef.current,
+            content: textNoteValidation.content,
+          });
+      revisionRef.current = response.revision;
+      setReportNotes((notes) => [response.note, ...notes.filter(({ id }) => id !== response.note.id)]
+        .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id)));
+      setTextNoteDraft(null);
+      setNoteStatusMessage(textNoteDraft.isNew ? "Text note ready." : "Text note changes ready.");
+    } catch (error) {
+      if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
+        setNoteError("The report changed before this note could be saved. Wait for synchronization and try again.");
+      } else if (error instanceof DraftSaveRejectedError) {
+        setNoteError("The note was rejected. Remove control characters and keep it within 10,000 characters.");
+      } else if (error instanceof Error && error.message === "session") {
+        onSessionEnded();
+      } else {
+        setNoteError(error instanceof Error ? error.message : "The text note could not be saved.");
+      }
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
+  async function confirmDeleteTextNote() {
+    if (!report || !textNoteDraft || textNoteDraft.isNew || noteSaving) return;
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await flushSave();
+      const response = await deleteReportTextNote(sessionRequestToken(session), report.id, textNoteDraft.id, {
+        commandId: crypto.randomUUID(), expectedRevision: revisionRef.current,
+      });
+      revisionRef.current = response.revision;
+      setReportNotes((notes) => notes.filter(({ id }) => id !== response.noteId));
+      setTextNoteDraft(null);
+      setConfirmingNoteDelete(false);
+      setNoteStatusMessage("Text note deleted.");
+    } catch (error) {
+      setConfirmingNoteDelete(false);
+      if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
+        setNoteError("The report changed before this note could be deleted. Wait for synchronization and try again.");
+      } else if (error instanceof Error && error.message === "session") {
+        onSessionEnded();
+      } else {
+        setNoteError(error instanceof Error ? error.message : "The text note could not be deleted.");
+      }
+    } finally {
+      setNoteSaving(false);
+    }
   }
 
   const blockProtectedEdit = (event: SyntheticEvent<HTMLElement>) => {
@@ -389,6 +512,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
       </aside>}
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
+      {noteStatusMessage && <p className="visually-hidden" role="status" aria-live="polite">{noteStatusMessage}</p>}
 
       <header className="encounter-header">
         {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
@@ -469,6 +593,23 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           </div>
           <ol className="timeline-list">
             {timelineEvents.map((event) => {
+              if (event.kind === "text-note") {
+                const excerpt = reportTextNoteExcerpt(event.note.content);
+                return <li key={event.id} className="editable-event text-note-event">
+                  <time dateTime={event.note.capturedAt}>{event.time}</time>
+                  <span className="event-dot validation-clear" role="img" aria-label="Text note ready" />
+                  <button
+                    aria-label={`Open text note at ${event.time} by ${event.note.author.displayName}. ${excerpt}`}
+                    className="timeline-event-button"
+                    type="button"
+                    onClick={(clickEvent) => openTextNote(event.note, clickEvent.currentTarget)}
+                  >
+                    <span className="event-title">Text note</span>
+                    <span className="event-detail">{excerpt}</span>
+                    <small>{event.note.author.displayName} · Ready · Tap to open</small>
+                  </button>
+                </li>;
+              }
               const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
               const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
               const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
@@ -570,35 +711,60 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </>
       )}
 
-      {shell.noteDraft && (
+      {textNoteDraft && textNoteValidation && (
         <div className="dialog-backdrop" role="presentation">
-          <section ref={dialog} className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
+          <section ref={dialog} className="note-dialog" role={confirmingNoteDelete ? "alertdialog" : "dialog"} aria-modal="true"
+            aria-labelledby="note-dialog-title" aria-describedby={confirmingNoteDelete ? "note-delete-description" : undefined}>
             <div className="note-dialog-heading">
               <div>
-                <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
+                <p className="eyebrow">{confirmingNoteDelete ? "Confirm deletion" : textNoteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
                 <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
+              {!textNoteDraft.isNew && !confirmingNoteDelete && <button className="remove-entry-button" type="button"
+                disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{noteDefinition.labels.remove}</button>}
             </div>
-            <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
-              {noteDefinition.labels.summary}
+            {confirmingNoteDelete ? <>
+              <p id="note-delete-description">Delete this text note from the draft report? This action cannot be undone.</p>
+              <div className="note-dialog-actions">
+                <button data-dialog-initial-focus type="button" disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)}>Keep note</button>
+                <button className="remove-entry-button" type="button" disabled={noteSaving} onClick={() => void confirmDeleteTextNote()}>
+                  {noteSaving ? "Deleting…" : "Delete note"}
+                </button>
+              </div>
+            </> : <>
+              <p className="note-metadata">
+                Captured {new Date(textNoteDraft.capturedAt).toLocaleString([], report?.agencyTimeZone ? { timeZone: report.agencyTimeZone } : undefined)}
+                {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
+                {!textNoteDraft.isNew ? " · Ready" : ""}
+              </p>
+              <label htmlFor="report-text-note">{noteDefinition.labels.summary}</label>
               <textarea
                 ref={noteSummary}
+                id="report-text-note"
                 data-dialog-initial-focus
-                rows={5}
+                rows={8}
                 placeholder={noteDefinition.labels.summaryPlaceholder}
-                required={noteDefinition.required.summary}
-                value={shell.noteDraft.summary}
-                onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
+                required
+                maxLength={REPORT_TEXT_NOTE_MAX_CHARACTERS}
+                aria-invalid={Boolean(noteError || (textNoteDraft.content && textNoteValidation.error))}
+                aria-describedby="report-text-note-count report-text-note-error"
+                value={textNoteDraft.content}
+                onChange={(event) => {
+                  setNoteError(null);
+                  setTextNoteDraft((draft) => draft ? { ...draft, content: event.target.value } : null);
+                }}
               />
-              <DialogValidationMessage finding={noteSummaryFindingActive ? editingActionableFinding : undefined} />
-            </label>
-            <div className="note-dialog-actions">
-              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
-              <button type="button" onClick={() => dispatch({ type: "note-saved" })}>
-                {shell.noteDraft.isNew ? noteDefinition.labels.add : noteDefinition.labels.save}
-              </button>
-            </div>
+              <small id="report-text-note-count">{textNoteValidation.characterCount.toLocaleString()} / {REPORT_TEXT_NOTE_MAX_CHARACTERS.toLocaleString()} characters</small>
+              <p id="report-text-note-error" className="finish-help" role={noteError || textNoteValidation.error ? "alert" : undefined}>
+                {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
+              </p>
+              <div className="note-dialog-actions">
+                <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{noteDefinition.labels.cancel}</button>
+                <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
+                  {noteSaving ? "Saving…" : textNoteDraft.isNew ? "Save text note" : noteDefinition.labels.save}
+                </button>
+              </div>
+            </>}
           </section>
         </div>
       )}

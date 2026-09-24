@@ -20,11 +20,10 @@ test("consolidates timeline-entry errors and warnings", () => {
     { id: "bad-vital", time: "28:00", kind: "care", title: "Vital signs", detail: "Invalid", reference: "eVitals.VitalGroup", vitals: { ...EMPTY_VITALS, systolic: "501", nullValues: {} } },
     { id: "bad-med", time: "08:20", kind: "medication", title: "Unknown medication", detail: "Invalid", reference: "eMedications.03", medication: { medicationCode: "bad", codeType: "RxNorm", label: "Bad", dose: "0", unit: "bad", route: "bad", response: "", warningAcknowledged: false } },
     { id: "bad-procedure", time: "08:21", kind: "procedure", title: "Unknown procedure", detail: "Invalid", reference: "eProcedures.03", procedure: { code: "bad", label: "Bad", attempts: 0, success: "no", outcome: "unchanged", complications: [], warningAcknowledged: false } },
-    { id: "bad-note", time: "88:88", kind: "note", title: "Clinical note", detail: " ", reference: "eNarrative.01" },
   ];
   const state = invalidEvents.reduce(withEvent, INITIAL_SHELL_STATE);
   const findings = reviewEncounter(state);
-  for (const category of ["Vital", "Medication", "Procedure", "Note"] as const) {
+  for (const category of ["Vital", "Medication", "Procedure"] as const) {
     assert.ok(findings.some((finding) => finding.category === category && finding.severity === "error"), `missing ${category}`);
   }
   const systolicFinding = findings.find((finding) => finding.category === "Vital" && finding.reference === "eVitals.06");
@@ -32,12 +31,12 @@ test("consolidates timeline-entry errors and warnings", () => {
 });
 
 test("a finding opens its exact canonical timeline event", () => {
-  const badNote: EncounterEvent = { id: "bad-note", time: "09:00", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
-  let state = withEvent(INITIAL_SHELL_STATE, badNote);
-  const finding = reviewEncounter(state).find((candidate) => candidate.target.eventId === "bad-note")!;
+  const badVital: EncounterEvent = { id: "bad-vital", time: "09:00", kind: "care", title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: { ...EMPTY_VITALS, systolic: "501", nullValues: {} } };
+  let state = withEvent(INITIAL_SHELL_STATE, badVital);
+  const finding = reviewEncounter(state).find((candidate) => candidate.target.eventId === "bad-vital")!;
   state = transitionShell(state, { type: "review-finding-selected", id: finding.id });
   assert.equal(state.view, "timeline");
-  assert.equal(state.noteDraft?.id, "bad-note");
+  assert.equal(state.vitalDraft?.id, "bad-vital");
 
 });
 
@@ -46,8 +45,8 @@ test("review can be opened directly from capture views", () => {
 });
 
 test("errors and unacknowledged warnings block signing", () => {
-  const badNote: EncounterEvent = { id: "bad-note", time: "09:00", kind: "note", title: "Clinical note", detail: "", reference: "eNarrative.01" };
-  assert.ok(reviewEncounter(withEvent(INITIAL_SHELL_STATE, badNote)).some((finding) => finding.severity === "error"));
+  const badVital: EncounterEvent = { id: "bad-vital", time: "09:00", kind: "care", title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: { ...EMPTY_VITALS, systolic: "501", nullValues: {} } };
+  assert.ok(reviewEncounter(withEvent(INITIAL_SHELL_STATE, badVital)).some((finding) => finding.severity === "error"));
   let complete = INITIAL_SHELL_STATE;
   assert.ok(reviewEncounter(complete).some((finding) => finding.severity === "warning" && !finding.acknowledged));
   for (const warning of reviewEncounter(complete).filter((finding) => finding.severity === "warning")) {
@@ -70,8 +69,8 @@ test("boundary-valid data can finish while unusual vital warnings require explic
   assert.ok(reviewEncounter(state).every((finding) => finding.severity !== "error" && finding.acknowledged));
 });
 
-test("an empty quick note remains blocking until signing review", () => {
+test("app-native text notes are not validated as NEMSIS signing findings", () => {
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "empty-note", time: "09:00" });
   state = transitionShell(state, { type: "note-saved" });
-  assert.match(reviewEncounter(state).find((finding) => finding.category === "Note")?.message ?? "", /before signing/);
+  assert.equal(reviewEncounter(state).some((finding) => finding.category === "Note"), false);
 });

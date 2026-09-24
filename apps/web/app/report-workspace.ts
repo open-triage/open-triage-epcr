@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition } from "@open-triage/contracts";
+import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportTextNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
@@ -73,6 +73,7 @@ export function useReportWorkspace({
   online,
   onSessionEnded,
   onReportCompleted,
+  onNotesChange,
 }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
@@ -83,6 +84,7 @@ export function useReportWorkspace({
   readonly online: boolean;
   readonly onSessionEnded: () => void;
   readonly onReportCompleted: () => void;
+  readonly onNotesChange: (notes: ReadonlyArray<ReportTextNote>) => void;
 }): ReportWorkspace {
   const [restored, setRestored] = useState(false);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
@@ -422,6 +424,7 @@ export function useReportWorkspace({
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
         setDispatchConflicts(response.resource.dispatchConflicts);
         setDispatchCancellation(response.resource.dispatchCancellation);
+        onNotesChange(response.resource.notes ?? []);
         dispatch({ type: "document-opened", document: merged });
         if (retryRecoveredChange) queueMicrotask(() => void flushSave());
       } catch (error) {
@@ -456,7 +459,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onSessionEnded, report, restored]);
+  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;

@@ -15,6 +15,7 @@ import { ClinicianSessionService } from "../sessions/clinician-session.service.j
 import { clinicalFormConfiguration } from "../forms/clinical-form-configuration.js";
 import { dispatchConflicts, encounterDocument, seedDispatchEncounter } from "../reports/encounter-document.persistence.js";
 import { withReportSnapshot } from "../reports/report-snapshot.js";
+import { reportTextNotes } from "../reports/report-note.persistence.js";
 import { randomSyntheticDispatchPayload } from "./synthetic-dispatch-payloads.js";
 
 type AssignedCallRow = {
@@ -506,6 +507,7 @@ export class AssignedCallsService {
       if (!report) throw new NotFoundException(`Assignment ${assignment.id} is not open for this clinician`);
       if (report.status !== "draft") throw new ConflictException("The assignment report is no longer an open draft");
       const document = await encounterDocument(manager, report.id);
+      const notes = await reportTextNotes(manager, report.id);
       const conflicts = await dispatchConflicts(manager, report.id);
       const clinicalForm = await clinicalFormConfiguration(manager, report.form_version_id, report.catalog_release_id,
         report.validation_version_id, report.validation_compiled_sha256);
@@ -524,6 +526,7 @@ export class AssignedCallsService {
             ? { demoMutable: true } : {}),
           ...(report.expires_at ? { expiresAt: new Date(report.expires_at).toISOString() } : {}),
           document,
+          notes,
           ...(assignment.agency_time_zone ? { agencyTimeZone: assignment.agency_time_zone } : {}),
           dispatchConflicts: conflicts,
           ...(cancellation(report) ? { dispatchCancellation: cancellation(report) } : {})

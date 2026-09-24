@@ -13,6 +13,36 @@ async function openCall(page: Page) {
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 }
 
+async function installTextNoteRoutes(page: Page) {
+  let revision = Number(demoOpenAssignment.report.revision);
+  let note: Record<string, unknown> | null = null;
+  await page.route(/\/api\/reports\/[^/]+\/notes(?:\/[^/]+)?$/, async (route) => {
+    const command = route.request().postDataJSON() as Record<string, unknown>;
+    const noteId = route.request().url().split("/").at(-1)!;
+    revision += 1;
+    if (route.request().method() === "DELETE") {
+      note = null;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+        reportId: demoOpenAssignment.report.id, noteId, revision, deleted: true,
+      }) });
+      return;
+    }
+    note = {
+      id: command.noteId ?? noteId,
+      reportId: demoOpenAssignment.report.id,
+      type: "text",
+      content: command.content,
+      capturedAt: command.capturedAt ?? note?.capturedAt,
+      capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes ?? note?.capturedUtcOffsetMinutes,
+      author: { id: "30000000-0000-4000-8000-000000000001", displayName: "Demo Clinician" },
+      serverReceivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), persistenceState: "ready",
+    };
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      reportId: demoOpenAssignment.report.id, revision, note,
+    }) });
+  });
+}
+
 async function expectNoBlockingAccessibilityViolations(page: Page) {
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -90,11 +120,12 @@ test("the opened call's incident header and dispatch event render in the phone f
 });
 
 test("quick capture phone journey remains operable and persists", async ({ page }) => {
+  await installTextNoteRoutes(page);
   await openCall(page);
   expect(await page.locator(".quick-actions button").evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")))).toEqual([
-    "Add vital signs", "Add medication", "Add procedure", "Add clinical note",
+    "Add vital signs", "Add medication", "Add procedure", "Text note",
   ]);
-  expect(await page.locator(".quick-actions button span").allTextContents()).toEqual(["Vitals", "Medications", "Procedures", "Notes"]);
+  expect(await page.locator(".quick-actions button span").allTextContents()).toEqual(["Vitals", "Medications", "Procedures", "Text note"]);
   await expectPhoneLayout(page);
   await expectNoBlockingAccessibilityViolations(page);
 
@@ -106,22 +137,29 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await expect(page.getByRole("button", { name: "Sign record" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Continue editing" })).toHaveCount(0);
   await page.getByRole("button", { name: /Timeline/ }).click();
-  const addNote = page.getByRole("button", { name: "Add clinical note" });
+  const addNote = page.getByRole("button", { name: "Text note" });
   await addNote.click();
-  const note = page.getByLabel("Note summary");
+  const note = page.getByLabel("Note text");
   await expect(note).toBeFocused();
   await expectNoBlockingAccessibilityViolations(page);
   await note.fill("Accessible phone journey note");
-  const saveNote = page.getByRole("button", { name: "Add to timeline" });
+  const saveNote = page.getByRole("button", { name: "Save text note" });
   await saveNote.scrollIntoViewIfNeeded();
   const saveBox = await saveNote.boundingBox();
   expect(saveBox!.y + saveBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await saveNote.click();
   await expect(page.getByText("Accessible phone journey note")).toBeVisible();
-
-  await page.reload();
-  await page.getByRole("region", { name: "Open reports" }).getByRole("button", { name: "Reopen report" }).click();
-  await expect(page.getByText("Accessible phone journey note")).toBeVisible();
+  await page.getByRole("button", { name: /Open text note.*Accessible phone journey note/ }).click();
+  await expect(page.getByRole("dialog", { name: "Text note" })).toBeVisible();
+  await note.fill("Accessible phone journey note updated");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: /Open text note.*updated/ }).click();
+  await page.getByRole("button", { name: "Delete text note" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Text note" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Keep note" })).toBeFocused();
+  await expectNoBlockingAccessibilityViolations(page);
+  await page.getByRole("button", { name: "Delete note" }).click();
+  await expect(page.getByText("Accessible phone journey note updated")).toHaveCount(0);
 });
 
 test("dialog focus, touch targets, and enlarged text preserve required actions", async ({ page }) => {
@@ -137,9 +175,9 @@ test("dialog focus, touch targets, and enlarged text preserve required actions",
     .note-dialog, .review-panel { font-size: 125% !important; }
   ` });
   await expectPhoneLayout(page);
-  await expect(page.getByRole("button", { name: "Add clinical note" })).toBeVisible();
-  await page.getByRole("button", { name: "Add clinical note" }).click();
-  await expect(page.getByRole("button", { name: "Add to timeline" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Text note" })).toBeVisible();
+  await page.getByRole("button", { name: "Text note" }).click();
+  await expect(page.getByRole("button", { name: "Save text note" })).toBeVisible();
 });
 
 test("all four documentation dialogs share a slightly portrait, near-square size", async ({ page }) => {
@@ -148,7 +186,7 @@ test("all four documentation dialogs share a slightly portrait, near-square size
     "Add vital signs",
     "Add medication",
     "Add procedure",
-    "Add clinical note",
+    "Text note",
   ] as const;
   const sizes: string[] = [];
   for (const openLabel of dialogs) {
@@ -158,7 +196,7 @@ test("all four documentation dialogs share a slightly portrait, near-square size
     expect(box!.height).toBeGreaterThan(box!.width);
     expect(box!.height / box!.width).toBeLessThanOrEqual(1.11);
     sizes.push(`${Math.round(box!.width)}x${Math.round(box!.height)}`);
-    await page.getByRole("button", { name: "Remove" }).click();
+    await page.getByRole("button", { name: openLabel === "Text note" ? "Cancel" : "Remove" }).click();
   }
   expect(new Set(sizes).size).toBe(1);
 });

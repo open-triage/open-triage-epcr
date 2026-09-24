@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   dispatchCancellationNotice,
+  createReportTextNote,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
   ACTIVE_REPORT_POLL_INTERVAL_MS,
@@ -9,6 +10,7 @@ import {
   draftMutationDelta,
   draftChangesUrl,
   deleteDraftReport,
+  deleteReportTextNote,
   demoActionMutationDelta,
   DRAFT_CONFLICT_RECOVERY_LIMIT,
   DraftSaveRejectedError,
@@ -19,6 +21,7 @@ import {
   signDraftReport,
   shellStateToDraftMutations,
   stableDraftId,
+  updateReportTextNote,
 } from "../app/draft-report";
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
@@ -373,58 +376,40 @@ test("signing surfaces revision, validation, session, server, and network failur
   }
 });
 
-test("timeline edits become typed revisioned API mutations without changing their identities", () => {
-  let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "note-1", date: "2026-09-03", time: "12:01" });
-  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Patient reassessed" });
-  shell = transitionShell(shell, { type: "note-saved" });
-  const first = shellStateToDraftMutations(reportId, shell);
-  const note = first.occurrences.find(({ elementId }) => elementId === "eNarrative.01");
-  assert.deepEqual(note?.value, { kind: "text", value: "Patient reassessed\n2026-09-03T12:01:00-04:00" });
-
-  shell = transitionShell(shell, { type: "note-opened", id: "note-1" });
-  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Patient reassessed; pain improved" });
-  shell = transitionShell(shell, { type: "note-saved" });
-  const updated = shellStateToDraftMutations(reportId, shell).occurrences.find(({ elementId }) => elementId === "eNarrative.01");
-  assert.equal(updated?.id, note?.id);
-  assert.deepEqual(updated?.value, { kind: "text", value: "Patient reassessed; pain improved\n2026-09-03T12:01:00-04:00" });
-});
-
-test("workspace mutation deltas include only changed targets and advance the accepted baseline", () => {
-  const baseline = shellStateToDraftMutations(reportId, INITIAL_SHELL_STATE);
-  let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "delta-note", date: "2026-09-03", time: "12:01" });
-  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Only these targets changed" });
-  shell = transitionShell(shell, { type: "note-saved" });
-  const current = shellStateToDraftMutations(reportId, shell, baseline);
-  const delta = draftMutationDelta(current, baseline);
-
-  assert.deepEqual(delta.groups.map(({ groupId }) => groupId), ["eNarrativeSection"]);
-  assert.deepEqual(delta.occurrences.map(({ elementId }) => elementId), ["eNarrative.01"]);
-  const optimistic = applyDraftMutationDelta(baseline, delta);
-  assert.deepEqual(optimistic, current);
-  assert.deepEqual(draftMutationDelta(current, optimistic), { groups: [], occurrences: [] },
-    "a UI-only update during an active save must not queue the same clinical mutation again");
-});
-
-test("removing a persisted timeline event emits explicit group and occurrence tombstones", () => {
-  let shell = transitionShell(INITIAL_SHELL_STATE, { type: "note-started", id: "persisted-note", date: "2026-09-03", time: "12:01" });
-  shell = transitionShell(shell, { type: "note-draft-changed", field: "summary", value: "Remove after saving" });
-  shell = transitionShell(shell, { type: "note-saved" });
-  const persisted = shellStateToDraftMutations(reportId, shell);
-  const persistedGroup = persisted.groups.find(({ groupId }) => groupId === "eNarrativeSection")!;
-  const persistedOccurrence = persisted.occurrences.find(({ elementId }) => elementId === "eNarrative.01")!;
-
-  shell = transitionShell(shell, { type: "note-opened", id: "persisted-note" });
-  shell = transitionShell(shell, { type: "note-removed" });
-  const removed = shellStateToDraftMutations(reportId, shell, persisted);
-
-  assert.deepEqual(removed.groups.find(({ id }) => id === persistedGroup.id), { ...persistedGroup, tombstone: true });
-  assert.deepEqual(removed.occurrences.find(({ id }) => id === persistedOccurrence.id), {
-    id: persistedOccurrence.id,
-    elementId: persistedOccurrence.elementId,
-    groupInstanceId: persistedOccurrence.groupInstanceId,
-    ordinal: persistedOccurrence.ordinal,
-    tombstone: true,
-  });
+test("app-native note create, edit, and delete use revisioned report-note endpoints", async () => {
+  const originalFetch = globalThis.fetch;
+  const noteId = "10000000-0000-4000-8000-000000000001";
+  const calls: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ input: String(input), init });
+    const response = init?.method === "DELETE"
+      ? { reportId, noteId, revision: 10, deleted: true }
+      : { reportId, revision: calls.length === 1 ? 8 : 9, note: { id: noteId } };
+    return new Response(JSON.stringify(response), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await createReportTextNote("csrf", reportId, {
+      commandId: "50000000-0000-4000-8000-000000000001", expectedRevision: 7, noteId,
+      capturedAt: "2026-09-24T12:01:00.000Z", capturedUtcOffsetMinutes: 120, content: "Patient reassessed",
+    });
+    await updateReportTextNote("csrf", reportId, noteId, {
+      commandId: "50000000-0000-4000-8000-000000000002", expectedRevision: 8, content: "Pain improved",
+    });
+    await deleteReportTextNote("csrf", reportId, noteId, {
+      commandId: "50000000-0000-4000-8000-000000000003", expectedRevision: 9,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(calls.map(({ input, init }) => [new URL(input).pathname, init?.method]), [
+    [`/api/reports/${reportId}/notes`, "POST"],
+    [`/api/reports/${reportId}/notes/${noteId}`, "POST"],
+    [`/api/reports/${reportId}/notes/${noteId}`, "DELETE"],
+  ]);
+  assert.deepEqual(calls.map(({ init }) => (init?.headers as Record<string, string>)["x-csrf-token"]), ["csrf", "csrf", "csrf"]);
+  assert.equal(JSON.parse(String(calls[0]!.init?.body)).content, "Patient reassessed");
+  assert.equal(JSON.parse(String(calls[1]!.init?.body)).expectedRevision, 8);
+  assert.equal(JSON.parse(String(calls[2]!.init?.body)).expectedRevision, 9);
 });
 
 test("the web adapter sends cookie credentials and a CSRF proof to the report draft endpoint", async () => {

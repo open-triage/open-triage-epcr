@@ -297,6 +297,7 @@ test("opening and retrying one assignment creates one draft without an automatic
     if (normalized.includes("from clinical.group_instance")) return [];
     if (normalized.includes("from clinical.element_occurrence")) return [];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.report_note")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { ...transactional(manager, isolations), query: manager.query };

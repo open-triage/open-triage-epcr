@@ -9,7 +9,7 @@ function patientGroups(document = INITIAL_SHELL_STATE.encounter.document) {
   return document.groups.filter(({ id }) => id.startsWith("ePatient") || id.startsWith("eHistory"));
 }
 
-test("canonical editor mutations preserve unrelated inbound and patient data", () => {
+test("legacy note reducer actions cannot change the canonical document", () => {
   const inboundVitals = [{ instanceId: "inbound-vitals", elements: [{ id: "eVitals.06", values: [{ kind: "scalar" as const, occurrenceId: "inbound-systolic", value: 118 }] }] }];
   const initial = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: {
     ...INITIAL_SHELL_STATE.encounter.document,
@@ -23,13 +23,10 @@ test("canonical editor mutations preserve unrelated inbound and patient data", (
   state = transitionShell(state, { type: "note-draft-changed", field: "summary", value: "Corrected version" });
   state = transitionShell(state, { type: "note-saved" });
 
-  assert.equal(encounterEvents(state.encounter.document, bundledEncounterDefinition).find(({ id }) => id === "stable-note")?.detail, "Corrected version");
+  assert.equal(encounterEvents(state.encounter.document, bundledEncounterDefinition).some(({ id }) => id === "stable-note"), false);
   assert.deepEqual(state.encounter.document.groups.find(({ id }) => id === "eVitals.VitalGroup")!.instances.slice(0, inboundVitals.length), inboundVitals);
   assert.deepEqual(patientGroups(state.encounter.document), retainedPatient);
 
-  state = transitionShell(state, { type: "note-opened", id: "stable-note" });
-  state = transitionShell(state, { type: "note-removed" });
-  assert.equal(encounterEvents(state.encounter.document, bundledEncounterDefinition).some(({ id }) => id === "stable-note"), false);
   assert.deepEqual(patientGroups(state.encounter.document), retainedPatient);
   assert.ok(shellStateToDraftMutations("report-1", state).occurrences.some(({ elementId }) => elementId === "ePatient.02"));
 });

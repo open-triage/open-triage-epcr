@@ -6,11 +6,12 @@ import { AmendReportService } from "./amend-report.service.js";
 import { SessionsModule } from "../sessions/sessions.module.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
+import { ReportNoteService } from "./report-note.service.js";
 
 @Module({
   imports: [SessionsModule],
   controllers: [DraftReportController],
   providers: [DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
-    ReviewValidationService]
+    ReviewValidationService, ReportNoteService]
 })
 export class ReportsModule {}

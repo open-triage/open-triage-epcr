@@ -928,6 +928,8 @@ export interface OpenAssignmentResponse {
     expiresAt?: string;
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
+    /** App-native notes are intentionally outside the NEMSIS encounter document. */
+    notes?: ReadonlyArray<ReportTextNote>;
     /** IANA zone used for operational-time presentation. */
     agencyTimeZone?: string;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
@@ -1007,8 +1009,57 @@ export interface ActiveReportResource {
   /** Latest complete dispatch snapshot revision applied to the assignment. */
   dispatchRevision: number;
   document: EncounterDocument;
+  notes?: ReadonlyArray<ReportTextNote>;
   dispatchConflicts: ReadonlyArray<DispatchConflict>;
   dispatchCancellation: DispatchCancellation | null;
+}
+
+export type ReportNotePersistenceState = "ready";
+
+export interface ReportTextNote {
+  id: string;
+  reportId: string;
+  type: "text";
+  content: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+}
+
+export interface CreateReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  content: string;
+}
+
+export interface UpdateReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  content: string;
+}
+
+export interface ReportTextNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportTextNote;
+}
+
+export interface DeleteReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+}
+
+export interface DeleteReportTextNoteResponse {
+  reportId: string;
+  noteId: string;
+  revision: number;
+  deleted: true;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
 import { withReportSnapshot } from "./report-snapshot.js";
+import { reportTextNotes } from "./report-note.persistence.js";
 
 type ReceiptRow = {
   report_id: string | null;
@@ -743,7 +744,8 @@ export class DraftReportService {
                author_id as "authorId", tombstoned_at as "tombstonedAt"
         from clinical.element_occurrence where report_id = $1 order by element_id, ordinal, id
       `, [reportId]);
-      return { ...report, groups, occurrences };
+      const notes = await reportTextNotes(manager, reportId);
+      return { ...report, groups, occurrences, notes };
     });
   }
 
@@ -808,6 +810,7 @@ export class DraftReportService {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const details = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const document = await encounterDocument(manager, reportId);
+      const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
       const clinicalForm = await clinicalFormConfiguration(
         manager, String(details.formVersionId), String(details.catalogReleaseId),
@@ -871,6 +874,7 @@ export class DraftReportService {
           ...(calls[0].demo_mutable ? { demoMutable: true } : {}),
           ...(calls[0].expires_at ? { expiresAt: new Date(calls[0].expires_at).toISOString() } : {}),
           document,
+          notes,
           ...(calls[0].agency_time_zone ? { agencyTimeZone: calls[0].agency_time_zone } : {}),
           dispatchConflicts: conflicts,
           ...(calls[0].dispatch_canceled_at && calls[0].dispatch_cancellation_revision && calls[0].dispatch_cancellation_receipt_id ? {
@@ -1021,6 +1025,7 @@ export class DraftReportService {
       const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}"`;
       if (ifNoneMatch === etag) return { etag, resource: null };
       const document = await encounterDocument(manager, reportId);
+      const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
       return {
         etag,
@@ -1029,6 +1034,7 @@ export class DraftReportService {
           reportRevision,
           dispatchRevision,
           document,
+          notes,
           dispatchConflicts: conflicts,
           dispatchCancellation: row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
             canceledAt: new Date(row.dispatch_canceled_at).toISOString(),
