@@ -16,8 +16,18 @@ permissions:
 
 jobs:
   postgresql-15:
-    name: Validate / PostgreSQL 15
+    name: Validate / PostgreSQL 15 / ${{ matrix.lane }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: database-integration
+            command: npm run test:integration -w @open-triage/database
+          - lane: api-integration
+            command: npm run test:integration -w @open-triage/api
+          - lane: scale-validation
+            command: npm run scale:test:ci -w @open-triage/database
     services:
       postgres:
         image: postgres:15
@@ -45,14 +55,14 @@ jobs:
       - run: npm ci
       - name: Verify generated database artifacts
         run: npm run check:database
-      - name: Run database integration tests
-        run: npm run test:integration -w @open-triage/database
-      - name: Run API integration tests
-        run: npm run test:integration -w @open-triage/api
-      - name: Run CI scale checks
-        run: npm run scale:test:ci -w @open-triage/database
-      - uses: actions/upload-artifact@v4
+      - name: Run isolated ${{ matrix.lane }} suite
+        run: ${{ matrix.command }}
+      - name: Retain isolated database lane report
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: database-scale-test-ci
-          path: packages/database/artifacts/scale-test-ci.json
+          name: database-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            packages/database/artifacts/database-lanes/*.json
+            packages/database/artifacts/scale-test-ci.json
+          if-no-files-found: warn

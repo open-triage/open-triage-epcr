@@ -28,11 +28,11 @@
     "purge:synthetic": "node scripts/purge-synthetic-records.mjs",
     "verify:recovery": "node scripts/verify-recovery.mjs",
     "verify:replica": "node scripts/verify-reporting-replica.mjs",
-    "scale:test:ci": "node scripts/run-scale-tests.mjs --profile ci --output artifacts/scale-test-ci.json",
+    "scale:test:ci": "node scripts/run-isolated-database-suite.mjs --lane scale-validation -- node scripts/run-scale-tests.mjs --profile ci --output artifacts/scale-test-ci.json",
     "scale:test:production": "node scripts/run-scale-tests.mjs --profile production --output artifacts/scale-test-production.json",
     "test": "npm run test:unit",
     "test:unit": "node --test $(find tests -maxdepth 1 -name '*.test.mjs' ! -name '*.integration.test.mjs' -print)",
-    "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs"
+    "test:integration": "npm run build -w @open-triage/api && node scripts/run-database-integration-suites.mjs"
   },
   "dependencies": {
     "@open-triage/contracts": "0.1.0",

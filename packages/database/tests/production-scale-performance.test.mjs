@@ -71,7 +71,8 @@ test("scale harness covers representative distributions and preserves executable
 
 test("CI runs and retains bounded evidence without claiming the production exercise", () => {
   assert.match(workflow, /npm run scale:test:ci -w @open-triage\/database/);
-  assert.match(workflow, /database-scale-test-ci/);
+  assert.match(workflow, /database-\$\{\{ matrix\.lane \}\}-\$\{\{ github\.run_id \}\}/);
+  assert.match(workflow, /packages\/database\/artifacts\/database-lanes\/\*\.json/);
   assert.match(evidencePolicy, /measured, resource-bounded representative run, not a ten-million-report claim/i);
   assert.match(evidencePolicy, /run the production profile before production readiness sign-off/i);
   assert.match(evidencePolicy, /never rewrites or relaxes policy/i);
