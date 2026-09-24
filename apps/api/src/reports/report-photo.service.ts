@@ -7,6 +7,7 @@ import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import { reportTextNotes } from "./report-note.persistence.js";
+import { inspectNoteMutation, recordMediaAccess, recordNoteMutation, type ReportNoteAction } from "./report-note-collaboration.js";
 import {
   inspectCanonicalJpeg,
   ReportPhotoValidationError,
@@ -41,6 +42,7 @@ export class ReportPhotoService {
       throw new UnprocessableEntityException("Canonical photo dimensions do not match the JPEG bytes");
     }
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "create-report-photo-note", command,
+      { noteId: command.noteId, action: "create" },
       async (manager, report, nextRevision, actorId) => {
         const usage = await manager.query<Array<{ used_bytes: string | number }>>(`select
           coalesce((select sum(byte_size) from clinical.report_photo_note where report_id = $1), 0) +
@@ -76,6 +78,7 @@ export class ReportPhotoService {
   async updateCaption(accessToken: string, reportId: string, noteId: string, input: unknown, csrfToken?: string): Promise<ReportPhotoNoteMutationResponse> {
     const command = this.validated(() => validateUpdateReportPhotoCaptionCommand(input));
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "update-report-photo-caption", { ...command, noteId },
+      { noteId, action: "update" },
       async (manager, report, nextRevision, actorId) => {
         const changed = mutationRows<{ id: string }>(await manager.query(`update clinical.report_photo_note
           set caption = $4, updated_by = $3, updated_at = clock_timestamp()
@@ -91,10 +94,10 @@ export class ReportPhotoService {
   async delete(accessToken: string, reportId: string, noteId: string, input: unknown, csrfToken?: string): Promise<DeleteReportPhotoNoteResponse> {
     const command = this.validated(() => validateDeleteReportPhotoNoteCommand(input));
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "delete-report-photo-note", { ...command, noteId },
+      { noteId, action: "delete", repeatedDeleteResponse: (revision) => ({ reportId, noteId, revision, deleted: true }) },
       async (manager, report, nextRevision, actorId) => {
-        const deleted = mutationRows<{ id: string }>(await manager.query(
-          "delete from clinical.report_photo_note where report_id = $1 and id = $2 returning id", [report.id, noteId]));
-        if (!deleted[0]) throw new NotFoundException(`Photo note ${noteId} was not found`);
+        await manager.query(
+          "delete from clinical.report_photo_note where report_id = $1 and id = $2 returning id", [report.id, noteId]);
         await this.recordRevision(manager, report.id, nextRevision, command.commandId, actorId, null, "delete", noteId);
         return { reportId: report.id, noteId, revision: nextRevision, deleted: true };
       });
@@ -114,6 +117,8 @@ export class ReportPhotoService {
           and report.documenting_user_id = $4`,
       [reportId, noteId, session.organization.id, session.user.id]);
       if (!rows[0]) throw new NotFoundException(`Photo note ${noteId} was not found`);
+      await recordMediaAccess(manager, { organizationId: session.organization.id, reportId, noteId,
+        mediaType: "photo", actorId: session.user.id });
       return { bytes: rows[0].canonical_bytes, contentType: rows[0].content_type, sha256: rows[0].sha256 };
     });
   }
@@ -125,6 +130,7 @@ export class ReportPhotoService {
     commandId: string,
     commandType: string,
     command: Command,
+    target: { noteId: string; action: ReportNoteAction; repeatedDeleteResponse?: (revision: number) => T },
     apply: (manager: EntityManager, report: ReportRow, nextRevision: number, actorId: string) => Promise<T>,
   ): Promise<T> {
     const requestDigest = commandSha256(command);
@@ -142,10 +148,24 @@ export class ReportPhotoService {
         if (replay) return replay;
         if (report.status !== "draft") throw new ConflictException("Report photos are immutable after signing");
         const revision = Number(report.revision);
-        if (command.expectedRevision !== revision) {
-          throw new ConflictException({ message: "Draft revision does not match the server", expectedRevision: command.expectedRevision, currentRevision: revision });
+        const collaboration = await inspectNoteMutation(manager, report.id, "photo", target.noteId,
+          target.action, command.expectedRevision, revision);
+        if (collaboration.repeatedDelete) {
+          const response = target.repeatedDeleteResponse?.(revision);
+          if (!response) throw new ConflictException("The photo was already deleted");
+          await manager.query(`insert into clinical.command_receipt
+            (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
+            values ($1, $2, $3, $4, 200, $5::jsonb)`,
+          [commandId, reportId, commandType, requestDigest, JSON.stringify(response)]);
+          await recordNoteMutation(manager, { organizationId: report.organization_id, reportId, noteType: "photo",
+            noteId: target.noteId, action: target.action, result: "idempotent", commandId,
+            actorId: session.user.id, reportRevision: revision });
+          return response;
         }
         const response = await apply(manager, report, revision + 1, session.user.id);
+        await recordNoteMutation(manager, { organizationId: report.organization_id, reportId, noteType: "photo",
+          noteId: target.noteId, action: target.action, result: collaboration.result, commandId,
+          actorId: session.user.id, reportRevision: revision + 1 });
         await manager.query(`insert into clinical.command_receipt
           (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
           values ($1, $2, $3, $4, 200, $5::jsonb)`,

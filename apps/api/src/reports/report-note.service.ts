@@ -9,6 +9,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
+import { inspectNoteMutation, recordNoteMutation, type ReportNoteAction } from "./report-note-collaboration.js";
 import { reportTextNotes } from "./report-note.persistence.js";
 import {
   ReportNoteValidationError,
@@ -30,6 +31,7 @@ export class ReportNoteService {
   async create(accessToken: string, reportId: string, input: unknown, csrfToken?: string): Promise<ReportTextNoteMutationResponse> {
     const command = this.validated(() => validateCreateReportTextNoteCommand(input));
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "create-report-text-note", command,
+      { noteId: command.noteId, action: "create" },
       async (manager, report, nextRevision, actorId) => {
         await manager.query(`insert into clinical.report_note
           (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
@@ -47,6 +49,7 @@ export class ReportNoteService {
   async update(accessToken: string, reportId: string, noteId: string, input: unknown, csrfToken?: string): Promise<ReportTextNoteMutationResponse> {
     const command = this.validated(() => validateUpdateReportTextNoteCommand(input));
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "update-report-text-note", { ...command, noteId },
+      { noteId, action: "update" },
       async (manager, report, nextRevision, actorId) => {
         const changed = mutationRows<{ id: string }>(await manager.query(`update clinical.report_note
           set content = $4, updated_by = $3, updated_at = clock_timestamp()
@@ -63,10 +66,12 @@ export class ReportNoteService {
   async delete(accessToken: string, reportId: string, noteId: string, input: unknown, csrfToken?: string): Promise<DeleteReportTextNoteResponse> {
     const command = this.validated(() => validateDeleteReportTextNoteCommand(input));
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "delete-report-text-note", { ...command, noteId },
+      { noteId, action: "delete", repeatedDeleteResponse: (revision) => ({ reportId, noteId, revision, deleted: true }) },
       async (manager, report, nextRevision, actorId) => {
-        const deleted = mutationRows<{ id: string }>(await manager.query(
-          "delete from clinical.report_note where report_id = $1 and id = $2 returning id", [report.id, noteId]));
-        if (!deleted[0]) throw new NotFoundException(`Text note ${noteId} was not found`);
+        await manager.query(
+          "delete from clinical.report_note where report_id = $1 and id = $2 returning id", [report.id, noteId]);
+        // A missing row is still tombstoned. This lets deletion cancel a
+        // locally pending upload that has not reached the server yet.
         await this.recordRevision(manager, report.id, nextRevision, command.commandId, actorId,
           null, "delete", noteId);
         return { reportId: report.id, noteId, revision: nextRevision, deleted: true };
@@ -80,6 +85,7 @@ export class ReportNoteService {
     commandId: string,
     commandType: string,
     command: Command,
+    target: { noteId: string; action: ReportNoteAction; repeatedDeleteResponse?: (revision: number) => T },
     apply: (manager: EntityManager, report: ReportRow, nextRevision: number, actorId: string) => Promise<T>,
   ): Promise<T> {
     const digest = commandSha256(command);
@@ -97,10 +103,21 @@ export class ReportNoteService {
         if (replay) return replay;
         if (report.status !== "draft") throw new ConflictException("Report notes are immutable after signing");
         const revision = Number(report.revision);
-        if (command.expectedRevision !== revision) {
-          throw new ConflictException({ message: "Draft revision does not match the server", expectedRevision: command.expectedRevision, currentRevision: revision });
+        const collaboration = await inspectNoteMutation(manager, report.id, "text", target.noteId,
+          target.action, command.expectedRevision, revision);
+        if (collaboration.repeatedDelete) {
+          const response = target.repeatedDeleteResponse?.(revision);
+          if (!response) throw new ConflictException("The note was already deleted");
+          await this.storeReceipt(manager, commandId, reportId, commandType, digest, response);
+          await recordNoteMutation(manager, { organizationId: report.organization_id, reportId, noteType: "text",
+            noteId: target.noteId, action: target.action, result: "idempotent", commandId, actorId: session.user.id,
+            reportRevision: revision });
+          return response;
         }
         const response = await apply(manager, report, revision + 1, session.user.id);
+        await recordNoteMutation(manager, { organizationId: report.organization_id, reportId, noteType: "text",
+          noteId: target.noteId, action: target.action, result: collaboration.result, commandId,
+          actorId: session.user.id, reportRevision: revision + 1 });
         await this.storeReceipt(manager, commandId, reportId, commandType, digest, response);
         return response;
       });
