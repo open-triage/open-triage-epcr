@@ -249,10 +249,11 @@ test("the complete synthetic mobile call journey survives offline work, authenti
 
     state.completed = true;
     await page.getByRole("button", { name: "Refresh calls" }).click();
-    await expect(page.locator(".transient-notice")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Open reports" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
+    await expect.poll(async () => (await cachedReports(page, state.recovery)).some(entry => entry.report.id === reportId)).toBe(false);
   } finally {
     await context.close();
   }

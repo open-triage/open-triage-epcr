@@ -19,7 +19,7 @@ const pageRecovery = new WeakMap<Page, MockRecovery>();
 
 /** Test-owned API defaults. Individual scenarios override any route they exercise. */
 export async function installServerFixture(target: Page | BrowserContext, recovery: MockRecovery = new Map()) {
-  const reports = new Map<string, typeof demoOpenAssignment.report>();
+  const reports = new Map<string, typeof demoOpenAssignment.report & { demoMutable?: boolean }>();
   const pendingResponses = new Set<Promise<void>>();
   // Observe scenario-specific open/sign routes too, so the authoritative list
   // cannot accidentally evict an active report from the browser's cache.
@@ -70,6 +70,7 @@ export async function installServerFixture(target: Page | BrowserContext, recove
     return route.fulfill({ json: {
       openCalls: [...reports.values()].map(report => ({
         reportId: report.id, callNumber: demoAssignedCalls.assignedCalls[0]!.callNumber,
+        demoMutable: report.demoMutable,
         revision: report.revision, formVersionId: report.formVersionId, catalogReleaseId: report.catalogReleaseId,
         lastSavedAt: new Date().toISOString(), syncStatus: "saved", validationErrorCount: 0,
       })), completedReportIds: [], refreshedAt: new Date().toISOString(),
