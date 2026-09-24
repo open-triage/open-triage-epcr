@@ -230,6 +230,31 @@ export interface RecoveredProtectedReportKey {
   reportKeyBase64: string;
 }
 
+export const DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES = 50 * 1024 * 1024;
+export const MIN_REPORT_MEDIA_ALLOWANCE_BYTES = 1024 * 1024;
+export const MAX_REPORT_MEDIA_ALLOWANCE_BYTES = 2 * 1024 * 1024 * 1024;
+
+/** Policy identity captured by clients and pinned onto each new report. */
+export interface ReportMediaPolicy {
+  reportMediaAllowanceBytes: number;
+  settingsRevision: number;
+}
+
+export interface AgencyMediaSettings {
+  organizationId: string;
+  reportMediaAllowanceBytes: number;
+  revision: number;
+  defaultReportMediaAllowanceBytes: number;
+  /** True when Postgres, WAL, replica, backup, and restore growth needs review. */
+  storageGrowthWarning: boolean;
+  updatedAt: string;
+}
+
+export interface UpdateAgencyMediaSettingsCommand {
+  expectedRevision: number;
+  reportMediaAllowanceBytes: number;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
@@ -295,7 +320,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings";
 
 export interface AdminRoleSummary {
   id: string;
@@ -888,6 +913,8 @@ export interface AssignedCallsResponse {
   assignedCalls: AssignedCall[];
   canceledAssignmentIds: string[];
   refreshedAt: string;
+  /** Present on live API responses; optional only for pre-feature cached/static fixtures. */
+  mediaPolicy?: ReportMediaPolicy;
 }
 
 export interface ClinicalDemoUnit {
@@ -918,6 +945,8 @@ export interface OpenAssignmentResponse {
     formVersionId: string;
     catalogReleaseId: string;
     validationVersionId?: string;
+    /** Present on live API responses; optional only while restoring pre-feature offline records. */
+    mediaPolicy?: ReportMediaPolicy;
     /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
     clinicalForm?: ClinicalFormConfiguration;
     revision: number;

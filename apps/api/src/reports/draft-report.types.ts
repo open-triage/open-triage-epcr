@@ -1,3 +1,5 @@
+import type { ReportMediaPolicy } from "@open-triage/contracts";
+
 export type PatientIdentityState = "known" | "unknown" | "temporary" | "unavailable";
 
 export interface CreateDraftReportCommand {
@@ -83,6 +85,7 @@ export interface DraftReportResult {
   validationVersionId?: string;
   validationCompiledSha256?: string;
   documentingUserId: string;
+  mediaPolicy: ReportMediaPolicy;
 }
 
 export interface PostSignatureDraftResult {

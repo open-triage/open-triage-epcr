@@ -74,6 +74,44 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     await grantRoleForTesting(client, role);
   }
 
+  await t.test("Agency Settings default, concurrency guard, and bounded audit hold in PostgreSQL", async () => {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+      values ($1, 'Agency Settings integration', 'UTC')`, [organizationId]);
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Settings administrator')`, [actorId, organizationId]);
+    const initial = (await client.query(`select report_media_allowance_bytes, revision
+      from app_identity.agency_settings where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(initial, { report_media_allowance_bytes: "52428800", revision: "1" });
+
+    const changed = await client.query(`update app_identity.agency_settings
+      set report_media_allowance_bytes = $3, revision = revision + 1, updated_by = $4
+      where organization_id = $1 and revision = $2 returning revision`,
+    [organizationId, 1, 80 * 1024 * 1024, actorId]);
+    assert.equal(changed.rows[0].revision, "2");
+    await client.query(`insert into app_identity.agency_settings_change_event
+      (organization_id, actor_id, prior_revision, revision,
+       old_report_media_allowance_bytes, new_report_media_allowance_bytes)
+      values ($1, $2, 1, 2, $3, $4)`,
+    [organizationId, actorId, 50 * 1024 * 1024, 80 * 1024 * 1024]);
+
+    const stale = await client.query(`update app_identity.agency_settings
+      set report_media_allowance_bytes = $3, revision = revision + 1
+      where organization_id = $1 and revision = $2`,
+    [organizationId, 1, 60 * 1024 * 1024]);
+    assert.equal(stale.rowCount, 0);
+    const events = await client.query(`select actor_id, prior_revision, revision,
+      old_report_media_allowance_bytes, new_report_media_allowance_bytes
+      from app_identity.agency_settings_change_event where organization_id = $1`, [organizationId]);
+    assert.deepEqual(events.rows, [{ actor_id: actorId, prior_revision: "1", revision: "2",
+      old_report_media_allowance_bytes: "52428800", new_report_media_allowance_bytes: "83886080" }]);
+    await assert.rejects(client.query(
+      "update app_identity.agency_settings_change_event set revision = 3 where organization_id = $1",
+      [organizationId]
+    ), /append-only/);
+  });
+
   await t.test("keeps workload database roles inside their approved privilege contracts", async () => {
     await client.query("begin");
     try {
@@ -148,7 +186,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
       "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
-      "sessions:read", "sessions:revoke", "users:read", "users:write",
+      "sessions:read", "sessions:revoke", "settings:read", "settings:write",
+      "users:read", "users:write",
       "validation:publish", "validation:read", "validation:write"
     ]);
     assert.equal(capabilityKeys.includes("installation:administer"), false);
@@ -179,7 +218,9 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal(protectedRoles.rows.length, 3);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
-      assert.equal(administrator.capabilities.length, 19);
+      assert.equal(administrator.capabilities.length, 21);
+      assert.equal(administrator.capabilities.includes("settings:read"), true);
+      assert.equal(administrator.capabilities.includes("settings:write"), true);
       assert.equal(administrator.capabilities.includes("validation:publish"), true);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
       assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [

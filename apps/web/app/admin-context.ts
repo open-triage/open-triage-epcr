@@ -1,4 +1,5 @@
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, AuthoringVersionOption, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
+import type { AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
 
 async function catalogRequest<T>(path: string, csrfToken?: string, init?: RequestInit,
@@ -123,6 +124,12 @@ export async function loadAdminContext(): Promise<AdminContext> {
   }
   return response.json() as Promise<AdminContext>;
 }
+
+export const loadAgencyMediaSettings = () => catalogRequest<AgencyMediaSettings>("agency-settings");
+export const updateAgencyMediaSettings = (csrfToken: string, command: UpdateAgencyMediaSettingsCommand) =>
+  catalogRequest<AgencyMediaSettings>("agency-settings", csrfToken, {
+    method: "PUT", body: JSON.stringify(command)
+  });
 
 export type AdminUserQuery = {
   search?: string;

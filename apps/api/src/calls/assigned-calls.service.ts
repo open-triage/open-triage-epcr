@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
+import { DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES } from "@open-triage/contracts";
 import type {
   AssignedCall,
   AssignedCallsResponse,
@@ -62,7 +63,11 @@ type ReportRow = {
   dispatch_cancellation_revision: string | number | null;
   dispatch_cancellation_receipt_id: string | null;
   expires_at: Date | string | null;
+  media_settings_revision: string | number;
+  report_media_allowance_bytes: string | number;
 };
+
+type MediaSettingsRow = { revision: string | number; report_media_allowance_bytes: string | number };
 
 function cancellation(row: ReportRow) {
   return row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
@@ -212,11 +217,20 @@ export class AssignedCallsService {
         and (ca.expires_at is null or ca.expires_at > $3)
       order by ca.dispatched_at desc, ca.id
     `, [session.user.id, session.organization.id, now]);
+    const activeSettings = await this.dataSource.query<MediaSettingsRow[]>(`
+      select revision, report_media_allowance_bytes from app_identity.agency_settings
+      where organization_id = $1
+    `, [session.organization.id]);
+    const policy = activeSettings[0];
 
     return {
       assignedCalls: rows.filter((row) => row.status === "assigned").map(assignedCall),
       canceledAssignmentIds: rows.filter((row) => row.status === "canceled").map((row) => row.id),
-      refreshedAt: now.toISOString()
+      refreshedAt: now.toISOString(),
+      mediaPolicy: {
+        reportMediaAllowanceBytes: Number(policy?.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
+        settingsRevision: Number(policy?.revision ?? 1),
+      },
     };
   }
 
@@ -498,7 +512,7 @@ export class AssignedCallsService {
       const reports = await manager.query<ReportRow[]>(`
         select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
                validation_compiled_sha256, revision, status, synthetic,
-               expires_at,
+               expires_at, media_settings_revision, report_media_allowance_bytes,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
       `, [reportId, assignment.organization_id, documentingUserId]);
@@ -517,6 +531,10 @@ export class AssignedCallsService {
           formVersionId: report.form_version_id,
           catalogReleaseId: report.catalog_release_id,
           ...(report.validation_version_id ? { validationVersionId: report.validation_version_id } : {}),
+          mediaPolicy: {
+            reportMediaAllowanceBytes: Number(report.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
+            settingsRevision: Number(report.media_settings_revision ?? 1),
+          },
           clinicalForm,
           revision: Number(report.revision),
           status: "draft" as const,

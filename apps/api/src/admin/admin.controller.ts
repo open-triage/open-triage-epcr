@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from "@nestjs/common";
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, OwnershipTransferState, PortableCustomRolePackage, PortableRoleImportPreview, PortableRoleImportResult, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, PurgedAdminOfflineRecovery, ResetAdminCredentialResult, RevokedAdminSession, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationHistoryEvent, ValidationRulePage } from "@open-triage/contracts";
+import type { AgencyMediaSettings } from "@open-triage/contracts";
 import { clearSessionCookie, sessionToken } from "../sessions/clinician-session.controller.js";
 import { AdminService } from "./admin.service.js";
 import { CatalogAuthoringService } from "./catalog-authoring.service.js";
@@ -18,6 +19,8 @@ import { validateResetAdminCredential, validateRevokeAdminSession } from "./sess
 import { OwnershipTransferService } from "./ownership-transfer.service.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 import { validateCancelOwnershipTransfer, validateInitiateOwnershipTransfer } from "./ownership-transfer.validation.js";
+import { AgencySettingsService } from "./agency-settings.service.js";
+import { validateUpdateAgencyMediaSettings } from "./agency-settings.validation.js";
 
 type RequestLike = { headers: { cookie?: string } };
 type ResponseLike = { clearCookie(name: string, options: Record<string, unknown>): void };
@@ -32,7 +35,8 @@ export class AdminController {
     private readonly sessionAdministration: SessionAdministrationService,
     private readonly rolePackages: RolePackageService,
     private readonly ownershipTransfer: OwnershipTransferService,
-    private readonly validations: ValidationAuthoringService) {}
+    private readonly validations: ValidationAuthoringService,
+    private readonly agencySettings: AgencySettingsService) {}
 
   @Get("context")
   context(
@@ -40,6 +44,18 @@ export class AdminController {
     @Headers("authorization") authorization?: string
   ): Promise<AdminContext> {
     return this.admin.context(sessionToken(request, authorization));
+  }
+
+  @Get("agency-settings")
+  settings(@Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AgencyMediaSettings> {
+    return this.agencySettings.get(sessionToken(request, authorization));
+  }
+
+  @Put("agency-settings")
+  updateSettings(@Body() body: unknown, @Req() request: RequestLike,
+    @Headers("authorization") authorization?: string): Promise<AgencyMediaSettings> {
+    return this.agencySettings.update(sessionToken(request, authorization), validateUpdateAgencyMediaSettings(body));
   }
 
   @Get("users")
