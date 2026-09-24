@@ -21,7 +21,6 @@ type ReportRow = {
   organization_id: string;
   status: "draft" | "signed";
   revision: string | number;
-  report_media_allowance_bytes: string | number;
 };
 type ReceiptRow = { report_id: string | null; command_type: string; request_sha256: string; response_body: unknown };
 
@@ -48,7 +47,8 @@ export class ReportPhotoService {
           coalesce((select sum(byte_size) from clinical.report_photo_note where report_id = $1), 0) +
           coalesce((select sum(byte_size) from clinical.report_audio_note where report_id = $1), 0) as used_bytes`, [report.id]);
         const usedBytes = Number(usage[0]?.used_bytes ?? 0);
-        const allowance = Number(report.report_media_allowance_bytes);
+        const allowance = await this.captureAllowance(manager, report.organization_id,
+          command.settingsRevision, command.effectiveAllowanceBytes);
         if (usedBytes + bytes.byteLength > allowance) {
           throw new ConflictException({
             message: "The photo exceeds the report's remaining media allowance",
@@ -139,7 +139,7 @@ export class ReportPhotoService {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [commandId]);
-        const reports = await manager.query<ReportRow[]>(`select id, organization_id, status, revision, report_media_allowance_bytes
+        const reports = await manager.query<ReportRow[]>(`select id, organization_id, status, revision
           from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3 for update`,
         [reportId, session.organization.id, session.user.id]);
         const report = reports[0];
@@ -190,6 +190,30 @@ export class ReportPhotoService {
         (report_id, revision, idempotency_key, author_id, client_time, changes)
       select updated.id, $2, $3, $4, $5, $6::jsonb from updated`,
     [reportId, revision, commandId, actorId, clientTime, JSON.stringify({ photos: [{ action, noteId }] })]);
+  }
+
+  /** Resolve the immutable policy value for the revision observed at capture. */
+  private async captureAllowance(manager: EntityManager, organizationId: string,
+    settingsRevision: number, claimedAllowance: number): Promise<number> {
+    const rows = await manager.query<Array<{ allowance: string | number }>>(`
+      select allowance from (
+        select report_media_allowance_bytes as allowance
+        from app_identity.agency_settings
+        where organization_id = $1 and revision = $2
+        union all
+        select case when revision = $2 then new_report_media_allowance_bytes
+                         else old_report_media_allowance_bytes end as allowance
+        from app_identity.agency_settings_change_event
+        where organization_id = $1 and (revision = $2 or prior_revision = $2)
+        order by allowance
+        limit 1
+      ) policy
+    `, [organizationId, settingsRevision]);
+    const allowance = rows[0] ? Number(rows[0].allowance) : null;
+    if (allowance === null || allowance !== claimedAllowance) {
+      throw new ConflictException("The capture's agency media settings revision could not be verified");
+    }
+    return allowance;
   }
 
   private validated<T>(validate: () => T): T {

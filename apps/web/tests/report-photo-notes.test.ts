@@ -43,4 +43,17 @@ test("photo dialog exposes named rotation, discard, capture, delete, and caption
   assert.match(component, /role={confirmingDelete \? "alertdialog" : "dialog"}/);
   assert.match(component, /aria-modal="true"/);
   assert.doesNotMatch(component, /download=/);
+  assert.match(component, /Retry upload/);
+});
+
+test("one shared photo lifecycle includes every offline and transfer state", async () => {
+  const contracts = await readFile(path.resolve(webRoot, "../../packages/contracts/src/index.ts"), "utf8");
+  assert.match(contracts, /"saved-on-device" \| "uploading" \| "processing" \| "ready" \| "failed"/);
+});
+
+test("workspace permits offline capture and warns before closing with pending media", async () => {
+  const source = await readFile(path.join(webRoot, "app/page.tsx"), "utf8");
+  assert.match(source, /aria-label="Add photo note"[^\n]+disabled={!report \|\| editingBlocked}/);
+  assert.match(source, /hasPendingProtectedMedia/);
+  assert.match(source, /Photo uploads may pause after closing/);
 });

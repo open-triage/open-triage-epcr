@@ -1014,11 +1014,16 @@ export class DraftReportService {
         dispatch_canceled_at: Date | string | null;
         dispatch_cancellation_revision: string | number | null;
         dispatch_cancellation_receipt_id: string | null;
+        media_settings_revision: string | number;
+        report_media_allowance_bytes: string | number;
       }>>(`
         select r.revision, ca.dispatch_revision, r.dispatch_canceled_at,
-               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
+               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
+               settings.revision as media_settings_revision,
+               settings.report_media_allowance_bytes
         from clinical.report r join clinical.call_assignment ca
           on ca.report_id = r.id and ca.organization_id = r.organization_id
+        join app_identity.agency_settings settings on settings.organization_id = r.organization_id
         where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
           and r.status = 'draft'
       `, [reportId, session.organization.id, session.user.id]);
@@ -1026,7 +1031,8 @@ export class DraftReportService {
       if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
       const reportRevision = Number(row.revision);
       const dispatchRevision = Number(row.dispatch_revision ?? 0);
-      const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}"`;
+      const settingsRevision = Number(row.media_settings_revision);
+      const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}-settings-${settingsRevision}"`;
       if (ifNoneMatch === etag) return { etag, resource: null };
       const document = await encounterDocument(manager, reportId);
       const notes = await reportTextNotes(manager, reportId);
@@ -1039,6 +1045,10 @@ export class DraftReportService {
           dispatchRevision,
           document,
           notes,
+          mediaPolicy: {
+            settingsRevision,
+            reportMediaAllowanceBytes: Number(row.report_media_allowance_bytes),
+          },
           dispatchConflicts: conflicts,
           dispatchCancellation: row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
             canceledAt: new Date(row.dispatch_canceled_at).toISOString(),

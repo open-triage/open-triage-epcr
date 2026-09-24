@@ -42,6 +42,18 @@ test("protected clinical payloads round-trip with a fresh 96-bit nonce for every
   }), { clinical: "sensitive" });
 });
 
+test("staged photo bytes round-trip only inside authenticated ciphertext", async () => {
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const media = "private-canonical-photo-base64";
+  const payload = { schemaVersion: 1, photoQueue: [{ note: { id: "photo", persistenceState: "saved-on-device" },
+    command: { canonicalBase64: media, settingsRevision: 4, effectiveAllowanceBytes: 10_000 } }] };
+  const encrypted = await encryptProtectedPayload(key, "opaque-media-handle", 1, payload);
+  assert.equal(new TextDecoder().decode(encrypted.ciphertext).includes(media), false);
+  assert.deepEqual(await decryptProtectedPayload(key, {
+    schemaVersion: 1, recoveryHandle: "opaque-media-handle", ciphertextRevision: 1, ...encrypted,
+  }), payload);
+});
+
 test("protected persistence collapses an in-flight burst to one latest follow-up write", async () => {
   const first = deferred();
   const second = deferred();

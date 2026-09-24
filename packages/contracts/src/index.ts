@@ -1082,11 +1082,13 @@ export interface ActiveReportResource {
   dispatchRevision: number;
   document: EncounterDocument;
   notes?: ReadonlyArray<ReportNote>;
+  /** Current agency policy used for captures begun after this snapshot. */
+  mediaPolicy?: ReportMediaPolicy;
   dispatchConflicts: ReadonlyArray<DispatchConflict>;
   dispatchCancellation: DispatchCancellation | null;
 }
 
-export type ReportNotePersistenceState = "ready";
+export type ReportNotePersistenceState = "saved-on-device" | "uploading" | "processing" | "ready" | "failed";
 
 export type ReportNote = ReportTextNote | ReportPhotoNote | ReportAudioNote;
 
@@ -1183,6 +1185,9 @@ export interface CreateReportPhotoNoteCommand {
   sha256: string;
   width: number;
   height: number;
+  /** Agency policy observed when the capture was staged. */
+  settingsRevision: number;
+  effectiveAllowanceBytes: number;
 }
 
 export interface UpdateReportPhotoCaptionCommand {

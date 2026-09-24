@@ -45,13 +45,15 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
     {visibleEvents.length === 0 ? <p className="timeline-empty">{filter === "notes" ? "No notes have been added." : "No timeline events are available."}</p> : <ol className="timeline-list">
       {visibleEvents.map((event) => {
         if (event.kind === "photo-note") {
+          const photoState = event.note.persistenceState === "saved-on-device" ? "Saved on this device"
+            : event.note.persistenceState[0]!.toUpperCase() + event.note.persistenceState.slice(1);
           return <li key={event.id} className="editable-event photo-note-event">
             <time dateTime={event.note.capturedAt}>{event.time}</time>
-            <span className="event-dot validation-clear" role="img" aria-label="Photo note ready" />
+            <span className={`event-dot validation-${event.note.persistenceState === "failed" ? "error" : "clear"}`} role="img" aria-label={`Photo note ${photoState}`} />
             <button aria-label={`Open photo note at ${event.time} by ${event.note.author.displayName}. ${event.note.caption ?? "No caption"}`} className="timeline-event-button photo-timeline-button" type="button" onClick={(clickEvent) => onOpenPhoto(event.note, clickEvent.currentTarget)}>
               <AuthorizedPhotoImage reportId={event.note.reportId} noteId={event.note.id} alt="" className="photo-thumbnail" />
               <span className="photo-timeline-copy"><span className="event-title">Photo note</span><span className="event-detail">{event.note.caption || "No caption"}</span>
-                <small>{event.note.author.displayName} · Ready · Open photo</small></span>
+                <small>{event.note.author.displayName} · {photoState} · Open photo</small></span>
             </button>
           </li>;
         }
