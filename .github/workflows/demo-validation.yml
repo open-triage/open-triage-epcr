@@ -228,12 +228,36 @@ jobs:
           VALIDATION_RESULTS: ${{ toJSON(needs) }}
         run: node scripts/require-demo-validation.mjs
 
-  publish-images:
-    name: Publish / ${{ matrix.component }} linux/amd64
+  deployment-authorization:
+    name: Authorize / Deployment provenance
     if: >-
       needs.validation-gate.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: validation-gate
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - name: Require approved merge and matching validation provenance
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REVISION: ${{ inputs.deployment_revision || github.sha }}
+          VALIDATED_REVISION: ${{ inputs.deployment_revision || github.sha }}
+          VALIDATION_RESULT: ${{ needs.validation-gate.result }}
+          WORKFLOW_ID: demo-validation.yml
+        run: node scripts/require-demo-provenance.mjs
+
+  publish-images:
+    name: Publish / ${{ matrix.component }} linux/amd64
+    if: >-
+      needs.deployment-authorization.result == 'success' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: deployment-authorization
     runs-on: ubuntu-latest
     permissions:
       contents: read

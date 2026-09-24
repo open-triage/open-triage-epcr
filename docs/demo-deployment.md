@@ -1,12 +1,16 @@
 # Demo deployment operations
 
 The `Demo validation` GitHub Actions workflow is the only automated path to the
-DigitalOcean Kubernetes (DOKS) demo. A push to `main` validates the application,
-PostgreSQL integration, deployable web artifact, and Helm chart; publishes
-immutable API and web `linux/amd64` images; runs the forward-only migration
-hook; and atomically deploys the exact image tags recorded in that run's
-artifact. Deployment runs are serialized and are never cancelled by a newer
-run.
+DigitalOcean Kubernetes (DOKS) demo. Every push to `main` validates the
+application, PostgreSQL integration, deployable web artifact, and Helm chart.
+Only the exact merge commit of one approved pull request into `main`, with an
+approval for that pull request's final head commit, may then publish immutable
+API and web `linux/amd64` images, run the forward-only migration hook, and
+atomically deploy the exact image tags recorded in that run's artifact. A direct
+push still produces diagnostics but cannot publish or deploy. Missing,
+ambiguous, mismatched, or unavailable GitHub provenance fails closed before the
+workflow authenticates to the registry or cluster. Deployment runs are
+serialized and are never cancelled by a newer run.
 
 After the Helm rollout, the same job verifies the frontend certificate and
 public Ingress routes, API health, synthetic login, and an authenticated
@@ -67,8 +71,10 @@ private-registry access or public TLS configuration.
 
 Run `Demo validation` with **Run workflow** and supply the full 40-character
 SHA of a commit reachable from `main`. The workflow rejects non-main commits,
-repeats validation, republishes the immutable images, and deploys only the
-image identities recorded by that run.
+direct-push commits, commits without a current pull-request approval, and
+revisions without an earlier push run whose successful validation and
+provenance jobs name that exact SHA. It then repeats validation, republishes the
+immutable images, and deploys only the image identities recorded by that run.
 
 Helm uses `--atomic`, `--wait`, and a ten-minute timeout. Failed migrations,
 readiness probes, or rollouts fail the workflow and restore the prior Helm
@@ -181,7 +187,13 @@ Protect `main` in GitHub and require **Required / Demo validation gate** before
 merge. Require pull requests, block force pushes and branch deletion, dismiss
 stale approvals when new commits are pushed, and require branches to be up to
 date. Restrict changes to `.github/workflows/demo-validation.yml` and
-`deploy/helm/open-triage/**` with CODEOWNERS or an equivalent review rule. The
-deployment job should remain assigned to the protected `demo` environment;
-optionally add a required reviewer there when unattended deployment is not
-appropriate.
+`scripts/require-demo-provenance.mjs` and `deploy/helm/open-triage/**` with
+CODEOWNERS or an equivalent review rule. The deployment job should remain
+assigned to the protected `demo` environment; optionally add a required
+reviewer there when unattended deployment is not appropriate.
+
+These code-level checks limit accidental and ordinary unauthorized publication;
+they cannot defend against a repository writer who deliberately changes or
+removes the workflow guard and pushes that change. Server-side branch
+protection, protected environments, and restricted workflow changes remain the
+security boundary against a malicious writer.
