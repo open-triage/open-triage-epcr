@@ -155,6 +155,10 @@ test("the authenticated call-list integration returns only the clinician's assig
     status: "assigned"
   }]);
   assert.deepEqual(result.canceledAssignmentIds, ["32000000-0000-4000-8000-000000000012"]);
+  assert.deepEqual(result.mediaPolicy, {
+    reportMediaAllowanceBytes: 50 * 1024 * 1024,
+    settingsRevision: 1,
+  });
   assert.deepEqual(queries[1].parameters?.slice(0, 2), [session.user.id, session.organization.id]);
   assert.match(queries[1].sql, /ca\.status in \('assigned', 'canceled'\)/);
   assert.match(queries[1].sql, /uc\.user_id = \$1/);
@@ -179,14 +183,14 @@ test("removing clinical document authority blocks assigned-call access on the ne
   const service = new AssignedCallsService(dataSource, sessions);
 
   await service.list(session.accessToken);
-  assert.equal(queries, 2);
+  assert.equal(queries, 3);
   canDocument = false;
   await assert.rejects(service.list(session.accessToken), UnauthorizedException);
   await assert.rejects(
     service.open(session.accessToken, "32000000-0000-4000-8000-000000000011"),
     UnauthorizedException,
   );
-  assert.equal(queries, 2, "an old unit assignment must not be queried after authority is removed");
+  assert.equal(queries, 3, "an old unit assignment must not be queried after authority is removed");
 });
 
 test("generation context returns every eligible active unit and only counts unopened synthetic calls", async () => {
@@ -313,6 +317,10 @@ test("opening and retrying one assignment creates one draft without an automatic
   assert.equal(opened.report.id, retried.report.id);
   assert.equal(opened.report.documentingUserId, session.user.id);
   assert.equal(opened.report.formVersionId, "latest-published-version");
+  assert.deepEqual(opened.report.mediaPolicy, {
+    reportMediaAllowanceBytes: 50 * 1024 * 1024,
+    settingsRevision: 1,
+  });
   assert.equal(opened.report.clinicalForm.definition.sections[0].fields[0].source.elementId, "eRecord.01");
   assert.equal(opened.report.clinicalForm.catalogFields["eRecord.01"].agencyRequired, true);
   assert.deepEqual(opened.report.clinicalForm.catalogFields["eRecord.01"].codeChoices.map(({ code, label }) => ({ code, label })), [

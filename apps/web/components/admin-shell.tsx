@@ -7,11 +7,13 @@ import { CatalogAuthoring } from "./catalog-authoring";
 import { StationaryFormAuthoring } from "./stationary-form-authoring";
 import { ValidationAuthoring } from "./validation-authoring";
 import { RolesPanel, UsersPanel } from "./admin-directory";
+import { AgencySettingsPanel } from "./agency-settings";
 
-type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules";
+type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
   ["dashboard", "Dashboard"], ["users", "Users"], ["roles", "Roles"],
-  ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"]
+  ["catalog", "Element catalog"], ["forms", "Stationary form"], ["validation", "Validation rules"],
+  ["settings", "Agency Settings"]
 ];
 
 function formattedBytes(bytes: number): string {
@@ -146,6 +148,10 @@ export function AdminShell({ session }: {
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section>}
+
+    {context && activePanel === "Agency Settings" && <AgencySettingsPanel
+      csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      canWrite={context.capabilities.includes("settings:write")} />}
 
       </div>
     </div>
