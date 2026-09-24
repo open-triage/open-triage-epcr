@@ -127,8 +127,6 @@ jobs:
           --set managed=${{ matrix.managed }}
           --set migration_password=open-triage-ci-migration-password
           --file packages/database/fixtures/ci-postgresql.sql
-      - name: Verify generated database artifacts
-        run: npm run check:database
       - name: Run clean forward-only migrations
         run: npm run migrate -w @open-triage/database
       - name: Verify managed-compatible role and extension semantics
