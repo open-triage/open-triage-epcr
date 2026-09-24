@@ -152,8 +152,9 @@ test("the authorization job is the only path from validation to registry mutatio
   assert.match(authorization, /^      pull-requests: read$/m);
   assert.match(authorization, /node scripts\/require-demo-provenance\.mjs/);
   assert.match(authorization, /BROWSER_VALIDATION_RESULT: \$\{\{ needs\.browser-e2e-validation\.result \}\}/);
-  assert.match(publishing, /^    needs: deployment-authorization$/m);
-  assert.match(publishing, /needs\.deployment-authorization\.result == 'success'/);
+  assert.match(authorization, /^    needs: deployment-authorization$/m);
+  assert.match(publishing, /^    needs: live-demo-preflight$/m);
+  assert.match(publishing, /needs\.live-demo-preflight\.result == 'success'/);
   assert.doesNotMatch(
     workflow.slice(workflow.indexOf("  web-deployment-validation:"), workflow.indexOf("  deployment-authorization:")),
     /docker push|docker\/login-action|packages: write/,
