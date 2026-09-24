@@ -36,6 +36,7 @@ test("one manifest declares the application, operational commands, and runtime a
   assert.equal(manifest.application.entrypoint, "apps/api/dist/main.js");
   assert.deepEqual(manifest.operations.map(({ name }) => name), [
     "migrate:runtime",
+    "prepare:demo:runtime",
     "load:catalog",
     "bootstrap:synthetic:runtime",
     "seed:validation",

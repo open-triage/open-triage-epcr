@@ -61,6 +61,7 @@ test("live preflight is a hard gate before every deployment mutation", async () 
   const workflow = await readFile(workflowPath, "utf8");
   const preflight = workflow.slice(workflow.indexOf("  live-demo-preflight:"), workflow.indexOf("  promote-api-image:"));
   const publishing = workflow.slice(workflow.indexOf("  promote-api-image:"), workflow.indexOf("  publish-image-manifest:"));
+  const preparation = workflow.slice(workflow.indexOf("  prepare-demo-database:"), workflow.indexOf("  deploy-demo:"));
   const deployment = workflow.slice(workflow.indexOf("  deploy-demo:"));
 
   assert.match(preflight, /^    needs: deployment-authorization$/m);
@@ -69,7 +70,9 @@ test("live preflight is a hard gate before every deployment mutation", async () 
   assert.doesNotMatch(preflight, /docker push|kubectl (?:apply|create|delete|patch)|helm upgrade/);
   assert.match(publishing, /needs\.live-demo-preflight\.result == 'success'/);
   assert.equal((publishing.match(/^    needs: live-demo-preflight$/gm) ?? []).length, 2);
+  assert.match(preparation, /node scripts\/live-demo-preflight\.mjs verify/);
+  assert.ok(preparation.indexOf("live-demo-preflight.mjs verify") < preparation.indexOf("prepare-demo-database.sh"));
+  assert.ok(preparation.indexOf("live-demo-preflight.mjs verify") < preparation.indexOf("provision-demo-workload-secrets.sh"));
   assert.match(deployment, /node scripts\/live-demo-preflight\.mjs verify/);
-  assert.ok(deployment.indexOf("live-demo-preflight.mjs verify") < deployment.indexOf("provision-demo-workload-secrets.sh"));
   assert.ok(deployment.indexOf("live-demo-preflight.mjs verify") < deployment.indexOf("helm upgrade --install"));
 });

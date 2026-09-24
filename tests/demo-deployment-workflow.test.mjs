@@ -45,13 +45,13 @@ test("deployment follows image publication and uses serialized, scoped DOKS acce
 
   assert.match(workflow, /^concurrency:\n  group: .*'demo-deployment'/m);
   assert.match(workflow, /^  cancel-in-progress: false$/m);
-  assert.match(deploy, /^    needs: \[publish-image-manifest, live-demo-preflight\]$/m);
+  assert.match(deploy, /^    needs: \[publish-image-manifest, live-demo-preflight, prepare-demo-database\]$/m);
   assert.match(deploy, /^    environment: demo$/m);
   assert.match(deploy, /^    permissions:\n      contents: read$/m);
   assert.match(deploy, /token: \$\{\{ secrets\.DIGITALOCEAN_ACCESS_TOKEN \}\}/);
   assert.match(deploy, /kubeconfig save .*--expiry-seconds 1800/);
-  assert.match(deploy, /Provision isolated demo workload credentials/);
-  assert.match(deploy, /scripts\/provision-demo-workload-secrets\.sh/);
+  assert.match(deploy, /needs\.prepare-demo-database\.result == 'success'/);
+  assert.doesNotMatch(deploy, /scripts\/provision-demo-workload-secrets\.sh/);
   assert.doesNotMatch(deploy, /KUBE_CONFIG|KUBECONFIG_DATA/);
 });
 
@@ -67,9 +67,31 @@ test("deployment verifies the run manifest and uses a bounded atomic Helm rollou
   assert.match(deploy, /--values deploy\/helm\/open-triage\/demo-reference\.values\.yaml/);
   assert.match(deploy, /api\.image\.tag="\$\{\{ steps\.images\.outputs\.api-tag \}\}"/);
   assert.match(deploy, /web\.image\.tag="\$\{\{ steps\.images\.outputs\.web-tag \}\}"/);
-  assert.match(deploy, /kubectl logs "\$pod"[\s\S]*--follow --pod-running-timeout=9m/);
   assert.match(deploy, /helm_status=\$\?/);
   assert.match(deploy, /exit "\$helm_status"/);
+});
+
+test("database preparation is independently observable and gates application rollout", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const prepare = workflow.slice(
+    workflow.indexOf("  prepare-demo-database:"),
+    workflow.indexOf("  deploy-demo:"),
+  );
+  const deploy = workflow.slice(workflow.indexOf("  deploy-demo:"));
+
+  assert.match(prepare, /name: Prepare \/ Disposable demo database/);
+  assert.match(prepare, /^    needs: \[publish-image-manifest, live-demo-preflight\]$/m);
+  assert.match(prepare, /node scripts\/demo-deployment-values\.mjs/);
+  assert.match(prepare, /scripts\/live-demo-preflight\.mjs verify/);
+  assert.match(prepare, /bash scripts\/prepare-demo-database\.sh/);
+  assert.match(prepare, /Provision isolated demo workload credentials/);
+  assert.match(prepare, /DEMO_DATABASE_EXPECTED_HOST: \$\{\{ vars\.DEMO_DATABASE_EXPECTED_HOST \}\}/);
+  assert.match(prepare, /DEMO_DATABASE_PROJECT_REF: \$\{\{ vars\.DEMO_DATABASE_PROJECT_REF \}\}/);
+  assert.match(prepare, /name: database-preparation-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/);
+  assert.match(prepare, /--tail=300 --limit-bytes=262144/);
+  assert.match(prepare, /\[REDACTED\]/);
+  assert.match(prepare, /retention-days: 14/);
+  assert.ok(deploy.indexOf("helm upgrade --install") > deploy.indexOf("needs: [publish-image-manifest, live-demo-preflight, prepare-demo-database]"));
 });
 
 test("Helm validation uses the same committed values as the demo deployment", async () => {

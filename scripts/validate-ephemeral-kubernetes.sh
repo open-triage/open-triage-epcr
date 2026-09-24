@@ -69,6 +69,29 @@ api_tag="${api_image##*:}"
 web_repository="${web_image%:*}"
 web_tag="${web_image##*:}"
 
+kubectl apply --filename - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: open-triage-migration
+  namespace: $namespace
+  labels: { app.kubernetes.io/component: database-preparation }
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: $api_image
+          imagePullPolicy: Never
+          command: ["npm", "run", "migrate:runtime", "-w", "@open-triage/database"]
+          envFrom:
+            - secretRef: { name: open-triage-migration-database }
+EOF
+kubectl wait --namespace "$namespace" --for=condition=complete job/open-triage-migration --timeout=5m
+
 helm upgrade --install open-triage "$chart" \
   --namespace "$namespace" \
   --values "$demo_values" \
@@ -80,7 +103,6 @@ helm upgrade --install open-triage "$chart" \
   --set-string "web.image.repository=$web_repository" \
   --set-string "web.image.tag=$web_tag" \
   --set-string 'web.image.pullPolicy=Never' \
-  --set 'migration.bootstrapSynthetic=false' \
   --set-string 'analytics.schedule=0 0 1 1 *' \
   --set-string 'analytics.healthSchedule=0 0 1 1 *' \
   --set-string 'syntheticExpiry.schedule=0 0 1 1 *' \
@@ -89,7 +111,6 @@ helm upgrade --install open-triage "$chart" \
   --wait-for-jobs \
   --timeout 5m
 
-kubectl wait --namespace "$namespace" --for=condition=complete job/open-triage-migration --timeout=30s
 kubectl rollout status deployment/open-triage-api --namespace "$namespace" --timeout=3m
 kubectl rollout status deployment/open-triage-web --namespace "$namespace" --timeout=3m
 
