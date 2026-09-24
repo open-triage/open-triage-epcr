@@ -12,6 +12,7 @@ import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
 import { ReportNoteService } from "./report-note.service.js";
 import { ReportPhotoService } from "./report-photo.service.js";
+import { ReportAudioService } from "./report-audio.service.js";
 
 const uuidV4 = new ParseUUIDPipe({ version: "4" });
 type ConditionalResponse = { setHeader(name: string, value: string): unknown; status(code: number): unknown };
@@ -26,6 +27,7 @@ export class DraftReportController {
     private readonly reviewValidation: ReviewValidationService,
     private readonly reportNotes: ReportNoteService,
     private readonly reportPhotos: ReportPhotoService,
+    private readonly reportAudio: ReportAudioService,
   ) {}
 
   @Post()
@@ -205,6 +207,54 @@ export class DraftReportController {
     response.setHeader("Pragma", "no-cache");
     response.setHeader("ETag", `"sha256-${image.sha256}"`);
     return response.send(image.bytes);
+  }
+
+  @Post(":id/audio")
+  @HttpCode(201)
+  @Header("Cache-Control", "no-store, private")
+  createAudioNote(
+    @Param("id", uuidV4) id: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportAudio.create(bearerToken(authorization, cookie), id, body, csrfToken);
+  }
+
+  @Post(":id/audio/:noteId")
+  @HttpCode(200)
+  @Header("Cache-Control", "no-store, private")
+  updateAudioCaption(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportAudio.updateCaption(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Delete(":id/audio/:noteId")
+  @Header("Cache-Control", "no-store, private")
+  deleteAudioNote(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string, @Body() body: unknown,
+    @Headers("x-csrf-token") csrfToken?: string,
+    @Headers("authorization") authorization?: string, @Headers("cookie") cookie?: string,
+  ) {
+    return this.reportAudio.delete(bearerToken(authorization, cookie), id, noteId, body, csrfToken);
+  }
+
+  @Get(":id/audio/:noteId/content")
+  async audioContent(
+    @Param("id", uuidV4) id: string, @Param("noteId", uuidV4) noteId: string,
+    @Headers("authorization") authorization: string | undefined, @Headers("cookie") cookie: string | undefined,
+    @Res() response: BinaryResponse,
+  ) {
+    const audio = await this.reportAudio.audio(bearerToken(authorization, cookie), id, noteId);
+    response.setHeader("Content-Type", audio.contentType);
+    response.setHeader("Content-Length", String(audio.bytes.byteLength));
+    response.setHeader("Content-Disposition", `inline; filename="spoken-note-${noteId}.m4a"`);
+    response.setHeader("Cache-Control", "no-store, private");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("ETag", `"sha256-${audio.sha256}"`);
+    return response.send(audio.bytes);
   }
 
   @Post(":id/reopen")

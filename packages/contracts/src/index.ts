@@ -1088,7 +1088,7 @@ export interface ActiveReportResource {
 
 export type ReportNotePersistenceState = "ready";
 
-export type ReportNote = ReportTextNote | ReportPhotoNote;
+export type ReportNote = ReportTextNote | ReportPhotoNote | ReportAudioNote;
 
 export interface ReportTextNote {
   id: string;
@@ -1119,6 +1119,23 @@ export interface ReportPhotoNote {
   sha256: string;
   width: number;
   height: number;
+}
+
+export interface ReportAudioNote {
+  id: string;
+  reportId: string;
+  type: "audio";
+  caption: string | null;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+  contentType: "audio/mp4";
+  byteSize: number;
+  sha256: string;
+  durationMilliseconds: number;
 }
 
 export interface CreateReportTextNoteCommand {
@@ -1181,6 +1198,33 @@ export interface ReportPhotoNoteMutationResponse {
 }
 
 export type DeleteReportPhotoNoteResponse = DeleteReportTextNoteResponse;
+
+export type ReportAudioSourceContentType = "audio/webm" | "audio/ogg" | "audio/mp4";
+
+export interface CreateReportAudioNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  caption?: string | null;
+  sourceContentType: ReportAudioSourceContentType;
+  sourceBase64: string;
+}
+
+export interface UpdateReportAudioCaptionCommand {
+  commandId: string;
+  expectedRevision: number;
+  caption?: string | null;
+}
+
+export interface ReportAudioNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportAudioNote;
+}
+
+export type DeleteReportAudioNoteResponse = DeleteReportTextNoteResponse;
 
 /**
  * Portable encounter data, deliberately independent of form and UI state.

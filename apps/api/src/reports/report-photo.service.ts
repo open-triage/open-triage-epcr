@@ -42,8 +42,9 @@ export class ReportPhotoService {
     }
     return this.mutate(accessToken, csrfToken, reportId, command.commandId, "create-report-photo-note", command,
       async (manager, report, nextRevision, actorId) => {
-        const usage = await manager.query<Array<{ used_bytes: string | number }>>(
-          "select coalesce(sum(byte_size), 0) as used_bytes from clinical.report_photo_note where report_id = $1", [report.id]);
+        const usage = await manager.query<Array<{ used_bytes: string | number }>>(`select
+          coalesce((select sum(byte_size) from clinical.report_photo_note where report_id = $1), 0) +
+          coalesce((select sum(byte_size) from clinical.report_audio_note where report_id = $1), 0) as used_bytes`, [report.id]);
         const usedBytes = Number(usage[0]?.used_bytes ?? 0);
         const allowance = Number(report.report_media_allowance_bytes);
         if (usedBytes + bytes.byteLength > allowance) {
