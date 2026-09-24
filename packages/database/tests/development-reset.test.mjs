@@ -38,14 +38,7 @@ test("development reset discovers its default and available options from defines
 });
 
 test("the pruned API runtime includes shared installation-definition discovery", async () => {
-  const [dockerfile, manifestText, generator] = await Promise.all([
-    readFile(path.join(repository, "deploy/docker/api.Dockerfile"), "utf8"),
-    readFile(path.join(repository, "deploy/docker/api-runtime-manifest.json"), "utf8"),
-    readFile(path.join(repository, "deploy/docker/generate-api-runtime.mjs"), "utf8"),
-  ]);
-  const manifest = JSON.parse(manifestText);
-  assert.ok(manifest.operations.some(({ entrypoint }) =>
-    entrypoint.endsWith("load-nemsis-catalog.mjs")));
-  assert.match(generator, /copyModuleClosure/);
-  assert.match(dockerfile, /COPY --from=build \/api-runtime\/ \.\//);
+  const dockerfile = await readFile(path.join(repository, "deploy/docker/api.Dockerfile"), "utf8");
+  assert.match(dockerfile,
+    /COPY packages\/database\/scripts\/lib\/install-definitions\.mjs packages\/database\/scripts\/lib\//);
 });

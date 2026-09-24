@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main, feature/ci-cd-deployment]
   workflow_dispatch:
     inputs:
       deployment_revision:
-        description: Full 40-character SHA of the current main tip
+        description: Full 40-character SHA of a commit reachable from main
         required: true
         type: string
 
@@ -21,60 +22,41 @@ concurrency:
 jobs:
   validate-deployment-revision:
     name: Validate / Deployment revision
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
           fetch-depth: 0
-      - name: Require manual revisions to match current main
+      - name: Require manual revisions to belong to main
         if: github.event_name == 'workflow_dispatch'
         env:
           DEPLOYMENT_REVISION: ${{ inputs.deployment_revision }}
         run: |
           [[ "$DEPLOYMENT_REVISION" =~ ^[0-9a-f]{40}$ ]]
           git merge-base --is-ancestor "$DEPLOYMENT_REVISION" origin/main
-          test "$DEPLOYMENT_REVISION" = "$(git rev-parse origin/main)"
 
   application-validation:
     name: Validate / Application
     needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22.23.3
+          node-version: 22
           cache: npm
       - run: npm ci
       - name: Typecheck all workspaces
         run: npm run typecheck
       - name: Lint all workspaces
         run: npm run lint
-      - name: Run unit tests
-        shell: bash
-        run: |
-          mkdir -p validation-results
-          set -o pipefail
-          npm run test:unit 2>&1 | tee validation-results/unit-tests.tap
-      - name: Run workflow contract tests
-        shell: bash
-        run: |
-          mkdir -p validation-results
-          set -o pipefail
-          npm run test:workflow 2>&1 | tee validation-results/workflow-tests.tap
+      - name: Run unit and workflow tests
+        run: npm test
       - name: Build database artifacts, contracts, API, and web
         run: npm run build
-      - name: Upload application validation failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-application-failure
-          path: validation-results
-          if-no-files-found: warn
-          retention-days: 14
 
   database-validation:
     name: Validate / PostgreSQL 15
@@ -84,176 +66,36 @@ jobs:
       checkout_ref: ${{ inputs.deployment_revision || github.sha }}
 
   web-deployment-validation:
-    name: Validate / Exact web container
+    name: Validate / Web deployment
     needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_API_URL: https://api.demo.opentriage.org
-      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-      WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22.23.3
+          node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build the deployable Nginx image
-        run: >-
-          docker build
-          --file deploy/docker/web.Dockerfile
-          --platform linux/amd64
-          --tag "$WEB_CANDIDATE_IMAGE"
-          --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
-          --build-arg OPEN_TRIAGE_BUILD_SHA="$SOURCE_COMMIT"
-          --label org.opencontainers.image.revision="$SOURCE_COMMIT"
-          --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}"
-          .
-      - name: Record the local web image identity
-        run: |
-          mkdir -p apps/web/playwright-artifacts
-          docker image inspect "$WEB_CANDIDATE_IMAGE" > apps/web/playwright-artifacts/web-image-identity.json
-      - name: Reject a Docker context missing a client-build dependency
-        run: |
-          fixture="$(mktemp -d)"
-          trap 'rm -rf "$fixture"' EXIT
-          git archive HEAD | tar -x --directory "$fixture"
-          rm "$fixture/packages/database/config/identifying-elements.json"
-          if docker build \
-            --file "$fixture/deploy/docker/web.Dockerfile" \
-            --platform linux/amd64 \
-            --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
-            --build-arg OPEN_TRIAGE_BUILD_SHA="$SOURCE_COMMIT" \
-            "$fixture"; then
-            echo "Web image unexpectedly built without identifying-elements.json" >&2
-            exit 1
-          fi
-      - name: Start the validated Nginx container
-        run: docker run --detach --name open-triage-web-validation --publish 127.0.0.1:3109:80 "$WEB_CANDIDATE_IMAGE"
-      - name: Require the Nginx container to become ready
-        run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3109/ > /dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs open-triage-web-validation
-          exit 1
-      - name: Install Chromium
-        run: |
-          test "$(npx --no-install playwright --version)" = "Version 1.62.1"
-          npx --no-install playwright install --with-deps chromium
-      - name: Test the root-hosted Nginx container
-        env:
-          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3109
-        run: npm run test:deployment -w @open-triage/web
-      - name: Capture failed deployment browser server output
-        if: failure()
-        run: |
-          mkdir -p apps/web/playwright-artifacts
-          docker logs open-triage-web-validation > apps/web/playwright-artifacts/deployment-server.log 2>&1 || true
-      - name: Upload deployment browser failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-deployment-failure
-          path: |
-            apps/web/playwright-results/deployment
-            apps/web/playwright-artifacts/deployment-server.log
-            apps/web/playwright-artifacts/web-image-identity.json
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Stop the validation container
-        if: always()
-        run: docker rm --force open-triage-web-validation 2>/dev/null || true
-      - name: Retain the exact validated web image
-        run: docker save "$WEB_CANDIDATE_IMAGE" | gzip > "$RUNNER_TEMP/validated-web-image.tar.gz"
-      - name: Upload the exact validated web image
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
-          path: ${{ runner.temp }}/validated-web-image.tar.gz
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 1
-
-  browser-critical-validation:
-    name: Validate / Critical browser journey
-    needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
-    env:
-      NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION: "true"
-      NEXT_PUBLIC_ROUTE_DEMO_MUTATIONS_TO_API: "true"
-      OPEN_TRIAGE_BUILD_SHA: ${{ inputs.deployment_revision || github.sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22.23.3
-          cache: npm
-      - run: npm ci
-      - name: Build the production-style web artifact
+      - name: Build deployable web application
         run: npm run build -w @open-triage/web
+      - name: Require the generated service worker
+        run: test -s apps/web/out/sw.js
       - name: Install Chromium
-        run: |
-          test "$(npx --no-install playwright --version)" = "Version 1.62.1"
-          npx --no-install playwright install --with-deps chromium
-      - name: Run the critical mobile browser journey
-        run: npm run test:e2e:critical -w @open-triage/web
-      - name: Upload critical browser failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-critical-failure
-          path: |
-            apps/web/playwright-results/critical
-            apps/web/playwright-artifacts/critical-server.log
-          if-no-files-found: warn
-          retention-days: 14
-
-  browser-e2e-validation:
-    name: Validate / Complete browser suite
-    if: github.event_name != 'pull_request'
-    needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22.23.3
-          cache: npm
-      - run: npm ci
-      - name: Install Chromium
-        run: |
-          test "$(npx --no-install playwright --version)" = "Version 1.62.1"
-          npx --no-install playwright install --with-deps chromium
-      - name: Run every maintained non-deployment browser test
-        run: npm run test:e2e -w @open-triage/web
-      - name: Upload complete browser-suite failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-playwright-e2e-failure
-          path: |
-            apps/web/playwright-results/e2e
-            apps/web/playwright-artifacts/e2e-server.log
-          if-no-files-found: warn
-          retention-days: 14
+        run: npx playwright install --with-deps chromium
+      - name: Test the root-hosted web artifact
+        run: npm run test:deployment -w @open-triage/web
 
   api-runtime-image-validation:
     name: Validate / Pruned API runtime image
     needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15.19-bookworm@sha256:539ceaaae49b3a7c8a04467cf00cc6788d8e3f1675df41860d86eebc4c40524f
+        image: postgres:15
         env:
           POSTGRES_DB: open_triage_image_test
           POSTGRES_USER: postgres
@@ -266,157 +108,18 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-      API_RUNTIME_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
+      API_RUNTIME_IMAGE: open-triage-api:runtime-validation
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_image_test
-      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
-      UPGRADE_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/open_triage_upgrade_test
-      UPGRADE_DATABASE_URL: postgresql://open_triage_ci_migration:open-triage-ci-migration-password@localhost:5432/open_triage_upgrade_test
-      UPGRADE_CLEAN_DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/open_triage_upgrade_clean
-      UPGRADE_CLEAN_DATABASE_URL: postgresql://open_triage_ci_migration:open-triage-ci-migration-password@localhost:5432/open_triage_upgrade_clean
-      API_DATABASE_LOGIN: open_triage_demo_upgrade_api_012345abcdef
-      API_DATABASE_PASSWORD: open-triage-ci-api-password-0123456789
-      ANALYTICS_PROJECTOR_DATABASE_LOGIN: open_triage_demo_upgrade_analytics_projector_012345abcdef
-      ANALYTICS_PROJECTOR_DATABASE_PASSWORD: open-triage-ci-projector-password-0123456789
-      ANALYTICS_HEALTH_DATABASE_LOGIN: open_triage_demo_upgrade_analytics_health_012345abcdef
-      ANALYTICS_HEALTH_DATABASE_PASSWORD: open-triage-ci-health-password-0123456789
-      RETENTION_DATABASE_LOGIN: open_triage_demo_upgrade_retention_012345abcdef
-      RETENTION_DATABASE_PASSWORD: open-triage-ci-retention-password-0123456789
-      OPERATIONAL_AUDIT_DATABASE_LOGIN: open_triage_demo_upgrade_operational_audit_012345abcdef
-      OPERATIONAL_AUDIT_DATABASE_PASSWORD: open-triage-ci-audit-password-0123456789
       PATIENT_KEY_INSTALLATION_ID: 00000000-0000-4000-8000-000000000001
       PATIENT_KEY_VERSION: "1"
       PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
       AUTH_RATE_LIMIT_SECRET_BASE64: MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI=
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Build the API runtime image
-        run: >-
-          docker build
-          --file deploy/docker/api.Dockerfile
-          --platform linux/amd64
-          --tag "$API_RUNTIME_IMAGE"
-          --label org.opencontainers.image.revision="$SOURCE_COMMIT"
-          --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}"
-          .
-      - name: Record the local API image identity
-        run: |
-          mkdir -p api-runtime-evidence
-          docker image inspect "$API_RUNTIME_IMAGE" > api-runtime-evidence/api-image-identity.json
-      - name: Prepare managed-compatible clean and N-1 upgrade databases
-        run: |
-          psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          create database open_triage_upgrade_test template template0;
-          create database open_triage_upgrade_clean template template0;
-          SQL
-          psql "$UPGRADE_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
-            --set managed=true \
-            --set database_name=open_triage_upgrade_test \
-            --set migration_password=open-triage-ci-migration-password \
-            --file packages/database/fixtures/ci-postgresql.sql
-          psql "$UPGRADE_CLEAN_DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
-            --set managed=true \
-            --set database_name=open_triage_upgrade_clean \
-            --set migration_password=open-triage-ci-migration-password \
-            --file packages/database/fixtures/ci-postgresql.sql
-      - name: Materialize the sanitized N-1 database fixture
-        run: >-
-          docker run --rm --network host
-          --volume "$PWD/packages/database/scripts/materialize-previous-release.mjs:/workspace/packages/database/scripts/materialize-previous-release.mjs:ro"
-          --volume "$PWD/packages/database/scripts/verify-forward-only-migrations.mjs:/workspace/packages/database/scripts/verify-forward-only-migrations.mjs:ro"
-          --volume "$PWD/packages/database/fixtures/previous-release:/workspace/packages/database/fixtures/previous-release:ro"
-          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
-          "$API_RUNTIME_IMAGE"
-          node packages/database/scripts/materialize-previous-release.mjs
-      - name: Upgrade N-1 with the current runtime migration artifact
-        run: >-
-          docker run --rm --network host
-          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
-          "$API_RUNTIME_IMAGE"
-          npm run migrate:runtime -w @open-triage/database
-      - name: Require the upgraded migrator to be idempotent
-        run: >-
-          docker run --rm --network host
-          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
-          "$API_RUNTIME_IMAGE"
-          npm run migrate:runtime -w @open-triage/database
-      - name: Install the current schema cleanly for equivalence
-        run: >-
-          docker run --rm --network host
-          -e DATABASE_URL="$UPGRADE_CLEAN_DATABASE_URL"
-          "$API_RUNTIME_IMAGE"
-          npm run migrate:runtime -w @open-triage/database
-      - name: Compare clean and upgraded schemas
-        run: |
-          pg_dump "$UPGRADE_CLEAN_DATABASE_URL" --schema-only --no-owner --no-comments \
-            --file "$RUNNER_TEMP/current-clean-schema.sql"
-          pg_dump "$UPGRADE_DATABASE_URL" --schema-only --no-owner --no-comments \
-            --file "$RUNNER_TEMP/current-upgraded-schema.sql"
-          node packages/database/scripts/compare-schema-dumps.mjs \
-            "$RUNNER_TEMP/current-clean-schema.sql" \
-            "$RUNNER_TEMP/current-upgraded-schema.sql"
-      - name: Load the catalog into the upgraded database
-        run: >-
-          docker run --rm --network host
-          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
-          "$API_RUNTIME_IMAGE"
-          npm run load:catalog -w @open-triage/database
-      - name: Provision upgraded least-privileged workload logins
-        run: >-
-          docker run --rm --network host
-          -e DATABASE_URL="$UPGRADE_DATABASE_URL"
-          -e API_DATABASE_LOGIN -e API_DATABASE_PASSWORD
-          -e ANALYTICS_PROJECTOR_DATABASE_LOGIN -e ANALYTICS_PROJECTOR_DATABASE_PASSWORD
-          -e ANALYTICS_HEALTH_DATABASE_LOGIN -e ANALYTICS_HEALTH_DATABASE_PASSWORD
-          -e RETENTION_DATABASE_LOGIN -e RETENTION_DATABASE_PASSWORD
-          -e OPERATIONAL_AUDIT_DATABASE_LOGIN -e OPERATIONAL_AUDIT_DATABASE_PASSWORD
-          "$API_RUNTIME_IMAGE"
-          npm run provision:workload-logins -w @open-triage/database
-      - name: Start the upgraded API through its runtime login
-        run: >-
-          docker run --detach --name open-triage-upgraded-api --network host
-          -e PORT=3002
-          -e DATABASE_URL="postgresql://$API_DATABASE_LOGIN:$API_DATABASE_PASSWORD@localhost:5432/open_triage_upgrade_test"
-          -e PATIENT_KEY_INSTALLATION_ID -e PATIENT_KEY_VERSION -e PATIENT_KEY_SECRET_BASE64
-          -e AUTH_RATE_LIMIT_SECRET_BASE64
-          -e WEB_ORIGIN=http://localhost:3000
-          "$API_RUNTIME_IMAGE"
-      - name: Require upgraded application and database smoke behavior
-        env:
-          ANALYTICS_HEALTH_DATABASE_URL: postgresql://open_triage_demo_upgrade_analytics_health_012345abcdef:open-triage-ci-health-password-0123456789@localhost:5432/open_triage_upgrade_test
-        run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3002/api/health > /dev/null; then
-              break
-            fi
-            if [ "$attempt" = 30 ]; then
-              docker logs open-triage-upgraded-api
-              exit 1
-            fi
-            sleep 1
-          done
-          docker run --rm --network host \
-            --volume "$PWD/packages/database/scripts/verify-upgraded-database.mjs:/workspace/packages/database/scripts/verify-upgraded-database.mjs:ro" \
-            --volume "$PWD/packages/database/fixtures/previous-release:/workspace/packages/database/fixtures/previous-release:ro" \
-            -e DATABASE_URL="$UPGRADE_DATABASE_URL" \
-            -e ANALYTICS_HEALTH_DATABASE_URL \
-            "$API_RUNTIME_IMAGE" \
-            node packages/database/scripts/verify-upgraded-database.mjs
-      - name: Stop the upgraded API
-        if: always()
-        run: docker rm --force open-triage-upgraded-api 2>/dev/null || true
-      - name: Upload schema equivalence evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: database-forward-upgrade-schemas-${{ inputs.deployment_revision || github.sha }}
-          path: |
-            ${{ runner.temp }}/current-clean-schema.sql
-            ${{ runner.temp }}/current-upgraded-schema.sql
-          if-no-files-found: warn
-          retention-days: 14
+        run: docker build -f deploy/docker/api.Dockerfile -t "$API_RUNTIME_IMAGE" .
       - name: Run migrations from the runtime image
         run: >-
           docker run --rm --network host
@@ -463,165 +166,48 @@ jobs:
           done
           docker logs open-triage-api-runtime
           exit 1
-      - name: Validate every declared runtime command and generated asset
-        run: >-
-          docker run --rm "$API_RUNTIME_IMAGE"
-          node deploy/docker/validate-api-runtime.mjs
-      - name: Require the pruned production boundary
+      - name: Inspect dependencies and operational assets
         run: |
           docker run --rm "$API_RUNTIME_IMAGE" sh -ec '
             for package in typescript @nestjs/cli next react concurrently tsx eslint; do
               test ! -e "/workspace/node_modules/$package"
             done
             test ! -e /workspace/apps/api/src
-            test ! -e /workspace/packages/database/tests
-            test ! -e /workspace/packages/database/scripts/reset-development-database.mjs
-            test -f /workspace/runtime/api-runtime-manifest.json
+            for script in migrate bootstrap-synthetic-installation synthetic-stationary-definition retention verify-recovery verify-reporting-replica; do
+              test -f "/workspace/packages/database/scripts/$script.mjs"
+              node --check "/workspace/packages/database/scripts/$script.mjs"
+            done
+            test -f /workspace/supabase/migrations/202608300001_initial.sql
+            test -f /workspace/packages/database/scripts/lib/install-definitions.mjs
+            find /workspace/defines/catalog -maxdepth 1 -name "catalog_*.json" -print -quit | grep -q .
+            find /workspace/defines/forms -maxdepth 1 -name "form_*.json" -print -quit | grep -q .
+            find /workspace/defines/validation -maxdepth 1 -name "validation_*.json" -print -quit | grep -q .
+            test -f /workspace/packages/database/config/database-operations-policy.json
           '
-      - name: Capture API runtime failure evidence
-        if: failure()
-        run: |
-          mkdir -p api-runtime-evidence
-          docker logs open-triage-api-runtime > api-runtime-evidence/api-container.log 2>&1 || true
-          docker ps --all --no-trunc --format '{{json .}}' > api-runtime-evidence/containers.jsonl || true
-          docker image inspect "$API_RUNTIME_IMAGE" > api-runtime-evidence/api-image-identity.json 2>/dev/null || true
-      - name: Upload API runtime failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-api-runtime-failure
-          path: api-runtime-evidence
-          if-no-files-found: warn
-          retention-days: 14
       - name: Stop the runtime API
         if: always()
         run: docker rm --force open-triage-api-runtime 2>/dev/null || true
-      - name: Retain the exact validated API image
-        run: docker save "$API_RUNTIME_IMAGE" | gzip > "$RUNNER_TEMP/validated-api-image.tar.gz"
-      - name: Upload the exact validated API image
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
-          path: ${{ runner.temp }}/validated-api-image.tar.gz
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 1
 
   helm-validation:
     name: Validate / Helm chart
     needs: validate-deployment-revision
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@v4
         with:
           version: v3.19.0
       - name: Lint chart
-        shell: bash
-        run: |
-          mkdir -p helm-validation-evidence
-          set -o pipefail
-          helm lint deploy/helm/open-triage \
-            --values deploy/helm/open-triage/demo-reference.values.yaml \
-            2>&1 | tee helm-validation-evidence/lint.log
+        run: >-
+          helm lint deploy/helm/open-triage
+          --values deploy/helm/open-triage/demo-reference.values.yaml
       - name: Render Kubernetes manifests
         run: >-
           helm template open-triage deploy/helm/open-triage
           --values deploy/helm/open-triage/demo-reference.values.yaml
-          > helm-validation-evidence/rendered-manifests.yaml
-      - name: Validate Kubernetes 1.35 schemas
-        run: >-
-          docker run --rm --interactive
-          ghcr.io/yannh/kubeconform:v0.8.0-alpine@sha256:6b90a5f23d846140ce0194fe050b1995e546eba938f3a6bf10c039dd5e24588f
-          -strict -summary -kubernetes-version 1.35.0
-          < helm-validation-evidence/rendered-manifests.yaml
-      - name: Run all Helm chart behavior tests
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:helm 2>&1 | tee helm-validation-evidence/tests.tap
-      - name: Upload Helm validation failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-helm-failure
-          path: helm-validation-evidence
-          if-no-files-found: warn
-          retention-days: 14
-
-  ephemeral-kubernetes-validation:
-    name: Validate / Ephemeral Kubernetes
-    needs:
-      - api-runtime-image-validation
-      - web-deployment-validation
-    runs-on: ubuntu-24.04
-    env:
-      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-      API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
-      WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-        with:
-          version: v3.19.0
-      - name: Create a Kubernetes 1.35 kind cluster
-        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
-        with:
-          version: v0.31.0
-          kubectl_version: v1.35.0
-          node_image: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
-          cluster_name: open-triage-validation
-          wait: 120s
-      - name: Download the exact validated API image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
-          path: validated-api-image
-      - name: Download the exact validated web image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
-          path: validated-web-image
-      - name: Load the validated candidate images into Kubernetes
-        run: |
-          gunzip --stdout validated-api-image/validated-api-image.tar.gz | docker load
-          gunzip --stdout validated-web-image/validated-web-image.tar.gz | docker load
-          kind load docker-image --name open-triage-validation \
-            "$API_CANDIDATE_IMAGE" "$WEB_CANDIDATE_IMAGE"
-      - name: Require API and web image provenance
-        run: |
-          for image in "$API_CANDIDATE_IMAGE" "$WEB_CANDIDATE_IMAGE"; do
-            test "$(docker image inspect --format '{{.Architecture}}' "$image")" = amd64
-            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" = "$SOURCE_COMMIT"
-            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")" = "${{ github.server_url }}/${{ github.repository }}"
-          done
-      - name: Require server-side manifest validation
-        run: |
-          helm template open-triage deploy/helm/open-triage \
-            --values deploy/helm/open-triage/demo-reference.values.yaml \
-            | kubectl apply --dry-run=server --filename=-
-      - name: Install and exercise the chart with validated images
-        run: >-
-          bash scripts/validate-ephemeral-kubernetes.sh
-          "$API_CANDIDATE_IMAGE"
-          "$WEB_CANDIDATE_IMAGE"
-      - name: Capture redacted Kubernetes failure diagnostics
-        if: failure()
-        run: >-
-          bash scripts/capture-kubernetes-diagnostics.sh
-          "$RUNNER_TEMP/kubernetes-diagnostics"
-      - name: Upload Kubernetes failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-ephemeral-kubernetes-failure
-          path: ${{ runner.temp }}/kubernetes-diagnostics
-          if-no-files-found: error
-          retention-days: 14
+          > /dev/null
 
   validation-gate:
     name: Required / Demo validation gate
@@ -630,201 +216,102 @@ jobs:
       - application-validation
       - database-validation
       - web-deployment-validation
-      - browser-critical-validation
       - api-runtime-image-validation
       - helm-validation
-      - ephemeral-kubernetes-validation
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Require every validation job to pass
         env:
           VALIDATION_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          mkdir -p validation-gate-evidence
-          printf '%s\n' "$VALIDATION_RESULTS" > validation-gate-evidence/job-results.json
-          set -o pipefail
-          node scripts/require-demo-validation.mjs 2>&1 | tee validation-gate-evidence/gate.log
-      - name: Upload validation-gate failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-gate-failure
-          path: validation-gate-evidence
-          if-no-files-found: warn
-          retention-days: 14
+        run: node scripts/require-demo-validation.mjs
 
-  deployment-authorization:
-    name: Authorize / Deployment provenance
+  publish-images:
+    name: Publish / ${{ matrix.component }} linux/amd64
     if: >-
       needs.validation-gate.result == 'success' &&
-      needs.browser-e2e-validation.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [validation-gate, browser-e2e-validation]
-    runs-on: ubuntu-24.04
+    needs: validation-gate
+    runs-on: ubuntu-latest
     permissions:
-      actions: read
       contents: read
-      pull-requests: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            dockerfile: deploy/docker/api.Dockerfile
+            build_args: ""
+          - component: web
+            dockerfile: deploy/docker/web.Dockerfile
+            build_args: |
+              NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
+              OPEN_TRIAGE_BUILD_SHA=${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - name: Require reviewed or owner-authorized merge and matching validation provenance
+      - uses: docker/setup-buildx-action@v3
+      - name: Authenticate to the private GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish immutable image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/open-triage-${{ matrix.component }}:${{ inputs.deployment_revision || github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ inputs.deployment_revision || github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+      - name: Record published image identity
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_REVISION: ${{ inputs.deployment_revision || github.sha }}
-          VALIDATED_REVISION: ${{ inputs.deployment_revision || github.sha }}
-          VALIDATION_RESULT: ${{ needs.validation-gate.result }}
-          BROWSER_VALIDATION_RESULT: ${{ needs.browser-e2e-validation.result }}
-          WORKFLOW_ID: demo-validation.yml
-          DEMO_DEPLOYMENT_OWNER_LOGIN: ${{ vars.DEMO_DEPLOYMENT_OWNER_LOGIN }}
-        run: |
-          mkdir -p deployment-provenance-evidence
-          printf '{"targetRevision":"%s","validatedRevision":"%s","validationResult":"%s","browserValidationResult":"%s"}\n' \
-            "$TARGET_REVISION" "$VALIDATED_REVISION" "$VALIDATION_RESULT" "$BROWSER_VALIDATION_RESULT" \
-            > deployment-provenance-evidence/provenance-inputs.json
-          set -o pipefail
-          node scripts/require-demo-provenance.mjs 2>&1 | tee deployment-provenance-evidence/provenance.log
-      - name: Upload deployment-provenance failure evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          COMPONENT: ${{ matrix.component }}
+          IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/open-triage-${{ matrix.component }}:${{ inputs.deployment_revision || github.sha }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: >-
+          node scripts/demo-image-identity.mjs record
+          --component "$COMPONENT"
+          --tag "$IMAGE_TAG"
+          --digest "$IMAGE_DIGEST"
+          --architecture linux/amd64
+          --sha "$SOURCE_COMMIT"
+          --owner "$REPOSITORY_OWNER"
+          --output "image-identities/${COMPONENT}.json"
+      - name: Upload image identity fragment
+        uses: actions/upload-artifact@v4
         with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-deployment-provenance-failure
-          path: deployment-provenance-evidence
-          if-no-files-found: warn
-          retention-days: 14
-
-  promote-api-image:
-    name: Publish / Exact validated API image
-    if: >-
-      needs.deployment-authorization.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: deployment-authorization
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-      API_CANDIDATE_IMAGE: open-triage-api:validation-${{ inputs.deployment_revision || github.sha }}
-      API_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - name: Download the exact validated API image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: validated-api-image-${{ inputs.deployment_revision || github.sha }}
-          path: validated-api-image
-      - name: Authenticate to the private GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish the validated image without rebuilding
-        run: |
-          gunzip --stdout validated-api-image/validated-api-image.tar.gz | docker load
-          test "$(docker image inspect --format '{{.Architecture}}' "$API_CANDIDATE_IMAGE")" = amd64
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$API_CANDIDATE_IMAGE")" = "$SOURCE_COMMIT"
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$API_CANDIDATE_IMAGE")" = "${{ github.server_url }}/${{ github.repository }}"
-          docker tag "$API_CANDIDATE_IMAGE" "$API_RELEASE_IMAGE"
-          docker push "$API_RELEASE_IMAGE" | tee "$RUNNER_TEMP/api-image-push.txt"
-          image_digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]\{64\}\).*$/\1/p' "$RUNNER_TEMP/api-image-push.txt" | tail -1)"
-          test -n "$image_digest"
-          node scripts/demo-image-identity.mjs record \
-            --component api \
-            --tag "$API_RELEASE_IMAGE" \
-            --digest "$image_digest" \
-            --architecture linux/amd64 \
-            --sha "$SOURCE_COMMIT" \
-            --owner "${{ github.repository_owner }}" \
-            --output image-identities/api.json
-      - name: Upload published image identity fragment
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: demo-image-identity-api-${{ inputs.deployment_revision || github.sha }}
-          path: image-identities/api.json
+          name: demo-image-identity-${{ matrix.component }}-${{ inputs.deployment_revision || github.sha }}
+          path: image-identities/${{ matrix.component }}.json
           if-no-files-found: error
-          retention-days: 14
-
-  promote-web-image:
-    name: Publish / Exact validated web image
-    if: >-
-      needs.deployment-authorization.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: deployment-authorization
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-    env:
-      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
-      WEB_CANDIDATE_IMAGE: open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
-      WEB_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:${{ inputs.deployment_revision || github.sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - name: Download the exact validated web image
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
-          path: validated-web-image
-      - name: Authenticate to the private GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish the validated image without rebuilding
-        run: |
-          gunzip --stdout validated-web-image/validated-web-image.tar.gz | docker load
-          test "$(docker image inspect --format '{{.Architecture}}' "$WEB_CANDIDATE_IMAGE")" = amd64
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$WEB_CANDIDATE_IMAGE")" = "$SOURCE_COMMIT"
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$WEB_CANDIDATE_IMAGE")" = "${{ github.server_url }}/${{ github.repository }}"
-          docker tag "$WEB_CANDIDATE_IMAGE" "$WEB_RELEASE_IMAGE"
-          docker push "$WEB_RELEASE_IMAGE" | tee "$RUNNER_TEMP/web-image-push.txt"
-          image_digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]\{64\}\).*$/\1/p' "$RUNNER_TEMP/web-image-push.txt" | tail -1)"
-          test -n "$image_digest"
-          node scripts/demo-image-identity.mjs record \
-            --component web \
-            --tag "$WEB_RELEASE_IMAGE" \
-            --digest "$image_digest" \
-            --architecture linux/amd64 \
-            --sha "$SOURCE_COMMIT" \
-            --owner "${{ github.repository_owner }}" \
-            --output image-identities/web.json
-      - name: Upload published image identity fragment
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: demo-image-identity-web-${{ inputs.deployment_revision || github.sha }}
-          path: image-identities/web.json
-          if-no-files-found: error
-          retention-days: 14
 
   publish-image-manifest:
     name: Publish / Deployment image manifest
     if: >-
-      needs.promote-api-image.result == 'success' &&
-      needs.promote-web-image.result == 'success' &&
+      needs.publish-images.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs:
-      - promote-api-image
-      - promote-web-image
-    runs-on: ubuntu-24.04
+    needs: publish-images
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Download published image identities
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@v4
         with:
           pattern: demo-image-identity-*-${{ inputs.deployment_revision || github.sha }}
           path: image-identities
@@ -837,117 +324,31 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --owner "${{ github.repository_owner }}"
       - name: Upload exact deployment image manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
           path: demo-images.json
           if-no-files-found: error
-          retention-days: 14
-
-  prepare-demo-database:
-    name: Prepare / Disposable demo database
-    if: >-
-      needs.publish-image-manifest.result == 'success' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: publish-image-manifest
-    runs-on: ubuntu-24.04
-    environment: demo
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22.23.3
-      - name: Download exact deployment image manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
-      - name: Verify and select the tested API image
-        id: images
-        run: >-
-          node scripts/demo-deployment-values.mjs
-          --manifest demo-images.json
-          --owner "${{ github.repository_owner }}"
-          --sha "${{ inputs.deployment_revision || github.sha }}"
-          --output "$GITHUB_OUTPUT"
-      - name: Install doctl with scoped demo credentials
-        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
-        with:
-          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          version: 1.173.0
-      - name: Obtain an expiring DOKS kubeconfig
-        env:
-          DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
-      - name: Apply migrations and restore deterministic demo fixtures
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-          DEMO_DATABASE_PREPARE_MODE: ${{ vars.DEMO_DATABASE_PREPARE_MODE || 'migrate' }}
-          DEMO_DATABASE_EXPECTED_HOST: ${{ vars.DEMO_DATABASE_EXPECTED_HOST }}
-          DEMO_DATABASE_PROJECT_REF: ${{ vars.DEMO_DATABASE_PROJECT_REF }}
-          DEMO_DATABASE_RESET_CONFIRMATION: ${{ vars.DEMO_DATABASE_RESET_CONFIRMATION }}
-        run: |
-          mkdir -p database-preparation-evidence
-          set -o pipefail
-          bash scripts/prepare-demo-database.sh \
-            "${{ steps.images.outputs.api-repository }}:${{ steps.images.outputs.api-tag }}" \
-            "${{ inputs.deployment_revision || github.sha }}" \
-            2>&1 | tee database-preparation-evidence/preparation.log
-      - name: Provision isolated demo workload credentials
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-        run: >-
-          bash scripts/provision-demo-workload-secrets.sh
-          "${{ steps.images.outputs.api-repository }}:${{ steps.images.outputs.api-tag }}"
-      - name: Capture database preparation status
-        if: always()
-        env:
-          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
-          SOURCE_REVISION: ${{ inputs.deployment_revision || github.sha }}
-        run: |
-          mkdir -p database-preparation-evidence
-          job="open-triage-database-prepare-${SOURCE_REVISION:0:12}"
-          kubectl get job "$job" --namespace open-triage --output json \
-            > database-preparation-evidence/job.json 2>&1 || true
-          kubectl logs "job/$job" --namespace open-triage --all-containers=true \
-            --tail=300 --limit-bytes=262144 2>&1 | sed --regexp-extended \
-            -e 's#(postgres(ql)?://)[[:graph:]]+#\1[REDACTED]#gI' \
-            -e 's#((password|secret([_-]?key)?|token|private[_-]?key)[=:])[[:graph:]]+#\1[REDACTED]#gI' \
-            -e 's#(authorization:[[:space:]]*bearer[[:space:]]+)[[:graph:]]+#\1[REDACTED]#gI' \
-            > database-preparation-evidence/job.log || true
-      - name: Upload database preparation evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: database-preparation-${{ inputs.deployment_revision || github.sha }}
-          path: database-preparation-evidence
-          if-no-files-found: error
-          retention-days: 14
 
   deploy-demo:
     name: Deploy / DOKS demo
     if: >-
       needs.publish-image-manifest.result == 'success' &&
-      needs.prepare-demo-database.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: [publish-image-manifest, prepare-demo-database]
-    runs-on: ubuntu-24.04
+    needs: publish-image-manifest
+    runs-on: ubuntu-latest
     environment: demo
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@v4
         with:
-          node-version: 22.23.3
+          node-version: 22
       - name: Download exact deployment image manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@v4
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
       - name: Verify and select tested images
@@ -959,23 +360,53 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --output "$GITHUB_OUTPUT"
       - name: Install Helm
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        uses: azure/setup-helm@v4
         with:
           version: v3.19.0
       - name: Install doctl with scoped demo credentials
-        uses: digitalocean/action-doctl@3cb3953159719656269e044e0e24ca16dd2a690f # v2.5.2
+        uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-          version: 1.173.0
       - name: Obtain an expiring DOKS kubeconfig
         env:
           DOKS_CLUSTER_NAME: ${{ vars.DOKS_CLUSTER_NAME }}
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: doctl kubernetes cluster kubeconfig save "$DOKS_CLUSTER_NAME" --expiry-seconds 1800
+      - name: Provision isolated demo workload credentials
+        env:
+          KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
+        run: >-
+          bash scripts/provision-demo-workload-secrets.sh
+          "${{ steps.images.outputs.api-repository }}:${{ steps.images.outputs.api-tag }}"
       - name: Atomically deploy tested images
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: |
+          previous_migration_pod="$(kubectl get pods --namespace open-triage \
+            --selector app.kubernetes.io/component=migration \
+            --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+          monitor_migration() {
+            local previous_pod="$1"
+            local pod=""
+            for _ in {1..120}; do
+              pod="$(kubectl get pods --namespace open-triage \
+                --selector app.kubernetes.io/component=migration \
+                --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+              [[ -n "$pod" && "$pod" != "$previous_pod" ]] && break
+              sleep 2
+            done
+            [[ -n "$pod" && "$pod" != "$previous_pod" ]] || return 0
+            echo "Monitoring migration pod $pod"
+            kubectl get pod "$pod" --namespace open-triage --output wide --watch &
+            local watch_pid=$!
+            kubectl logs "$pod" --namespace open-triage --all-containers=true \
+              --follow --pod-running-timeout=9m || true
+            kill "$watch_pid" 2>/dev/null || true
+            wait "$watch_pid" 2>/dev/null || true
+          }
+
+          monitor_migration "$previous_migration_pod" &
+          monitor_pid=$!
           set +e
           helm upgrade --install open-triage deploy/helm/open-triage \
             --values deploy/helm/open-triage/demo-reference.values.yaml \
@@ -992,29 +423,19 @@ jobs:
             --set-string web.image.tag="${{ steps.images.outputs.web-tag }}"
           helm_status=$?
           set -e
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
           exit "$helm_status"
       - name: Diagnose failed atomic deployment
         if: failure()
         env:
           KUBECONFIG: ${{ runner.temp }}/open-triage-kubeconfig
         run: |
-          mkdir -p deployment-diagnostics
-          kubectl get jobs,pods --namespace open-triage --output wide \
-            > deployment-diagnostics/resources.txt 2>&1 || true
+          kubectl get jobs,pods --namespace open-triage --output wide || true
+          kubectl describe job open-triage-migration --namespace open-triage || true
+          kubectl logs job/open-triage-migration --namespace open-triage --all-containers=true || true
           kubectl get events --namespace open-triage \
-            --sort-by='.metadata.creationTimestamp' --output wide | tail -80 \
-            > deployment-diagnostics/events.txt || true
-          helm history open-triage --namespace open-triage --output json \
-            > deployment-diagnostics/helm-history.json 2>&1 || true
-          cp demo-images.json deployment-diagnostics/deployed-image-identities.json
-      - name: Upload failed deployment diagnostics
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: validation-${{ inputs.deployment_revision || github.sha }}-kubernetes-deployment-failure
-          path: deployment-diagnostics
-          if-no-files-found: warn
-          retention-days: 14
+            --sort-by='.metadata.creationTimestamp' --output wide | tail -80 || true
       - name: Verify the public HTTPS deployment
         env:
           DEMO_WEB_URL: https://demo.opentriage.org

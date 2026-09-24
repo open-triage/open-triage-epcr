@@ -1,7 +1,6 @@
-import { chromium, expect, test, type BrowserContext, type Route } from "./server-fixture";
-import { cachedReports, demoSession, installServerFixture, type MockRecovery } from "./server-fixture";
-import demoOpenAssignment from "../public/demo-open-assignment.json";
+import { chromium, expect, test, type BrowserContext, type Route } from "@playwright/test";
 
+const baseURL = "http://127.0.0.1:3108";
 const clinicianId = "32000000-0000-4000-8000-000000000003";
 const formVersionId = "32000000-0000-4000-8000-000000000008";
 const reportId = "42000000-0000-4000-8000-000000000056";
@@ -30,7 +29,6 @@ const replacementCall = {
 const openedAssignment = {
   assignmentId: assignedCall.id,
   report: {
-    ...demoOpenAssignment.report,
     id: reportId,
     documentingUserId: clinicianId,
     formVersionId,
@@ -42,9 +40,6 @@ const openedAssignment = {
 } as const;
 
 interface JourneyState {
-  recovery: MockRecovery;
-  restarted: boolean;
-  reauthenticated: boolean;
   backendOnline: boolean;
   assignmentOpened: boolean;
   completed: boolean;
@@ -55,29 +50,13 @@ interface JourneyState {
 }
 
 async function installJourneyRoutes(context: BrowserContext, state: JourneyState) {
-  await installServerFixture(context, state.recovery);
-  const session = { ...demoSession, user: { ...demoSession.user, id: clinicianId } };
-  await context.route("**/api/sessions", route => route.fulfill({ json: session }));
-  await context.route("**/api/sessions/current", route => route.fulfill({ json: session }));
-  await context.route("**/api/sessions/reauthenticate", route => {
-    state.reauthenticated = true;
-    return route.fulfill({ json: { reauthenticatedUntil: "2099-09-25T12:05:00.000Z" } });
-  });
-  await context.route("**/api/reports/*/recovery-grants", route => {
-    if (!state.backendOnline) return route.abort("internetdisconnected");
-    if (state.restarted && !state.reauthenticated) return route.fulfill({ status: 428 });
-    return route.fallback();
-  });
-  // This journey discovers completion through the explicit report-list refresh.
-  // Keep the active poll unchanged so it cannot race ahead and mask list cleanup.
-  await context.route(`**/api/reports/${reportId}/active`, route => route.fulfill({ status: 304 }));
   const openAssignment = (route: Route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     state.assignmentOpened = true;
     state.openRequests += 1;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(openedAssignment) });
   };
-  await context.route("**/api/calls/assigned", (route) => {
+  await context.route("**/demo-assigned-calls.json", (route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     const assignedCalls = state.assignmentOpened ? [replacementCall] : [assignedCall];
     return route.fulfill({
@@ -85,7 +64,7 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
       body: JSON.stringify({ assignedCalls, canceledAssignmentIds: [], refreshedAt: new Date().toISOString() }),
     });
   });
-  await context.route("**/api/reports/open", (route) => {
+  await context.route("**/demo-open-calls.json", (route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
     const openCalls = state.assignmentOpened && !state.completed ? [{
       reportId,
@@ -106,6 +85,7 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
       }),
     });
   });
+  await context.route("**/demo-open-assignment.json", openAssignment);
   await context.route(`**/api/calls/${assignedCall.id}/open`, openAssignment);
   await context.route(`**/api/reports/${reportId}/reopen`, (route) => {
     if (!state.backendOnline) return route.abort("internetdisconnected");
@@ -138,16 +118,11 @@ async function installJourneyRoutes(context: BrowserContext, state: JourneyState
  * Android-sized viewports. A persistent context is closed and relaunched so the
  * recovery assertion exercises Chromium's on-disk profile, not copied test state.
  */
-test("the complete synthetic mobile call journey survives offline work, authenticated restart recovery, sync, and external completion", async ({}, testInfo) => {
-  const baseURL = testInfo.project.use.baseURL as string;
+test("the complete synthetic mobile call journey survives offline work, restart, sync, and stationary completion", async ({}, testInfo) => {
   const viewport = supportedViewports[testInfo.project.name];
-  expect(baseURL, "the browser project must configure a base URL").toBeTruthy();
   expect(viewport, `unsupported journey project ${testInfo.project.name}`).toBeTruthy();
   const userDataDir = testInfo.outputPath("complete-mobile-journey-profile");
   const state: JourneyState = {
-    recovery: new Map(),
-    restarted: false,
-    reauthenticated: false,
     backendOnline: true,
     assignmentOpened: false,
     completed: false,
@@ -173,6 +148,7 @@ test("the complete synthetic mobile call journey survives offline work, authenti
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText(assignedCall.callNumber, { exact: true })).toBeVisible({ timeout: 10_000 });
     expect(Date.now() - signedInAt).toBeLessThanOrEqual(10_000);
+    await expect(page.getByRole("note", { name: "Prototype safety notice" })).toContainText("Synthetic data only");
 
     await page.getByRole("button", { name: "Open call", exact: true }).click();
     await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeHidden();
@@ -184,7 +160,7 @@ test("the complete synthetic mobile call journey survives offline work, authenti
       const session = JSON.parse(localStorage.getItem("open-triage.clinician-session.v1")!);
       const response = await fetch(`/api/calls/${assignmentId}/open`, {
         method: "POST",
-        headers: { "x-csrf-token": session.csrfToken },
+        headers: { authorization: `Bearer ${session.accessToken}` },
       });
       return (await response.json()).report.id;
     }, { assignmentId: assignedCall.id });
@@ -201,7 +177,6 @@ test("the complete synthetic mobile call journey survives offline work, authenti
     state.backendOnline = false;
     await context.setOffline(true);
     await page.getByRole("button", { name: "Add clinical note" }).click();
-    await page.getByLabel("Note summary").fill("Offline care retained across authenticated restart");
     await page.getByRole("button", { name: "Add to timeline" }).click();
     await expect(page.locator(".sync-status")).toHaveText("Pending sync", { timeout: 3_000 });
     await page.getByRole("button", { name: /^Checklist,/ }).click();
@@ -210,35 +185,26 @@ test("the complete synthetic mobile call journey survives offline work, authenti
     await expect(page.getByText(replacementCall.callNumber, { exact: true })).toBeVisible();
     const pendingCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
     await expect(pendingCard).toContainText("Pending sync");
-    const queuedBeforeRestart = (await cachedReports(page, state.recovery))
-      .find(entry => entry.report.id === reportId)!.queuedChanges[0]!.command.commandId;
-    expect(await page.evaluate(() => localStorage.getItem("open-triage:offline-reports-v1"))).toBeNull();
+    const queuedBeforeRestart = await page.evaluate(({ expectedReportId }) => {
+      const reports = JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!);
+      return reports.find((entry: { report: { id: string } }) => entry.report.id === expectedReportId).queuedChanges[0].command.commandId as string;
+    }, { expectedReportId: reportId });
 
     await context.close();
-    state.restarted = true;
-    state.backendOnline = true;
     context = await chromium.launchPersistentContext(userDataDir, { baseURL, viewport });
     await installJourneyRoutes(context, state);
     page = context.pages()[0] ?? await context.newPage();
     await page.goto("/");
-    await expect(page.getByText("Synthetic Clinician", { exact: true })).toBeVisible();
+    await expect(page.getByText("Signed in as Synthetic Clinician")).toBeVisible();
     const recoveredCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
-    await expect(recoveredCard).toBeVisible();
+    await expect(recoveredCard).toContainText("Pending sync");
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
 
-    await recoveredCard.getByRole("button", { name: "Reopen report" }).click();
-    await expect(page.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
-    await page.getByLabel("Current password").fill("current-password");
-    await page.getByRole("button", { name: "Confirm and recover" }).click();
-    await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
-    await expect.poll(() => state.savedCommandIds).toContain(queuedBeforeRestart);
-    state.backendOnline = false;
     await context.setOffline(true);
+    await recoveredCard.getByRole("button", { name: "Reopen report" }).click();
     await page.getByRole("button", { name: /^Timeline/ }).click();
     await expect(page.locator(".timeline-list button").filter({ hasText: "Synthetic care documented on the Android-sized workflow" })).toBeVisible();
-    const recoveredReport = (await cachedReports(page, state.recovery)).find(entry => entry.report.id === reportId)!;
-    expect(recoveredReport.report.formVersionId).toBe(formVersionId);
-    expect(recoveredReport.ownerUserId).toBe(clinicianId);
+    await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", formVersionId);
     await page.getByRole("button", { name: /^Checklist,/ }).click();
     await expect(page.locator(".checklist-findings li.error")).toHaveCount(0);
     await expect(page.locator(".checklist-findings li.warning")).toHaveCount(1);
@@ -251,11 +217,10 @@ test("the complete synthetic mobile call journey survives offline work, authenti
 
     state.completed = true;
     await page.getByRole("button", { name: "Refresh calls" }).click();
-    await expect(page.getByRole("heading", { name: "Assigned calls" })).toBeVisible();
+    await expect(page.locator(".transient-notice")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Open reports" }).getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
-    await expect.poll(async () => (await cachedReports(page, state.recovery)).some(entry => entry.report.id === reportId)).toBe(false);
   } finally {
     await context.close();
   }

@@ -245,13 +245,7 @@ export function purgeExpiredOfflineReports(storage: StoragePort, now = new Date(
 export function purgeCompletedOfflineReports(storage: StoragePort, reportIds: ReadonlyArray<string>): void {
   if (!reportIds.length) return;
   const completed = new Set(reportIds);
-  const reports = read(storage);
-  const removed = reports.filter((candidate) => completed.has(candidate.report.id) && candidate.queuedChanges.length === 0);
-  const removedIds = new Set(removed.map(({ report }) => report.id));
-  write(storage, reports.filter((candidate) => !removedIds.has(candidate.report.id)));
-  // Report-list completion can unmount the active workspace before its polling
-  // cleanup runs. Delete acknowledged ciphertext here too, retaining late work.
-  if (typeof window !== "undefined") removedIds.forEach(removeProtectedReport);
+  write(storage, read(storage).filter((candidate) => !completed.has(candidate.report.id) || candidate.queuedChanges.length > 0));
 }
 
 export function removeSignedOfflineReport(storage: StoragePort, reportId: string): void {

@@ -60,8 +60,9 @@ legacy_database_url="$(secret_value "$legacy_secret" DATABASE_URL)"
 require_value "$legacy_database_url" DATABASE_URL
 
 if ! secret_exists "$migration_secret"; then
-  echo "Migration Secret $migration_secret must be created by the database preparation phase" >&2
-  exit 1
+  kubectl create secret generic "$migration_secret" --namespace "$namespace" \
+    --from-literal=DATABASE_URL="$legacy_database_url" --dry-run=client --output yaml |
+    kubectl apply --filename -
 fi
 
 existing_workload_secrets=0
@@ -82,6 +83,39 @@ fi
 
 image_tag="${api_image##*:}"
 job_suffix="${image_tag:0:12}"
+migration_job="open-triage-credential-migration-$job_suffix"
+kubectl delete job "$migration_job" --namespace "$namespace" --ignore-not-found --wait=true
+kubectl apply --filename - <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: $migration_job
+  namespace: $namespace
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: $api_image
+          command: ["npm", "run", "migrate", "-w", "@open-triage/database"]
+          envFrom:
+            - secretRef:
+                name: $migration_secret
+EOF
+if ! kubectl wait --namespace "$namespace" --for=condition=complete \
+  "job/$migration_job" --timeout=5m; then
+  kubectl describe job "$migration_job" --namespace "$namespace" || true
+  kubectl logs "job/$migration_job" --namespace "$namespace" --all-containers=true || true
+  exit 1
+fi
+kubectl logs "job/$migration_job" --namespace "$namespace" --all-containers=true
+
 if ! secret_exists "$bootstrap_secret"; then
   login_suffix="$(openssl rand -hex 6)"
   kubectl create secret generic "$bootstrap_secret" --namespace "$namespace" \

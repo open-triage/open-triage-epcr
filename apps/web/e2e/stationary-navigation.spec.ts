@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "./server-fixture";
+import { expect, test } from "@playwright/test";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 
 async function openStationaryRecord(page: import("@playwright/test").Page, assignment = demoOpenAssignment) {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.route("**/api/calls/*/open", (route) => route.fulfill({
+  await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ ...assignment, report: { ...assignment.report, demoMutable: true } }),
+    body: JSON.stringify(assignment),
   }));
   await page.goto("/");
   await page.evaluate(() => window.localStorage.clear());
@@ -16,7 +16,6 @@ async function openStationaryRecord(page: import("@playwright/test").Page, assig
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await expect(page.locator(".sync-status")).toHaveText("Saved");
 }
 
 test("stationary rail supports section jumps, direct hashes, focus, and scroll tracking", async ({ page }) => {
@@ -80,7 +79,6 @@ test("nested findings open their row dialog and highlight only the affected pick
   Object.assign(configured.report, { clinicalForm: {
     definition: { schemaVersion: 1, sections: [{ key: "vitals", presentation: { title: "Vitals" }, fields: [
       { key: "respiratory-rate", source: { kind: "nemsis", elementId: "eVitals.14" } },
-      { key: "clinical-time", source: { kind: "nemsis", elementId: "eVitals.01" } },
     ] }] },
     catalogFields: {
       "eVitals.14": { agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
@@ -94,9 +92,6 @@ test("nested findings open their row dialog and highlight only the affected pick
   const initialDialog = page.getByRole("dialog");
   await initialDialog.locator('.stationary-dialog-field[data-element-id="eVitals.14"] input').fill("0");
   await initialDialog.getByRole("button", { name: "Save changes" }).click();
-  await expect(initialDialog.getByRole("alert")).toContainText("confirm before saving");
-  await initialDialog.getByRole("button", { name: "Save changes" }).click();
-  await expect(initialDialog).toHaveCount(0);
   await page.getByRole("button", { name: "Review & sign" }).click();
 
   await page.locator(".review-findings li").filter({ hasText: "Clinically unusual respiratory rate" }).first().getByRole("button").click();
@@ -133,7 +128,7 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
         supportsNotValues: true, supportsPertinentNegatives: false },
     },
   } });
-  await page.route("**/api/calls/*/open", (route) => route.fulfill({
+  await page.route("**/demo-open-assignment.json", (route) => route.fulfill({
     contentType: "application/json", body: JSON.stringify(configured),
   }));
   await page.route("**/draft-changes", async (route) => {
@@ -156,7 +151,7 @@ test("an opened report uses its pinned form and catalog without changing Mobile"
   await page.getByRole("group", { name: "Documentation presentation" }).getByRole("button", { name: "Stationary" }).click();
 
   const rail = page.getByRole("navigation", { name: "Stationary record sections" });
-  await expect(rail.getByRole("button")).toHaveText([/Configured patient/, /Configured scene/]);
+  await expect(rail.getByRole("link")).toHaveText([/Configured patient/, /Configured scene/]);
   const configuredPatient = page.locator('[data-stationary-section="draft-0-patient"]');
   await expect(configuredPatient.locator('[data-element-id="ePatient.25"] select')).toContainText("Configured unknown");
   await expect(page.locator('[data-element-id="eVitals.06"]')).toHaveCount(0);

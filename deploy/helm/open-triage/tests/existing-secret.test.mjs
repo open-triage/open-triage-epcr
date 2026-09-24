@@ -12,11 +12,11 @@ test("existing-Secret mode mounts one database credential per workload", () => {
   const output = render();
   assert.doesNotMatch(output, /kind: Secret(?:\n|\r\n)|envFrom:/);
   for (const name of [
-    "open-triage-api-database",
+    "open-triage-api-database", "open-triage-migration-database",
     "open-triage-analytics-projector-database", "open-triage-analytics-health-database",
     "open-triage-retention-database"
   ]) assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
-  assert.equal(output.match(/key: DATABASE_URL/g)?.length, 4);
+  assert.equal(output.match(/key: DATABASE_URL/g)?.length, 5);
   assert.match(output, /key: AUTH_RATE_LIMIT_SECRET_BASE64/);
   assert.match(output, /key: OFFLINE_RECOVERY_KEY_VERSION/);
   assert.match(output, /key: OFFLINE_RECOVERY_SECRET_BASE64/);
@@ -25,17 +25,19 @@ test("existing-Secret mode mounts one database credential per workload", () => {
 test("each workload can select a different existing Secret", () => {
   const output = render(
     "--set", "secrets.api.existingSecret=api-db",
+    "--set", "secrets.migration.existingSecret=migration-db",
     "--set", "secrets.analyticsProjector.existingSecret=projector-db",
     "--set", "secrets.analyticsHealth.existingSecret=health-db",
     "--set", "secrets.retention.existingSecret=retention-db",
   );
-  for (const name of ["api-db", "projector-db", "health-db", "retention-db"]) {
+  for (const name of ["api-db", "migration-db", "projector-db", "health-db", "retention-db"]) {
     assert.match(output, new RegExp(`name: ${name}, key: DATABASE_URL`));
   }
 });
 
 test("managed Secrets remain separate and never copy one DATABASE_URL", () => {
   const output = render(
+    "--set", "migration.enabled=false",
     "--set", "secrets.api.existingSecret=",
     "--set-string", "secrets.api.databaseUrl=api-url",
     "--set-string", "secrets.api.patientKeyInstallationId=installation",

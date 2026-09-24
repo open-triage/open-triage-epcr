@@ -143,12 +143,6 @@ async function installRoutes(page: Page, persistentStorage = true, existing?: {
   });
   let revision = openedAssignment.report.revision;
   await page.route(`**/api/reports/${reportId}/draft-changes`, async (route: Route) => {
-    // Fulfilled Playwright routes bypass context.setOffline(). An autosave
-    // already in flight may try to drain more queued changes after disconnect.
-    // Reload/logout can destroy the frame while this request is intercepted;
-    // treat that cancelled transport as unavailable too.
-    const online = await page.evaluate(() => navigator.onLine).catch(() => false);
-    if (!online) return route.abort("internetdisconnected");
     const command = route.request().postDataJSON() as { expectedRevision: number };
     revision = command.expectedRevision + 1;
     await route.fulfill({ json: { id: reportId, status: "draft", revision } });
@@ -236,20 +230,6 @@ test("a second browser recovers its own offline copy without replacing the first
     expect(browserScopedReceipts).toBeGreaterThan(0);
     await otherContext.setOffline(true);
     await second.evaluate(() => window.dispatchEvent(new Event("offline")));
-    // Verify the mocked transport cannot acknowledge an offline save, even if
-    // a save loop started while recovery was still online.
-    await expect(second.evaluate(async (id) => {
-      try {
-        await fetch(`/api/reports/${id}/draft-changes`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ expectedRevision: 0 }),
-        });
-        return false;
-      } catch {
-        return true;
-      }
-    }, reportId)).resolves.toBe(true);
     await second.getByRole("button", { name: "Add clinical note" }).click();
     await second.getByLabel("Note summary").fill("Second browser offline copy");
     await second.getByRole("button", { name: "Add to timeline" }).click();

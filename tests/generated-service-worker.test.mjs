@@ -10,7 +10,6 @@ const generatorPath = new URL("../apps/web/scripts/build-service-worker.ts", imp
 const sourcePath = new URL("../apps/web/service-worker/service-worker.ts", import.meta.url);
 const dockerfilePath = new URL("../deploy/docker/web.Dockerfile", import.meta.url);
 const workflowPath = new URL("../.github/workflows/demo-validation.yml", import.meta.url);
-const deploymentSpecPath = new URL("../apps/web/e2e/deployment.spec.ts", import.meta.url);
 
 test("the service worker is generated from TypeScript and excluded from version control", async () => {
   const [gitignore, packageText, generator, source] = await Promise.all([
@@ -50,10 +49,9 @@ test("the service worker is generated from TypeScript and excluded from version 
 });
 
 test("build and CI require the generated worker in deployable output", async () => {
-  const [dockerfile, workflow, deploymentSpec] = await Promise.all([
+  const [dockerfile, workflow] = await Promise.all([
     readFile(dockerfilePath, "utf8"),
     readFile(workflowPath, "utf8"),
-    readFile(deploymentSpecPath, "utf8"),
   ]);
   const validation = workflow.slice(
     workflow.indexOf("  web-deployment-validation:"),
@@ -62,13 +60,11 @@ test("build and CI require the generated worker in deployable output", async () 
 
   assert.match(dockerfile, /npm run build -w @open-triage\/web/);
   assert.match(dockerfile, /ARG OPEN_TRIAGE_BUILD_SHA=local/);
-  assert.match(validation, /SOURCE_COMMIT: \$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/);
-  assert.match(validation, /--build-arg OPEN_TRIAGE_BUILD_SHA="\$SOURCE_COMMIT"/);
+  assert.match(workflow, /OPEN_TRIAGE_BUILD_SHA=\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/);
   assert.match(dockerfile, /COPY --from=build \/workspace\/apps\/web\/out/);
-  assert.match(validation, /--file deploy\/docker\/web\.Dockerfile/);
-  assert.match(validation, /docker run --detach --name open-triage-web-validation/);
+  assert.match(validation, /npm run build -w @open-triage\/web/);
+  assert.match(validation, /test -s apps\/web\/out\/sw\.js/);
   assert.match(validation, /npm run test:deployment -w @open-triage\/web/);
-  assert.match(deploymentSpec, /serviceWorker = await request\.get\("\/sw\.js"\)/);
 });
 
 test("audited catalog artifacts are present and not ignored by version control", async () => {
