@@ -57,9 +57,17 @@ test("the deployment artifact contains the exact API and web tags and digests", 
   assert.deepEqual(JSON.parse(await readFile(output, "utf8")), manifest);
 });
 
-test("the workflow publishes tested AMD64 images with narrowly scoped registry permission", async () => {
+test("the workflow promotes the validated web digest and separately publishes the API image", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const publishing = workflow.slice(workflow.indexOf("  publish-images:"));
+  const webValidation = workflow.slice(
+    workflow.indexOf("  web-deployment-validation:"),
+    workflow.indexOf("  api-runtime-image-validation:"),
+  );
+  const webPromotion = workflow.slice(
+    workflow.indexOf("  promote-web-image:"),
+    workflow.indexOf("  publish-image-manifest:"),
+  );
 
   assert.match(workflow, /^permissions:\n  contents: read$/m);
   assert.match(publishing, /^    needs: validation-gate$/m);
@@ -68,15 +76,19 @@ test("the workflow publishes tested AMD64 images with narrowly scoped registry p
   assert.match(publishing, /^          push: true$/m);
   assert.match(
     publishing,
-    /^          - component: web\n            dockerfile: deploy\/docker\/web\.Dockerfile\n            build_args: \|\n              NEXT_PUBLIC_API_URL=https:\/\/api\.demo\.opentriage\.org\n              OPEN_TRIAGE_BUILD_SHA=\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}$/m,
+    /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-api:\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
   );
-  assert.match(publishing, /^          build-args: \$\{\{ matrix\.build_args \}\}$/m);
-  assert.match(
-    publishing,
-    /tags: ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/open-triage-\$\{\{ matrix\.component \}\}:\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
-  );
+  assert.doesNotMatch(publishing, /file: deploy\/docker\/web\.Dockerfile/);
   assert.match(publishing, /password: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
   assert.doesNotMatch(workflow.slice(0, workflow.indexOf("jobs:")), /packages: write/);
+  assert.match(webValidation, /docker build\n\s+--file deploy\/docker\/web\.Dockerfile/);
+  assert.match(webValidation, /--platform linux\/amd64/);
+  assert.match(webValidation, /docker push "\$WEB_CANDIDATE_IMAGE"/);
+  assert.match(webValidation, /--output image-identities\/web\.json/);
+  assert.match(webPromotion, /node scripts\/demo-image-identity\.mjs verify/);
+  assert.match(webPromotion, /docker buildx imagetools create/);
+  assert.match(webPromotion, /test "\$promoted_digest" = "\$image_digest"/);
+  assert.doesNotMatch(webPromotion, /docker build(?:\s|$)|docker\/build-push-action/);
   assert.match(
     publishing,
     /name: demo-deployment-images-\$\{\{ inputs\.deployment_revision \|\| github\.sha \}\}/,
@@ -90,4 +102,16 @@ test("the web image includes the privacy policy consumed by its client build", a
     dockerfile,
     /COPY packages\/database\/config\/identifying-elements\.json packages\/database\/config\/identifying-elements\.json/,
   );
+});
+
+test("validation rejects a fixture with a missing Docker-context dependency before the gate", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const validation = workflow.slice(
+    workflow.indexOf("  web-deployment-validation:"),
+    workflow.indexOf("  validation-gate:"),
+  );
+
+  assert.match(validation, /git archive HEAD \| tar -x --directory "\$fixture"/);
+  assert.match(validation, /rm "\$fixture\/packages\/database\/config\/identifying-elements\.json"/);
+  assert.match(validation, /if docker build[\s\S]*"\$fixture"; then/);
 });

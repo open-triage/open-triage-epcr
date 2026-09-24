@@ -130,6 +130,6 @@ test("the Kubernetes web artifact is built for root hosting", async () => {
     workflow.indexOf("  helm-validation:"),
   );
 
-  assert.match(webValidation, /name: Test the root-hosted web artifact/);
+  assert.match(webValidation, /name: Test the root-hosted Nginx container/);
   assert.doesNotMatch(webValidation, /NEXT_PUBLIC_BASE_PATH|open-triage-epcr-demo/);
 });

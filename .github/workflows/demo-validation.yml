@@ -66,11 +66,17 @@ jobs:
       checkout_ref: ${{ inputs.deployment_revision || github.sha }}
 
   web-deployment-validation:
-    name: Validate / Web deployment
+    name: Validate / Exact web container
     needs: validate-deployment-revision
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     env:
       NEXT_PUBLIC_API_URL: https://api.demo.opentriage.org
+      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+      WEB_CANDIDATE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
+      WEB_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:${{ inputs.deployment_revision || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,14 +86,81 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build deployable web application
-        run: npm run build -w @open-triage/web
-      - name: Require the generated service worker
-        run: test -s apps/web/out/sw.js
+      - name: Build the deployable Nginx image
+        run: >-
+          docker build
+          --file deploy/docker/web.Dockerfile
+          --platform linux/amd64
+          --tag "$WEB_CANDIDATE_IMAGE"
+          --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL"
+          --build-arg OPEN_TRIAGE_BUILD_SHA="$SOURCE_COMMIT"
+          --label org.opencontainers.image.revision="$SOURCE_COMMIT"
+          --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}"
+          .
+      - name: Reject a Docker context missing a client-build dependency
+        run: |
+          fixture="$(mktemp -d)"
+          trap 'rm -rf "$fixture"' EXIT
+          git archive HEAD | tar -x --directory "$fixture"
+          rm "$fixture/packages/database/config/identifying-elements.json"
+          if docker build \
+            --file "$fixture/deploy/docker/web.Dockerfile" \
+            --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" \
+            --build-arg OPEN_TRIAGE_BUILD_SHA="$SOURCE_COMMIT" \
+            "$fixture"; then
+            echo "Web image unexpectedly built without identifying-elements.json" >&2
+            exit 1
+          fi
+      - name: Start the validated Nginx container
+        run: docker run --detach --name open-triage-web-validation --publish 127.0.0.1:3109:80 "$WEB_CANDIDATE_IMAGE"
+      - name: Require the Nginx container to become ready
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3109/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs open-triage-web-validation
+          exit 1
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Test the root-hosted web artifact
+      - name: Test the root-hosted Nginx container
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3109
         run: npm run test:deployment -w @open-triage/web
+      - name: Stop the validation container
+        if: always()
+        run: docker rm --force open-triage-web-validation 2>/dev/null || true
+      - name: Authenticate to the private GitHub Container Registry
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Retain the validated web image identity
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          docker push "$WEB_CANDIDATE_IMAGE" | tee "$RUNNER_TEMP/web-image-push.txt"
+          image_digest="$(sed -n 's/^.*digest: \(sha256:[0-9a-f]\{64\}\).*$/\1/p' "$RUNNER_TEMP/web-image-push.txt" | tail -1)"
+          test -n "$image_digest"
+          node scripts/demo-image-identity.mjs record \
+            --component web \
+            --tag "$WEB_RELEASE_IMAGE" \
+            --digest "$image_digest" \
+            --architecture linux/amd64 \
+            --sha "$SOURCE_COMMIT" \
+            --owner "${{ github.repository_owner }}" \
+            --output image-identities/web.json
+      - name: Upload the validated web image identity
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
+          path: image-identities/web.json
+          if-no-files-found: error
 
   api-runtime-image-validation:
     name: Validate / Pruned API runtime image
@@ -229,7 +302,7 @@ jobs:
         run: node scripts/require-demo-validation.mjs
 
   publish-images:
-    name: Publish / ${{ matrix.component }} linux/amd64
+    name: Publish / API linux/amd64
     if: >-
       needs.validation-gate.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -238,18 +311,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - component: api
-            dockerfile: deploy/docker/api.Dockerfile
-            build_args: ""
-          - component: web
-            dockerfile: deploy/docker/web.Dockerfile
-            build_args: |
-              NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
-              OPEN_TRIAGE_BUILD_SHA=${{ inputs.deployment_revision || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -266,43 +327,96 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.build_args }}
+          file: deploy/docker/api.Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/open-triage-${{ matrix.component }}:${{ inputs.deployment_revision || github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
           labels: |
             org.opencontainers.image.revision=${{ inputs.deployment_revision || github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
       - name: Record published image identity
         env:
-          COMPONENT: ${{ matrix.component }}
-          IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/open-triage-${{ matrix.component }}:${{ inputs.deployment_revision || github.sha }}
+          IMAGE_TAG: ghcr.io/${{ github.repository_owner }}/open-triage-api:${{ inputs.deployment_revision || github.sha }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: >-
           node scripts/demo-image-identity.mjs record
-          --component "$COMPONENT"
+          --component api
           --tag "$IMAGE_TAG"
           --digest "$IMAGE_DIGEST"
           --architecture linux/amd64
           --sha "$SOURCE_COMMIT"
           --owner "$REPOSITORY_OWNER"
-          --output "image-identities/${COMPONENT}.json"
+          --output image-identities/api.json
       - name: Upload image identity fragment
         uses: actions/upload-artifact@v4
         with:
-          name: demo-image-identity-${{ matrix.component }}-${{ inputs.deployment_revision || github.sha }}
-          path: image-identities/${{ matrix.component }}.json
+          name: demo-image-identity-api-${{ inputs.deployment_revision || github.sha }}
+          path: image-identities/api.json
+          if-no-files-found: error
+
+  promote-web-image:
+    name: Publish / Promote validated web digest
+    if: >-
+      needs.validation-gate.result == 'success' &&
+      needs.web-deployment-validation.result == 'success' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs:
+      - validation-gate
+      - web-deployment-validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SOURCE_COMMIT: ${{ inputs.deployment_revision || github.sha }}
+      WEB_CANDIDATE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:validation-${{ inputs.deployment_revision || github.sha }}
+      WEB_RELEASE_IMAGE: ghcr.io/${{ github.repository_owner }}/open-triage-web:${{ inputs.deployment_revision || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.deployment_revision || github.sha }}
+      - uses: docker/setup-buildx-action@v3
+      - name: Download validated web image identity
+        uses: actions/download-artifact@v4
+        with:
+          name: validated-web-image-${{ inputs.deployment_revision || github.sha }}
+          path: image-identities
+      - name: Authenticate to the private GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote the validated digest without rebuilding
+        run: |
+          image_digest="$(node -e 'const fs = require("node:fs"); const value = JSON.parse(fs.readFileSync("image-identities/web.json", "utf8")); process.stdout.write(value.digest)')"
+          node scripts/demo-image-identity.mjs verify \
+            --input image-identities/web.json \
+            --owner "${{ github.repository_owner }}" \
+            --sha "$SOURCE_COMMIT"
+          docker buildx imagetools create \
+            --tag "$WEB_RELEASE_IMAGE" \
+            "$WEB_CANDIDATE_IMAGE@$image_digest"
+          promoted_digest="sha256:$(docker buildx imagetools inspect "$WEB_RELEASE_IMAGE" --raw | sha256sum | cut -d' ' -f1)"
+          test "$promoted_digest" = "$image_digest"
+      - name: Upload promoted image identity fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-image-identity-web-${{ inputs.deployment_revision || github.sha }}
+          path: image-identities/web.json
           if-no-files-found: error
 
   publish-image-manifest:
     name: Publish / Deployment image manifest
     if: >-
       needs.publish-images.result == 'success' &&
+      needs.promote-web-image.result == 'success' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: publish-images
+    needs:
+      - publish-images
+      - promote-web-image
     runs-on: ubuntu-latest
     permissions:
       contents: read
