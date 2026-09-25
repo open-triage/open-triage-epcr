@@ -41,6 +41,18 @@ comment on table clinical.report_note is
 
 -- clinical is a private application schema rather than an exposed Data API
 -- schema. Keep public roles out and grant only the established API workload.
-revoke all on table clinical.report_note from public, anon, authenticated;
+revoke all on table clinical.report_note from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format('revoke all on table clinical.report_note from %I', api_role);
+    end if;
+  end loop;
+end;
+$$;
+
 grant select, insert, update, delete on table clinical.report_note
   to open_triage_api_runtime;

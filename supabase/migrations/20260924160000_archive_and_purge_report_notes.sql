@@ -108,6 +108,21 @@ comment on function retention.report_note_archive_payload(uuid) is
   'Canonical app-native note archive, including verified media bytes, kept outside the NEMSIS encounter document.';
 
 revoke all on function retention.report_note_archive_payload(uuid)
-  from public, anon, authenticated;
+  from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on function retention.report_note_archive_payload(uuid) from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
+
 grant execute on function retention.report_note_archive_payload(uuid)
   to open_triage_retention_executor;

@@ -22,7 +22,7 @@ test("photo metadata and canonical bytes are private, separate, bounded, indexed
   assert.match(migration, /sha256 text not null check/);
   assert.match(migration, /report_photo_note_timeline_idx[\s\S]*captured_at desc, id desc/);
   assert.match(migration, /report_photo_blob_immutable[\s\S]*prevent_photo_blob_replacement/);
-  assert.match(migration, /revoke all on table clinical\.report_photo_note, clinical\.report_photo_blob from public, anon, authenticated/);
+  assert.match(migration, /revoke all on table clinical\.report_photo_note, clinical\.report_photo_blob from public/);
   assert.match(migration, /grant select, insert, delete on table clinical\.report_photo_blob to open_triage_api_runtime/);
   assert.match(privileges, /grant update \(caption, updated_by, updated_at\) on table clinical\.report_photo_note/);
   assert.match(privileges, /revoke delete on table clinical\.report_photo_blob from open_triage_api_runtime/);

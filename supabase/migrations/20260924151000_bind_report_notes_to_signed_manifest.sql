@@ -54,6 +54,21 @@ before update on clinical.report_audio_note
 for each row execute function clinical.prevent_report_media_integrity_change();
 
 revoke execute on function clinical.prevent_report_media_integrity_change()
-  from public, anon, authenticated;
+  from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke execute on function clinical.prevent_report_media_integrity_change() from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
+
 grant execute on function clinical.prevent_report_media_integrity_change()
   to open_triage_api_runtime;

@@ -16,7 +16,7 @@ test("app-native report notes are private, bounded, indexed, and signed-report i
   assert.match(migration, /captured_utc_offset_minutes between -840 and 840/);
   assert.match(migration, /report_note_timeline_idx[\s\S]*captured_at desc, id desc/);
   assert.match(migration, /report_note_signed_immutable[\s\S]*clinical\.prevent_signed_report_mutation/);
-  assert.match(migration, /revoke all on table clinical\.report_note from public, anon, authenticated/);
+  assert.match(migration, /revoke all on table clinical\.report_note from public/);
   assert.match(migration, /grant select, insert, update, delete on table clinical\.report_note[\s\S]*open_triage_api_runtime/);
   assert.doesNotMatch(migration, /create policy/);
 });

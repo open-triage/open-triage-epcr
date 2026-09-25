@@ -160,6 +160,46 @@ test("the portable offline-lifecycle role amendment preserves immutable history"
   assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
 });
 
+test("portable media role amendments preserve immutable migration history", async () => {
+  const migrations = await readMigrations(path.resolve(import.meta.dirname, "../../../supabase/migrations"));
+  const expected = new Map([
+    ["20260924093945", [
+      "e3e817e9af9f02ad9c6bf9b7e03b46a4b15f270b4c93a1ff00f669752147b944",
+      "768a78853408d97d5067162001123a41e7ca489ebe4312e952c7c2af51e090ff",
+    ]],
+    ["20260924140000", [
+      "2fe89f68c1eb848eb9c29543598229518835e55b937ff9fa08730a45123a4245",
+      "aef7c4d2b6c6cff3122d5398e2afbd75dcae2a161dd9b8a888c4bd10f5aafaf2",
+    ]],
+    ["20260924144000", [
+      "8edb06193f60477cf3fadbe6aa83b15be299da939c522d1c40af397657dbdcd2",
+      "2d40ec5cde635087833daf16222ed0b68de13fbc60870c8e1d21d0834fec2f5b",
+    ]],
+    ["20260924150000", [
+      "176836305b05dcab49dbac62ba2634314dd01eec6eb1290fd72cf9d4669e1591",
+      "23e65ad273a8fda571bb06d28ff71bc51de4ee5311943e01af75258b4adbb3be",
+    ]],
+    ["20260924151000", [
+      "56ff86c7b6e21515ec7c205984afd43712c68ef99675f1c40235ac715e100f0f",
+      "9947d86356a691e9cc25806a1fe73f35b0f805df1ed160434b25192403001bce",
+    ]],
+    ["20260924160000", [
+      "b44deed4e702d5c88692e020c618bcaac35bced3e7d6c8baa6fe65f77c29fd1b",
+      "f6228220ad3e6f2fdf427e01dd006ad7963e86ab3fdcb41f7afb48844253170a",
+    ]],
+  ]);
+
+  for (const [version, [legacyChecksum, currentChecksum]] of expected) {
+    const migration = migrations.find((candidate) => candidate.version === version);
+    assert.equal(migration?.checksum, currentChecksum);
+    const client = new FakeClient([[version, legacyChecksum]]);
+    const messages = [];
+    await applyMigrations(client, [migration], { info(message) { messages.push(message); } });
+    assert.equal(client.applied.get(version), legacyChecksum, "the recorded checksum must not be rewritten");
+    assert.ok(messages.some((message) => message.includes("compatible legacy checksum verified")));
+  }
+});
+
 test("migration history previously written by the Supabase CLI is respected", async () => {
   const migrations = await migrationSet({ "202608300001_first.sql": "select 'first migration';" });
   const client = new FakeClient([[migrations[0].version, null]]);

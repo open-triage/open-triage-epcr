@@ -91,10 +91,29 @@ for each row execute function clinical.prevent_signed_report_mutation();
 comment on table clinical.report_audio_blob is
   'Private canonical mono AAC/M4A bytes for spoken observations; never join into report list payloads.';
 
-revoke all on table clinical.report_audio_note, clinical.report_audio_blob from public, anon, authenticated;
+revoke all on table clinical.report_audio_note, clinical.report_audio_blob from public;
+revoke execute on function clinical.prevent_audio_blob_replacement() from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on table clinical.report_audio_note, clinical.report_audio_blob from %I',
+        api_role
+      );
+      execute format(
+        'revoke execute on function clinical.prevent_audio_blob_replacement() from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
+
 grant select, insert, delete on table clinical.report_audio_note to open_triage_api_runtime;
 grant update (caption, updated_by, updated_at) on table clinical.report_audio_note
   to open_triage_api_runtime;
 grant select, insert on table clinical.report_audio_blob to open_triage_api_runtime;
-revoke execute on function clinical.prevent_audio_blob_replacement() from public, anon, authenticated;
 grant execute on function clinical.prevent_audio_blob_replacement() to open_triage_api_runtime;

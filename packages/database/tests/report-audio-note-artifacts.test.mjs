@@ -13,7 +13,7 @@ test("audio metadata and canonical bytes are private, separate, bounded, indexed
   assert.match(migration, /processing_state = 'ready'/);
   assert.match(migration, /report_audio_note_timeline_idx[\s\S]*captured_at desc, id desc/);
   assert.match(migration, /report_audio_blob_immutable[\s\S]*prevent_audio_blob_replacement/);
-  assert.match(migration, /revoke all on table clinical\.report_audio_note, clinical\.report_audio_blob from public, anon, authenticated/);
+  assert.match(migration, /revoke all on table clinical\.report_audio_note, clinical\.report_audio_blob from public/);
   assert.doesNotMatch(migration, /grant update[^\n]*canonical_bytes/);
 });
 

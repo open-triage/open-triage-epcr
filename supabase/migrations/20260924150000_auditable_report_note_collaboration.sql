@@ -93,7 +93,28 @@ for each row execute function clinical.prevent_report_note_provenance_change();
 
 revoke all on table clinical.report_note_target_state,
   clinical_audit.report_note_mutation_event,
-  clinical_audit.report_media_access_event from public, anon, authenticated;
+  clinical_audit.report_media_access_event from public;
+revoke execute on function clinical.prevent_report_note_provenance_change()
+  from public;
+
+do $$
+declare api_role text;
+begin
+  foreach api_role in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = api_role) then
+      execute format(
+        'revoke all on table clinical.report_note_target_state, clinical_audit.report_note_mutation_event, clinical_audit.report_media_access_event from %I',
+        api_role
+      );
+      execute format(
+        'revoke execute on function clinical.prevent_report_note_provenance_change() from %I',
+        api_role
+      );
+    end if;
+  end loop;
+end;
+$$;
+
 grant select, insert, update, delete on table clinical.report_note_target_state
   to open_triage_api_runtime;
 grant insert on table clinical_audit.report_note_mutation_event,
@@ -105,7 +126,5 @@ revoke update on table clinical.report_note from open_triage_api_runtime;
 grant update (content, updated_by, updated_at) on table clinical.report_note
   to open_triage_api_runtime;
 
-revoke execute on function clinical.prevent_report_note_provenance_change()
-  from public, anon, authenticated;
 grant execute on function clinical.prevent_report_note_provenance_change()
   to open_triage_api_runtime;
