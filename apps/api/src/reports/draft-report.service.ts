@@ -8,6 +8,7 @@ import {
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
+import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES } from "@open-triage/contracts";
 import type { ActiveReportResource, DeleteDraftReportResponse, DispatchConflict, EncounterValue, OpenCallsResponse, ReopenOpenCallResponse, ResolveDispatchConflictCommand } from "@open-triage/contracts";
 import { derivePatientKey, patientKeyConfigFromEnvironment } from "@open-triage/contracts/patient-key";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
@@ -30,6 +31,7 @@ import {
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
 import { withReportSnapshot } from "./report-snapshot.js";
+import { reportTextNotes } from "./report-note.persistence.js";
 
 type ReceiptRow = {
   report_id: string | null;
@@ -52,6 +54,9 @@ type ReportRow = {
   validation_version_id?: string | null;
   validation_compiled_sha256?: string | null;
   documenting_user_id: string;
+  media_settings_revision: string | number;
+  report_media_allowance_bytes: string | number;
+  image_media_limit_bytes: string | number;
   synthetic?: boolean;
   demo_mutable?: boolean;
   server_received_time?: Date | string;
@@ -743,7 +748,8 @@ export class DraftReportService {
                author_id as "authorId", tombstoned_at as "tombstonedAt"
         from clinical.element_occurrence where report_id = $1 order by element_id, ordinal, id
       `, [reportId]);
-      return { ...report, groups, occurrences };
+      const notes = await reportTextNotes(manager, reportId);
+      return { ...report, groups, occurrences, notes };
     });
   }
 
@@ -808,6 +814,7 @@ export class DraftReportService {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const details = await this.reportResult(manager, reportId, session.organization.id, session.user.id);
       const document = await encounterDocument(manager, reportId);
+      const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
       const clinicalForm = await clinicalFormConfiguration(
         manager, String(details.formVersionId), String(details.catalogReleaseId),
@@ -865,12 +872,14 @@ export class DraftReportService {
           formVersionId: String(details.formVersionId),
           catalogReleaseId: String(details.catalogReleaseId),
           ...(details.validationVersionId ? { validationVersionId: details.validationVersionId } : {}),
+          mediaPolicy: details.mediaPolicy,
           clinicalForm,
           revision: Number(details.revision),
           status: "draft" as const,
           ...(calls[0].demo_mutable ? { demoMutable: true } : {}),
           ...(calls[0].expires_at ? { expiresAt: new Date(calls[0].expires_at).toISOString() } : {}),
           document,
+          notes,
           ...(calls[0].agency_time_zone ? { agencyTimeZone: calls[0].agency_time_zone } : {}),
           dispatchConflicts: conflicts,
           ...(calls[0].dispatch_canceled_at && calls[0].dispatch_cancellation_revision && calls[0].dispatch_cancellation_receipt_id ? {
@@ -1006,11 +1015,17 @@ export class DraftReportService {
         dispatch_canceled_at: Date | string | null;
         dispatch_cancellation_revision: string | number | null;
         dispatch_cancellation_receipt_id: string | null;
+        media_settings_revision: string | number;
+        report_media_allowance_bytes: string | number;
+        image_media_limit_bytes: string | number;
       }>>(`
         select r.revision, ca.dispatch_revision, r.dispatch_canceled_at,
-               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id
+               r.dispatch_cancellation_revision, r.dispatch_cancellation_receipt_id,
+               settings.revision as media_settings_revision,
+               settings.report_media_allowance_bytes, settings.image_media_limit_bytes
         from clinical.report r join clinical.call_assignment ca
           on ca.report_id = r.id and ca.organization_id = r.organization_id
+        join app_identity.agency_settings settings on settings.organization_id = r.organization_id
         where r.id = $1 and r.organization_id = $2 and r.documenting_user_id = $3
           and r.status = 'draft'
       `, [reportId, session.organization.id, session.user.id]);
@@ -1018,9 +1033,11 @@ export class DraftReportService {
       if (!row) throw new NotFoundException(`Report ${reportId} was not found`);
       const reportRevision = Number(row.revision);
       const dispatchRevision = Number(row.dispatch_revision ?? 0);
-      const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}"`;
+      const settingsRevision = Number(row.media_settings_revision);
+      const etag = `"report-${reportRevision}-dispatch-${dispatchRevision}-settings-${settingsRevision}"`;
       if (ifNoneMatch === etag) return { etag, resource: null };
       const document = await encounterDocument(manager, reportId);
+      const notes = await reportTextNotes(manager, reportId);
       const conflicts = await dispatchConflicts(manager, reportId);
       return {
         etag,
@@ -1029,6 +1046,12 @@ export class DraftReportService {
           reportRevision,
           dispatchRevision,
           document,
+          notes,
+          mediaPolicy: {
+            settingsRevision,
+            reportMediaAllowanceBytes: Number(row.report_media_allowance_bytes),
+            imageMediaLimitBytes: Number(row.image_media_limit_bytes),
+          },
           dispatchConflicts: conflicts,
           dispatchCancellation: row.dispatch_canceled_at && row.dispatch_cancellation_revision && row.dispatch_cancellation_receipt_id ? {
             canceledAt: new Date(row.dispatch_canceled_at).toISOString(),
@@ -1448,7 +1471,8 @@ export class DraftReportService {
   ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
       patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id,
-      validation_compiled_sha256, documenting_user_id,
+      validation_compiled_sha256, documenting_user_id, media_settings_revision, report_media_allowance_bytes,
+      image_media_limit_bytes,
       expires_at
       from clinical.report where id = $1
         and ($2::uuid is null or organization_id = $2)
@@ -1471,7 +1495,12 @@ export class DraftReportService {
       formVersionId: row.form_version_id, catalogReleaseId: row.catalog_release_id,
       ...(row.validation_version_id ? { validationVersionId: row.validation_version_id } : {}),
       ...(row.validation_compiled_sha256 ? { validationCompiledSha256: row.validation_compiled_sha256 } : {}),
-      documentingUserId: row.documenting_user_id
+      documentingUserId: row.documenting_user_id,
+      mediaPolicy: {
+        reportMediaAllowanceBytes: Number(row.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
+        imageMediaLimitBytes: Number(row.image_media_limit_bytes ?? DEFAULT_IMAGE_MEDIA_LIMIT_BYTES),
+        settingsRevision: Number(row.media_settings_revision ?? 1),
+      },
     };
   }
 

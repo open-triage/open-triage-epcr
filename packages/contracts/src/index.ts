@@ -230,6 +230,79 @@ export interface RecoveredProtectedReportKey {
   reportKeyBase64: string;
 }
 
+export const DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES = 50 * 1024 * 1024;
+export const DEFAULT_IMAGE_MEDIA_LIMIT_BYTES = 10 * 1024 * 1024;
+export const MIN_REPORT_MEDIA_ALLOWANCE_BYTES = 1024 * 1024;
+export const MAX_REPORT_MEDIA_ALLOWANCE_BYTES = 2 * 1024 * 1024 * 1024;
+
+export interface AgencyAppearance {
+  brandText: string;
+  helperText: string;
+  logoPngDataUrl: string | null;
+  accentColor: string;
+  accentDarkColor: string;
+  browserThemeColor: string;
+  pwaBackgroundColor: string;
+  pwaName: string;
+  pwaShortName: string;
+}
+
+export const DEFAULT_AGENCY_APPEARANCE: Readonly<AgencyAppearance> = Object.freeze({
+  brandText: "OpenTriage ePCR",
+  helperText: "Demo credentials: username **demo**, password **opentriagedemo**",
+  logoPngDataUrl: null,
+  accentColor: "#00783a",
+  accentDarkColor: "#006b34",
+  browserThemeColor: "#00783a",
+  pwaBackgroundColor: "#dfe5df",
+  pwaName: "OpenTriage",
+  pwaShortName: "OpenTriage",
+});
+
+export interface AgencyDemographics {
+  versionId: string;
+  version: number;
+  catalogReleaseId: string;
+  agencyUniqueStateId: string;
+  agencyNumber: string;
+  stateCode: string;
+  stateDisplay: string | null;
+  stateCodeSystem: string | null;
+  stateTerminologyVersion: string | null;
+  effectiveFrom: string;
+}
+
+/** Policy identity captured by clients and pinned onto each new report. */
+export interface ReportMediaPolicy {
+  reportMediaAllowanceBytes: number;
+  imageMediaLimitBytes: number;
+  settingsRevision: number;
+}
+
+export interface AgencyMediaSettings {
+  organizationId: string;
+  reportMediaAllowanceBytes: number;
+  imageMediaLimitBytes: number;
+  appearance: AgencyAppearance;
+  demographics: AgencyDemographics;
+  revision: number;
+  defaultReportMediaAllowanceBytes: number;
+  defaultImageMediaLimitBytes: number;
+  /** True when Postgres, WAL, replica, backup, and restore growth needs review. */
+  storageGrowthWarning: boolean;
+  updatedAt: string;
+}
+
+export interface UpdateAgencyMediaSettingsCommand {
+  expectedRevision: number;
+  reportMediaAllowanceBytes: number;
+  imageMediaLimitBytes: number;
+  appearance: AgencyAppearance;
+  demographics: Pick<AgencyDemographics,
+    "agencyUniqueStateId" | "agencyNumber" | "stateCode" | "stateDisplay" |
+    "stateCodeSystem" | "stateTerminologyVersion">;
+}
+
 export interface AdminContext {
   owner: ClinicianSession["user"];
   organization: ClinicianSession["organization"];
@@ -295,7 +368,7 @@ export interface CancelOwnershipTransferCommand {
   note?: string;
 }
 
-export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation";
+export type AdminPanelKey = "dashboard" | "users" | "roles" | "catalog" | "forms" | "validation" | "settings";
 
 export interface AdminRoleSummary {
   id: string;
@@ -888,6 +961,8 @@ export interface AssignedCallsResponse {
   assignedCalls: AssignedCall[];
   canceledAssignmentIds: string[];
   refreshedAt: string;
+  /** Present on live API responses; optional only for pre-feature cached/static fixtures. */
+  mediaPolicy?: ReportMediaPolicy;
 }
 
 export interface ClinicalDemoUnit {
@@ -918,6 +993,8 @@ export interface OpenAssignmentResponse {
     formVersionId: string;
     catalogReleaseId: string;
     validationVersionId?: string;
+    /** Present on live API responses; optional only while restoring pre-feature offline records. */
+    mediaPolicy?: ReportMediaPolicy;
     /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
     clinicalForm?: ClinicalFormConfiguration;
     revision: number;
@@ -928,6 +1005,8 @@ export interface OpenAssignmentResponse {
     expiresAt?: string;
     /** Complete server-authoritative encounter content, including fields hidden by the active form. */
     document: EncounterDocument;
+    /** App-native notes are intentionally outside the NEMSIS encounter document. */
+    notes?: ReadonlyArray<ReportNote>;
     /** IANA zone used for operational-time presentation. */
     agencyTimeZone?: string;
     dispatchConflicts?: ReadonlyArray<DispatchConflict>;
@@ -1007,9 +1086,159 @@ export interface ActiveReportResource {
   /** Latest complete dispatch snapshot revision applied to the assignment. */
   dispatchRevision: number;
   document: EncounterDocument;
+  notes?: ReadonlyArray<ReportNote>;
+  /** Current agency policy used for captures begun after this snapshot. */
+  mediaPolicy?: ReportMediaPolicy;
   dispatchConflicts: ReadonlyArray<DispatchConflict>;
   dispatchCancellation: DispatchCancellation | null;
 }
+
+export type ReportNotePersistenceState = "saved-on-device" | "uploading" | "processing" | "ready" | "failed";
+
+export type ReportNote = ReportTextNote | ReportPhotoNote | ReportAudioNote;
+
+export interface ReportTextNote {
+  id: string;
+  reportId: string;
+  type: "text";
+  content: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+}
+
+export interface ReportPhotoNote {
+  id: string;
+  reportId: string;
+  type: "photo";
+  caption: string | null;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+  contentType: "image/jpeg";
+  byteSize: number;
+  sha256: string;
+  width: number;
+  height: number;
+}
+
+export interface ReportAudioNote {
+  id: string;
+  reportId: string;
+  type: "audio";
+  caption: string | null;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  author: { id: string; displayName: string };
+  serverReceivedAt: string;
+  updatedAt: string;
+  persistenceState: ReportNotePersistenceState;
+  contentType: "audio/mp4";
+  byteSize: number;
+  sha256: string;
+  durationMilliseconds: number;
+}
+
+export interface CreateReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  content: string;
+}
+
+export interface UpdateReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  content: string;
+}
+
+export interface ReportTextNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportTextNote;
+}
+
+export interface DeleteReportTextNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+}
+
+export interface DeleteReportTextNoteResponse {
+  reportId: string;
+  noteId: string;
+  revision: number;
+  deleted: true;
+}
+
+export interface CreateReportPhotoNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  caption?: string | null;
+  contentType: "image/jpeg";
+  canonicalBase64: string;
+  sha256: string;
+  width: number;
+  height: number;
+  /** Agency policy observed when the capture was staged. */
+  settingsRevision: number;
+  effectiveAllowanceBytes: number;
+  effectiveImageLimitBytes: number;
+}
+
+export interface UpdateReportPhotoCaptionCommand {
+  commandId: string;
+  expectedRevision: number;
+  caption?: string | null;
+}
+
+export interface ReportPhotoNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportPhotoNote;
+}
+
+export type DeleteReportPhotoNoteResponse = DeleteReportTextNoteResponse;
+
+export type ReportAudioSourceContentType = "audio/webm" | "audio/ogg" | "audio/mp4";
+
+export interface CreateReportAudioNoteCommand {
+  commandId: string;
+  expectedRevision: number;
+  noteId: string;
+  capturedAt: string;
+  capturedUtcOffsetMinutes: number;
+  caption?: string | null;
+  sourceContentType: ReportAudioSourceContentType;
+  sourceBase64: string;
+  /** Agency policy observed when the recording was staged. */
+  settingsRevision: number;
+  effectiveAllowanceBytes: number;
+}
+
+export interface UpdateReportAudioCaptionCommand {
+  commandId: string;
+  expectedRevision: number;
+  caption?: string | null;
+}
+
+export interface ReportAudioNoteMutationResponse {
+  reportId: string;
+  revision: number;
+  note: ReportAudioNote;
+}
+
+export type DeleteReportAudioNoteResponse = DeleteReportTextNoteResponse;
 
 /**
  * Portable encounter data, deliberately independent of form and UI state.

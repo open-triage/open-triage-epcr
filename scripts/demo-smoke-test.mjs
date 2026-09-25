@@ -58,8 +58,8 @@ function verifySecurityHeaders(response, label) {
     throw new Error(`${label} returned an invalid Referrer-Policy`);
   }
   const permissions = response.headers.get("permissions-policy")?.toLowerCase() ?? "";
-  for (const feature of ["camera", "microphone", "geolocation"]) {
-    if (!new RegExp(`(?:^|,)\\s*${feature}=\\(\\)(?:\\s*,|$)`).test(permissions)) {
+  for (const [feature, allowlist] of [["camera", "self"], ["microphone", "self"], ["geolocation", ""]]) {
+    if (!new RegExp(`(?:^|,)\\s*${feature}=\\(${allowlist}\\)(?:\\s*,|$)`).test(permissions)) {
       throw new Error(`${label} returned an invalid Permissions-Policy`);
     }
   }

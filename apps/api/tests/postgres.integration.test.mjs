@@ -1435,7 +1435,7 @@ integrationTest("the idempotent demo installation authenticates with its exact r
   assert.equal(demo.status, 201);
   assert.deepEqual(demoSession.capabilities, [
     "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-    "forms:read", "forms:write", "roles:read", "users:read", "validation:read", "validation:write",
+    "forms:read", "forms:write", "roles:read", "settings:read", "users:read", "validation:read", "validation:write",
   ]);
   assert.equal(demoSession.passwordChangeRequired, false);
   assert.equal(demoSession.capabilities.includes("catalog:publish"), false);

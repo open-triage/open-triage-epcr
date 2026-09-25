@@ -23,7 +23,7 @@ import {
   storePresentationMode,
   type PresentationMode
 } from "../app/presentation-mode";
-import { loadInstallationConfiguration } from "../app/installation-settings";
+import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
 import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
@@ -87,6 +87,10 @@ export function ClinicianSessionGate({ children }: {
   useEffect(() => {
     return installFeedbackRequestTracking(window);
   }, []);
+
+  useEffect(() => {
+    if (installation) applyAgencyAppearance(installation.appearance, document);
+  }, [installation]);
 
   useEffect(() => {
     if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -268,6 +272,11 @@ export function ClinicianSessionGate({ children }: {
       <main className="login-shell">
         <form className="login-card login-sign-in" onSubmit={signIn}>
           <header className="login-intro">
+            {installation.appearance.logoPngDataUrl && <>
+              {/* A bounded agency data URL cannot use Next's static image optimizer. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="agency-logo" src={installation.appearance.logoPngDataUrl} alt="" />
+            </>}
             <p className="eyebrow">{installation.settings.signIn.brandText}</p>
             <h1>Sign in</h1>
             <p>{emphasizedText(installation.settings.signIn.helperText)}</p>

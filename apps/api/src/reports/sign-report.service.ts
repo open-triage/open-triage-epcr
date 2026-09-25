@@ -16,6 +16,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
 import { commandSha256 } from "./draft-report.validation.js";
+import { lockAndValidateReportNotes, type SignedNoteManifestEntry } from "./sign-report-notes.js";
 import type {
   SignedReportResult,
   SigningFinding,
@@ -45,6 +46,8 @@ type ReportRow = {
   validation_compiled_sha256: string | null;
   documenting_user_id: string;
   reporting_date: string | null;
+  report_media_allowance_bytes: string | number;
+  image_media_limit_bytes: string | number;
 };
 
 type FieldRow = {
@@ -202,6 +205,8 @@ export class SignReportService {
           where report_id = $1 and disposition is null order by created_at, id
         `, [report.id]);
         findings.push(...unresolvedDispatchConflictFindings(unresolvedDispatch));
+        const noteIntegrity = await lockAndValidateReportNotes(manager, report);
+        findings.push(...noteIntegrity.findings);
         await manager.query("delete from clinical.validation_finding where report_id = $1", [report.id]);
         if (findings.length) {
           await manager.query(`insert into clinical.validation_finding
@@ -240,7 +245,7 @@ export class SignReportService {
         const blockingFindings = blockingSigningFindings(findings, command.warningAcknowledgements);
         if (blockingFindings.length) return { findings: blockingFindings };
 
-        const payload = await this.canonicalPayload(manager, report, revision);
+        const payload = await this.canonicalPayload(manager, report, revision, noteIntegrity.notes);
         const quality = await this.evaluateQuality(manager, report.id);
         const canonicalSha256 = commandSha256(payload);
         const snapshotId = randomUUID();
@@ -254,14 +259,14 @@ export class SignReportService {
         await manager.query(`insert into clinical.signed_snapshot
           (id, report_id, signed_revision, form_version_id, catalog_release_id, validation_version_id, signer_id,
            signed_at, canonical_sha256, attestation, warning_acknowledgements,
-           quality_rule_version, normalization_rule_version, quality_findings, derived_values)
+           quality_rule_version, normalization_rule_version, quality_findings, derived_values, integrity_manifest)
           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
-                  $12, $13, $14::jsonb, $15::jsonb)`,
+                  $12, $13, $14::jsonb, $15::jsonb, $16::jsonb)`,
         [snapshotId, report.id, revision, report.form_version_id, report.catalog_release_id,
           report.validation_version_id, command.signerId, signedAt, canonicalSha256, JSON.stringify(command.attestation),
           JSON.stringify(command.warningAcknowledgements ?? {}), QUALITY_RULE_VERSION,
           NORMALIZATION_RULE_VERSION, JSON.stringify(quality.qualityFindings),
-          JSON.stringify(quality.derivedValues)]);
+          JSON.stringify(quality.derivedValues), JSON.stringify(payload)]);
 
         await this.appendAudit(manager, report, command, snapshotId, canonicalSha256, signedAt);
         const result: SignedReportResult = {
@@ -578,7 +583,8 @@ export class SignReportService {
     }
   }
 
-  private async canonicalPayload(manager: EntityManager, report: ReportRow, revision: number): Promise<unknown> {
+  private async canonicalPayload(manager: EntityManager, report: ReportRow, revision: number,
+    notes: ReadonlyArray<SignedNoteManifestEntry> = []): Promise<unknown> {
     const content = await manager.query<Array<{ groups: unknown; occurrences: unknown }>>(`select
       coalesce((select jsonb_agg(to_jsonb(g) order by g.group_id, g.ordinal, g.id) from (
         select id, parent_group_instance_id, group_id, source_kind, custom_group_definition_id,
@@ -609,7 +615,8 @@ export class SignReportService {
         revision
       },
       groups: content[0]!.groups,
-      occurrences: content[0]!.occurrences
+      occurrences: content[0]!.occurrences,
+      notes,
     };
   }
 

@@ -11,9 +11,8 @@ test("validates and serves the bundled versioned encounter definition", () => {
   assert.equal(definition.version, 1);
   assert.deepEqual(definition.composition.quickActionOrder, ["vitals", "medication", "procedure", "note"]);
   assert.equal(definition.events.note.quickAction.visible, true);
-  assert.equal(definition.events.note.quickAction.label, "Add clinical note");
-  assert.equal(definition.events.note.required.summary, true);
-  assert.equal(definition.events.note.references.summary, "eNarrative.01");
+  assert.equal(definition.events.note.quickAction.label, "Text note");
+  assert.equal(definition.events.note.references.summary, "app:report-note");
   assert.deepEqual(definition.events.procedure.fieldOrder, ["procedure", "time", "attempts", "success", "outcome", "complications"]);
   assert.equal(definition.events.procedure.terminology.catalog, "eProcedures.03");
   assert.equal(definition.events.procedure.references.procedure, "eProcedures.03");
@@ -66,15 +65,14 @@ test("rejects invalid vital configuration with actionable diagnostics", () => {
 
 test("rejects an incomplete note event definition with actionable diagnostics", () => {
   const invalid = structuredClone(standardEncounterDefinition) as unknown as Record<string, unknown>;
-  invalid.events = { note: { quickAction: { visible: "yes" }, required: { time: true } } };
+  invalid.events = { note: { quickAction: { visible: "yes" }, references: { summary: "eNarrative.01" } } };
 
   assert.throws(
     () => validateEncounterDefinition(invalid),
     (error: unknown) => error instanceof EncounterDefinitionError
       && error.message.includes("events.note.quickAction.visible must be a boolean")
       && error.message.includes("events.note.labels must be an object")
-      && error.message.includes("events.note.required.summary must be a boolean")
-      && error.message.includes("events.note.references must be an object"),
+      && error.message.includes("events.note.references.summary must reference app:report-note"),
   );
 });
 

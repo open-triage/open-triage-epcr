@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -73,6 +73,47 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   ]) {
     await grantRoleForTesting(client, role);
   }
+
+  await t.test("Agency Settings default, concurrency guard, and bounded audit hold in PostgreSQL", async () => {
+    const organizationId = randomUUID();
+    const actorId = randomUUID();
+    await client.query(`insert into app_identity.organization (id, name, deployment_timezone)
+      values ($1, 'Agency Settings integration', 'UTC')`, [organizationId]);
+    await client.query(`insert into app_identity.app_user (id, organization_id, display_name)
+      values ($1, $2, 'Settings administrator')`, [actorId, organizationId]);
+    const initial = (await client.query(`select report_media_allowance_bytes, image_media_limit_bytes, revision
+      from app_identity.agency_settings where organization_id = $1`, [organizationId])).rows[0];
+    assert.deepEqual(initial, { report_media_allowance_bytes: "52428800", image_media_limit_bytes: "10485760", revision: "1" });
+
+    const changed = await client.query(`update app_identity.agency_settings
+      set report_media_allowance_bytes = $3, revision = revision + 1, updated_by = $4
+      where organization_id = $1 and revision = $2 returning revision`,
+    [organizationId, 1, 80 * 1024 * 1024, actorId]);
+    assert.equal(changed.rows[0].revision, "2");
+    await client.query(`insert into app_identity.agency_settings_change_event
+      (organization_id, actor_id, prior_revision, revision,
+       old_report_media_allowance_bytes, new_report_media_allowance_bytes,
+       old_image_media_limit_bytes, new_image_media_limit_bytes)
+      values ($1, $2, 1, 2, $3, $4, $5, $5)`,
+    [organizationId, actorId, 50 * 1024 * 1024, 80 * 1024 * 1024, 10 * 1024 * 1024]);
+
+    const stale = await client.query(`update app_identity.agency_settings
+      set report_media_allowance_bytes = $3, revision = revision + 1
+      where organization_id = $1 and revision = $2`,
+    [organizationId, 1, 60 * 1024 * 1024]);
+    assert.equal(stale.rowCount, 0);
+    const events = await client.query(`select actor_id, prior_revision, revision,
+      old_report_media_allowance_bytes, new_report_media_allowance_bytes,
+      old_image_media_limit_bytes, new_image_media_limit_bytes
+      from app_identity.agency_settings_change_event where organization_id = $1`, [organizationId]);
+    assert.deepEqual(events.rows, [{ actor_id: actorId, prior_revision: "1", revision: "2",
+      old_report_media_allowance_bytes: "52428800", new_report_media_allowance_bytes: "83886080",
+      old_image_media_limit_bytes: "10485760", new_image_media_limit_bytes: "10485760" }]);
+    await assert.rejects(client.query(
+      "update app_identity.agency_settings_change_event set revision = 3 where organization_id = $1",
+      [organizationId]
+    ), /append-only/);
+  });
 
   await t.test("keeps workload database roles inside their approved privilege contracts", async () => {
     await client.query("begin");
@@ -148,7 +189,8 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       "admin-dashboard:read", "catalog:publish", "catalog:read", "catalog:write",
       "clinical:demo", "clinical:document", "credentials:reset", "forms:publish",
       "forms:read", "forms:write", "roles:assign", "roles:read", "roles:write",
-      "sessions:read", "sessions:revoke", "users:read", "users:write",
+      "sessions:read", "sessions:revoke", "settings:read", "settings:write",
+      "users:read", "users:write",
       "validation:publish", "validation:read", "validation:write"
     ]);
     assert.equal(capabilityKeys.includes("installation:administer"), false);
@@ -179,12 +221,14 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       assert.equal(protectedRoles.rows.length, 3);
       const administrator = protectedRoles.rows.find(({ system_key }) => system_key === "administrator");
       assert.equal(administrator.capabilities.includes("clinical:document"), true);
-      assert.equal(administrator.capabilities.length, 19);
+      assert.equal(administrator.capabilities.length, 21);
+      assert.equal(administrator.capabilities.includes("settings:read"), true);
+      assert.equal(administrator.capabilities.includes("settings:write"), true);
       assert.equal(administrator.capabilities.includes("validation:publish"), true);
       const demo = protectedRoles.rows.find(({ system_key }) => system_key === "demo");
       assert.deepEqual(demo, { system_key: "demo", hidden: false, assignable: true, capabilities: [
         "admin-dashboard:read", "catalog:read", "catalog:write", "clinical:demo", "clinical:document",
-        "forms:read", "forms:write", "roles:read", "users:read", "validation:read", "validation:write"
+        "forms:read", "forms:write", "roles:read", "settings:read", "users:read", "validation:read", "validation:write"
       ] });
       await client.query(`insert into app_identity.user_role_assignment
         (organization_id, user_id, role_id, assigned_by, note)
@@ -892,6 +936,170 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     }
   });
 
+  await t.test("purges every synthetic note artifact at 24 hours and rejects delayed resurrection", async () => {
+    await client.query("begin");
+    try {
+      const organizationId = SYNTHETIC_DEMO_FIXTURE.organizationId;
+      const userId = SYNTHETIC_DEMO_FIXTURE.userId;
+      const unitId = randomUUID();
+      const incidentId = randomUUID();
+      const assignmentId = randomUUID();
+      const patientId = randomUUID();
+      const reportId = randomUUID();
+      const textNoteId = randomUUID();
+      const photoNoteId = randomUUID();
+      const audioNoteId = randomUUID();
+      const commandId = randomUUID();
+      const recoveryHandle = randomUUID();
+      const localRecordId = randomUUID();
+      const releaseId = (await client.query(
+        "select id from catalog.release where standard = 'NEMSIS' and version = '3.5.1'"
+      )).rows[0].id;
+      const photoBytes = Buffer.from("synthetic-photo-bytes");
+      const audioBytes = Buffer.from("synthetic-audio-bytes");
+      const photoSha256 = createHash("sha256").update(photoBytes).digest("hex");
+      const audioSha256 = createHash("sha256").update(audioBytes).digest("hex");
+
+      await client.query(`insert into app_identity.operational_unit
+        (id, organization_id, call_sign, name, default_form_id, synthetic)
+        values ($1, $2, $3, 'Expiry test unit',
+          '32000000-0000-4000-8000-000000000012', true)`,
+      [unitId, organizationId, `EXP-${unitId.slice(0, 8)}`]);
+      await client.query(`insert into clinical.incident
+        (id, organization_id, operational_state, synthetic)
+        values ($1, $2, 'assigned', true)`, [incidentId, organizationId]);
+      await client.query(`insert into clinical.call_assignment
+        (id, organization_id, unit_id, incident_id, call_number, dispatched_at,
+         status, synthetic, synthetic_generated_by)
+        values ($1, $2, $3, $4, 'EXPIRY-TEST', clock_timestamp(),
+          'assigned', true, $5)`,
+      [assignmentId, organizationId, unitId, incidentId, userId]);
+      await client.query(`insert into clinical.patient
+        (id, organization_id, identity_state, pseudonymous_key)
+        values ($1, $2, 'unknown', $3)`,
+      [patientId, organizationId,
+        createHash("sha256").update(patientId).digest("hex")]);
+      await client.query(`insert into clinical.report
+        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+         form_version_id, catalog_release_id, documenting_user_id, synthetic,
+         synthetic_generated_by, synthetic_source_assignment_id)
+        values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
+          '32000000-0000-4000-8000-000000000011', $5, $6, true, $6, $7)`,
+      [reportId, organizationId, incidentId, patientId, releaseId, userId, assignmentId]);
+      await client.query(`update clinical.call_assignment
+        set status = 'opened', report_id = $2 where id = $1`, [assignmentId, reportId]);
+      await client.query(`insert into clinical.report_change
+        (report_id, revision, idempotency_key, author_id, changes)
+        values ($1, 1, $2, $3, '[]')`, [reportId, commandId, userId]);
+      await client.query(`insert into clinical.report_note
+        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+         content, created_by, updated_by)
+        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic text note', $4, $4)`,
+      [textNoteId, organizationId, reportId, userId]);
+      await client.query(`insert into clinical.report_photo_note
+        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+         caption, content_type, byte_size, sha256, width, height, created_by, updated_by)
+        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic photo', 'image/jpeg',
+          $4, $5, 32, 32, $6, $6)`,
+      [photoNoteId, organizationId, reportId, photoBytes.byteLength, photoSha256, userId]);
+      await client.query(`insert into clinical.report_photo_blob
+        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+      [organizationId, reportId, photoNoteId, photoBytes]);
+      await client.query(`insert into clinical.report_audio_note
+        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+         caption, content_type, byte_size, sha256, duration_milliseconds,
+         processing_state, created_by, updated_by)
+        values ($1, $2, $3, clock_timestamp(), 0, 'Synthetic audio', 'audio/mp4',
+          $4, $5, 1000, 'processing', $6, $6)`,
+      [audioNoteId, organizationId, reportId, audioBytes.byteLength, audioSha256, userId]);
+      await client.query(`insert into clinical.report_audio_blob
+        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+      [organizationId, reportId, audioNoteId, audioBytes]);
+      await client.query(`insert into clinical.report_note_target_state
+        (report_id, note_type, note_id, revision, command_id, actor_id, action)
+        values ($1, 'audio', $2, 1, $3, $4, 'create')`,
+      [reportId, audioNoteId, commandId, userId]);
+      await client.query(`insert into clinical_audit.report_note_mutation_event
+        (organization_id, report_id, note_id, note_type, command_id, actor_id,
+         action, result, report_revision)
+        values ($1, $2, $3, 'audio', $4, $5, 'create', 'applied', 1)`,
+      [organizationId, reportId, audioNoteId, commandId, userId]);
+      await client.query(`insert into clinical_audit.report_media_access_event
+        (organization_id, report_id, note_id, media_type, actor_id, action, result)
+        values ($1, $2, $3, 'photo', $4, 'open', 'allowed')`,
+      [organizationId, reportId, photoNoteId, userId]);
+
+      const wrappingVersion = (await client.query(`select version
+        from offline_recovery.wrapping_key_version where state = 'active'
+        order by version desc limit 1`)).rows[0].version;
+      assert.ok((await client.query(`select * from offline_recovery.register_report_key(
+        $1, $2, $3, $4, $5, $6, $7)`,
+      [reportId, organizationId, userId, recoveryHandle, wrappingVersion,
+        Buffer.alloc(12, 1), Buffer.alloc(48, 2)])).rowCount >= 1);
+      assert.equal((await client.query(`select * from offline_recovery.record_browser_ciphertext_write(
+        $1, $2, $3, $4, $5, 1, $6)`,
+      [reportId, organizationId, userId, recoveryHandle, localRecordId, "a".repeat(64)])).rowCount, 1);
+
+      const expiry = (await client.query(
+        "select expires_at + interval '1 second' as purge_at from clinical.report where id = $1",
+        [reportId]
+      )).rows[0].purge_at;
+      const purged = (await client.query(
+        "select retention.purge_expired_synthetic_records($1) as result", [expiry]
+      )).rows[0].result;
+      assert.deepEqual(purged, { assignments: 1, reports: 1 });
+
+      const remaining = (await client.query(`select
+        (select count(*)::integer from clinical.report where id = $1) as reports,
+        (select count(*)::integer from clinical.report_note where report_id = $1) as text_notes,
+        (select count(*)::integer from clinical.report_photo_note where report_id = $1) as photos,
+        (select count(*)::integer from clinical.report_photo_blob where report_id = $1) as photo_bytes,
+        (select count(*)::integer from clinical.report_audio_note where report_id = $1) as audio,
+        (select count(*)::integer from clinical.report_audio_blob where report_id = $1) as audio_bytes,
+        (select count(*)::integer from clinical.report_note_target_state where report_id = $1) as processing_state,
+        (select count(*)::integer from clinical_audit.report_note_mutation_event where report_id = $1) as mutation_events,
+        (select count(*)::integer from clinical_audit.report_media_access_event where report_id = $1) as access_events,
+        (select count(*)::integer from offline_recovery.report_key_envelope where report_id = $1) as recovery_keys,
+        (select count(*)::integer from offline_recovery.report_browser_ciphertext where report_id = $1) as browser_cache,
+        (select count(*)::integer from offline_recovery.report_recovery_grant where report_id = $1) as recovery_grants`,
+      [reportId])).rows[0];
+      assert.deepEqual(remaining, {
+        reports: 0, text_notes: 0, photos: 0, photo_bytes: 0, audio: 0,
+        audio_bytes: 0, processing_state: 0, mutation_events: 0, access_events: 0,
+        recovery_keys: 0, browser_cache: 0, recovery_grants: 0
+      });
+      assert.equal((await client.query(`select count(*)::integer as count
+        from clinical_audit.synthetic_purge_tombstone
+        where (record_type = 'report' and record_id = $1)
+           or (record_type = 'assignment' and record_id = $2)`,
+      [reportId, assignmentId])).rows[0].count, 2);
+      assert.equal((await client.query(`select count(*)::integer as count
+        from offline_recovery.report_purge_tombstone where report_id = $1`,
+      [reportId])).rows[0].count, 1);
+
+      await rejectsSql(client, `insert into clinical.report
+        (id, organization_id, incident_id, patient_id, agency_demographic_version_id,
+         form_version_id, catalog_release_id, documenting_user_id)
+        values ($1, $2, $3, $4, '32000000-0000-4000-8000-000000000006',
+          '32000000-0000-4000-8000-000000000011', $5, $6)`,
+      [reportId, organizationId, incidentId, patientId, releaseId, userId], "23505");
+      await rejectsSql(client, `insert into clinical.report_note
+        (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+         content, created_by, updated_by)
+        values ($1, $2, $3, clock_timestamp(), 0, 'Delayed note', $4, $4)`,
+      [randomUUID(), organizationId, reportId, userId], "23503");
+      await rejectsSql(client, `insert into clinical.report_photo_blob
+        (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+      [organizationId, reportId, photoNoteId, photoBytes], "23503");
+      assert.equal((await client.query(`select * from offline_recovery.register_report_key(
+        $1, $2, $3, $4, $5, $6, $7)`,
+      [reportId, organizationId, userId, randomUUID(), wrappingVersion,
+        Buffer.alloc(12, 3), Buffer.alloc(48, 4)])).rowCount, 0);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+
   await t.test("activation cannot rewrite an older report's configuration pins", async () => {
     const reportId = "32000000-0000-4000-8000-00000000000e";
     const original = (await client.query(`select organization_id, incident_id, patient_id,
@@ -1031,7 +1239,10 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       historyGroup: "36000000-0000-4000-8000-000000000007",
       insuranceGroup: "36000000-0000-4000-8000-000000000008",
       deviceGroup: "36000000-0000-4000-8000-000000000009",
-      waveformGroup: "36000000-0000-4000-8000-00000000000a"
+      waveformGroup: "36000000-0000-4000-8000-00000000000a",
+      textNote: "36000000-0000-4000-8000-0000000000a1",
+      photoNote: "36000000-0000-4000-8000-0000000000a2",
+      audioNote: "36000000-0000-4000-8000-0000000000a3"
     };
     const organizationId = "32000000-0000-4000-8000-000000000001";
     const administratorId = "32000000-0000-4000-8000-000000000099";
@@ -1164,6 +1375,47 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
     });
     await addOccurrence("eDevice.05", ids.waveformGroup, 0,
       { value_kind: "binary", value_binary: Buffer.from([0, 1, 2, 255]) });
+
+    const archivedPhoto = Buffer.from("canonical-photo-archive-fixture");
+    const archivedAudio = Buffer.from("canonical-audio-archive-fixture");
+    const archivedPhotoSha256 = createHash("sha256").update(archivedPhoto).digest("hex");
+    const archivedAudioSha256 = createHash("sha256").update(archivedAudio).digest("hex");
+    await client.query(`insert into clinical.report_note
+      (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+       content, created_by, updated_by)
+      values ($1, $2, $3, '2042-02-03T14:20:00-05:00', -300,
+        'Archive this app-native observation', $4, $4)`,
+    [ids.textNote, organizationId, ids.report, clinicianId]);
+    await client.query(`insert into clinical.report_photo_note
+      (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+       caption, content_type, byte_size, sha256, width, height, created_by, updated_by)
+      values ($1, $2, $3, '2042-02-03T14:21:00-05:00', -300,
+        'Archive photo', 'image/jpeg', $4, $5, 64, 48, $6, $6)`,
+    [ids.photoNote, organizationId, ids.report, archivedPhoto.byteLength,
+      archivedPhotoSha256, clinicianId]);
+    await client.query(`insert into clinical.report_photo_blob
+      (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+    [organizationId, ids.report, ids.photoNote, archivedPhoto]);
+    await client.query(`insert into clinical.report_audio_note
+      (id, organization_id, report_id, captured_at, captured_utc_offset_minutes,
+       caption, content_type, byte_size, sha256, duration_milliseconds,
+       processing_state, created_by, updated_by)
+      values ($1, $2, $3, '2042-02-03T14:22:00-05:00', -300,
+        'Archive audio', 'audio/mp4', $4, $5, 1200, 'ready', $6, $6)`,
+    [ids.audioNote, organizationId, ids.report, archivedAudio.byteLength,
+      archivedAudioSha256, clinicianId]);
+    await client.query(`insert into clinical.report_audio_blob
+      (organization_id, report_id, note_id, canonical_bytes) values ($1, $2, $3, $4)`,
+    [organizationId, ids.report, ids.audioNote, archivedAudio]);
+    await client.query(`insert into clinical_audit.report_note_mutation_event
+      (organization_id, report_id, note_id, note_type, command_id, actor_id,
+       action, result, report_revision)
+      values ($1, $2, $3, 'text', $4, $5, 'create', 'applied', 19)`,
+    [organizationId, ids.report, ids.textNote, randomUUID(), clinicianId]);
+    await client.query(`insert into clinical_audit.report_media_access_event
+      (organization_id, report_id, note_id, media_type, actor_id, action, result)
+      values ($1, $2, $3, 'photo', $4, 'open', 'allowed')`,
+    [organizationId, ids.report, ids.photoNote, clinicianId]);
 
     const draftProjection = await client.query(`select
       (select count(*)::integer from analytics_private.epcr where report_id = $1) as wide,
@@ -1765,6 +2017,25 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
         approved_by = 'integration-owner', approved_at = now(), approval_note = 'integration only'
         where organization_id = $1`, [organizationId]);
 
+      const reportArchive = (await client.query(
+        "select retention.report_archive_payload($1) as payload", [ids.report]
+      )).rows[0].payload;
+      assert.equal(reportArchive.archiveFormat, "open-triage-report-archive-1.1.0");
+      assert.equal(reportArchive.appNativeNotes.text[0].content,
+        "Archive this app-native observation");
+      assert.equal(reportArchive.appNativeNotes.photos[0].sha256, archivedPhotoSha256);
+      assert.equal(reportArchive.appNativeNotes.photos[0].canonicalMedia.sha256,
+        archivedPhotoSha256);
+      assert.equal(reportArchive.appNativeNotes.photos[0].canonicalMedia.bytes,
+        archivedPhoto.toString("base64"));
+      assert.equal(reportArchive.appNativeNotes.audio[0].sha256, archivedAudioSha256);
+      assert.equal(reportArchive.appNativeNotes.audio[0].canonicalMedia.sha256,
+        archivedAudioSha256);
+      assert.equal(reportArchive.appNativeNotes.audio[0].canonicalMedia.bytes,
+        archivedAudio.toString("base64"));
+      assert.equal("appNativeNotes" in reportArchive.report, false,
+        "app-native notes stay outside the standards-based report document");
+
       const hold = await client.query(`insert into retention.legal_hold
         (organization_id, report_id, reason, authority_reference, placed_by)
         values ($1, $2, 'Preserve test record', 'CASE-042', 'legal-user') returning id`,
@@ -1814,6 +2085,19 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       )).rows[0].evidence;
       assert.equal(deletion.reports, 1);
       assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [ids.report])).rows[0].count, 0);
+      const removedNoteArtifacts = (await client.query(`select
+        (select count(*)::integer from clinical.report_note where report_id = $1) as text_notes,
+        (select count(*)::integer from clinical.report_photo_note where report_id = $1) as photos,
+        (select count(*)::integer from clinical.report_photo_blob where report_id = $1) as photo_bytes,
+        (select count(*)::integer from clinical.report_audio_note where report_id = $1) as audio,
+        (select count(*)::integer from clinical.report_audio_blob where report_id = $1) as audio_bytes,
+        (select count(*)::integer from clinical_audit.report_note_mutation_event where report_id = $1) as mutation_events,
+        (select count(*)::integer from clinical_audit.report_media_access_event where report_id = $1) as access_events`,
+      [ids.report])).rows[0];
+      assert.deepEqual(removedNoteArtifacts, {
+        text_notes: 0, photos: 0, photo_bytes: 0, audio: 0, audio_bytes: 0,
+        mutation_events: 0, access_events: 0
+      });
       assert.equal((await client.query("select count(*)::integer as count from clinical.report where id = $1", [heldReportId])).rows[0].count, 1);
       assert.equal((await client.query("select count(*)::integer as count from analytics_private.epcr where report_id = $1", [heldReportId])).rows[0].count, 1);
       await client.query("select retention.maintain_partitions($1, 'maintenance-operator')", [batch]);

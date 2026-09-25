@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
-import { parseInstallationSettings, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
+import { DEFAULT_AGENCY_APPEARANCE, parseInstallationSettings, SYNTHETIC_DEMO_FIXTURE } from "@open-triage/contracts";
 import schema from "@open-triage/contracts/installation-settings.schema-1.0.0.json";
 import production from "@open-triage/contracts/config/installation.production.json";
-import { loadInstallationConfiguration, selectedInstallationSettings } from "../app/installation-settings";
+import {
+  applyAgencyAppearance,
+  loadInstallationConfiguration,
+  selectedInstallationSettings,
+} from "../app/installation-settings";
 import { createClinicianSession } from "../app/clinician-session";
 
 test("the sole installation policy is the production security and retention baseline", () => {
@@ -40,7 +44,7 @@ test("settings reject retired demo-profile behavior", () => {
   }
 });
 
-test("server-backed clients receive configurable public sign-in copy without fixture metadata", async () => {
+test("server-backed clients receive configurable public demo sign-in copy", async () => {
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
   try {
@@ -48,9 +52,9 @@ test("server-backed clients receive configurable public sign-in copy without fix
     process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
     const loaded = await loadInstallationConfiguration(async (input) => {
       assert.equal(String(input), "https://api.example.test/api/installation");
-      return new Response(JSON.stringify({ settings: production }), { status: 200 });
+      return new Response(JSON.stringify({ settings: production, appearance: DEFAULT_AGENCY_APPEARANCE }), { status: 200 });
     });
-    assert.deepEqual(loaded, { settings: production });
+    assert.deepEqual(loaded, { settings: production, appearance: DEFAULT_AGENCY_APPEARANCE });
     assert.equal(loaded.settings.signIn.helperText.includes(SYNTHETIC_DEMO_FIXTURE.password), true);
   } finally {
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
@@ -60,11 +64,46 @@ test("server-backed clients receive configurable public sign-in copy without fix
   }
 });
 
+test("agency appearance activates accessible colors, browser chrome, and PWA naming", () => {
+  const declarations = new Map<string, string>();
+  const rootRule = { cssText: ":root { font-family: Inter, system-ui, sans-serif; --agency-pwa-background: #dfe5df; }" };
+  const rules = [rootRule];
+  const theme = { name: "", content: "" };
+  const manifest = { href: "" };
+  const documentStub = {
+    title: "",
+    styleSheets: [{ cssRules: rules }],
+    documentElement: { style: { setProperty(name: string, value: string) { declarations.set(name, value); } } },
+    head: { append() {} },
+    createElement: () => theme,
+    querySelector: (selector: string) => selector.includes("theme-color") ? theme : manifest,
+  } as unknown as Document;
+  const configured = { ...DEFAULT_AGENCY_APPEARANCE, brandText: "County EMS",
+    helperText: "Use agency-issued credentials.", accentColor: "#005ea8", accentDarkColor: "#004578",
+    browserThemeColor: "#005ea8", pwaBackgroundColor: "#eef5fb",
+    pwaName: "County EMS ePCR", pwaShortName: "County EMS" };
+
+  applyAgencyAppearance(configured, documentStub);
+
+  assert.equal(documentStub.title, "County EMS ePCR");
+  assert.equal(theme.content, "#005ea8");
+  assert.equal(declarations.get("--green"), "#005ea8");
+  assert.equal(declarations.get("--green-dark"), "#004578");
+  assert.equal(declarations.get("--agency-pwa-background"), "#eef5fb");
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0], rootRule, "appearance activation must not delete the global typography rule");
+  const manifestJson = JSON.parse(decodeURIComponent(manifest.href.split(",", 2)[1]!));
+  assert.equal(manifestJson.name, "County EMS ePCR");
+  assert.equal(manifestJson.short_name, "County EMS");
+  assert.equal(manifestJson.background_color, "#eef5fb");
+});
+
 test("the static prototype accepts manually supplied local credentials as a clinician only", async () => {
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = "true";
-    assert.deepEqual(await loadInstallationConfiguration(), { settings: production });
+    assert.deepEqual(await loadInstallationConfiguration(), { settings: production,
+      appearance: DEFAULT_AGENCY_APPEARANCE });
     const session = await createClinicianSession({
       username: SYNTHETIC_DEMO_FIXTURE.username,
       password: SYNTHETIC_DEMO_FIXTURE.password,

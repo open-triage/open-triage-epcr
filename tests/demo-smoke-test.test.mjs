@@ -10,7 +10,7 @@ const securityHeaders = {
   "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
-  "permissions-policy": "camera=(), microphone=(), geolocation=()",
+  "permissions-policy": "camera=(self), microphone=(self), geolocation=()",
   "x-frame-options": "DENY",
   "strict-transport-security": "max-age=31536000; includeSubDomains",
 };
@@ -122,6 +122,30 @@ test("rejects a permissive CSP even when it prevents framing", async () => {
     /invalid Content-Security-Policy/,
   );
   assert.equal(calls, 1);
+});
+
+test("rejects permissions that block media capture or expose capabilities to other origins", async () => {
+  for (const policy of [
+    "camera=(), microphone=(), geolocation=()",
+    "camera=*, microphone=(self), geolocation=()",
+    "camera=(self), microphone=*, geolocation=()",
+    "camera=(self), microphone=(self), geolocation=(self)",
+    'camera=(self "https://example.com"), microphone=(self), geolocation=()',
+  ]) {
+    await assert.rejects(
+      verifyPublicDemo({
+        frontendUrl: "https://demo.opentriage.org",
+        apiUrl: "https://api.demo.opentriage.org",
+        readinessAttempts: 1,
+      }, {
+        fetchImpl: async () => htmlResponse("<title>OpenTriage synthetic encounter</title>", 200, {
+          "permissions-policy": policy,
+        }),
+        log() {},
+      }),
+      /invalid Permissions-Policy/,
+    );
+  }
 });
 
 test("supports an upgraded demo whose administered legacy fixture identity is preserved", async () => {

@@ -24,15 +24,13 @@ export const standardEncounterDefinition = {
   },
   events: {
     note: {
-      quickAction: { visible: true, label: "Add clinical note" },
+      quickAction: { visible: true, label: "Text note" },
       labels: {
-        category: "Note", timelineTitle: "Clinical note", newEyebrow: "New timeline event", editEyebrow: "Revise timeline event",
-        editorTitle: "Clinical note", remove: "Remove", summary: "Note summary",
-        summaryPlaceholder: "Document the clinical observation or decision…", cancel: "Cancel", add: "Add to timeline", save: "Save changes",
+        category: "Note", timelineTitle: "Text note", newEyebrow: "New report note", editEyebrow: "Edit report note",
+        editorTitle: "Text note", remove: "Delete text note", summary: "Note text",
+        summaryPlaceholder: "Document the clinical observation or decision…", cancel: "Cancel", add: "Save text note", save: "Save changes",
       },
-      required: { summary: true },
-      references: { summary: "eNarrative.01" },
-      validationMessages: { summaryRequired: "Add a clinical note before signing." },
+      references: { summary: "app:report-note" },
     },
     procedure: {
       quickAction: { visible: true, label: "Add procedure" },

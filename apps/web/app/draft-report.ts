@@ -1,4 +1,4 @@
-import type { ActiveReportResource, ClinicalFormConfiguration, DeleteDraftReportResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue } from "@open-triage/contracts";
+import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
@@ -52,6 +52,8 @@ export interface ActiveDraftReport {
   readonly demoMutable?: boolean;
   readonly expiresAt?: string;
   readonly document?: EncounterDocument;
+  readonly notes?: ReadonlyArray<ReportNote>;
+  readonly mediaPolicy?: ReportMediaPolicy;
   readonly dispatchConflicts?: ReadonlyArray<DispatchConflict>;
   readonly dispatchCancellation?: DispatchCancellation | null;
 }
@@ -323,6 +325,39 @@ export async function deleteDraftReport(csrfToken: string, reportId: string): Pr
     throw new Error("The record could not be deleted.");
   }
   return response.json() as Promise<DeleteDraftReportResponse>;
+}
+
+async function mutateReportTextNote<T>(csrfToken: string, path: string, method: "POST" | "DELETE", body: unknown): Promise<T> {
+  const configuration = browserRequestConfiguration();
+  if (configuration.mode === "static" && !configuration.routeStaticMutationsToApi) {
+    throw new Error("Text notes require the database-backed application.");
+  }
+  let response: Response;
+  try {
+    response = await fetch(browserRouteUrl(path, configuration), browserRequestInit({
+      method,
+      headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+  } catch {
+    throw new Error("The text note could not be saved. Check your connection and try again.");
+  }
+  if (response.status === 409) throw new DraftSaveRejectedError("server-conflict");
+  if (response.status === 422) throw new DraftSaveRejectedError("validation-rejected");
+  if (!response.ok) throw new Error(response.status === 401 ? "session" : "The text note could not be saved.");
+  return response.json() as Promise<T>;
+}
+
+export function createReportTextNote(csrfToken: string, reportId: string, command: CreateReportTextNoteCommand): Promise<ReportTextNoteMutationResponse> {
+  return mutateReportTextNote(csrfToken, `/api/reports/${reportId}/notes`, "POST", command);
+}
+
+export function updateReportTextNote(csrfToken: string, reportId: string, noteId: string, command: UpdateReportTextNoteCommand): Promise<ReportTextNoteMutationResponse> {
+  return mutateReportTextNote(csrfToken, `/api/reports/${reportId}/notes/${noteId}`, "POST", command);
+}
+
+export function deleteReportTextNote(csrfToken: string, reportId: string, noteId: string, command: DeleteReportTextNoteCommand): Promise<DeleteReportTextNoteResponse> {
+  return mutateReportTextNote(csrfToken, `/api/reports/${reportId}/notes/${noteId}`, "DELETE", command);
 }
 
 export async function fetchActiveReport(

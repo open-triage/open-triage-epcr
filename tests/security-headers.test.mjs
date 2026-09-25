@@ -23,6 +23,7 @@ test("web CSP authorizes exported inline scripts by hash without unsafe directiv
   assert.match(policy, /script-src 'self' 'sha256-/);
   assert.match(policy, /connect-src 'self' https:\/\/api\.example\.test/);
   assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /manifest-src 'self' data:/);
   assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
 });
 
@@ -47,7 +48,7 @@ test("generated nginx config contains the restrictive CSP and browser hardening 
   assert.match(output, /frame-ancestors 'none'/);
   assert.match(output, /add_header X-Content-Type-Options "nosniff" always/);
   assert.match(output, /add_header Referrer-Policy "strict-origin-when-cross-origin" always/);
-  assert.match(output, /add_header Permissions-Policy "camera=\(\), microphone=\(\), geolocation=\(\)" always/);
+  assert.match(output, /add_header Permissions-Policy "camera=\(self\), microphone=\(self\), geolocation=\(\)" always/);
   assert.match(output, /add_header X-Frame-Options "DENY" always/);
 });
 

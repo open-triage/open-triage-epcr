@@ -1,4 +1,5 @@
 export type NemsisReference = `e${string}`;
+export type AppNativeReference = `app:${string}`;
 export type ConfiguredEventType = "vitals" | "medication" | "procedure" | "note";
 export type QuickActionId = ConfiguredEventType;
 export type ReviewSeverity = "error" | "warning";
@@ -44,9 +45,7 @@ export type NoteEventDefinition = {
     readonly add: string;
     readonly save: string;
   };
-  readonly required: { readonly summary: boolean };
-  readonly references: { readonly summary: NemsisReference };
-  readonly validationMessages: { readonly summaryRequired: string };
+  readonly references: { readonly summary: AppNativeReference };
 };
 
 export type ProcedureEventDefinition = {
@@ -146,9 +145,12 @@ export function configuredQuickActions(definition: EncounterDefinition): Readonl
     vitals: { ...definition.events.vitals.quickAction, title: definition.events.vitals.labels.timelineTitle },
     medication: { ...definition.events.medication.quickAction, title: definition.events.medication.labels.editorTitle },
     procedure: { ...definition.events.procedure.quickAction, title: definition.events.procedure.labels.editorTitle },
-    note: { ...definition.events.note.quickAction, title: definition.events.note.labels.timelineTitle },
+    note: { visible: true, label: "Text note", title: "Text note" },
   };
-  return definition.composition.quickActionOrder.flatMap((id) => actions[id].visible ? [{ id, label: actions[id].label, title: actions[id].title }] : []);
+  const structured = definition.composition.quickActionOrder
+    .filter((id) => id !== "note")
+    .flatMap((id) => actions[id].visible ? [{ id, label: actions[id].label, title: actions[id].title }] : []);
+  return [...structured, { id: "note", label: "Text note", title: "Text note" }];
 }
 
 export class EncounterDefinitionError extends Error {
@@ -214,15 +216,13 @@ export function validateEncounterDefinition(value: unknown): EncounterDefinition
   const events = isRecord(root.events) ? root.events : {};
   rejectUnsupportedKeys(events, "events", ["note", "procedure", "medication", "vitals"]);
   const note = isRecord(events.note) ? events.note : {};
-  rejectUnsupportedKeys(note, "events.note", ["quickAction", "labels", "required", "references", "validationMessages"]);
+  rejectUnsupportedKeys(note, "events.note", ["quickAction", "labels", "references"]);
   const quickAction = isRecord(note.quickAction) ? note.quickAction : {};
   if (typeof quickAction.visible !== "boolean") diagnostics.push("events.note.quickAction.visible must be a boolean");
   requiredStrings(quickAction, "events.note.quickAction", ["label"]);
   requiredStrings(note.labels, "events.note.labels", ["category", "timelineTitle", "newEyebrow", "editEyebrow", "editorTitle", "remove", "summary", "summaryPlaceholder", "cancel", "add", "save"]);
-  const required = isRecord(note.required) ? note.required : {};
-  if (typeof required.summary !== "boolean") diagnostics.push("events.note.required.summary must be a boolean");
   requiredStrings(note.references, "events.note.references", ["summary"]);
-  requiredStrings(note.validationMessages, "events.note.validationMessages", ["summaryRequired"]);
+  if (isRecord(note.references) && note.references.summary !== "app:report-note") diagnostics.push("events.note.references.summary must reference app:report-note");
   const procedure = isRecord(events.procedure) ? events.procedure : {};
   rejectUnsupportedKeys(procedure, "events.procedure", ["quickAction", "fieldOrder", "labels", "terminology", "required", "references", "attempts", "successOptions", "outcomeOptions", "complicationOptions", "validationMessages", "warningBehavior", "timeline"]);
   const procedureQuickAction = isRecord(procedure.quickAction) ? procedure.quickAction : {};

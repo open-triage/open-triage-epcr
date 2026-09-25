@@ -381,3 +381,10 @@ export function expectedRevisionForNextChange(storage: StoragePort, reportId: st
   if (last && !last.attempted) return last.command.expectedRevision;
   return (cached?.report.revision ?? fallbackRevision) + (cached?.queuedChanges.length ?? 0);
 }
+
+/** Keeps independently synchronized note revisions aligned with later form commands. */
+export function advanceCachedReportRevision(storage: StoragePort, reportId: string, revision: number): void {
+  const cached = read(storage).find((candidate) => candidate.report.id === reportId);
+  if (!cached || revision <= cached.report.revision) return;
+  replace(storage, { ...cached, report: { ...cached.report, revision } });
+}

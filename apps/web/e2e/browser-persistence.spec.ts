@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { createHash } from "node:crypto";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
@@ -177,6 +178,35 @@ async function encryptedRecords(page: Page): Promise<Array<Record<string, unknow
   }, { databaseName: "open-triage-protected-clinical-v1", storeName: "encrypted-reports" });
 }
 
+async function installAudioRecorder(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    class TestMediaRecorder extends EventTarget {
+      static isTypeSupported(type: string) { return type.startsWith("audio/webm"); }
+      state: RecordingState = "inactive";
+      mimeType = "audio/webm;codecs=opus";
+      constructor(_stream: MediaStream, _options?: MediaRecorderOptions) { super(); }
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.dispatchEvent(new BlobEvent("dataavailable", { data: new Blob(["private-offline-voice"], { type: this.mimeType }) }));
+        this.dispatchEvent(new Event("stop"));
+      }
+      pause() {} resume() {} requestData() {}
+      ondataavailable = null; onerror = null; onpause = null; onresume = null; onstart = null; onstop = null;
+      audioBitsPerSecond = 64_000; videoBitsPerSecond = 0;
+      stream = {} as MediaStream; videoKeyFrameIntervalCount = undefined; videoKeyFrameIntervalDuration = undefined;
+    }
+    Object.defineProperty(window, "MediaRecorder", { configurable: true, value: TestMediaRecorder });
+    navigator.mediaDevices.getUserMedia = async () => {
+      const context = new AudioContext();
+      const oscillator = context.createOscillator();
+      const destination = context.createMediaStreamDestination();
+      oscillator.connect(destination); oscillator.start();
+      return destination.stream;
+    };
+  });
+}
+
 test("denied persistence falls back to encrypted best-effort IndexedDB", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page, false);
@@ -316,6 +346,54 @@ test("one online-opened report remains editable through connection loss using on
   await page.getByRole("button", { name: "Confirm and recover" }).click();
   await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+});
+
+test("an offline audio note survives close and resumes one verified upload after reconnect", async ({ page, context }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await installAudioRecorder(page);
+  const canonical = Buffer.from("verified-canonical-audio");
+  const sha256 = createHash("sha256").update(canonical).digest("hex");
+  let uploads = 0;
+  await page.route(`**/api/reports/${reportId}/audio`, async (route) => {
+    uploads += 1;
+    const command = route.request().postDataJSON() as { noteId: string; expectedRevision: number; capturedAt: string;
+      capturedUtcOffsetMinutes: number; caption: string | null };
+    await route.fulfill({ json: { reportId, revision: command.expectedRevision + 1, note: {
+      id: command.noteId, reportId, type: "audio", caption: command.caption, capturedAt: command.capturedAt,
+      capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes, author: session.user,
+      serverReceivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), persistenceState: "ready",
+      contentType: "audio/mp4", byteSize: canonical.length, sha256, durationMilliseconds: 300,
+    } } });
+  });
+  await page.route(`**/api/reports/${reportId}/audio/*/content`, (route) => route.fulfill({
+    contentType: "audio/mp4", body: canonical,
+  }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  await context.setOffline(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await page.getByRole("button", { name: "Add audio note" }).click();
+  const dialog = page.getByRole("dialog", { name: "Audio note" });
+  const holdButton = dialog.getByRole("button", { name: "Hold to record" });
+  await holdButton.dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
+  await page.waitForTimeout(300);
+  await dialog.getByRole("button", { name: "Recording — release to stop" }).dispatchEvent("pointerup", { button: 0, pointerId: 1 });
+  await dialog.getByRole("button", { name: "Use recording" }).click();
+  await expect(page.getByRole("img", { name: "Audio note Saved on this device" })).toBeVisible();
+  const ciphertext = JSON.stringify((await encryptedRecords(page))[0]);
+  expect(ciphertext).not.toContain("private-offline-voice");
+
+  page.once("dialog", (confirmation) => void confirmation.accept());
+  await page.getByRole("button", { name: "Save & close" }).click();
+  await page.getByRole("button", { name: "Reopen report" }).click();
+  await expect(page.getByRole("img", { name: "Audio note Saved on this device" })).toBeVisible();
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByRole("img", { name: "Audio note Ready" })).toBeVisible({ timeout: 10_000 });
+  expect(uploads).toBe(1);
 });
 
 test("logout locks pending ciphertext, reveals nothing to another user, and lets only the original user recover it", async ({ page, context }) => {

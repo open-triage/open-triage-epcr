@@ -1,4 +1,4 @@
-import type { ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope } from "@open-triage/contracts";
+import type { CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export const PROTECTED_CLINICAL_DATABASE = "open-triage-protected-clinical-v1";
@@ -19,7 +19,53 @@ export interface ProtectedClinicalRecord {
   readonly ciphertext: ArrayBuffer;
 }
 
-type ProtectedClinicalPayload = { readonly schemaVersion: 1; readonly report?: unknown; readonly shellState?: unknown };
+export interface ProtectedPhotoQueueEntry {
+  readonly note: ReportPhotoNote;
+  readonly command: CreateReportPhotoNoteCommand;
+  readonly attempted?: boolean;
+  readonly serverRevision?: number;
+  readonly failure?: string;
+}
+export interface ProtectedPhotoPreview {
+  readonly sourceBase64: string;
+  readonly contentType: "image/png";
+  readonly capturedAt: string;
+  readonly capturedUtcOffsetMinutes: number;
+  readonly quarterTurns: number;
+  readonly caption: string;
+}
+export interface ProtectedAudioQueueEntry {
+  readonly note: ReportAudioNote;
+  readonly command: CreateReportAudioNoteCommand;
+  readonly attempted?: boolean;
+  readonly serverRevision?: number;
+  readonly failure?: string;
+}
+export interface ProtectedAudioChunk {
+  readonly sequence: number;
+  readonly sourceBase64: string;
+}
+export interface ProtectedAudioPreview {
+  readonly chunks: ReadonlyArray<ProtectedAudioChunk>;
+  readonly recorderContentType: string;
+  readonly sourceContentType: ReportAudioSourceContentType;
+  readonly capturedAt: string;
+  readonly capturedUtcOffsetMinutes: number;
+  readonly durationMilliseconds: number;
+  readonly caption: string;
+  readonly interrupted: boolean;
+  readonly complete: boolean;
+}
+
+type ProtectedClinicalPayload = {
+  readonly schemaVersion: 1;
+  readonly report?: unknown;
+  readonly shellState?: unknown;
+  readonly photoQueue?: ReadonlyArray<ProtectedPhotoQueueEntry>;
+  readonly photoPreview?: ProtectedPhotoPreview;
+  readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
+  readonly audioPreview?: ProtectedAudioPreview;
+};
 export type ProtectedStorageMode = "active" | "best-effort" | "online-only" | "read-only" | "locked";
 export interface ProtectedStorageStatus { readonly mode: ProtectedStorageMode; readonly explanation: string | null }
 export interface ProtectedLogoutSummary {
@@ -140,6 +186,10 @@ export type RecoveredProtectedPayload = {
   readonly schemaVersion: 1;
   readonly report?: unknown;
   readonly shellState?: unknown;
+  readonly photoQueue?: ReadonlyArray<ProtectedPhotoQueueEntry>;
+  readonly photoPreview?: ProtectedPhotoPreview;
+  readonly audioQueue?: ReadonlyArray<ProtectedAudioQueueEntry>;
+  readonly audioPreview?: ProtectedAudioPreview;
 };
 
 export class RecoveryReauthenticationRequiredError extends Error {
@@ -152,6 +202,8 @@ export class RecoveryReauthenticationRequiredError extends Error {
 const contexts = new Map<string, RuntimeContext>();
 const statuses = new Map<string, ProtectedStorageStatus>();
 const statusListeners = new Set<(reportId: string, status: ProtectedStorageStatus) => void>();
+const photoListeners = new Set<(reportId: string) => void>();
+const audioListeners = new Set<(reportId: string) => void>();
 const DEFAULT_STORAGE_STATUS: ProtectedStorageStatus = {
   mode: "online-only",
   explanation: "Offline editing is unavailable until protected persistent storage is prepared.",
@@ -172,7 +224,222 @@ export function offlineEditingAvailable(mode: ProtectedStorageMode): boolean {
 
 function payloadHasPendingWork(payload: ProtectedClinicalPayload): boolean {
   const report = payload.report as { queuedChanges?: unknown } | undefined;
-  return Array.isArray(report?.queuedChanges) && report.queuedChanges.length > 0;
+  return (Array.isArray(report?.queuedChanges) && report.queuedChanges.length > 0) ||
+    (payload.photoQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false) || Boolean(payload.photoPreview) ||
+    (payload.audioQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false) || Boolean(payload.audioPreview);
+}
+
+function publishPhotos(reportId: string): void {
+  photoListeners.forEach((listener) => listener(reportId));
+}
+
+function publishAudio(reportId: string): void {
+  audioListeners.forEach((listener) => listener(reportId));
+}
+
+export function subscribeProtectedAudio(listener: (reportId: string) => void): () => void {
+  audioListeners.add(listener);
+  return () => audioListeners.delete(listener);
+}
+
+export function subscribeProtectedPhotos(listener: (reportId: string) => void): () => void {
+  photoListeners.add(listener);
+  return () => photoListeners.delete(listener);
+}
+
+export function protectedPhotoEntries(reportId: string): ReadonlyArray<ProtectedPhotoQueueEntry> {
+  return contexts.get(reportId)?.payload.photoQueue ?? [];
+}
+
+export function hasPendingProtectedMedia(reportId: string): boolean {
+  const payload = contexts.get(reportId)?.payload;
+  return Boolean(payload?.photoPreview) || Boolean(payload?.audioPreview) ||
+    (payload?.photoQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false) ||
+    (payload?.audioQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false);
+}
+
+export function protectedPhotoBlob(reportId: string, noteId: string): Blob | null {
+  const entry = protectedPhotoEntries(reportId).find(({ note }) => note.id === noteId);
+  if (!entry) return null;
+  const binary = atob(entry.command.canonicalBase64);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: "image/jpeg" });
+}
+
+export function protectedPhotoPreview(reportId: string): ProtectedPhotoPreview | null {
+  return contexts.get(reportId)?.payload.photoPreview ?? null;
+}
+
+export async function stageProtectedPhotoPreview(reportId: string, preview: ProtectedPhotoPreview): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context || !offlineEditingAvailable(protectedStorageStatus(reportId).mode)) return;
+  context.payload = { ...context.payload, photoPreview: preview };
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+export function updateProtectedPhotoPreview(reportId: string, changes: Partial<Pick<ProtectedPhotoPreview, "quarterTurns" | "caption">>): void {
+  const context = contexts.get(reportId);
+  if (!context?.payload.photoPreview) return;
+  context.payload = { ...context.payload, photoPreview: { ...context.payload.photoPreview, ...changes } };
+  queuePersist(reportId);
+}
+
+export async function removeProtectedPhotoPreview(reportId: string): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context?.payload.photoPreview) return;
+  const { photoPreview: _preview, ...payload } = context.payload;
+  context.payload = payload;
+  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+function photoQueueSettled(payload: ProtectedClinicalPayload): boolean {
+  return !(payload.photoQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false) && !payloadHasPendingWork(payload);
+}
+
+export async function stageProtectedPhoto(reportId: string, entry: ProtectedPhotoQueueEntry): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context || !offlineEditingAvailable(protectedStorageStatus(reportId).mode)) {
+    throw new Error("Protected storage is unavailable for this photo.");
+  }
+  context.payload = { ...context.payload, photoQueue: [
+    ...(context.payload.photoQueue ?? []).filter(({ note }) => note.id !== entry.note.id), entry,
+  ] };
+  queuePersist(reportId);
+  await context.writer.flush();
+  publishPhotos(reportId);
+}
+
+export async function updateProtectedPhoto(reportId: string, noteId: string,
+  update: (entry: ProtectedPhotoQueueEntry) => ProtectedPhotoQueueEntry): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context) return;
+  context.payload = { ...context.payload, photoQueue: (context.payload.photoQueue ?? [])
+    .map((entry) => entry.note.id === noteId ? update(entry) : entry) };
+  if (photoQueueSettled(context.payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  publishPhotos(reportId);
+  await context.writer.flush();
+}
+
+export async function removeProtectedPhoto(reportId: string, noteId: string): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context) return;
+  context.payload = { ...context.payload, photoQueue: (context.payload.photoQueue ?? [])
+    .filter(({ note }) => note.id !== noteId) };
+  if (photoQueueSettled(context.payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  publishPhotos(reportId);
+  await context.writer.flush();
+}
+
+function base64Blob(chunks: ReadonlyArray<ProtectedAudioChunk>, contentType: string): Blob {
+  return new Blob([...chunks].sort((left, right) => left.sequence - right.sequence).map(({ sourceBase64 }) =>
+    Uint8Array.from(atob(sourceBase64), (character) => character.charCodeAt(0))), { type: contentType });
+}
+
+export function protectedAudioEntries(reportId: string): ReadonlyArray<ProtectedAudioQueueEntry> {
+  return contexts.get(reportId)?.payload.audioQueue ?? [];
+}
+
+export function protectedAudioBlob(reportId: string, noteId: string): Blob | null {
+  const entry = protectedAudioEntries(reportId).find(({ note }) => note.id === noteId);
+  if (!entry) return null;
+  const bytes = Uint8Array.from(atob(entry.command.sourceBase64), (character) => character.charCodeAt(0));
+  return new Blob([bytes], { type: entry.command.sourceContentType });
+}
+
+export function protectedAudioPreview(reportId: string): ProtectedAudioPreview | null {
+  return contexts.get(reportId)?.payload.audioPreview ?? null;
+}
+
+export function protectedAudioPreviewBlob(reportId: string): Blob | null {
+  const preview = protectedAudioPreview(reportId);
+  return preview?.chunks.length ? base64Blob([...preview.chunks], preview.recorderContentType) : null;
+}
+
+export async function startProtectedAudioPreview(reportId: string,
+  preview: Omit<ProtectedAudioPreview, "chunks">): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context || !offlineEditingAvailable(protectedStorageStatus(reportId).mode)) return;
+  context.payload = { ...context.payload, audioPreview: { ...preview, chunks: [] } };
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+export async function stageProtectedAudioChunk(reportId: string, chunk: ProtectedAudioChunk,
+  durationMilliseconds: number): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context?.payload.audioPreview) return;
+  context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview,
+    durationMilliseconds, chunks: [...context.payload.audioPreview.chunks.filter(({ sequence }) => sequence !== chunk.sequence), chunk] } };
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+export async function finishProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview,
+  "durationMilliseconds" | "interrupted" | "complete">): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context?.payload.audioPreview) return;
+  context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+export function updateProtectedAudioPreview(reportId: string, changes: Pick<ProtectedAudioPreview, "caption">): void {
+  const context = contexts.get(reportId);
+  if (!context?.payload.audioPreview) return;
+  context.payload = { ...context.payload, audioPreview: { ...context.payload.audioPreview, ...changes } };
+  queuePersist(reportId);
+}
+
+export async function removeProtectedAudioPreview(reportId: string): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context?.payload.audioPreview) return;
+  const { audioPreview: _preview, ...payload } = context.payload;
+  context.payload = payload;
+  if (!payloadHasPendingWork(payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  await context.writer.flush();
+}
+
+export async function stageProtectedAudio(reportId: string, entry: ProtectedAudioQueueEntry): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context || !offlineEditingAvailable(protectedStorageStatus(reportId).mode)) {
+    throw new Error("Protected storage is unavailable for this recording.");
+  }
+  const { audioPreview: _preview, ...payload } = context.payload;
+  context.payload = { ...payload, audioQueue: [
+    ...(payload.audioQueue ?? []).filter(({ note }) => note.id !== entry.note.id), entry,
+  ] };
+  queuePersist(reportId);
+  await context.writer.flush();
+  publishAudio(reportId);
+}
+
+export async function updateProtectedAudio(reportId: string, noteId: string,
+  update: (entry: ProtectedAudioQueueEntry) => ProtectedAudioQueueEntry): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context) return;
+  context.payload = { ...context.payload, audioQueue: (context.payload.audioQueue ?? [])
+    .map((entry) => entry.note.id === noteId ? update(entry) : entry) };
+  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  publishAudio(reportId);
+  await context.writer.flush();
+}
+
+export async function removeProtectedAudio(reportId: string, noteId: string): Promise<void> {
+  const context = contexts.get(reportId);
+  if (!context) return;
+  context.payload = { ...context.payload, audioQueue: (context.payload.audioQueue ?? [])
+    .filter(({ note }) => note.id !== noteId) };
+  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
+  queuePersist(reportId);
+  publishAudio(reportId);
+  await context.writer.flush();
 }
 
 /** Only active-session state is inspected; locked records are deliberately undiscoverable. */
@@ -411,14 +678,31 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   const context = contexts.get(reportId);
   if (!context) return;
   const revision = context.revision + 1;
-  const encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, payload);
-  const record: ProtectedClinicalRecord = {
+  let persistedPayload = payload;
+  let encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, persistedPayload);
+  let record: ProtectedClinicalRecord = {
     localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     ...(context.checkpointScope === "browser" ? { checkpointScope: "browser" as const } : {}),
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
     ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
   };
-  await storeWithPressureRecovery(record);
+  try {
+    await storeWithPressureRecovery(record);
+  } catch (error) {
+    if (!quotaError(error) || (!persistedPayload.photoQueue?.some(({ note }) => note.persistenceState === "ready") &&
+        !persistedPayload.audioQueue?.some(({ note }) => note.persistenceState === "ready"))) throw error;
+    // Verified server copies are the only media that may be sacrificed under
+    // pressure. Pending commands and previews remain byte-for-byte intact.
+    persistedPayload = { ...persistedPayload,
+      photoQueue: persistedPayload.photoQueue?.filter(({ note }) => note.persistenceState !== "ready"),
+      audioQueue: persistedPayload.audioQueue?.filter(({ note }) => note.persistenceState !== "ready") };
+    encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, persistedPayload);
+    record = { ...record, ...encrypted };
+    await storeWithPressureRecovery(record);
+    context.payload = persistedPayload;
+    publishPhotos(reportId);
+    publishAudio(reportId);
+  }
 
   const url = apiRequestUrl(`/api/reports/${reportId}/protected-ciphertext-receipt`);
   if (url && navigator.onLine && !context.locking) {
@@ -687,6 +971,8 @@ export async function recoverProtectedReport(
     context.writer = createProtectedWriter(reportId, context);
     contexts.set(reportId, context);
     activated = true;
+    publishPhotos(reportId);
+    publishAudio(reportId);
     publishStatus(reportId, grant.reportStatus === "signed"
       ? { mode: "locked", explanation: "This report was completed elsewhere. Pending work will be submitted as a late-work audit note." }
       : writableStorageStatus({ persistentStorage }));
@@ -701,8 +987,7 @@ export function updateProtectedReport(reportId: string, report: unknown): void {
   const context = contexts.get(reportId);
   if (!context) return;
   context.payload = { ...context.payload, report };
-  const candidate = report as { queuedChanges?: ReadonlyArray<unknown> } | null;
-  if (candidate && Array.isArray(candidate.queuedChanges) && candidate.queuedChanges.length === 0) context.synchronizedRevision = context.revision + 1;
+  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
 }
 
@@ -737,6 +1022,7 @@ export function removeProtectedReport(reportId: string): void {
   if (!context) return;
   contexts.delete(reportId);
   statuses.delete(reportId);
+  publishPhotos(reportId);
   context.releaseLock();
   void context.writer.flush().catch(() => undefined).then(() => deleteRecords([context.localRecordId])).catch(() => undefined);
 }

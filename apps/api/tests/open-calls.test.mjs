@@ -160,6 +160,9 @@ test("raw draft loading assembles report metadata and content in one repeatable-
     }];
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-at-6" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-at-6" }];
+    if (normalized.includes("from clinical.report_note")) return [];
+    if (normalized.includes("from clinical.report_photo_note")) return [];
+    if (normalized.includes("from clinical.report_audio_note")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
 
@@ -208,6 +211,9 @@ test("reopening restores the creator's report with its pinned form and saved con
     if (normalized.includes("from clinical.group_instance")) return [{ id: "group-1" }];
     if (normalized.includes("from clinical.element_occurrence")) return [{ id: "occurrence-1" }];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.report_note")) return [];
+    if (normalized.includes("from clinical.report_photo_note")) return [];
+    if (normalized.includes("from clinical.report_audio_note")) return [];
     if (normalized.includes("from clinical.call_assignment ca")) return [{
       call_number: "CALL-NEW", dispatched_at: "2026-09-03T12:00:00.000Z",
       dispatch_reason: "Breathing problem", chief_complaint: "Shortness of breath",
@@ -251,12 +257,13 @@ test("active report polling returns separate revisions and omits the document fo
       assert.match(sql, /ca\.dispatch_revision/);
       assert.deepEqual(parameters, [reportId, ownerSession.organization.id, ownerSession.user.id]);
       return [{ revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
-        dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }];
+        dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null,
+        media_settings_revision: "3", report_media_allowance_bytes: 50 * 1024 * 1024 }];
     },
   };
   const service = new DraftReportService(transactional(manager, isolations), sessions());
-  const result = await service.active(ownerSession.accessToken, reportId, '"report-9-dispatch-4"');
-  assert.deepEqual(result, { etag: '"report-9-dispatch-4"', resource: null });
+  const result = await service.active(ownerSession.accessToken, reportId, '"report-9-dispatch-4-settings-3"');
+  assert.deepEqual(result, { etag: '"report-9-dispatch-4-settings-3"', resource: null });
   assert.deepEqual(isolations, ["REPEATABLE READ"]);
 });
 
@@ -287,7 +294,8 @@ test("changed active report polling returns the provenance-merged canonical docu
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("select r.revision, ca.dispatch_revision")) return [{
       revision: "9", dispatch_revision: "4", dispatch_canceled_at: null,
-      dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null
+      dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null,
+      media_settings_revision: "3", report_media_allowance_bytes: 50 * 1024 * 1024
     }];
     if (normalized.includes("join forms.form_version")) return [{
       id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:09:00.000Z",
@@ -299,6 +307,9 @@ test("changed active report polling returns the provenance-merged canonical docu
       value_kind: "text", value_text: "CAD-UPDATED", provenance_kind: "dispatch", provenance_detail: { sourceValue: { kind: "scalar", occurrenceId: "source-cad", value: "CAD-UPDATED" } }, source_attributes: null
     }];
     if (normalized.includes("from clinical.dispatch_conflict")) return [];
+    if (normalized.includes("from clinical.report_note")) return [];
+    if (normalized.includes("from clinical.report_photo_note")) return [];
+    if (normalized.includes("from clinical.report_audio_note")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new DraftReportService(transactional(manager, isolations), sessions());
@@ -321,7 +332,8 @@ test("a concurrent save cannot pair revision R with document content from R+1", 
       if (normalized.includes("select r.revision, ca.dispatch_revision")) {
         committed = { revision: "10", value: "CAD-REVISION-10" };
         return [{ revision: snapshot.revision, dispatch_revision: "4", dispatch_canceled_at: null,
-          dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null }];
+          dispatch_cancellation_revision: null, dispatch_cancellation_receipt_id: null,
+          media_settings_revision: "3", report_media_allowance_bytes: 50 * 1024 * 1024 }];
       }
       if (normalized.includes("join forms.form_version")) return [{
         id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:09:00.000Z",
@@ -336,6 +348,9 @@ test("a concurrent save cannot pair revision R with document content from R+1", 
         provenance_detail: null, source_attributes: null
       }];
       if (normalized.includes("from clinical.dispatch_conflict")) return [];
+      if (normalized.includes("from clinical.report_note")) return [];
+      if (normalized.includes("from clinical.report_photo_note")) return [];
+      if (normalized.includes("from clinical.report_audio_note")) return [];
       throw new Error(`Unexpected SQL: ${normalized}`);
     } };
     return work(manager);

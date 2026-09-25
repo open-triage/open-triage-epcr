@@ -10,6 +10,21 @@ const dashboard = {
   reportsWithErrors: 1, activeUsers: 6, activeUnits: 2, databaseSizeBytes: 10_485_760,
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
+const agencySettings = {
+  organizationId: "organization-id", reportMediaAllowanceBytes: 50 * 1024 * 1024,
+  defaultReportMediaAllowanceBytes: 50 * 1024 * 1024, storageGrowthWarning: false, revision: 4,
+  updatedAt: "2026-09-24T10:00:00.000Z",
+  appearance: {
+    brandText: "Example EMS", helperText: "Use your agency-issued credentials.", logoPngDataUrl: null,
+    accentColor: "#00783a", accentDarkColor: "#006b34", browserThemeColor: "#00783a",
+    pwaBackgroundColor: "#dfe5df", pwaName: "Example EMS", pwaShortName: "EMS",
+  },
+  demographics: {
+    agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36", stateDisplay: "New York",
+    stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null, versionId: "version-id", version: 2,
+    catalogReleaseId: "catalog-id", effectiveFrom: "2026-09-24T10:00:00.000Z",
+  },
+};
 function assignedCalls(route: Route) {
   return route.fulfill({
     contentType: "application/json",
@@ -46,6 +61,27 @@ const catalogDraft = {
       supportsPertinentNegatives: false }
   }], codeLists: [] }
 };
+
+test("Demo can inspect Agency Settings without write controls", async ({ page }) => {
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/context", (route) => route.fulfill({ json: {
+    organization: { id: "organization-id", name: "Example EMS" }, panels: ["settings"],
+    capabilities: ["clinical:demo", "clinical:document", "settings:read"],
+    activeConfiguration: null, dashboard: null,
+  } }));
+  await page.route("**/api/admin/agency-settings", (route) => route.fulfill({ json: agencySettings }));
+
+  await signInAsCombinedOwner(page, ["clinical:demo", "clinical:document", "settings:read"]);
+  await page.getByRole("button", { name: "Admin" }).click();
+  await expect(page.getByRole("button", { name: "Agency Settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Agency Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Agency Settings" })).toBeVisible();
+  await expect(page.locator(".agency-settings fieldset")).toHaveCount(3);
+  for (const fieldset of await page.locator(".agency-settings fieldset").all()) await expect(fieldset).toHaveAttribute("disabled", "");
+  await expect(page.getByText(/changing them requires settings:write authority/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+});
 
 test("Catalog reader, writer, and publisher controls follow their independent authority", async ({ page }) => {
   await page.route("**/api/installation", (route) => route.fulfill({ contentType: "application/json",

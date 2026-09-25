@@ -6,11 +6,15 @@ import { AmendReportService } from "./amend-report.service.js";
 import { SessionsModule } from "../sessions/sessions.module.js";
 import { ProtectedReportKeyService } from "./protected-report-key.service.js";
 import { ReviewValidationService } from "./review-validation.service.js";
+import { ReportNoteService } from "./report-note.service.js";
+import { ReportPhotoService } from "./report-photo.service.js";
+import { ReportAudioService } from "./report-audio.service.js";
+import { ReportAudioNormalizer } from "./report-audio-normalizer.service.js";
 
 @Module({
   imports: [SessionsModule],
   controllers: [DraftReportController],
   providers: [DraftReportService, SignReportService, AmendReportService, ProtectedReportKeyService,
-    ReviewValidationService]
+    ReviewValidationService, ReportNoteService, ReportPhotoService, ReportAudioService, ReportAudioNormalizer]
 })
 export class ReportsModule {}

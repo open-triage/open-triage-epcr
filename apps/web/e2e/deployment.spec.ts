@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { DEFAULT_AGENCY_APPEARANCE } from "@open-triage/contracts";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -10,6 +11,8 @@ const installationUrl = `${apiBaseUrl.replace(/\/$/, "")}/api/installation`;
 test("the built static export starts and is served from the domain root", async ({ page, request }) => {
   const response = await request.get("/");
   expect(response.status()).toBe(200);
+  expect(response.headers()["permissions-policy"]).toBe("camera=(self), microphone=(self), geolocation=()");
+
   const serviceWorker = await request.get("/sw.js");
   expect(serviceWorker.status()).toBe(200);
   expect(await serviceWorker.text()).not.toContain("demo-assigned-calls.json");
@@ -19,12 +22,13 @@ test("the built static export starts and is served from the domain root", async 
     route.fulfill({
       json: {
         settings: productionSettings,
+        appearance: DEFAULT_AGENCY_APPEARANCE,
       },
     }),
   );
   await page.goto("/");
   await installationRequest;
-  await expect(page).toHaveTitle("OpenTriage synthetic encounter");
+  await expect(page).toHaveTitle(DEFAULT_AGENCY_APPEARANCE.pwaName);
   await expect(page.getByText(productionSettings.signIn.brandText, { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();

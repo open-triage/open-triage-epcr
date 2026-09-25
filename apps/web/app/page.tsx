@@ -7,15 +7,13 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
-import { validateProcedure } from "./procedure";
-import { configuredQuickActions, type QuickActionId } from "./encounter-definition";
+import type { QuickActionId } from "./encounter-definition";
 import {
   INITIAL_SHELL_STATE,
   MISSING_VITALS_FINDING_ID,
-  encounterEventDetail,
-  encounterEventPresentation,
   reviewEncounter,
   standardEncounterReducer,
+  type EncounterEvent,
   type ReviewFinding,
   type ShellView,
   type VitalField,
@@ -27,37 +25,66 @@ import { documentTimeline, incidentSummary } from "./incident-document";
 import { encounterEvents } from "./canonical-events";
 import { ClinicianSessionGate } from "../components/clinician-session-gate";
 import {
+  createReportTextNote,
+  deleteReportTextNote,
+  DraftSaveRejectedError,
   signDraftReport,
   type ActiveDraftReport,
   dispatchCancellationNotice,
+  updateReportTextNote,
 } from "./draft-report";
-import type { ClinicianSession, DispatchConflict, DispatchConflictDisposition, EncounterValue } from "@open-triage/contracts";
+import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, type ClinicianSession, type DispatchConflict, type DispatchConflictDisposition, type EncounterValue, type ReportAudioNote, type ReportNote, type ReportPhotoNote, type ReportTextNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
-import { nextDraftChange } from "./offline-reports";
+import { advanceCachedReportRevision, nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
-import { DEMO_CLEAR_EVENT, DEMO_FALLBACK_DATE, DEMO_POPULATE_EVENT } from "./demo-provenance";
+import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
 import { canUseClinicalDemoDraftActions } from "./clinical-demo";
 import { browserRequestConfiguration } from "./browser-api";
-import { holdProtectedReportForCompletion } from "./protected-clinical-storage";
+import { hasPendingProtectedMedia, holdProtectedReportForCompletion, protectedAudioEntries, protectedPhotoEntries,
+  subscribeProtectedAudio, subscribeProtectedPhotos, updateProtectedAudio, updateProtectedPhoto } from "./protected-clinical-storage";
+import { completeReportTimeline, noteReadinessBlockers, REPORT_TEXT_NOTE_MAX_CHARACTERS, validateReportTextNote,
+  type NoteReadinessBlocker } from "./report-text-notes";
+import { EncounterTimeline } from "../components/encounter-timeline";
+import { loadStationaryTimelineOpen, storeStationaryTimelineOpen } from "./stationary-timeline-preference";
+import { PhotoNoteDialog } from "../components/photo-note";
+import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
+import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
+import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
+type TextNoteDraft = {
+  readonly id: string;
+  readonly capturedAt: string;
+  readonly capturedUtcOffsetMinutes: number;
+  readonly content: string;
+  readonly author?: ReportTextNote["author"];
+  readonly persistenceState?: ReportTextNote["persistenceState"];
+  readonly isNew: boolean;
+};
 
 const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
   { id: "timeline", label: "Timeline" },
   { id: "checklist", label: "Checklist" },
 ];
 
-const quickActionText: Record<QuickActionId, string> = {
+const quickActionText = {
   vitals: "Vitals",
   medication: "Medications",
   procedure: "Procedures",
-  note: "Notes",
-};
+} as const;
+const structuredQuickActions = ["vitals", "medication", "procedure"] as const;
+
+function mergeProtectedMedia(notes: ReadonlyArray<ReportNote>, reportId: string): ReadonlyArray<ReportNote> {
+  const local = [...protectedPhotoEntries(reportId), ...protectedAudioEntries(reportId)].map(({ note }) => note);
+  const localIds = new Set(local.map(({ id }) => id));
+  return [...local, ...notes.filter(({ id }) => !localIds.has(id))]
+    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt) || right.id.localeCompare(left.id));
+}
 
 function localClinicalTime(): string {
   const now = new Date();
@@ -87,9 +114,24 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const [signError, setSignError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [navigationMessage, setNavigationMessage] = useState<string | null>(null);
+  const [reportNotes, setReportNotes] = useState<ReadonlyArray<ReportNote>>(report?.notes ?? []);
+  const [textNoteDraft, setTextNoteDraft] = useState<TextNoteDraft | null>(null);
+  const [photoDialog, setPhotoDialog] = useState<ReportPhotoNote | "new" | null>(null);
+  const [photoExpectedRevision, setPhotoExpectedRevision] = useState(0);
+  const [audioDialog, setAudioDialog] = useState<ReportAudioNote | "new" | null>(null);
+  const [audioExpectedRevision, setAudioExpectedRevision] = useState(0);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState<string | null>(null);
+  const [confirmingNoteDelete, setConfirmingNoteDelete] = useState(false);
+  const [noteStatusMessage, setNoteStatusMessage] = useState<string | null>(null);
+  const [stationaryTimelineOpen, setStationaryTimelineOpen] = useState(false);
   const noteSummary = useRef<HTMLTextAreaElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
+  const timelineToggle = useRef<HTMLButtonElement>(null);
+  const mediaUploadActive = useRef(false);
+  const [photoQueueVersion, setPhotoQueueVersion] = useState(0);
+  const [audioQueueVersion, setAudioQueueVersion] = useState(0);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
@@ -97,9 +139,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     [encounter.document, report?.agencyTimeZone],
   );
   const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
-  const timelineEvents = useMemo(() => [...incidentEvents, ...clinicalEvents].sort((a, b) =>
-    `${b.date}T${b.time}`.localeCompare(`${a.date}T${a.time}`),
-  ), [incidentEvents, clinicalEvents]);
+  const timelineEvents = useMemo(() => completeReportTimeline(
+    [...incidentEvents, ...clinicalEvents], reportNotes,
+  ), [incidentEvents, clinicalEvents, reportNotes]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const procedureDefinition = bundledEncounterDefinition.events.procedure;
   const medicationDefinition = bundledEncounterDefinition.events.medication;
@@ -122,14 +164,136 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
   const {
-    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision, dispatchConflicts, dispatchCancellation,
-    conflictError, editingBlocked, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
+    restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision: revisionRef, dispatchConflicts, dispatchCancellation,
+    conflictError, editingBlocked, mediaPolicy, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
     validationErrorCount: reviewErrors.length, online,
     onSessionEnded,
     onReportCompleted,
+    onNotesChange: (notes) => setReportNotes(report ? mergeProtectedMedia(notes, report.id) : notes),
   });
+  useEffect(() => subscribeProtectedPhotos((reportId) => {
+    if (reportId !== report?.id) return;
+    setPhotoQueueVersion((version) => version + 1);
+    setReportNotes((notes) => mergeProtectedMedia(notes, reportId));
+  }), [report]);
+  useEffect(() => subscribeProtectedAudio((reportId) => {
+    if (reportId !== report?.id) return;
+    setAudioQueueVersion((version) => version + 1);
+    setReportNotes((notes) => mergeProtectedMedia(notes, reportId));
+  }), [report]);
+  useEffect(() => {
+    queueMicrotask(() => {
+      setPhotoDialog(null);
+      setAudioDialog(null);
+      stopActiveAudio();
+      setReportNotes(report ? mergeProtectedMedia(report.notes ?? [], report.id) : []);
+      setTextNoteDraft(null);
+    });
+  }, [report]);
+
+  useEffect(() => {
+    if (!report || !restored || !online || mediaUploadActive.current) return;
+    const pending = protectedPhotoEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+    if (!pending) return;
+    let active = true;
+    mediaUploadActive.current = true;
+    void (async () => {
+      try {
+        await flushSave();
+        while (active && navigator.onLine) {
+          const entry = protectedPhotoEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+          if (!entry) break;
+          const attemptCommand = entry.attempted ? entry.command : {
+            ...entry.command, expectedRevision: revisionRef.current,
+          };
+          await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
+            command: attemptCommand, attempted: true,
+            note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
+          try {
+            const response = await createReportPhotoNote(sessionRequestToken(session), report.id, attemptCommand);
+            revisionRef.current = response.revision;
+            advanceCachedReportRevision(window.localStorage, report.id, response.revision);
+            await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
+              serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
+            const verified = await fetchReportPhoto(report.id, entry.note.id);
+            const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await verified.arrayBuffer()))]
+              .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+            if (verified.type !== "image/jpeg" || verified.size !== response.note.byteSize || digest !== response.note.sha256) {
+              throw new Error("The server copy could not be verified.");
+            }
+            await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
+              note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
+            setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "The photo upload failed.";
+            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current, failure: message,
+              note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
+            if (message === "session") onSessionEnded();
+            break;
+          }
+        }
+      } finally {
+        mediaUploadActive.current = false;
+        setPhotoQueueVersion((version) => version + 1);
+        setAudioQueueVersion((version) => version + 1);
+      }
+    })();
+    return () => { active = false; };
+  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  useEffect(() => {
+    if (!report || !restored || !online || mediaUploadActive.current) return;
+    const pending = protectedAudioEntries(report.id).some(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+    if (!pending) return;
+    let active = true;
+    mediaUploadActive.current = true;
+    void (async () => {
+      try {
+        await flushSave();
+        while (active && navigator.onLine) {
+          const entry = protectedAudioEntries(report.id).find(({ note }) => note.persistenceState !== "ready" && note.persistenceState !== "failed");
+          if (!entry) break;
+          const attemptCommand = entry.attempted ? entry.command : { ...entry.command, expectedRevision: revisionRef.current };
+          await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+            command: attemptCommand, attempted: true,
+            note: { ...current.note, persistenceState: "uploading" }, failure: undefined }));
+          try {
+            const response = await createReportAudioNote(sessionRequestToken(session), report.id, attemptCommand);
+            revisionRef.current = response.revision;
+            advanceCachedReportRevision(window.localStorage, report.id, response.revision);
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+              serverRevision: response.revision, note: { ...response.note, persistenceState: "processing" } }));
+            const verified = await fetchReportAudio(report.id, entry.note.id);
+            const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await verified.arrayBuffer()))]
+              .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+            if (verified.type !== "audio/mp4" || verified.size !== response.note.byteSize || digest !== response.note.sha256) {
+              throw new Error("The server audio copy could not be verified.");
+            }
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current,
+              note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
+            setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "The audio upload failed.";
+            const resumable = message === "session" || !navigator.onLine || message.includes("connection") || message.includes("could not be opened");
+            await updateProtectedAudio(report.id, entry.note.id, (current) => ({ ...current, failure: message,
+              note: { ...current.note, persistenceState: resumable ? "saved-on-device" : "failed" } }));
+            if (message === "session") onSessionEnded();
+            break;
+          }
+        }
+      } finally {
+        mediaUploadActive.current = false;
+        setPhotoQueueVersion((version) => version + 1);
+        setAudioQueueVersion((version) => version + 1);
+      }
+    })();
+    return () => { active = false; };
+  }, [audioQueueVersion, flushSave, onSessionEnded, online, photoQueueVersion, report, restored, revisionRef, session]);
+  useEffect(() => {
+    queueMicrotask(() => setStationaryTimelineOpen(loadStationaryTimelineOpen(window.localStorage, session.user.id)));
+  }, [session.user.id]);
   useEffect(() => {
     onErrorStateChange(reviewErrors.length > 0 || Boolean((recoveryNotice && !bestEffortNoticeInDemoBanner) || signError || conflictError));
   }, [bestEffortNoticeInDemoBanner, conflictError, onErrorStateChange, recoveryNotice, reviewErrors.length, signError]);
@@ -142,17 +306,18 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     return statuses;
   }, [reviewFindings]);
   const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
+  const noteBlockers = useMemo(() => noteReadinessBlockers(reportNotes), [reportNotes]);
   const signingBlockers = stationarySigningBlockers({
     presentationMode, restored, online, syncStatus, errorCount: reviewErrors.length,
     warnings: reviewWarnings, unresolvedDispatchConflictCount: unresolvedDispatchConflicts.length,
+    pendingMedia: noteBlockers.length > 0 || (report ? hasPendingProtectedMedia(report.id) : false),
   });
   const canFinish = signingBlockers.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
-  const noteFindingActive = !!(editingFinding?.category === noteDefinition.labels.category && shell.noteDraft);
-  const noteSummaryFindingActive = noteFindingActive && editingFinding?.message === noteDefinition.validationMessages.summaryRequired;
-  const activeDialog = shell.noteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const activeDialog = audioDialog ? "audio" : photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
+  const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
     ? { severity: editingFinding.severity, message: editingFinding.message }
     : undefined;
@@ -186,7 +351,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, []);
 
   const closeActiveDialog = useCallback(() => {
-    if (activeDialog === "note") dispatch({ type: "note-cancelled" });
+    if (activeDialog === "audio") { setAudioDialog(null); setNoteError(null); stopActiveAudio(); }
+    else if (activeDialog === "photo") { setPhotoDialog(null); setNoteError(null); }
+    else if (activeDialog === "note") {
+      setTextNoteDraft(null);
+      setNoteError(null);
+      setConfirmingNoteDelete(false);
+    }
     else if (activeDialog === "medication") dispatch({ type: "medication-cancelled" });
     else if (activeDialog === "procedure") dispatch({ type: "procedure-cancelled" });
     else if (activeDialog === "vitals") {
@@ -196,12 +367,14 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   }, [activeDialog]);
 
   useEffect(() => {
-    if (shell.noteDraft) noteSummary.current?.focus();
-  }, [shell.noteDraft]);
+    if (textNoteDraft) noteSummary.current?.focus();
+  }, [textNoteDraft]);
 
   useEffect(() => {
     if (!activeDialog) {
-      returnFocus.current?.focus();
+      const trigger = returnFocus.current;
+      if (trigger?.isConnected) trigger.focus();
+      else if (presentationMode === "stationary" && stationaryTimelineOpen) timelineToggle.current?.focus();
       returnFocus.current = null;
       return;
     }
@@ -216,6 +389,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        if (confirmingNoteDelete) {
+          setConfirmingNoteDelete(false);
+          return;
+        }
         closeActiveDialog();
         return;
       }
@@ -238,7 +415,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeDialog, closeActiveDialog, openNullField]);
+  }, [activeDialog, closeActiveDialog, confirmingNoteDelete, openNullField, presentationMode, stationaryTimelineOpen]);
 
   function rememberTrigger(element: HTMLElement) {
     returnFocus.current = element;
@@ -304,11 +481,78 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     dispatch({ type: "review-finding-selected", id: finding.id });
   }
 
+  function startPhoto(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
+    setEditingFinding(null);
+    setNoteStatusMessage(null);
+    setPhotoExpectedRevision(revisionRef.current);
+    setPhotoDialog("new");
+  }
+
+  function openPhoto(note: ReportPhotoNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setPhotoExpectedRevision(revisionRef.current);
+    setPhotoDialog(note);
+  }
+
+  function startAudio(event: React.MouseEvent<HTMLButtonElement>) {
+    rememberTrigger(event.currentTarget);
+    setEditingFinding(null);
+    setNoteStatusMessage(null);
+    setAudioExpectedRevision(revisionRef.current);
+    setAudioDialog("new");
+  }
+
+  function openAudio(note: ReportAudioNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setAudioExpectedRevision(revisionRef.current);
+    setAudioDialog(note);
+  }
+
+  function openNoteReadinessBlocker(blocker: NoteReadinessBlocker, trigger: HTMLElement) {
+    if (blocker.note.type === "photo") openPhoto(blocker.note, trigger);
+    else if (blocker.note.type === "audio") openAudio(blocker.note, trigger);
+    else openTextNote(blocker.note, trigger);
+  }
+
   function startNote(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
-    dispatch({ type: "note-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+    setNoteError(null);
+    setConfirmingNoteDelete(false);
+    setTextNoteDraft({
+      id: crypto.randomUUID(), capturedAt: new Date().toISOString(),
+      capturedUtcOffsetMinutes: -new Date().getTimezoneOffset(), content: "", isNew: true,
+    });
   }
+
+  function openTextNote(note: ReportTextNote, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    setEditingFinding(null);
+    setNoteError(null);
+    setConfirmingNoteDelete(false);
+    setTextNoteDraft({
+      id: note.id, capturedAt: note.capturedAt, capturedUtcOffsetMinutes: note.capturedUtcOffsetMinutes,
+      content: note.content, author: note.author, persistenceState: note.persistenceState, isNew: false,
+    });
+  }
+
+  function openTimelineEvent(event: EncounterEvent, trigger: HTMLElement) {
+    rememberTrigger(trigger);
+    if (event.vitals) setOpenNullField(null);
+    dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
+  }
+
+  function toggleStationaryTimeline() {
+    setStationaryTimelineOpen((open) => {
+      const next = !open;
+      storeStationaryTimelineOpen(window.localStorage, session.user.id, next);
+      return next;
+    });
+  }
+
   function startVitals(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
@@ -353,7 +597,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       return;
     }
     try {
-      await signDraftReport(sessionRequestToken(session), report.id, revision.current, session.user.id,
+      await signDraftReport(sessionRequestToken(session), report.id, revisionRef.current, session.user.id,
         reviewWarnings.filter(({ acknowledged }) => acknowledged).map((finding) => ({
           id: finding.id,
           acknowledgement: "acknowledgement" in finding ? finding.acknowledgement : undefined,
@@ -371,6 +615,79 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     await resolveConflict(conflict, disposition);
   }
 
+  async function saveTextNote() {
+    if (!report || !textNoteDraft || !textNoteValidation || noteSaving) return;
+    if (textNoteValidation.error) {
+      setNoteError(textNoteValidation.error);
+      return;
+    }
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await flushSave();
+      const commandId = crypto.randomUUID();
+      const response = textNoteDraft.isNew
+        ? await createReportTextNote(sessionRequestToken(session), report.id, {
+            commandId,
+            expectedRevision: revisionRef.current,
+            noteId: textNoteDraft.id,
+            capturedAt: textNoteDraft.capturedAt,
+            capturedUtcOffsetMinutes: textNoteDraft.capturedUtcOffsetMinutes,
+            content: textNoteValidation.content,
+          })
+        : await updateReportTextNote(sessionRequestToken(session), report.id, textNoteDraft.id, {
+            commandId,
+            expectedRevision: revisionRef.current,
+            content: textNoteValidation.content,
+          });
+      revisionRef.current = response.revision;
+      setReportNotes((notes) => [response.note, ...notes.filter(({ id }) => id !== response.note.id)]
+        .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id)));
+      setTextNoteDraft(null);
+      setNoteStatusMessage(textNoteDraft.isNew ? "Text note ready." : "Text note changes ready.");
+    } catch (error) {
+      if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
+        setNoteError("The report changed before this note could be saved. Wait for synchronization and try again.");
+      } else if (error instanceof DraftSaveRejectedError) {
+        setNoteError("The note was rejected. Remove control characters and keep it within 10,000 characters.");
+      } else if (error instanceof Error && error.message === "session") {
+        onSessionEnded();
+      } else {
+        setNoteError(error instanceof Error ? error.message : "The text note could not be saved.");
+      }
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
+  async function confirmDeleteTextNote() {
+    if (!report || !textNoteDraft || textNoteDraft.isNew || noteSaving) return;
+    setNoteSaving(true);
+    setNoteError(null);
+    try {
+      await flushSave();
+      const response = await deleteReportTextNote(sessionRequestToken(session), report.id, textNoteDraft.id, {
+        commandId: crypto.randomUUID(), expectedRevision: revisionRef.current,
+      });
+      revisionRef.current = response.revision;
+      setReportNotes((notes) => notes.filter(({ id }) => id !== response.noteId));
+      setTextNoteDraft(null);
+      setConfirmingNoteDelete(false);
+      setNoteStatusMessage("Text note deleted.");
+    } catch (error) {
+      setConfirmingNoteDelete(false);
+      if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
+        setNoteError("The report changed before this note could be deleted. Wait for synchronization and try again.");
+      } else if (error instanceof Error && error.message === "session") {
+        onSessionEnded();
+      } else {
+        setNoteError(error instanceof Error ? error.message : "The text note could not be deleted.");
+      }
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
   const blockProtectedEdit = (event: SyntheticEvent<HTMLElement>) => {
     if (!editingBlocked) return;
     const target = event.target as HTMLElement;
@@ -380,7 +697,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   };
 
   return (
-    <main className={`app-shell ${presentationMode}-presentation`} data-presentation-mode={presentationMode}
+    <main className={`app-shell ${presentationMode}-presentation${presentationMode === "stationary" && stationaryTimelineOpen ? " stationary-timeline-open" : ""}`} data-presentation-mode={presentationMode}
       data-editing-blocked={editingBlocked || undefined} onClickCapture={blockProtectedEdit}
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
@@ -389,6 +706,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
       </aside>}
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
+      {noteStatusMessage && <p className="visually-hidden" role="status" aria-live="polite">{noteStatusMessage}</p>}
 
       <header className="encounter-header">
         {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
@@ -408,6 +726,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </>}
         {report && <div className="draft-actions">
           <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
+          {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>Timeline <span aria-hidden="true">· {timelineEvents.length}</span></button>}
           {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => {
             if (shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
             else {
@@ -415,12 +734,20 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               void flushSave();
             }
           }}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
-          <button type="button" onClick={async () => { await flushSave(); onSaveAndClose(); }}>Save &amp; close</button>
+          <button type="button" onClick={async () => {
+            if (report && hasPendingProtectedMedia(report.id) && !window.confirm("Media uploads may pause after closing. Saved-on-device photos and audio will resume while the app is open or in your next authenticated session. Save and close anyway?")) return;
+            await flushSave(); onSaveAndClose();
+          }}>Save &amp; close</button>
         </div>}
       </header>
 
       {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
-        {configuredQuickActions(bundledEncounterDefinition).map((action) => <button key={action.id} className={activeDialog === action.id ? "active" : undefined} aria-pressed={activeDialog === action.id} title={action.title} aria-label={action.label} type="button" onClick={quickActionHandlers[action.id]}><QuickActionIcon kind={action.id} /><span aria-hidden="true">{quickActionText[action.id]}</span></button>)}
+        {structuredQuickActions.map((id) => <button key={id} className={activeDialog === id ? "active" : undefined} aria-pressed={activeDialog === id}
+          title={id === "vitals" ? "Vital signs" : id === "medication" ? "Medication" : "Procedure"} aria-label={`Add ${id === "vitals" ? "vital signs" : id}`}
+          type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{quickActionText[id]}</span></button>)}
+        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label="Text note" title="Text note" type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">Text</span></button>
+        <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label="Add photo note" title="Photo note" type="button" disabled={!report || editingBlocked} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">Photo</span></button>
+        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label="Add audio note" title="Spoken-audio note" type="button" disabled={!report || editingBlocked} onClick={startAudio}><svg className="audio-action-icon" viewBox="0 0 48 56" aria-hidden="true"><rect x="14" y="2" width="20" height="34" rx="10" fill="currentColor" /><path d="M7 25v3c0 10 7.6 18 17 18s17-8 17-18v-3M24 46v7M16 53h16" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" /></svg><span aria-hidden="true">Audio</span></button>
       </nav>}
 
       {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
@@ -458,65 +785,26 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </div>
       )}
 
-      {presentationMode === "mobile" && shell.view === "timeline" && (
-        <section className="content-panel" aria-labelledby="timeline-heading">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Newest first</p>
-              <h1 id="timeline-heading">Timeline</h1>
-            </div>
-            <span>{timelineEvents.length} events</span>
-          </div>
-          <ol className="timeline-list">
-            {timelineEvents.map((event) => {
-              const validationStatus = eventValidationStatuses.get(event.id) ?? "clear";
-              const presentation = encounterEventPresentation(event, bundledEncounterDefinition);
-              const eventDetail = encounterEventDetail(event, bundledEncounterDefinition);
-              return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
-                <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
-                <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
-                {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
-                  <button
-                    aria-label={`Edit ${presentation.title} at ${event.time}. ${eventDetail}`}
-                    className="timeline-event-button"
-                    type="button"
-                    onClick={(clickEvent) => {
-                      rememberTrigger(clickEvent.currentTarget);
-                      if (event.vitals) setOpenNullField(null);
-                      dispatch({ type: event.vitals ? "vitals-opened" : event.kind === "procedure" ? "procedure-opened" : event.kind === "medication" ? "medication-opened" : "note-opened", id: event.id });
-                    }}
-                  >
-                    <span className="event-title">{presentation.title}</span>
-                    <span className="event-detail">{eventDetail}</span>
-                    <small>{presentation.reference} · Tap to edit</small>
-                    {event.procedure && validateProcedure({
-                      id: event.id,
-                      date: event.date ?? DEMO_FALLBACK_DATE,
-                      time: event.time,
-                      procedureCode: event.procedure.code,
-                      procedureLabel: event.procedure.label,
-                      attempts: String(event.procedure.attempts),
-                      success: event.procedure.success,
-                      outcome: event.procedure.outcome,
-                      complications: event.procedure.complications,
-                      warningAcknowledged: event.procedure.warningAcknowledged,
-                      isNew: false,
-                    }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && (
-                      <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>
-                    )}
-                  </button>
-                ) : (
-                  <div>
-                    <h2>{event.title}</h2>
-                    <p>{event.detail}</p>
-                    <small>{event.reference}</small>
-                  </div>
-                )}
-              </li>;
-            })}
-          </ol>
-        </section>
-      )}
+      {presentationMode === "mobile" && shell.view === "timeline" && <EncounterTimeline
+        events={timelineEvents}
+        validationStatuses={eventValidationStatuses}
+        definition={bundledEncounterDefinition}
+        headingId="timeline-heading"
+        onOpenTextNote={openTextNote}
+        onOpenPhoto={openPhoto}
+        onOpenAudio={openAudio}
+        onOpenEvent={openTimelineEvent}
+      />}
+      {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label="Encounter timeline" onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        setStationaryTimelineOpen(false);
+        storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
+        timelineToggle.current?.focus();
+      }}>
+        <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
+          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
+      </aside>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
@@ -524,9 +812,10 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               <p className="eyebrow">Warnings and errors</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
-            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length} open</span>
+            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length} open</span>
           </div>
-          {!reviewFindings.length && !unresolvedDispatchConflicts.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
+          <NoteReadinessList blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
+          {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
@@ -551,17 +840,20 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           findings={configuredStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
+          noteBlockers={noteBlockers}
           groups={bundledEncounterDefinition.composition.review.groups}
           canFinish={canFinish}
-          validationClear={validationClear}
+          validationClear={validationClear && noteBlockers.length === 0}
           signing={signing}
           signError={signError}
           onFinding={editValidationFinding}
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
+          onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
           onSign={() => void signRecord()}
           blockedReason={!restored ? "The report is still loading."
             : !online ? "Signing is unavailable while offline. Reconnect and finish synchronization."
               : syncStatus !== "Saved" ? "Signing is unavailable until all changes finish synchronizing."
+                : noteBlockers.length || (report && hasPendingProtectedMedia(report.id)) ? "Signing is unavailable until every note is ready. Open a Note readiness item to retry or delete it."
                 : unresolvedDispatchConflicts.length ? "Resolve every dispatch difference before signing."
                   : undefined}
         />
@@ -570,35 +862,82 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         </>
       )}
 
-      {shell.noteDraft && (
+      {photoDialog && report && <PhotoNoteDialog dialogRef={dialog} reportId={report.id}
+        note={photoDialog === "new" ? null : photoDialog} csrfToken={sessionRequestToken(session)} revision={photoExpectedRevision}
+        mediaPolicy={mediaPolicy ?? report.mediaPolicy ?? { settingsRevision: 1, reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES }}
+        author={session.user}
+        onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
+        onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(photoDialog === "new" ? "Photo note ready." : "Photo caption ready."); }}
+        onQueued={(saved) => { setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? "Photo upload failed." : "Photo saved on this device."); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setPhotoDialog(null); setNoteStatusMessage("Photo note deleted."); }} />}
+
+      {audioDialog && report && <AudioNoteDialog dialogRef={dialog} reportId={report.id}
+        note={audioDialog === "new" ? null : audioDialog} csrfToken={sessionRequestToken(session)} revision={audioExpectedRevision}
+        mediaPolicy={mediaPolicy ?? report.mediaPolicy ?? { settingsRevision: 1, reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES }}
+        author={session.user}
+        onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
+        onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(audioDialog === "new" ? "Audio note ready." : "Audio caption ready."); }}
+        onQueued={(saved) => { setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? "Audio upload failed." : "Audio saved on this device."); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setAudioDialog(null); setNoteStatusMessage("Audio note deleted."); }} />}
+
+      {textNoteDraft && textNoteValidation && (
         <div className="dialog-backdrop" role="presentation">
-          <section ref={dialog} className="note-dialog" role="dialog" aria-modal="true" aria-labelledby="note-dialog-title">
+          <section ref={dialog} className="note-dialog" role={confirmingNoteDelete ? "alertdialog" : "dialog"} aria-modal="true"
+            aria-labelledby="note-dialog-title" aria-describedby={confirmingNoteDelete ? "note-delete-description" : undefined}>
             <div className="note-dialog-heading">
               <div>
-                <p className="eyebrow">{shell.noteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
+                <p className="eyebrow">{confirmingNoteDelete ? "Confirm deletion" : textNoteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
                 <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
               </div>
-              <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "note-removed" })}>{noteDefinition.labels.remove}</button>
+              {!textNoteDraft.isNew && !confirmingNoteDelete && <button className="remove-entry-button" type="button"
+                disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{noteDefinition.labels.remove}</button>}
             </div>
-            <label className={noteSummaryFindingActive ? `finding-frame ${editingFinding!.severity}` : undefined}>
-              {noteDefinition.labels.summary}
+            {confirmingNoteDelete ? <>
+              <p id="note-delete-description">Delete this text note from the draft report? This action cannot be undone.</p>
+              <div className="note-dialog-actions">
+                <button data-dialog-initial-focus type="button" disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)}>Keep note</button>
+                <button className="remove-entry-button" type="button" disabled={noteSaving} onClick={() => void confirmDeleteTextNote()}>
+                  {noteSaving ? "Deleting…" : "Delete note"}
+                </button>
+              </div>
+            </> : <>
+              <p className="note-metadata">
+                Captured {new Date(textNoteDraft.capturedAt).toLocaleString([], report?.agencyTimeZone ? { timeZone: report.agencyTimeZone } : undefined)}
+                {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
+                {!textNoteDraft.isNew ? " · Ready" : ""}
+              </p>
+              <label htmlFor="report-text-note">{noteDefinition.labels.summary}</label>
               <textarea
                 ref={noteSummary}
+                id="report-text-note"
                 data-dialog-initial-focus
-                rows={5}
+                rows={8}
                 placeholder={noteDefinition.labels.summaryPlaceholder}
-                required={noteDefinition.required.summary}
-                value={shell.noteDraft.summary}
-                onChange={(event) => dispatch({ type: "note-draft-changed", field: "summary", value: event.target.value })}
+                required
+                maxLength={REPORT_TEXT_NOTE_MAX_CHARACTERS}
+                aria-invalid={Boolean(noteError || (textNoteDraft.content && textNoteValidation.error))}
+                aria-describedby="report-text-note-count report-text-note-error"
+                value={textNoteDraft.content}
+                onChange={(event) => {
+                  setNoteError(null);
+                  setTextNoteDraft((draft) => draft ? { ...draft, content: event.target.value } : null);
+                }}
               />
-              <DialogValidationMessage finding={noteSummaryFindingActive ? editingActionableFinding : undefined} />
-            </label>
-            <div className="note-dialog-actions">
-              <button type="button" onClick={() => dispatch({ type: "note-cancelled" })}>{noteDefinition.labels.cancel}</button>
-              <button type="button" onClick={() => dispatch({ type: "note-saved" })}>
-                {shell.noteDraft.isNew ? noteDefinition.labels.add : noteDefinition.labels.save}
-              </button>
-            </div>
+              <small id="report-text-note-count">{textNoteValidation.characterCount.toLocaleString()} / {REPORT_TEXT_NOTE_MAX_CHARACTERS.toLocaleString()} characters</small>
+              <p id="report-text-note-error" className="finish-help" role={noteError || textNoteValidation.error ? "alert" : undefined}>
+                {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
+              </p>
+              <div className="note-dialog-actions">
+                <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{noteDefinition.labels.cancel}</button>
+                <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
+                  {noteSaving ? "Saving…" : textNoteDraft.isNew ? "Save text note" : noteDefinition.labels.save}
+                </button>
+              </div>
+            </>}
           </section>
         </div>
       )}
@@ -707,10 +1046,12 @@ function DispatchConflictList({ conflicts, onDispose }: {
   );
 }
 
-function ReviewPanel({ findings, errors, warnings, groups, canFinish, validationClear, signing, signError, blockedReason, onFinding, onWarning, onSign }: {
+function ReviewPanel({ findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
+  blockedReason, onFinding, onWarning, onNoteBlocker, onSign }: {
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
   readonly warnings: ReadonlyArray<SigningFinding>;
+  readonly noteBlockers: ReadonlyArray<NoteReadinessBlocker>;
   readonly groups: typeof bundledEncounterDefinition.composition.review.groups;
   readonly canFinish: boolean;
   readonly validationClear: boolean;
@@ -719,6 +1060,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
   readonly blockedReason?: string;
   readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
+  readonly onNoteBlocker: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
   readonly onSign: () => void;
 }) {
   return (
@@ -729,6 +1071,7 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       </div>
       <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
 
+      <NoteReadinessList blockers={noteBlockers} onOpen={onNoteBlocker} />
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
       <FindingGroup title="Information" empty="No informational findings." findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
 
@@ -739,6 +1082,25 @@ function ReviewPanel({ findings, errors, warnings, groups, canFinish, validation
       {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
+}
+
+function NoteReadinessList({ blockers, onOpen }: {
+  readonly blockers: ReadonlyArray<NoteReadinessBlocker>;
+  readonly onOpen: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
+}) {
+  return <section className="review-group note-readiness" aria-labelledby="note-readiness-heading">
+    <h2 id="note-readiness-heading">Note readiness <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
+    {!blockers.length ? <p className="review-empty">✓ All notes are ready.</p> : <ul className="review-findings">
+      {blockers.map((blocker) => <li key={`${blocker.note.type}:${blocker.note.id}`} className="error">
+        <button type="button" onClick={(event) => onOpen(blocker, event.currentTarget)}>
+          <span className="finding-category">Error · Note readiness</span>
+          <strong>{blocker.title}</strong>
+          <span>{blocker.message}</span>
+          <small>{blocker.action}</small>
+        </button>
+      </li>)}
+    </ul>}
+  </section>;
 }
 
 function FindingGroup({ title, empty, findings, onFinding, onWarning }: {

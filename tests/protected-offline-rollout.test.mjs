@@ -58,5 +58,5 @@ test("service-worker runtime caching is restricted to reviewed static shell reso
   assert.match(worker, /pathname\.endsWith\("\.json"\)/);
   assert.doesNotMatch(worker, /cache\.put\(event\.request, response\.clone\(\)\)[\s\S]*origin ===/);
   assert.equal(callsController.match(/@Header\("Cache-Control", "no-store, private"\)/g)?.length, 4);
-  assert.equal(reportsController.match(/@Header\("Cache-Control", "no-store, private"\)/g)?.length, 15);
+  assert.equal(reportsController.match(/@Header\("Cache-Control", "no-store, private"\)/g)?.length, 24);
 });
