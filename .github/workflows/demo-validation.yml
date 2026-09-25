@@ -24,7 +24,7 @@ jobs:
     name: Validate / Deployment revision
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
           fetch-depth: 0
@@ -41,10 +41,10 @@ jobs:
     needs: validate-deployment-revision
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -72,10 +72,10 @@ jobs:
     env:
       NEXT_PUBLIC_API_URL: https://api.demo.opentriage.org
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -115,7 +115,7 @@ jobs:
       PATIENT_KEY_SECRET_BASE64: MTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTE=
       AUTH_RATE_LIMIT_SECRET_BASE64: MjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjI=
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Build the API runtime image
@@ -193,10 +193,10 @@ jobs:
     needs: validate-deployment-revision
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v3.19.0
       - name: Lint chart
@@ -220,7 +220,7 @@ jobs:
       - helm-validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Require every validation job to pass
@@ -251,19 +251,19 @@ jobs:
               NEXT_PUBLIC_API_URL=https://api.demo.opentriage.org
               OPEN_TRIAGE_BUILD_SHA=${{ inputs.deployment_revision || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Authenticate to the private GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and publish immutable image
         id: image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -291,7 +291,7 @@ jobs:
           --owner "$REPOSITORY_OWNER"
           --output "image-identities/${COMPONENT}.json"
       - name: Upload image identity fragment
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demo-image-identity-${{ matrix.component }}-${{ inputs.deployment_revision || github.sha }}
           path: image-identities/${{ matrix.component }}.json
@@ -307,11 +307,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
       - name: Download published image identities
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: demo-image-identity-*-${{ inputs.deployment_revision || github.sha }}
           path: image-identities
@@ -324,7 +324,7 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --owner "${{ github.repository_owner }}"
       - name: Upload exact deployment image manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
           path: demo-images.json
@@ -341,14 +341,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.deployment_revision || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Download exact deployment image manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: demo-deployment-images-${{ inputs.deployment_revision || github.sha }}
       - name: Verify and select tested images
@@ -360,7 +360,7 @@ jobs:
           --sha "${{ inputs.deployment_revision || github.sha }}"
           --output "$GITHUB_OUTPUT"
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: v3.19.0
       - name: Install doctl with scoped demo credentials

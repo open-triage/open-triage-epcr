@@ -37,10 +37,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/open_triage_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.checkout_ref || github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -53,7 +53,7 @@ jobs:
         run: npm run test:integration -w @open-triage/api
       - name: Run CI scale checks
         run: npm run scale:test:ci -w @open-triage/database
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: database-scale-test-ci
