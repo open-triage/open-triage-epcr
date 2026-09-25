@@ -47,6 +47,11 @@ const demoTimeMinutes: Readonly<Record<string, number>> = {
 };
 const editableGroups = new Set(COMPILED_STATIONARY_LAYOUT.groups.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
 const editableElements = new Set(COMPILED_STATIONARY_LAYOUT.elements.filter(({ mode }) => mode !== "read-only").map(({ id }) => id));
+const mobileEventParents: Readonly<Record<string, string>> = {
+  "eVitals.VitalGroup": "eVitalsSection",
+  "eProcedures.ProcedureGroup": "eProceduresSection",
+  "eMedications.MedicationGroup": "eMedicationsSection",
+};
 
 function id(document: EncounterDocument, identity: string): string {
   return stableDraftId(document.encounter.id, `stationary-demo:${identity}`);
@@ -145,6 +150,20 @@ export function populateStationaryDemoData(document: EncounterDocument): Encount
     for (const parent of parents) {
       const matching = instances(next, catalogGroup.id).filter((candidate) => candidate.parentInstanceId === parent?.instanceId);
       if (matching.length) continue;
+      const orphanedMobileEvents = parent && parents.length === 1 && mobileEventParents[catalogGroup.id] === catalogGroup.parentId
+        ? instances(next, catalogGroup.id).filter((candidate) => !candidate.parentInstanceId)
+        : [];
+      if (parent && orphanedMobileEvents.length) {
+        const orphanIds = new Set(orphanedMobileEvents.map(({ instanceId }) => instanceId));
+        const parentInstanceId = parent.instanceId;
+        const groupIndex = groups.findIndex(({ id }) => id === catalogGroup.id);
+        const group = groups[groupIndex]!;
+        groups[groupIndex] = { ...group, instances: group.instances.map((instance) => orphanIds.has(instance.instanceId)
+          ? { ...instance, parentInstanceId }
+          : instance) };
+        next = { ...next, groups };
+        continue;
+      }
       const instanceId = id(next, `group:${catalogGroup.id}:${parent?.instanceId ?? "root"}`);
       const created: EncounterGroupInstance = {
         instanceId,
