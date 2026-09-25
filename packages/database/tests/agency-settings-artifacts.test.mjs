@@ -22,6 +22,10 @@ const demoHelperMigration = await readFile(new URL(
   "../../../supabase/migrations/20260924172000_restore_demo_credentials_helper.sql",
   import.meta.url,
 ), "utf8");
+const demographicRepairMigration = await readFile(new URL(
+  "../../../supabase/migrations/20260925120000_repair_synthetic_agency_demographic.sql",
+  import.meta.url,
+), "utf8");
 const inventory = await readFile(new URL("../../../docs/agency-settings-hardcoded-inventory.md", import.meta.url), "utf8");
 
 test("Agency Settings are organization-scoped, revisioned, bounded, and default to 50 MiB", () => {
@@ -80,6 +84,16 @@ test("new organizations receive the documented demo credential helper by default
   assert.match(demoHelperMigration,
     /alter column helper_text set default[\s\S]*Demo credentials: username \*\*demo\*\*, password \*\*opentriagedemo\*\*/);
   assert.doesNotMatch(demoHelperMigration, /update app_identity\.agency_settings/);
+});
+
+test("the invalid synthetic demographic fixture is repaired without rewriting immutable history", () => {
+  assert.match(demographicRepairMigration, /insert into app_identity\.agency_demographic_version/);
+  assert.match(demographicRepairMigration, /version \+ 1/);
+  assert.match(demographicRepairMigration, /dagency_04 = '9920003'/);
+  assert.match(demographicRepairMigration, /'36', 'New York', 'ANSI-STATE'/);
+  assert.match(demographicRepairMigration, /version \+ 1, dagency_01, 'DEMO-EMS'/);
+  assert.match(demographicRepairMigration, /dagency_02 = 'Demonstration EMS'/);
+  assert.doesNotMatch(demographicRepairMigration, /update app_identity\.agency_demographic_version/);
 });
 
 test("settings changes use dedicated authority and bounded append-only audit facts", () => {

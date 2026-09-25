@@ -57,6 +57,8 @@ test("creates only one ordinary demo account with its exact initial role", () =>
   assert.match(bootstrap, /insert into forms\.form_version/);
   assert.match(bootstrap, /insert into forms\.agency_stationary_default/);
   assert.match(bootstrap, /insert into app_identity\.agency_demographic_version/);
+  assert.match(bootstrap, /'DEMO-EMS', 'DEMO-EMS', '36',[\s\S]*'New York', 'ANSI-STATE'/);
+  assert.doesNotMatch(bootstrap, /'9920003',[\s\S]*'Emergency Medical Services'/);
   assert.match(bootstrap, /select id from app_identity\.agency_demographic_version[\s\S]*where organization_id = \$1/);
   assert.match(bootstrap, /if \(!demographics\.rows\[0\]\)/);
   assert.match(bootstrap, /insert into app_identity\.operational_unit/);

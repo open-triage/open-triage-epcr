@@ -149,15 +149,22 @@ async function ensureBaselineConfiguration(client, actorId) {
       'Initial demonstration configuration', jsonb_build_object('source', 'demonstration-fixture'))`,
   [SYNTHETIC_DEMO_FIXTURE.organizationId, actorId, formVersionId, version.rows[0].catalog_release_id]);
 
-  const demographicDefinition = { source: "demonstration-fixture", agency: "Demonstration EMS" };
+  const demographicDefinition = {
+    dagency01: "DEMO-EMS",
+    dagency02: "DEMO-EMS",
+    dagency04: "36",
+    dagency04Display: "New York",
+    dagency04System: "ANSI-STATE",
+    dagency04TerminologyVersion: null,
+  };
   const demographics = await client.query(`select id from app_identity.agency_demographic_version
     where organization_id = $1 order by version desc limit 1`, [SYNTHETIC_DEMO_FIXTURE.organizationId]);
   if (!demographics.rows[0]) {
     await client.query(`insert into app_identity.agency_demographic_version
       (id, organization_id, catalog_release_id, version, dagency_01, dagency_02, dagency_04,
-       dagency_04_display, definition_sha256, effective_from, created_by)
-      values ($1, $2, $3, 1, 'DEMO-EMS', 'Demonstration EMS', '9920003',
-        'Emergency Medical Services', $4, now(), $5)
+       dagency_04_display, dagency_04_system, definition_sha256, effective_from, created_by)
+      values ($1, $2, $3, 1, 'DEMO-EMS', 'DEMO-EMS', '36',
+        'New York', 'ANSI-STATE', $4, now(), $5)
       on conflict do nothing`,
     [baselineDemographicId, SYNTHETIC_DEMO_FIXTURE.organizationId, version.rows[0].catalog_release_id,
       sha256(demographicDefinition), actorId]);
