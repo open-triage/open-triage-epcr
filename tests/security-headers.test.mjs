@@ -24,6 +24,8 @@ test("web CSP authorizes exported inline scripts by hash without unsafe directiv
   assert.match(policy, /connect-src 'self' https:\/\/api\.example\.test/);
   assert.match(policy, /frame-ancestors 'none'/);
   assert.match(policy, /manifest-src 'self' data:/);
+  assert.match(policy, /img-src 'self' data: blob:/);
+  assert.match(policy, /media-src 'self' blob:/);
   assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval/);
 });
 

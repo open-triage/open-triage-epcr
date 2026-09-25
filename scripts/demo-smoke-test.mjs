@@ -74,6 +74,14 @@ function verifySecurityHeaders(response, label) {
   }
 }
 
+function verifyProtectedMediaPolicy(response) {
+  const policy = response.headers.get("content-security-policy") ?? "";
+  if (!/(?:^|;)\s*img-src\s+[^;]*\bblob:(?:\s|;|$)/i.test(policy) ||
+      !/(?:^|;)\s*media-src\s+[^;]*\bblob:(?:\s|;|$)/i.test(policy)) {
+    throw new Error("Frontend HTTPS does not allow protected media previews");
+  }
+}
+
 async function retry(operation, { attempts, delayMilliseconds }) {
   let failure;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -113,6 +121,7 @@ export async function verifyPublicDemo(
   await retry(async () => {
     const response = await request(fetchImpl, "Frontend HTTPS", frontend);
     verifySecurityHeaders(response, "Frontend HTTPS");
+    verifyProtectedMediaPolicy(response);
     const body = await response.text();
     if (!body.includes("OpenTriage synthetic encounter")) {
       throw new Error("Frontend HTTPS returned an unexpected response");
@@ -132,7 +141,9 @@ export async function verifyPublicDemo(
 
   const installationResponse = await request(fetchImpl, "Installation configuration", new URL("/api/installation", api));
   const installation = await responseJson(installationResponse, "Installation configuration");
-  if (JSON.stringify(installation?.settings) !== JSON.stringify(productionSettings) ||
+  const { signIn: _configuredSignIn, ...installationPolicy } = installation?.settings ?? {};
+  const { signIn: _defaultSignIn, ...productionPolicy } = productionSettings;
+  if (JSON.stringify(installationPolicy) !== JSON.stringify(productionPolicy) ||
       "profile" in installation || "demoLogin" in installation || "fixture" in installation) {
     throw new Error("Public demo installation configuration is inconsistent");
   }

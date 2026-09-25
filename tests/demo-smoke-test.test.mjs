@@ -7,7 +7,7 @@ import productionSettings from "../packages/contracts/config/installation.produc
 const sessionCookie = "open_triage_session=sensitive-session-token";
 const sensitiveCallNumber = "PRIVATE-CALL-123";
 const securityHeaders = {
-  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "strict-origin-when-cross-origin",
   "permissions-policy": "camera=(self), microphone=(self), geolocation=()",
@@ -34,7 +34,11 @@ test("verifies HTTPS routing, health, login, and an authenticated read", async (
     const path = new URL(url).pathname;
     if (path === "/") return htmlResponse("<title>OpenTriage synthetic encounter</title>");
     if (path === "/api/health") return jsonResponse({ status: "ok", service: "open-triage-api" });
-    if (path === "/api/installation") return jsonResponse({ settings: productionSettings });
+    if (path === "/api/installation") return jsonResponse({
+      settings: { ...productionSettings, signIn: {
+        brandText: "Configured EMS", helperText: "Use your agency-issued credentials.",
+      } },
+    });
     if (path === "/api/sessions") return jsonResponse({ csrfToken: "csrf-proof" }, 200, {
       "set-cookie": `${sessionCookie}; Path=/api; HttpOnly; Secure; SameSite=Strict`,
     });
@@ -120,6 +124,28 @@ test("rejects a permissive CSP even when it prevents framing", async () => {
       log() {},
     }),
     /invalid Content-Security-Policy/,
+  );
+  assert.equal(calls, 1);
+});
+
+test("fails before login when the frontend CSP blocks protected media previews", async () => {
+  let calls = 0;
+  await assert.rejects(
+    verifyPublicDemo({
+      frontendUrl: "https://demo.opentriage.org",
+      apiUrl: "https://api.demo.opentriage.org",
+      readinessAttempts: 1,
+      readinessDelayMilliseconds: 0,
+    }, {
+      fetchImpl: async () => {
+        calls += 1;
+        return htmlResponse("<title>OpenTriage synthetic encounter</title>", 200, {
+          "content-security-policy": "default-src 'none'; img-src 'self' data:; frame-ancestors 'none'",
+        });
+      },
+      log() {},
+    }),
+    /does not allow protected media previews/,
   );
   assert.equal(calls, 1);
 });
