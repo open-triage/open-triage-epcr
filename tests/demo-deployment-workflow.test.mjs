@@ -110,7 +110,7 @@ test("deployment fails unless the public HTTPS smoke verification passes", async
   const smoke = deploy.indexOf("node scripts/demo-smoke-test.mjs");
 
   assert.ok(rollout >= 0 && smoke > rollout, "public smoke verification must follow the rollout");
-  assert.match(deploy, /uses: actions\/setup-node@v4[\s\S]*node-version: 22/);
+  assert.match(deploy, /uses: actions\/setup-node@v7[\s\S]*node-version: 22/);
   assert.match(deploy, /DEMO_WEB_URL: https:\/\/demo\.opentriage\.org/);
   assert.match(deploy, /DEMO_API_URL: https:\/\/api\.demo\.opentriage\.org/);
   assert.doesNotMatch(deploy, /continue-on-error/);
