@@ -38,8 +38,10 @@ import { sessionRequestToken } from "./clinician-session";
 import { advanceCachedReportRevision, nextDraftChange } from "./offline-reports";
 import type { PresentationMode } from "./presentation-mode";
 import { useReportWorkspace } from "./report-workspace";
+import { sameJsonValue } from "./json-values";
 import { DEMO_CLEAR_EVENT, DEMO_POPULATE_EVENT } from "./demo-provenance";
 import { stationarySectionForGroup } from "./stationary-record";
+import { groupReviewFindings } from "./review-presentation";
 import { actionableStationaryFindings, stationaryReviewFindings, validateStationaryRecord, type StationaryValidationFinding } from "./stationary-validation";
 import { stationarySigningBlockers } from "./stationary-signing";
 import { repeatingDialogPath } from "./stationary-repeating-group";
@@ -129,14 +131,29 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const dialog = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const timelineToggle = useRef<HTMLButtonElement>(null);
+  const encounterHeader = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (presentationMode !== "stationary") return;
+    const header = encounterHeader.current;
+    const workspace = header?.closest<HTMLElement>(".app-shell");
+    if (!header || !workspace) return;
+    const measure = () => workspace.style.setProperty("--stationary-call-header-height", `${header.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      workspace.style.removeProperty("--stationary-call-header-height");
+    };
+  }, [presentationMode]);
   const mediaUploadActive = useRef(false);
   const [photoQueueVersion, setPhotoQueueVersion] = useState(0);
   const [audioQueueVersion, setAudioQueueVersion] = useState(0);
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
-    () => documentTimeline(encounter.document, report?.agencyTimeZone),
-    [encounter.document, report?.agencyTimeZone],
+    () => documentTimeline(encounter.document),
+    [encounter.document],
   );
   const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
   const timelineEvents = useMemo(() => completeReportTimeline(
@@ -163,15 +180,21 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const activeFindings: ReadonlyArray<SigningFinding> = presentationMode === "stationary" ? configuredStationaryFindings : reviewFindings;
   const reviewErrors = activeFindings.filter((finding) => finding.severity === "error");
   const reviewWarnings = activeFindings.filter((finding) => finding.severity === "warning");
+  const completeErrors = configuredStationaryFindings.filter((finding) => finding.severity === "error");
+  const completeWarnings = configuredStationaryFindings.filter((finding) => finding.severity === "warning");
+  const updateReportNotes = useCallback((notes: ReadonlyArray<ReportNote>) => {
+    const next = report ? mergeProtectedMedia(notes, report.id) : notes;
+    setReportNotes((current) => sameJsonValue(current, next) ? current : next);
+  }, [report]);
   const {
     restored, recoveryNotice, recoveryNoticeHeading, bestEffortNoticeInDemoBanner, syncStatus, revision: revisionRef, dispatchConflicts, dispatchCancellation,
     conflictError, editingBlocked, mediaPolicy, flushSave, completeReport: completeWorkspaceReport, resolveConflict,
   } = useReportWorkspace({
     session, report, presentationMode, shell, dispatch,
-    validationErrorCount: reviewErrors.length, online,
+    validationErrorCount: completeErrors.length, online,
     onSessionEnded,
     onReportCompleted,
-    onNotesChange: (notes) => setReportNotes(report ? mergeProtectedMedia(notes, report.id) : notes),
+    onNotesChange: updateReportNotes,
   });
   useEffect(() => subscribeProtectedPhotos((reportId) => {
     if (reportId !== report?.id) return;
@@ -708,7 +731,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
       {noteStatusMessage && <p className="visually-hidden" role="status" aria-live="polite">{noteStatusMessage}</p>}
 
-      <header className="encounter-header">
+      <header ref={encounterHeader} className="encounter-header">
         {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
           <span><small>Response</small><strong>{incident.responseNumber || "Not provided"}</strong></span>
           <span><small>Unit</small><strong>{incident.callSign || "Not provided"}</strong></span>
@@ -771,6 +794,11 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         ))}
       </nav>}
 
+      {presentationMode === "mobile" && <p className="complete-record-summary">
+        Complete record: {completeErrors.length} {completeErrors.length === 1 ? "error" : "errors"} · {completeWarnings.length} {completeWarnings.length === 1 ? "warning" : "warnings"}.
+        {" "}Continue in Stationary to review every field and sign.
+      </p>}
+
       {presentationMode === "stationary" && (
         <div hidden={shell.view === "review"}>
           <StationaryRecord
@@ -809,11 +837,12 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Warnings and errors</p>
+              <p className="eyebrow">Quick documentation checks</p>
               <h1 id="checklist-heading">Checklist</h1>
             </div>
             <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length} open</span>
           </div>
+          <p className="review-intro">These checks cover mobile entries. The complete record summary includes all required fields.</p>
           <NoteReadinessList blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
           {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
@@ -906,7 +935,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               </div>
             </> : <>
               <p className="note-metadata">
-                Captured {new Date(textNoteDraft.capturedAt).toLocaleString([], report?.agencyTimeZone ? { timeZone: report.agencyTimeZone } : undefined)}
+                Captured {new Date(textNoteDraft.capturedAt).toLocaleString()} (local time)
                 {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
                 {!textNoteDraft.isNew ? " · Ready" : ""}
               </p>
@@ -1069,7 +1098,10 @@ function ReviewPanel({ findings, errors, warnings, noteBlockers, groups, canFini
         <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and sign</h1></div>
         <span>{errors.length} errors · {warnings.length} warnings</span>
       </div>
-      <p className="review-intro">Resolve every blocking error and acknowledge each warning before signing the record.</p>
+      <p className="review-intro">{errors.length || warnings.length
+        ? "Resolve blocking errors by section and acknowledge each warning before signing."
+        : "The record has no validation findings. Review your documentation before signing."}</p>
+      {errors[0] && <button type="button" className="next-review-error" onClick={(event) => onFinding(errors[0]!, event.currentTarget)}>Fix next error →</button>}
 
       <NoteReadinessList blockers={noteBlockers} onOpen={onNoteBlocker} />
       {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
@@ -1110,12 +1142,17 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
   readonly onFinding: (finding: SigningFinding, trigger: HTMLElement) => void;
   readonly onWarning: (id: string, acknowledged: boolean) => void;
 }) {
+  const sections = groupReviewFindings(findings);
   return (
     <section className="review-group">
       <h2>{title} <span className={findings.length ? undefined : "zero-count"}>{findings.length}</span></h2>
       {!findings.length ? <p className="review-empty">✓ {empty}</p> : (
+        <div className="review-sections">
+        {sections.map((section, index) => <details className="review-section" key={section.label}
+          open={findings.length <= 10 || findings[0]?.severity !== "error" || index === 0}>
+          <summary>{section.label} <span>{section.findings.length}</span></summary>
         <ul className="review-findings">
-          {findings.map((finding) => (
+          {section.findings.map((finding) => (
             <li key={finding.id} className={finding.severity}>
               <button type="button" onClick={(event) => onFinding(finding, event.currentTarget)}>
                 <span className="finding-category">{finding.category} · {finding.reference}</span>
@@ -1132,6 +1169,8 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
             </li>
           ))}
         </ul>
+        </details>)}
+        </div>
       )}
     </section>
   );

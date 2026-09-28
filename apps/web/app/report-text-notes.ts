@@ -1,4 +1,5 @@
 import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
+import { localStationaryDateTimeParts } from "./stationary-date-time";
 
 export const REPORT_TEXT_NOTE_MAX_CHARACTERS = 10_000;
 const UNSAFE_CONTROL_CHARACTER = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\p{Cf}]/u;
@@ -75,12 +76,9 @@ export type NativeAudioNoteTimelineItem = {
   readonly note: ReportAudioNote;
 };
 
-function noteTimelineTime(capturedAt: string, capturedUtcOffsetMinutes: number): { date: string; time: string } {
-  const localCaptureTime = new Date(new Date(capturedAt).getTime() + capturedUtcOffsetMinutes * 60_000);
-  return {
-    date: `${localCaptureTime.getUTCFullYear()}-${String(localCaptureTime.getUTCMonth() + 1).padStart(2, "0")}-${String(localCaptureTime.getUTCDate()).padStart(2, "0")}`,
-    time: `${String(localCaptureTime.getUTCHours()).padStart(2, "0")}:${String(localCaptureTime.getUTCMinutes()).padStart(2, "0")}`,
-  };
+function noteTimelineTime(capturedAt: string): { date: string; time: string } {
+  const local = localStationaryDateTimeParts(capturedAt);
+  return local ? { date: local.date, time: local.time } : { date: "", time: "--:--" };
 }
 
 export function completeReportTimeline<T extends { readonly id: string; readonly date?: string; readonly time: string; readonly dateTime?: string }>(
@@ -94,7 +92,7 @@ export function completeReportTimeline<T extends { readonly id: string; readonly
   const nativeNotes = notes.map((note): NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem => ({
     id: note.id,
     kind: note.type === "text" ? "text-note" : note.type === "photo" ? "photo-note" : "audio-note",
-    ...noteTimelineTime(note.capturedAt, note.capturedUtcOffsetMinutes),
+    ...noteTimelineTime(note.capturedAt),
     sortTime: note.capturedAt,
     note,
   } as NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem));

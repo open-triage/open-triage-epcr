@@ -95,15 +95,23 @@ test("complete timeline combines structured events and notes newest-first with s
   if ("note" in item) {
     assert.equal(item.note.author.displayName, "Alex Clinician");
     assert.equal(item.note.persistenceState, "ready");
-    assert.equal(item.time, "14:02");
+    assert.equal(item.time, new Date(newer.capturedAt).toTimeString().slice(0, 5));
   }
 });
 
-test("timeline presents native notes in the timezone recorded at capture", () => {
-  const capturedLocally = note({ capturedAt: "2026-09-24T22:30:00.000Z", capturedUtcOffsetMinutes: 120 });
+test("timeline presents notes in the viewer's local timezone, independent of capture offset", () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
+  const capturedLocally = note({ capturedAt: "2026-09-24T22:30:00.000Z", capturedUtcOffsetMinutes: -240 });
   const [item] = completeReportTimeline([], [capturedLocally]);
   assert.equal(item?.date, "2026-09-25");
   assert.equal(item?.time, "00:30");
+  assert.equal(capturedLocally.capturedUtcOffsetMinutes, -240);
+  } finally {
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
 });
 
 test("timeline excerpts are compact without changing stored content", () => {

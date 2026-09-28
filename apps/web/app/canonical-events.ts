@@ -4,6 +4,7 @@ import { stableDraftId } from "./draft-report";
 import type { EncounterDefinition } from "./encounter-definition";
 import { getNemsisDataElement, resolveNemsisElementValues, requireNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent, MedicationAdministration, VitalValues } from "./standard-encounter";
+import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "./stationary-date-time";
 
 const OWNER = "x-open-triage-owner";
 const DOCUMENTED_TIME = "documentedTime";
@@ -17,13 +18,26 @@ const eventSections = {
   medication: "eMedicationsSection",
 } as const;
 
-function timestamp(date: string | undefined, time: string): string {
-  return `${date ?? DEMO_FALLBACK_DATE}T${time.slice(0, 5)}:00-04:00`;
+function timestamp(document: EncounterDocument, event: EncounterEvent): string {
+  const existing = document.groups.flatMap(({ instances }) => instances).find(({ instanceId }) => instanceId === event.id);
+  const timeElement = event.vitals ? "eVitals.01" : event.procedure ? "eProcedures.01" : "eMedications.01";
+  const original = existing ? scalar(existing, timeElement) || String(existing.attributes?.[DOCUMENTED_TIME] ?? "") : event.dateTime;
+  const local = original ? localStationaryDateTimeParts(original) : undefined;
+  // Retain seconds and the original instant when another field is edited,
+  // including the second occurrence of an ambiguous autumn DST wall clock.
+  if (original && local && local.date === event.date && local.time === event.time) return original;
+  // Quick capture intentionally retains incomplete/invalid values for review.
+  // They do not describe an instant, so do not normalize them into a valid time.
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time.slice(0, 5))) {
+    return `${event.date ?? DEMO_FALLBACK_DATE}T${event.time.slice(0, 5)}:00+00:00`;
+  }
+  return stationaryLocalDateTimeInput(event.date ?? DEMO_FALLBACK_DATE, event.time.slice(0, 5));
 }
 
 function dateAndTime(value: unknown): { date: string; time: string; dateTime: string } {
   const lexical = typeof value === "string" ? value : `${DEMO_FALLBACK_DATE}T00:00:00Z`;
-  return { date: lexical.slice(0, 10), time: lexical.slice(11, 16), dateTime: lexical };
+  const local = localStationaryDateTimeParts(lexical);
+  return { date: local?.date ?? lexical.slice(0, 10), time: local?.time ?? lexical.slice(11, 16), dateTime: lexical };
 }
 
 function element(instance: EncounterGroupInstance, id: string) {
@@ -121,8 +135,7 @@ function vitalDetail(values: VitalValues, definition: EncounterDefinition): stri
   }).filter(Boolean).join(" · ");
 }
 
-function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
-  const observedAt = timestamp(event.date, event.time);
+function eventInstances(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, observedAt: string): ReadonlyArray<{ groupId: string; instance: EncounterGroupInstance }> {
   const sectionInstanceId = eventSectionInstanceId(document, event);
   if (event.vitals) {
     const rootElements: Array<{ id: string; values: EncounterValue[] }> = [{
@@ -191,10 +204,10 @@ export function saveCanonicalEvent(document: EncounterDocument, event: Encounter
   // App-native notes never enter the NEMSIS encounter document.
   if (event.kind === "note") return document;
   document = ensureEventSection(document, event);
-  const updatedAt = timestamp(event.date, event.time);
+  const updatedAt = timestamp(document, event);
   const removedIds = eventSubtreeIds(document, event.id);
   let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
-  for (const { groupId, instance } of eventInstances(document, event, definition)) {
+  for (const { groupId, instance } of eventInstances(document, event, definition, updatedAt)) {
     const existing = groups.find((group) => group.id === groupId);
     groups = existing
       ? groups.map((group) => group === existing ? { ...group, instances: [...group.instances, instance] } : group)
@@ -238,7 +251,7 @@ export function encounterEvents(document: EncounterDocument, definition: Encount
     .filter(documented).map((instance) => [instance.parentInstanceId ?? instance.instanceId.replace(/:dosage$/, ""), instance]) ?? []);
   for (const group of document.groups) for (const instance of group.instances) {
     if (!documented(instance) || group.id === "eMedications.DosageGroup") continue;
-    const observed = dateAndTime(instance.attributes?.[DOCUMENTED_TIME] ?? scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01"));
+    const observed = dateAndTime(scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01") || instance.attributes?.[DOCUMENTED_TIME]);
     if (group.id === "eVitals.VitalGroup") {
       const values = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} } as VitalValues;
       definition.events.vitals.fields.forEach((field) => {

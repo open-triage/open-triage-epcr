@@ -10,6 +10,43 @@ function patientGroups(document = INITIAL_SHELL_STATE.encounter.document) {
   return document.groups.filter(({ id }) => id.startsWith("ePatient") || id.startsWith("eHistory"));
 }
 
+test("quick capture preserves invalid times for correction rather than normalizing or rejecting the entry", () => {
+  const event: EncounterEvent = { id: "invalid-clock", date: "2026-09-24", time: "99:99", kind: "care",
+    title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: EMPTY_VITALS };
+  const saved = saveCanonicalEvent(INITIAL_SHELL_STATE.encounter.document, event, bundledEncounterDefinition);
+  assert.equal(encounterEvents(saved, bundledEncounterDefinition).find(({ id }) => id === event.id)?.time, "99:99");
+});
+
+test("mobile event times round-trip the local clock, retaining instants during DST and edits", () => {
+  const prior = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
+    const event: EncounterEvent = { id: "local-vital", date: "2026-09-24", time: "10:30", kind: "care", title: "Vitals",
+      detail: "", reference: "eVitals.VitalGroup", visitorEntered: true, vitals: { ...EMPTY_VITALS, heartRate: "72", nullValues: {} } };
+    let document = saveCanonicalEvent(INITIAL_SHELL_STATE.encounter.document, event, bundledEncounterDefinition);
+    let observed = encounterEvents(document, bundledEncounterDefinition).find(({ id }) => id === event.id)!;
+    assert.equal(observed.time, "10:30");
+    assert.equal(Date.parse(observed.dateTime!), Date.parse("2026-09-24T08:30:00Z"));
+    document = saveCanonicalEvent(document, { ...observed, date: "2026-12-15" }, bundledEncounterDefinition);
+    observed = encounterEvents(document, bundledEncounterDefinition).find(({ id }) => id === event.id)!;
+    assert.equal(Date.parse(observed.dateTime!), Date.parse("2026-12-15T09:30:00Z"));
+
+    // A server/stationary edit is authoritative over the older documentedTime attribute.
+    const ambiguous = "2026-10-25T01:30:45.123Z";
+    document = { ...document, groups: document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) =>
+      instance.instanceId !== event.id ? instance : { ...instance, elements: instance.elements.map((element) =>
+        element.id !== "eVitals.01" ? element : { ...element, values: [{ kind: "scalar", occurrenceId: "local-time", value: ambiguous }] }) }) })) };
+    observed = encounterEvents(document, bundledEncounterDefinition).find(({ id }) => id === event.id)!;
+    assert.equal(observed.time, "02:30");
+    assert.equal(observed.dateTime, ambiguous);
+    document = saveCanonicalEvent(document, { ...observed, dateTime: undefined, vitals: { ...observed.vitals!, heartRate: "80" } }, bundledEncounterDefinition);
+    assert.equal(encounterEvents(document, bundledEncounterDefinition).find(({ id }) => id === event.id)!.dateTime, ambiguous);
+  } finally {
+    if (prior === undefined) delete process.env.TZ;
+    else process.env.TZ = prior;
+  }
+});
+
 test("legacy note reducer actions cannot change the canonical document", () => {
   const inboundVitals = [{ instanceId: "inbound-vitals", elements: [{ id: "eVitals.06", values: [{ kind: "scalar" as const, occurrenceId: "inbound-systolic", value: 118 }] }] }];
   const initial = { ...INITIAL_SHELL_STATE, encounter: { ...INITIAL_SHELL_STATE.encounter, document: {

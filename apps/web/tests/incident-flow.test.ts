@@ -60,7 +60,10 @@ test("mobile projections expose only the configured operational subset", () => {
   assert.equal(assignmentSummary(withoutReason).dispatchReason, "Dispatch reason not provided");
 });
 
-test("operational timeline uses agency time and retains original offset lexicals", () => {
+test("operational timeline uses browser local time and retains original offset lexicals", () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
   const document = structuredClone(INITIAL_SHELL_STATE.encounter.document);
   const supported = ["eTimes.02", "eTimes.03", "eTimes.04", "eTimes.05", "eTimes.06", "eTimes.14", "eTimes.17"];
   const timeElements = [
@@ -75,12 +78,16 @@ test("operational timeline uses agency time and retains original offset lexicals
   const configured = { ...document, groups: document.groups.map((group) => group.id !== "eTimesSection" ? group : {
     ...group, instances: group.instances.map((instance) => ({ ...instance, elements: timeElements })),
   }) };
-  const timeline = documentTimeline(configured, "America/New_York");
+  const timeline = documentTimeline(configured);
   assert.deepEqual(timeline.map(({ reference }) => reference), [...supported].reverse());
-  assert.equal(timeline.at(-1)?.date, "2026-01-14");
-  assert.equal(timeline.at(-1)?.time, "18:30");
+  assert.equal(timeline.at(-1)?.date, "2026-01-15");
+  assert.equal(timeline.at(-1)?.time, "00:30");
   assert.equal(timeline.at(-1)?.dateTime, "2026-01-15T01:30:00+02:00");
   assert.equal(timeline.every(({ detail }) => detail === ""), true);
+  } finally {
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
 });
 
 test("an invalid operational timestamp cannot crash the encounter workspace", () => {
