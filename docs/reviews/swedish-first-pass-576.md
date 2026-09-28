@@ -27,7 +27,7 @@ The catalog count is 3,943 distinct `reviewPending` entries. The form and valida
 
 ## Representative journey checklist
 
-Record device or viewport, profile (`sweden` or `nemsis-full`), catalog/form/validation release versions, and date in the findings below. Set the agency language to Swedish in **Administration → Myndighetsinställningar**, save, and reload the workspace. Repeat a representative path in English to compare clinical meaning. For the local database-backed app, follow the root `AGENTS.md` start and synthetic bootstrap instructions.
+Record device or viewport, profile (`sweden` or `nemsis-full`), catalog/form/validation release versions, and date in the findings below. Set the agency language to Swedish in **Administration → Organisationsinställningar**, save, and reload the workspace. Repeat a representative path in English to compare clinical meaning. For the local database-backed app, follow the root `AGENTS.md` start and synthetic bootstrap instructions.
 
 | Journey | Reviewer action and questions | Human result |
 | --- | --- | --- |
