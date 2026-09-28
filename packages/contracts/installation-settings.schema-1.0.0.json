@@ -16,6 +16,7 @@
   "properties": {
     "schemaVersion": { "const": "1.0.0" },
     "language": { "enum": ["en", "sv"] },
+    "regionalFormat": { "enum": ["en-US", "sv-SE", null] },
     "signIn": {
       "type": "object",
       "additionalProperties": false,

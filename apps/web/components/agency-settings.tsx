@@ -4,6 +4,7 @@ import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCo
 import React, { FormEvent, useCallback, useEffect, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { applyAgencyColors } from "../app/installation-settings";
+import { formatClinicalDate, formatClinicalNumber, type RegionalFormat } from "../app/regional-format";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 
 const MEBIBYTE = 1024 * 1024;
@@ -14,7 +15,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision, language: settings.language,
+  return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -125,6 +126,19 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           <option value="en">{t("settings.english")}</option>
           <option value="sv">{t("settings.swedish")}</option>
         </select>
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{language === "sv" ? "Regionalt format" : "Regional format"}</legend>
+        <label htmlFor="agency-regional-format"><strong>{language === "sv" ? "Datum och nummer" : "Dates and numbers"}</strong>
+          <span>{language === "sv" ? "Språket kan väljas separat. Formatändringen gäller nästa gång arbetsytan öppnas." : "Language is selected separately. The format applies on the next workspace load."}</span></label>
+        <select id="agency-regional-format" value={draft.regionalFormat ?? ""} onChange={(event) =>
+          setDraft((current) => current ? { ...current, regionalFormat: (event.target.value || null) as RegionalFormat } : current)}>
+          <option value="">{language === "sv" ? "Nuvarande format" : "Current format"}</option>
+          <option value="en-US">English (United States)</option>
+          <option value="sv-SE">Svenska (Sverige)</option>
+        </select>
+        <p aria-live="polite">{language === "sv" ? "Förhandsvisning" : "Preview"}: {formatClinicalDate("2026-09-28T13:45:00Z", draft.regionalFormat ?? null)} · {formatClinicalNumber(1234.5, draft.regionalFormat ?? null)}</p>
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>

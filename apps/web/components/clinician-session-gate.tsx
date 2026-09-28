@@ -25,6 +25,7 @@ import {
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
 import { resolveMessage } from "../app/localization";
+import { RegionalFormatContext } from "../app/regional-format";
 import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
@@ -343,6 +344,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   return (
+    <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header ref={sessionBar} className="session-bar">
         {browserRequestConfiguration().mode === "server" &&
@@ -437,5 +439,6 @@ export function ClinicianSessionGate({ children }: {
       } }) : children)}
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={installation.settings.language} />}
     </div>
+    </RegionalFormatContext.Provider>
   );
 }

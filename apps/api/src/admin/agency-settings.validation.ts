@@ -128,7 +128,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "language", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
@@ -154,7 +154,11 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
   if (body.language !== "en" && body.language !== "sv") {
     throw new UnprocessableEntityException("language must be en or sv");
   }
-  return { expectedRevision: Number(body.expectedRevision), language: body.language, reportMediaAllowanceBytes: allowance,
+  if (body.regionalFormat !== undefined && body.regionalFormat !== null && body.regionalFormat !== "en-US" && body.regionalFormat !== "sv-SE") {
+    throw new UnprocessableEntityException("regionalFormat must be en-US, sv-SE, or null");
+  }
+  return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.regionalFormat === undefined ? {} : { regionalFormat: body.regionalFormat }), reportMediaAllowanceBytes: allowance,
     imageMediaLimitBytes: imageLimit,
     appearance: appearance(body.appearance), demographics: demographics(body.demographics) };
 }

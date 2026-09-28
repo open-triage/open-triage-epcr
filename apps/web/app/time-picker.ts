@@ -31,8 +31,8 @@ export function adjustClinicalDate(value: string, delta: number): string {
   return localClinicalDate(date);
 }
 
-export function formatClinicalDate(value: string): string {
+export function formatClinicalDate(value: string, region?: "en-US" | "sv-SE" | null): string {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year!, month! - 1, day);
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return new Intl.DateTimeFormat(region ?? undefined, { month: "short", day: "numeric" }).format(date);
 }
