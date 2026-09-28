@@ -52,6 +52,8 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id?: string | null;
+  form_definition_sha256?: string | null;
+  catalog_artifact_sha256?: string | null;
   validation_compiled_sha256?: string | null;
   documenting_user_id: string;
   media_settings_revision: string | number;
@@ -872,6 +874,9 @@ export class DraftReportService {
           formVersionId: String(details.formVersionId),
           catalogReleaseId: String(details.catalogReleaseId),
           ...(details.validationVersionId ? { validationVersionId: details.validationVersionId } : {}),
+          ...(details.formDefinitionSha256 ? { formDefinitionSha256: details.formDefinitionSha256 } : {}),
+          ...(details.catalogArtifactSha256 ? { catalogArtifactSha256: details.catalogArtifactSha256 } : {}),
+          ...(details.validationCompiledSha256 ? { validationCompiledSha256: details.validationCompiledSha256 } : {}),
           mediaPolicy: details.mediaPolicy,
           clinicalForm,
           revision: Number(details.revision),
@@ -1471,7 +1476,8 @@ export class DraftReportService {
   ): Promise<DraftReportResult> {
     const rows = await manager.query<ReportRow[]>(`select id, status, revision, organization_id, incident_id,
       patient_id, agency_demographic_version_id, form_version_id, catalog_release_id, validation_version_id,
-      validation_compiled_sha256, documenting_user_id, media_settings_revision, report_media_allowance_bytes,
+      form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256,
+      documenting_user_id, media_settings_revision, report_media_allowance_bytes,
       image_media_limit_bytes,
       expires_at
       from clinical.report where id = $1
@@ -1494,6 +1500,8 @@ export class DraftReportService {
       agencyDemographicVersionId: row.agency_demographic_version_id,
       formVersionId: row.form_version_id, catalogReleaseId: row.catalog_release_id,
       ...(row.validation_version_id ? { validationVersionId: row.validation_version_id } : {}),
+      ...(row.form_definition_sha256 ? { formDefinitionSha256: row.form_definition_sha256 } : {}),
+      ...(row.catalog_artifact_sha256 ? { catalogArtifactSha256: row.catalog_artifact_sha256 } : {}),
       ...(row.validation_compiled_sha256 ? { validationCompiledSha256: row.validation_compiled_sha256 } : {}),
       documentingUserId: row.documenting_user_id,
       mediaPolicy: {

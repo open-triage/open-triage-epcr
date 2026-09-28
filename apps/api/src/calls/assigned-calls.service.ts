@@ -56,6 +56,8 @@ type ReportRow = {
   form_version_id: string;
   catalog_release_id: string;
   validation_version_id: string | null;
+  form_definition_sha256: string | null;
+  catalog_artifact_sha256: string | null;
   validation_compiled_sha256: string | null;
   revision: string | number;
   status: "draft" | "signed";
@@ -514,7 +516,7 @@ export class AssignedCallsService {
     return withReportSnapshot(this.dataSource, async (manager) => {
       const reports = await manager.query<ReportRow[]>(`
         select id, documenting_user_id, form_version_id, catalog_release_id, validation_version_id,
-               validation_compiled_sha256, revision, status, synthetic,
+               form_definition_sha256, catalog_artifact_sha256, validation_compiled_sha256, revision, status, synthetic,
                expires_at, media_settings_revision, report_media_allowance_bytes, image_media_limit_bytes,
                dispatch_canceled_at, dispatch_cancellation_revision, dispatch_cancellation_receipt_id
         from clinical.report where id = $1 and organization_id = $2 and documenting_user_id = $3
@@ -535,6 +537,9 @@ export class AssignedCallsService {
           formVersionId: report.form_version_id,
           catalogReleaseId: report.catalog_release_id,
           ...(report.validation_version_id ? { validationVersionId: report.validation_version_id } : {}),
+          ...(report.form_definition_sha256 ? { formDefinitionSha256: report.form_definition_sha256 } : {}),
+          ...(report.catalog_artifact_sha256 ? { catalogArtifactSha256: report.catalog_artifact_sha256 } : {}),
+          ...(report.validation_compiled_sha256 ? { validationCompiledSha256: report.validation_compiled_sha256 } : {}),
           mediaPolicy: {
             reportMediaAllowanceBytes: Number(report.report_media_allowance_bytes ?? DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES),
             imageMediaLimitBytes: Number(report.image_media_limit_bytes ?? DEFAULT_IMAGE_MEDIA_LIMIT_BYTES),

@@ -1021,6 +1021,10 @@ export interface OpenAssignmentResponse {
     formVersionId: string;
     catalogReleaseId: string;
     validationVersionId?: string;
+    /** Immutable report-pinned source integrity metadata; absent on older report records. */
+    formDefinitionSha256?: string;
+    catalogArtifactSha256?: string;
+    validationCompiledSha256?: string;
     /** Present on live API responses; optional only while restoring pre-feature offline records. */
     mediaPolicy?: ReportMediaPolicy;
     /** Immutable rendering and validation configuration loaded from the report's pinned versions. */
