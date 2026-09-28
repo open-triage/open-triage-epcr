@@ -152,13 +152,13 @@ function AuthorizedAdminShell({ session, language }: {
 
     {context && mounted("Element catalog") && <div hidden={activePanel !== "Element catalog"}><section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading">Element catalog</h2></div>
-      <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
+      <CatalogAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
         active={activePanel === "Element catalog"} onPublished={setFormCatalogReleaseId} />
     </section></div>}
 
     {context && mounted("Stationary form") && <div hidden={activePanel !== "Stationary form"}><section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
-      <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      <StationaryFormAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         active={activePanel === "Stationary form"}
         capabilities={context.capabilities}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration?.catalog.id || ""}
@@ -169,7 +169,7 @@ function AuthorizedAdminShell({ session, language }: {
 
     {context && mounted("Validation rules") && <div hidden={activePanel !== "Validation rules"}><section className="admin-configuration" aria-labelledby="validation-authoring-heading">
       <div className="section-heading"><h2 id="validation-authoring-heading">Validation rules</h2></div>
-      <ValidationAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      <ValidationAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         active={activePanel === "Validation rules"}
         capabilities={context.capabilities} catalogReleaseId={context.activeConfiguration?.catalog.id || ""}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
