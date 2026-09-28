@@ -11,6 +11,7 @@ import {
   offlineEditingAvailable,
   persistentStorageGranted,
   protectedRecordExpired,
+  summarizeProtectedPendingWork,
   retainedProtectedRecords,
   restoreProtectedRecord,
   type ProtectedClinicalRecord,
@@ -279,4 +280,32 @@ test("only an explicit server authorization denial is treated as a clinical lock
   assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 403 }), true);
   assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 404 }), false);
   assert.equal(applyProtectedAuthorityResponse("opaque-report", { status: 503 }), false);
+});
+
+
+test("logout ignores ciphertext revision lag and UI state once report commands are synchronized", () => {
+  const entry = {
+    envelope: { recoveryDeadline: "2026-09-30T12:00:00.000Z" },
+    revision: 12, synchronizedRevision: 10,
+    payload: { schemaVersion: 1 as const, report: { queuedChanges: [] }, shellState: { view: "timeline" } },
+  };
+  assert.deepEqual(summarizeProtectedPendingWork([entry]), { pendingReportCount: 0, recoveryDeadline: null });
+  assert.deepEqual(summarizeProtectedPendingWork([{ ...entry,
+    payload: { ...entry.payload, report: { queuedChanges: [{ id: "pending-command" }] } },
+  }]), { pendingReportCount: 1, recoveryDeadline: entry.envelope.recoveryDeadline });
+});
+
+test("logout still warns about pending media and previews after report commands synchronize", () => {
+  type Payload = Parameters<typeof summarizeProtectedPendingWork>[0][number]["payload"];
+  const summary = (media: Partial<Payload>) => summarizeProtectedPendingWork([{
+    envelope: { recoveryDeadline: "2026-09-30T12:00:00.000Z" },
+    payload: { schemaVersion: 1, report: { queuedChanges: [] }, ...media },
+  }]);
+  for (const kind of ["photoQueue", "audioQueue"] as const) {
+    assert.equal(summary({ [kind]: [{ note: { persistenceState: "ready" } }] } as Partial<Payload>).pendingReportCount, 0);
+    assert.equal(summary({ [kind]: [{ note: { persistenceState: "saved-on-device" } }] } as Partial<Payload>).pendingReportCount, 1);
+  }
+  for (const kind of ["photoPreview", "audioPreview"] as const) {
+    assert.equal(summary({ [kind]: {} } as Partial<Payload>).pendingReportCount, 1);
+  }
 });

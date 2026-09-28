@@ -16,6 +16,10 @@ export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export const DRAFT_CONFLICT_RECOVERY_LIMIT = 1;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
 
+export function reconciledDraftSyncStatus(current: DraftSyncStatus, hasPendingChanges: boolean): DraftSyncStatus {
+  return hasPendingChanges ? current : "Saved";
+}
+
 export type DraftSaveFailureCategory = "server-conflict" | "validation-rejected";
 
 /** A bounded, value-free failure classification safe to include in diagnostics. */
