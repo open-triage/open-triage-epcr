@@ -10,6 +10,8 @@ import { activateValidationVersion, cloneValidationVersion, createValidationDraf
   createValidationRule, loadActiveCatalogDefinition, loadCatalogVersion, loadValidationRules, saveValidationDraft,
   setValidationRuleEnabled, validateValidationDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
+import { validationTranslationIssues, updateValidationEnglish } from "../app/translation-diagnostics";
+import { TranslationIssueSummary } from "./translation-issue-summary";
 
 export function validationCatalog(definition: CatalogDefinitionView["definition"]): ValidationCatalog {
   return { elements: definition.elements.map(({ elementId, label, baseDatatype, storageSemantics, constraints }) => {
@@ -134,7 +136,8 @@ export function ValidationResultFeedback({ result, ruleCount }: {
   </div>;
 }
 
-export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated, active = true }: {
+export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated, active = true, language = "sv" }: {
+  readonly language?: "en" | "sv";
   readonly csrfToken: string;
   readonly capabilities: readonly string[];
   readonly catalogReleaseId: string;
@@ -163,6 +166,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [referenceElementId, setReferenceElementId] = useState("");
   const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
   const [wordingLanguage, setWordingLanguage] = useState<"en" | "sv">("en");
+  const [wordingIssueFilter, setWordingIssueFilter] = useState("all");
   const [library, setLibrary] = useState<ValidationRulePage | null>(null);
   const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "",
     executionTarget: "", enabled: "", validity: "" });
@@ -217,6 +221,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     setDraft((current) => current ? update(current) : current); setDirty(true); setValidation(null); setStatus("Unsaved changes.");
   }
   const selectedRule = draft?.rules[selectedRuleIndex] ?? null;
+  const wordingIssues = draft ? validationTranslationIssues(draft.rules, language) : [];
   function changeRule(update: (rule: ValidationDraft["rules"][number]) => ValidationDraft["rules"][number]) {
     change((current) => ({ ...current, rules: current.rules.map((rule, index) => index === selectedRuleIndex ? update(rule) : rule) }));
   }
@@ -291,6 +296,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     <label htmlFor="validation-display-name">Validation version display name</label>
     <input id="validation-display-name" disabled={!canWrite} value={draft.displayName}
       onChange={(event) => change((current) => ({ ...current, displayName: event.target.value }))} />
+    <TranslationIssueSummary issues={wordingIssues} filter={wordingIssueFilter} onFilter={setWordingIssueFilter} onNavigate={(issue) => {
+      setSelectedRuleIndex(draft.rules.findIndex((rule) => rule.id === issue.id));
+      setWordingLanguage(issue.kind === "english" ? "en" : "sv");
+      requestAnimationFrame(() => document.getElementById(`validation-rule-${issue.field}`)?.focus());
+    }} />
     <section className="validation-library" aria-labelledby="validation-library-heading">
       <h3 id="validation-library-heading">Rule library</h3>
       <ValidationRuleFilterControls value={filters} elements={visibleCatalogElements}
@@ -329,9 +339,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         </select></div>
       <div className="validation-rule-row"><label htmlFor="validation-rule-name">Name ({wordingLanguage})</label>
       <input id="validation-rule-name" value={wordingLanguage === "en" ? selectedRule.name : selectedRule.localization?.sv?.name ?? ""}
-        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? { ...rule, name: event.target.value } :
+        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? updateValidationEnglish(rule, "name", event.target.value) :
           { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
-            name: event.target.value } } })} /></div>
+            name: event.target.value, reviewedSource: { ...rule.localization?.sv?.reviewedSource, name: rule.name } } } })} /></div>
+      {wordingIssues.filter((issue) => issue.id === selectedRule.id && issue.field === "name").map((issue) =>
+        <small role="note" key={issue.kind}>{issue.message}</small>)}
       <div className="validation-rule-row"><label><span>Enabled</span><input type="checkbox" checked={selectedRule.enabled}
         onChange={(event) => changeRule((rule) => ({ ...rule, enabled: event.target.checked }))} /></label></div>
       <div className="validation-rule-row"><label htmlFor="validation-severity">Severity</label>
@@ -365,9 +377,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       })()}
       <div className="validation-rule-row"><label htmlFor="validation-message">Message ({wordingLanguage})</label>
       <input id="validation-message" value={wordingLanguage === "en" ? selectedRule.message : selectedRule.localization?.sv?.message ?? ""}
-        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? { ...rule, message: event.target.value } :
+        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? updateValidationEnglish(rule, "message", event.target.value) :
           { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
-            message: event.target.value } } })} /></div>
+            message: event.target.value, reviewedSource: { ...rule.localization?.sv?.reviewedSource, message: rule.message } } } })} /></div>
+      {wordingIssues.filter((issue) => issue.id === selectedRule.id && issue.field === "message").map((issue) =>
+        <small role="note" key={issue.kind}>{issue.message}</small>)}
       <div className="validation-rule-row"><label htmlFor="validation-message-parameters">Named message parameters (JSON)</label>
         <textarea id="validation-message-parameters" key={selectedRule.id}
           defaultValue={JSON.stringify(selectedRule.messageParameters ?? {}, null, 2)} rows={3}

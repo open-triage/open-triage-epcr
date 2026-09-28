@@ -4,6 +4,8 @@ import type { FormCatalogElement, FormDraftDefinition, FormDraftField } from "@o
 import React, { useState } from "react";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 import { pruneFormTranslations } from "../app/form-localization";
+import { formTranslationIssues } from "../app/translation-diagnostics";
+import { TranslationIssueSummary } from "./translation-issue-summary";
 
 export function formSectionLabel(section: FormDraftDefinition["sections"][number]): string {
   const title = section.presentation?.title;
@@ -141,12 +143,15 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
 }
 
 /** Edits source text and Swedish presentation by stable section/field keys. */
-export function FormLocalizedEditor({ definition, readOnly, onChange }: {
+export function FormLocalizedEditor({ definition, readOnly, onChange, language: agencyLanguage = "sv" }: {
+  readonly language?: "en" | "sv";
   readonly definition: FormDraftDefinition;
   readonly readOnly: boolean;
   readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
 }) {
   const [language, setLanguage] = useState<"en" | "sv">("en");
+  const [issueFilter, setIssueFilter] = useState("all");
+  const issues = formTranslationIssues(definition, agencyLanguage);
   const locale = definition.locales?.find(({ locale }) => locale === "sv");
   function update(scope: "sections" | "fields", key: string, property: "title" | "label" | "helpText", value: string) {
     let next: FormDraftDefinition;
@@ -155,7 +160,8 @@ export function FormLocalizedEditor({ definition, readOnly, onChange }: {
         ? { ...section, presentation: { ...section.presentation, title: value } }
         : { ...section, fields: section.fields.map((field) => scope === "fields" && field.key === key
           ? { ...field, configuration: { ...field.configuration, [property]: value } } : field) }) };
-      if (locale) next = { ...next, locales: (next.locales ?? []).map((item) => item.locale === "sv"
+      if (locale && value !== (scope === "sections" ? definition.sections.find((item) => item.key === key)?.presentation?.title
+        : definition.sections.flatMap((item) => item.fields).find((item) => item.key === key)?.configuration?.[property])) next = { ...next, locales: (next.locales ?? []).map((item) => item.locale === "sv"
         ? { ...item, sourceReview: { ...item.sourceReview, [`${scope}.${key}.${property}`]: false } } : item) };
     } else {
       const translations = locale?.translations ?? {};
@@ -166,7 +172,7 @@ export function FormLocalizedEditor({ definition, readOnly, onChange }: {
       if (!Object.keys(nextEntry).length) delete nextEntries[key];
       const reviewKey = `${scope}.${key}.${property}`;
       const updated = { locale: "sv" as const, translations: { ...translations, [scope]: nextEntries },
-        sourceReview: { ...locale?.sourceReview, [reviewKey]: false } };
+        sourceReview: { ...locale?.sourceReview, [reviewKey]: Boolean(value.trim()) } };
       next = { ...definition, locales: [...(definition.locales ?? []).filter(({ locale }) => locale !== "sv"), updated] };
     }
     onChange(next, `Updated ${language === "en" ? "English" : "Swedish"} ${property} for ${key}.`);
@@ -187,6 +193,8 @@ export function FormLocalizedEditor({ definition, readOnly, onChange }: {
       <input id={id} disabled={readOnly} maxLength={500} value={typeof value === "string" ? value : ""}
         placeholder={language === "sv" && typeof source === "string" ? source : undefined}
         onChange={(event) => update(scope, key, property, event.target.value)} />
+      {issues.filter((issue) => issue.id === key && issue.field === property).map((issue) =>
+        <small role="note" key={issue.kind}>{issue.message}</small>)}
       {language === "sv" && typeof source === "string" && source.trim() && <label>
         <input type="checkbox" disabled={readOnly || !translated?.trim()} checked={locale?.sourceReview?.[`${scope}.${key}.${property}`] === true}
           onChange={(event) => review(scope, key, property, event.target.checked)} />Source reviewed
@@ -195,6 +203,11 @@ export function FormLocalizedEditor({ definition, readOnly, onChange }: {
   }
   return <section className="form-localized-editor" aria-label="Form wording">
     <h3>Form wording</h3>
+    <TranslationIssueSummary issues={issues} filter={issueFilter} onFilter={setIssueFilter} onNavigate={(issue) => {
+      setLanguage(issue.kind === "english" ? "en" : "sv");
+      const scope = issue.field === "title" ? "sections" : "fields";
+      requestAnimationFrame(() => document.getElementById(`form-text-${scope}-${issue.id}-${issue.field}`.replaceAll(/[^A-Za-z0-9_-]/g, "-"))?.focus());
+    }} />
     <label htmlFor="form-wording-language">Language</label>
     <select id="form-wording-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}>
       <option value="en">English source</option><option value="sv">Swedish translation</option>

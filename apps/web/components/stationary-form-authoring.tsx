@@ -6,7 +6,7 @@ import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormD
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormLocalizedEditor, FormSectionElements } from "./form-authoring";
 import { LoadingStatus } from "./loading-status";
-import { formTranslationWarnings, pruneFormTranslations } from "../app/form-localization";
+import { pruneFormTranslations } from "../app/form-localization";
 
 type FormSection = FormDraftDefinition["sections"][number];
 
@@ -56,7 +56,8 @@ export function formStructuralSummary(definition: FormDraftDefinition): string {
   return `${definition.sections.length} ${definition.sections.length === 1 ? "section" : "sections"} and ${fields} ${fields === 1 ? "element" : "elements"}`;
 }
 
-export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, preferredCatalogReleaseId, onActivated, active = true }: {
+export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, preferredCatalogReleaseId, onActivated, active = true, language = "sv" }: {
+  readonly language?: "en" | "sv";
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly catalogReleaseId: string;
@@ -234,8 +235,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     {canWrite && <fieldset className="form-picker-container" disabled={busy}><FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
       onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
-    <FormLocalizedEditor definition={draft.definition} readOnly={!canWrite || busy} onChange={change} />
-    {formTranslationWarnings(draft.definition, "sv").length > 0 && <div className="form-findings" role="status"><strong>Translation review warnings</strong><ul>{formTranslationWarnings(draft.definition, "sv").map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+    <FormLocalizedEditor language={language} definition={draft.definition} readOnly={!canWrite || busy} onChange={change} />
     <FormSectionElements definition={draft.definition} busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),

@@ -5,6 +5,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
+import { catalogTranslationIssues, updateCatalogEnglish, updateCatalogChoiceEnglish, type TranslationIssue } from "../app/translation-diagnostics";
+import { TranslationIssueSummary } from "./translation-issue-summary";
 
 export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   readonly canRead: boolean; readonly canWrite: boolean; readonly canPublish: boolean;
@@ -14,7 +16,8 @@ export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   return { canRead, canWrite, canPublish: canWrite && capabilities.includes("catalog:publish") };
 }
 
-export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active = true }: {
+export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active = true, language = "sv" }: {
+  readonly language?: "en" | "sv";
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly onPublished?: (catalogReleaseId: string) => void;
@@ -29,6 +32,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [query, setQuery] = useState("");
   const [editingLanguage, setEditingLanguage] = useState<"en" | "sv">("en");
   const [showMissing, setShowMissing] = useState(false);
+  const [issueFilter, setIssueFilter] = useState("all");
   const [elementPage, setElementPage] = useState(0);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -61,6 +65,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       .catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
   }, [loaded, selectedVersionId, hasAuthoringDraft]);
+  const issues = draft ? catalogTranslationIssues(draft.definition, language) : [];
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     !draft.definition.hiddenElementIds?.includes(element.elementId) &&
     (!showMissing || !(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim()) &&
@@ -123,8 +128,12 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
     <select id="catalog-edit-language" value={editingLanguage} onChange={(event) => { setEditingLanguage(event.target.value as "en" | "sv"); setElementPage(0); }}>
       <option value="en">English source</option><option value="sv">Swedish translation</option>
     </select>
+    <TranslationIssueSummary issues={issues} filter={issueFilter} onFilter={setIssueFilter} onNavigate={(issue) => {
+      setEditingLanguage(issue.kind === "english" ? "en" : "sv"); setShowMissing(false); setQuery(issue.id); setElementPage(0);
+      if (issue.field === "name" || issue.field.includes(" ")) setSelectedListKey(listOptions.find(({ list }) => list.listId === issue.id)?.key ?? "");
+      requestAnimationFrame(() => document.getElementById(issue.field === "name" || issue.field.includes(" ") ? "code-list-select" : "catalog-search")?.focus());
+    }} />
     <label><input type="checkbox" checked={showMissing} onChange={(event) => { setShowMissing(event.target.checked); setElementPage(0); }} /> Show fields missing {editingLanguage === "en" ? "English" : "Swedish"} labels</label>
-    <p role="note">{draft.definition.elements.filter((element) => !element.label.trim()).length} English labels missing; {draft.definition.elements.filter((element) => !element.localization?.sv?.label?.trim()).length} Swedish labels missing. These warnings do not block publication.</p>
     <label htmlFor="catalog-search">Find by identifier or label</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => {
       setQuery(event.target.value); setElementPage(0);
@@ -142,14 +151,14 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           <label><span className="visually-hidden">{editingLanguage === "en" ? "English" : "Swedish"} label for {element.elementId}</span>
             <input disabled={!canEdit} value={editingLanguage === "en" ? element.label : element.localization?.sv?.label ?? ""}
               onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
-                ? { ...value, label: event.target.value }
+                ? updateCatalogEnglish(value, "label", event.target.value)
                 : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
                     label: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, label: value.label } } } })} />
           </label>
           <label><span className="visually-hidden">{editingLanguage === "en" ? "English" : "Swedish"} description for {element.elementId}</span>
             <textarea disabled={!canEdit} value={editingLanguage === "en" ? element.description ?? "" : element.localization?.sv?.description ?? ""}
               onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
-                ? { ...value, description: event.target.value }
+                ? updateCatalogEnglish(value, "description", event.target.value)
                 : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
                     description: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, description: value.description ?? "" } } } })} />
           </label>
@@ -165,6 +174,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           </label>)}
           {!(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim() &&
             <small role="note">Missing {editingLanguage === "en" ? "English" : "Swedish"} label; clinical display will use fallback text.</small>}
+          {issues.filter((issue) => issue.id === element.elementId).map((issue, index) =>
+            <small role="note" key={`${issue.field}:${issue.kind}:${index}`}>{issue.field}: {issue.message}</small>)}
           {editingLanguage === "sv" && element.localization?.sv?.reviewedSource &&
             ((element.localization.sv.label && element.localization.sv.reviewedSource.label !== element.label) ||
               (element.localization.sv.description && element.localization.sv.reviewedSource.description !== (element.description ?? ""))) &&
@@ -192,7 +203,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         onChange={(event) => setSelectedListKey(event.target.value)}>
         {listOptions.map(({ key, elementId, list }) => <option key={key} value={key}>{elementId} — {list.name}</option>)}
       </select>
-      {selectedList && <CatalogCodeListEditor list={selectedList} language={editingLanguage} readOnly={!canEdit} onChange={editCodeList} />}
+      {selectedList && <CatalogCodeListEditor list={selectedList} issues={issues.filter((issue) => issue.id === selectedList.listId)} language={editingLanguage} readOnly={!canEdit} onChange={editCodeList} />}
     </section>}
     <div className="catalog-actions">
       {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => action(async () => {
@@ -232,7 +243,8 @@ export function moveCodeValue(list: CatalogDraftCodeList, from: number, to: numb
   return { ...list, values };
 }
 
-export function CatalogCodeListEditor({ list, language = "en", readOnly = false, onChange }: {
+export function CatalogCodeListEditor({ list, issues = [], language = "en", readOnly = false, onChange }: {
+  readonly issues?: ReadonlyArray<TranslationIssue>;
   readonly list: CatalogDraftCodeList;
   readonly readOnly?: boolean;
   readonly language?: "en" | "sv";
@@ -266,6 +278,7 @@ export function CatalogCodeListEditor({ list, language = "en", readOnly = false,
       value={language === "sv" ? list.localization?.sv?.name ?? "" : list.name}
       onChange={(event) => onChange({ ...list, localization: { schemaVersion: 1, sv: {
         name: event.target.value, reviewedSource: { name: list.name } } } }, `Changed Swedish name for ${list.listId}.`)} /></label>
+    {issues.filter((issue) => issue.field === "name").map((issue) => <small role="note" key={issue.kind}>{issue.message}</small>)}
     {language === "sv" && list.localization?.sv?.reviewedSource?.name !== undefined &&
       list.localization.sv.reviewedSource.name !== list.name && <p role="note">English list name changed. Review Swedish text.
         <button type="button" disabled={readOnly} onClick={() => onChange({ ...list, localization: { schemaVersion: 1,
@@ -287,7 +300,9 @@ export function CatalogCodeListEditor({ list, language = "en", readOnly = false,
             value={language === "sv" ? value.localization?.sv?.label ?? "" : value.label} onChange={(event) => updateValue(index,
             (current) => language === "sv" ? { ...current, localization: { schemaVersion: 1,
               sv: { label: event.target.value, reviewedSource: { label: current.label } } } } :
-              { ...current, label: event.target.value }, `Changed the ${language === "sv" ? "Swedish" : "English"} label for ${value.code}.`)} /></label>
+              updateCatalogChoiceEnglish(current, event.target.value), `Changed the ${language === "sv" ? "Swedish" : "English"} label for ${value.code}.`)} /></label>
+          {issues.filter((issue) => issue.field === `${value.codeSystem} ${value.code}`).map((issue) =>
+            <small role="note" key={issue.kind}>{issue.message}</small>)}
           {language === "sv" && !value.localization?.sv?.label?.trim() && <small role="note">Missing Swedish choice label; English will be shown.</small>}
           {language === "sv" && value.localization?.sv?.reviewedSource && value.localization.sv.reviewedSource.label !== value.label &&
             <p role="note">English choice changed. Review Swedish text. <button type="button" disabled={readOnly}
