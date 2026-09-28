@@ -32,7 +32,6 @@ import {
   DraftSaveRejectedError,
   signDraftReport,
   type ActiveDraftReport,
-  dispatchCancellationNotice,
   updateReportTextNote,
 } from "./draft-report";
 import { DEFAULT_IMAGE_MEDIA_LIMIT_BYTES, DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, type ClinicianSession, type DispatchConflict, type DispatchConflictDisposition, type EncounterValue, type ReportAudioNote, type ReportNote, type ReportPhotoNote, type ReportTextNote } from "@open-triage/contracts";
@@ -60,6 +59,7 @@ import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
 import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
 import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
 import { blobToBase64 } from "./report-audio-notes";
+import { resolveMessage, type AgencyLanguage } from "./localization";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -72,16 +72,7 @@ type TextNoteDraft = {
   readonly isNew: boolean;
 };
 
-const tabs: ReadonlyArray<{ id: ShellView; label: string }> = [
-  { id: "timeline", label: "Timeline" },
-  { id: "checklist", label: "Checklist" },
-];
-
-const quickActionText = {
-  vitals: "Vitals",
-  medication: "Medications",
-  procedure: "Procedures",
-} as const;
+const tabs: ReadonlyArray<ShellView> = ["timeline", "checklist"];
 const structuredQuickActions = ["vitals", "medication", "procedure"] as const;
 
 function mergeProtectedMedia(notes: ReadonlyArray<ReportNote>, reportId: string): ReadonlyArray<ReportNote> {
@@ -102,10 +93,11 @@ function validationTimestampFor(document: unknown, clinicalForm: unknown): strin
   return new Date().toISOString();
 }
 
-function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
+function EncounterWorkspace({ session, report, presentationMode, language, onSaveAndClose, onReportCompleted, onSessionEnded, onErrorStateChange }: {
   readonly session: ClinicianSession;
   readonly report: ActiveDraftReport | null;
   readonly presentationMode: PresentationMode;
+  readonly language: AgencyLanguage;
   readonly onSaveAndClose: () => void;
   readonly onReportCompleted: () => void;
   readonly onSessionEnded: () => void;
@@ -113,6 +105,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 }) {
   const region = useRegionalFormat();
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
+  const t = (key: string, parameters?: Record<string, string | number>, count?: number) => resolveMessage(language, key, parameters, count);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
@@ -356,7 +349,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   const canFinish = signingBlockers.length === 0;
   const vitalDraftValidation = shell.vitalDraft ? validateVitals(shell.vitalDraft.time, shell.vitalDraft.values, bundledEncounterDefinition) : null;
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
-  const vitalFindingActive = !!(editingFinding?.category === vitalDefinition.labels.category && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
+  const vitalFindingActive = !!(editingFinding && "eventType" in editingFinding && editingFinding.eventType === "vitals" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const activeDialog = audioDialog ? "audio" : photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
   const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
@@ -481,7 +474,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         const destination = occurrence ?? field ?? scope;
         destination?.scrollIntoView({ block: "center" });
         (destination?.matches("button, input, select, textarea") ? destination : destination?.querySelector<HTMLElement>("button, input, select, textarea, [tabindex]"))?.focus();
-        setNavigationMessage(`Opened ${finding.reference} for correction.`);
+        setNavigationMessage(t("mobile.openedForCorrection", { reference: finding.reference }));
       };
       const dialogPath = instanceId ? repeatingDialogPath(shell.encounter.document, target.groupId, instanceId) : [];
       const openDialog = (index: number) => {
@@ -627,13 +620,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       await flushSave();
       releaseProtectedHold = await holdProtectedReportForCompletion(report.id);
     } catch {
-      setSignError("The record must finish protected storage before it can be signed.");
+      setSignError(t("mobile.protectedBeforeSign"));
       setSigning(false);
       return;
     }
     if (!navigator.onLine || nextDraftChange(window.localStorage, report.id)) {
       releaseProtectedHold();
-      setSignError("The record must finish syncing before it can be signed.");
+      setSignError(t("mobile.syncBeforeSign"));
       setSigning(false);
       return;
     }
@@ -645,7 +638,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         })), validationEvaluationTimestamp);
       completeWorkspaceReport();
     } catch (error) {
-      setSignError(error instanceof Error ? error.message : "The record could not be signed.");
+      setSignError(error instanceof Error ? error.message : t("mobile.signFailed"));
     } finally {
       releaseProtectedHold();
       setSigning(false);
@@ -685,16 +678,16 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       setReportNotes((notes) => [response.note, ...notes.filter(({ id }) => id !== response.note.id)]
         .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id)));
       setTextNoteDraft(null);
-      setNoteStatusMessage(textNoteDraft.isNew ? "Text note ready." : "Text note changes ready.");
+      setNoteStatusMessage(textNoteDraft.isNew ? t("mobile.noteReady") : t("mobile.noteChangesReady"));
     } catch (error) {
       if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
-        setNoteError("The report changed before this note could be saved. Wait for synchronization and try again.");
+        setNoteError(t("mobile.noteSaveConflict"));
       } else if (error instanceof DraftSaveRejectedError) {
-        setNoteError("The note was rejected. Remove control characters and keep it within 10,000 characters.");
+        setNoteError(t("mobile.noteRejected"));
       } else if (error instanceof Error && error.message === "session") {
         onSessionEnded();
       } else {
-        setNoteError(error instanceof Error ? error.message : "The text note could not be saved.");
+        setNoteError(error instanceof Error ? error.message : t("mobile.noteSaveFailed"));
       }
     } finally {
       setNoteSaving(false);
@@ -714,15 +707,15 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       setReportNotes((notes) => notes.filter(({ id }) => id !== response.noteId));
       setTextNoteDraft(null);
       setConfirmingNoteDelete(false);
-      setNoteStatusMessage("Text note deleted.");
+      setNoteStatusMessage(t("mobile.noteDeleted"));
     } catch (error) {
       setConfirmingNoteDelete(false);
       if (error instanceof DraftSaveRejectedError && error.category === "server-conflict") {
-        setNoteError("The report changed before this note could be deleted. Wait for synchronization and try again.");
+        setNoteError(t("mobile.noteDeleteConflict"));
       } else if (error instanceof Error && error.message === "session") {
         onSessionEnded();
       } else {
-        setNoteError(error instanceof Error ? error.message : "The text note could not be deleted.");
+        setNoteError(error instanceof Error ? error.message : t("mobile.noteDeleteFailed"));
       }
     } finally {
       setNoteSaving(false);
@@ -743,78 +736,77 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       onBeforeInputCapture={blockProtectedEdit} onKeyDownCapture={blockProtectedEdit}>
       {recoveryNotice && !bestEffortNoticeInDemoBanner && <aside className="safety-notice" role="status"><strong>{recoveryNoticeHeading}</strong><span>{recoveryNotice}</span></aside>}
       {dispatchCancellation && <aside className="dispatch-canceled-notice" role="status">
-        <strong>Dispatch canceled this response</strong>
-        <span>{dispatchCancellationNotice(dispatchCancellation)}</span>
+        <strong>{t("mobile.dispatchCancelled")}</strong>
+        <span>{t("mobile.cancellationNotice", { date: formatClinicalDate(dispatchCancellation.canceledAt, region) })}</span>
       </aside>}
       {navigationMessage && <p className="visually-hidden" role="status" aria-live="polite">{navigationMessage}</p>}
       {noteStatusMessage && <p className="visually-hidden" role="status" aria-live="polite">{noteStatusMessage}</p>}
 
       <header ref={encounterHeader} className="encounter-header">
-        {presentationMode === "stationary" ? <div className="encounter-summary" aria-label="Call information">
-          <span><small>Response</small><strong>{incident.responseNumber || "Not provided"}</strong></span>
-          <span><small>Unit</small><strong>{incident.callSign || "Not provided"}</strong></span>
-          <span><small>Priority</small><strong>{incident.dispatchPriority || "Not provided"}</strong></span>
-          <span className="encounter-location"><small>Location</small><strong>{incident.location || "Not provided"}</strong></span>
+        {presentationMode === "stationary" ? <div className="encounter-summary" aria-label={t("mobile.callInformation")}>
+          <span><small>{t("mobile.response")}</small><strong>{incident.responseNumber || t("calls.notProvided")}</strong></span>
+          <span><small>{t("calls.unit")}</small><strong>{incident.callSign || t("calls.notProvided")}</strong></span>
+          <span><small>{t("calls.priority")}</small><strong>{incident.dispatchPriority || t("calls.notProvided")}</strong></span>
+          <span className="encounter-location"><small>{t("mobile.location")}</small><strong>{incident.location || t("calls.notProvided")}</strong></span>
         </div> : <>
           <div className="header-kicker"><span>{incidentEvents[0]?.time ?? "--:--"}</span></div>
           <div className="incident-line"><div>
-            <span>{bundledEncounterDefinition.labels.incident} {incident.incidentNumber}</span>
-            <span>Response {incident.responseNumber}</span>
-            <span>Unit {incident.callSign}</span>
-            <span>Priority {incident.dispatchPriority || "Not provided"}</span>
+            <span>{t("mobile.incident")} {incident.incidentNumber}</span>
+            <span>{t("mobile.response")} {incident.responseNumber}</span>
+            <span>{t("calls.unit")} {incident.callSign}</span>
+            <span>{t("calls.priority")} {incident.dispatchPriority || t("calls.notProvided")}</span>
             <strong>{incident.location}</strong>
           </div></div>
         </>}
         {report && <div className="draft-actions">
-          <span className={`sync-status sync-${syncStatus.toLocaleLowerCase().replaceAll(" ", "-")}`} role="status" aria-live="polite">{syncStatus}</span>
-          {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>Timeline <span aria-hidden="true">· {timelineEvents.length}</span></button>}
+          <span className={`sync-status sync-${syncStatus === "Pending sync" ? "pending-sync" : syncStatus === "Saving" ? "saving" : "saved"}`} role="status" aria-live="polite">{syncStatus === "Pending sync" ? t("mobile.pendingStatus") : syncStatus === "Saving" ? t("mobile.savingStatus") : t("mobile.savedStatus")}</span>
+          {presentationMode === "stationary" && <button ref={timelineToggle} className="timeline-toggle-action" type="button" aria-expanded={stationaryTimelineOpen} aria-controls="stationary-timeline-sidebar" onClick={toggleStationaryTimeline}>{t("mobile.timeline")} <span aria-hidden="true">· {timelineEvents.length}</span></button>}
           {presentationMode === "stationary" && <button className="review-record-action" type="button" onClick={() => {
             if (shell.view === "review") dispatch({ type: "view-selected", view: "timeline" });
             else {
               dispatch({ type: "review-opened" });
               void flushSave();
             }
-          }}>{shell.view === "review" ? "Return to record" : "Review & sign"}</button>}
+          }}>{shell.view === "review" ? t("mobile.returnRecord") : t("mobile.reviewSign")}</button>}
           <button type="button" onClick={async () => {
-            if (report && hasPendingProtectedMedia(report.id) && !window.confirm("Media uploads may pause after closing. Saved-on-device photos and audio will resume while the app is open or in your next authenticated session. Save and close anyway?")) return;
+            if (report && hasPendingProtectedMedia(report.id) && !window.confirm(t("mobile.mediaCloseWarning"))) return;
             await flushSave(); onSaveAndClose();
-          }}>Save &amp; close</button>
+          }}>{t("mobile.saveClose")}</button>
         </div>}
       </header>
 
-      {presentationMode === "mobile" && <nav className="quick-actions" aria-label="Quick documentation">
+      {presentationMode === "mobile" && <nav className="quick-actions" aria-label={t("mobile.quickDocumentation")}>
         {structuredQuickActions.map((id) => <button key={id} className={activeDialog === id ? "active" : undefined} aria-pressed={activeDialog === id}
-          title={id === "vitals" ? "Vital signs" : id === "medication" ? "Medication" : "Procedure"} aria-label={`Add ${id === "vitals" ? "vital signs" : id}`}
-          type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{quickActionText[id]}</span></button>)}
-        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label="Text note" title="Text note" type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">Text</span></button>
-        <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label="Add photo note" title="Photo note" type="button" disabled={!report || editingBlocked} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">Photo</span></button>
-        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label="Add audio note" title="Spoken-audio note" type="button" disabled={!report || editingBlocked} onClick={startAudio}><svg className="audio-action-icon" viewBox="0 0 48 56" aria-hidden="true"><rect x="14" y="2" width="20" height="34" rx="10" fill="currentColor" /><path d="M7 25v3c0 10 7.6 18 17 18s17-8 17-18v-3M24 46v7M16 53h16" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" /></svg><span aria-hidden="true">Audio</span></button>
+          title={t(id === "vitals" ? "mobile.vitals" : id === "medication" ? "mobile.medications" : "mobile.procedures")} aria-label={t(id === "vitals" ? "mobile.addVitals" : id === "medication" ? "mobile.addMedication" : "mobile.addProcedure")}
+          type="button" onClick={quickActionHandlers[id]}><QuickActionIcon kind={id} /><span aria-hidden="true">{t(id === "vitals" ? "mobile.vitals" : id === "medication" ? "mobile.medications" : "mobile.procedures")}</span></button>)}
+        <button className={activeDialog === "note" ? "active" : undefined} aria-pressed={activeDialog === "note"} aria-label={t("mobile.textNote")} title={t("mobile.textNote")} type="button" onClick={startNote}><QuickActionIcon kind="note" /><span aria-hidden="true">{t("mobile.text")}</span></button>
+        <button className={activeDialog === "photo" ? "active" : undefined} aria-pressed={activeDialog === "photo"} aria-label={t("mobile.addPhoto")} title={t("mobile.photoNote")} type="button" disabled={!report || editingBlocked} onClick={startPhoto}><span className="photo-action-icon" aria-hidden="true" /><span aria-hidden="true">{t("mobile.photo")}</span></button>
+        <button className={activeDialog === "audio" ? "active" : undefined} aria-pressed={activeDialog === "audio"} aria-label={t("mobile.addAudio")} title={t("mobile.audioNote")} type="button" disabled={!report || editingBlocked} onClick={startAudio}><svg className="audio-action-icon" viewBox="0 0 48 56" aria-hidden="true"><rect x="14" y="2" width="20" height="34" rx="10" fill="currentColor" /><path d="M7 25v3c0 10 7.6 18 17 18s17-8 17-18v-3M24 46v7M16 53h16" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" /></svg><span aria-hidden="true">{t("mobile.audio")}</span></button>
       </nav>}
 
-      {presentationMode === "mobile" && <nav className="view-switcher" aria-label="Encounter views">
+      {presentationMode === "mobile" && <nav className="view-switcher" aria-label={t("mobile.encounterViews")}>
         {tabs.map((tab) => (
           <button
-            aria-pressed={shell.view === tab.id}
-            aria-current={shell.view === tab.id ? "page" : undefined}
-            aria-label={tab.id === "checklist" ? `Checklist, ${reviewErrors.length} ${reviewErrors.length === 1 ? "error" : "errors"}, ${reviewWarnings.length} ${reviewWarnings.length === 1 ? "warning" : "warnings"}` : undefined}
-            className={shell.view === tab.id ? "active" : undefined}
-            key={tab.id}
-            onClick={() => dispatch({ type: "view-selected", view: tab.id })}
+            aria-pressed={shell.view === tab}
+            aria-current={shell.view === tab ? "page" : undefined}
+            aria-label={tab === "checklist" ? t("mobile.checklistLabel", { errors: t("mobile.errorCount", { count: reviewErrors.length }, reviewErrors.length), warnings: t("mobile.warningCount", { count: reviewWarnings.length }, reviewWarnings.length) }) : undefined}
+            className={shell.view === tab ? "active" : undefined}
+            key={tab}
+            onClick={() => dispatch({ type: "view-selected", view: tab })}
             type="button"
           >
-            {tab.label}
-            {tab.id === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
-            {tab.id === "checklist" && <span className="checklist-counts" aria-hidden="true">
-              <span className={`error-count${reviewErrors.length ? "" : " zero-count"}`}>{reviewErrors.length} {reviewErrors.length === 1 ? "error" : "errors"}</span>
-              <span className={`warning-count${reviewWarnings.length ? "" : " zero-count"}`}>{reviewWarnings.length} {reviewWarnings.length === 1 ? "warning" : "warnings"}</span>
+            {t(tab === "timeline" ? "mobile.timeline" : "mobile.checklist")}
+            {tab === "timeline" && <span aria-hidden="true"> · {timelineEvents.length}</span>}
+            {tab === "checklist" && <span className="checklist-counts" aria-hidden="true">
+              <span className={`error-count${reviewErrors.length ? "" : " zero-count"}`}>{t("mobile.errorCount", { count: reviewErrors.length }, reviewErrors.length)}</span>
+              <span className={`warning-count${reviewWarnings.length ? "" : " zero-count"}`}>{t("mobile.warningCount", { count: reviewWarnings.length }, reviewWarnings.length)}</span>
             </span>}
           </button>
         ))}
       </nav>}
 
       {presentationMode === "mobile" && <p className="complete-record-summary">
-        Complete record: {completeErrors.length} {completeErrors.length === 1 ? "error" : "errors"} · {completeWarnings.length} {completeWarnings.length === 1 ? "warning" : "warnings"}.
-        {" "}Continue in Stationary to review every field and sign.
+        {t("mobile.completeRecord", { errors: t("mobile.errorCount", { count: completeErrors.length }, completeErrors.length), warnings: t("mobile.warningCount", { count: completeWarnings.length }, completeWarnings.length) })}
       </p>}
 
       {presentationMode === "stationary" && (
@@ -835,13 +827,13 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         events={timelineEvents}
         validationStatuses={eventValidationStatuses}
         definition={bundledEncounterDefinition}
-        headingId="timeline-heading"
+        headingId="timeline-heading" language={language}
         onOpenTextNote={openTextNote}
         onOpenPhoto={openPhoto}
         onOpenAudio={openAudio}
         onOpenEvent={openTimelineEvent}
       />}
-      {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label="Encounter timeline" onKeyDown={(event) => {
+      {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label={t("mobile.encounterTimeline")} onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.preventDefault();
         setStationaryTimelineOpen(false);
@@ -849,34 +841,34 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
         timelineToggle.current?.focus();
       }}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
-          headingId="stationary-timeline-heading" onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
+          headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </aside>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Quick documentation checks</p>
-              <h1 id="checklist-heading">Checklist</h1>
+              <p className="eyebrow">{t("mobile.quickChecks")}</p>
+              <h1 id="checklist-heading">{t("mobile.checklist")}</h1>
             </div>
-            <span aria-live="polite">{reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length} open</span>
+            <span aria-live="polite">{t("mobile.openCount", { count: reviewFindings.length + unresolvedDispatchConflicts.length + noteBlockers.length })}</span>
           </div>
-          <p className="review-intro">These checks cover mobile entries. The complete record summary includes all required fields.</p>
-          <NoteReadinessList blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
-          {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ No warnings or errors.</p> : reviewFindings.length ? (
+          <p className="review-intro">{t("mobile.checksHelp")}</p>
+          <NoteReadinessList language={language} blockers={noteBlockers} onOpen={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)} />
+          {!reviewFindings.length && !unresolvedDispatchConflicts.length && !noteBlockers.length ? <p className="review-empty checklist-empty">✓ {t("mobile.noFindings")}</p> : reviewFindings.length ? (
             <ul className="review-findings checklist-findings">
               {reviewFindings.map((finding) => (
                 <li key={finding.id} className={finding.severity}>
                   <button type="button" onClick={(event) => editValidationFinding(finding, event.currentTarget)}>
-                    <span className="finding-category">{finding.severity === "error" ? "Error" : "Warning"} · {finding.category}</span>
+                    <span className="finding-category">{finding.severity === "error" ? t("mobile.error") : t("mobile.warning")} · {finding.category}</span>
                     <strong>{finding.title}</strong>
                     <span>{finding.message}</span>
-                    <small>{"vitalField" in finding.target && finding.target.vitalField ? "Edit value or choose PN/NV × →" : "Edit affected entry →"}</small>
+                    <small>{"vitalField" in finding.target && finding.target.vitalField ? t("mobile.editValue") : t("mobile.editEntry")}</small>
                   </button>
                 </li>
               ))}
             </ul>
           ) : null}
-          <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+          <DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
           {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </section>
       )}
@@ -884,6 +876,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
       {presentationMode === "stationary" && shell.view === "review" && (
         <>
         <ReviewPanel
+          language={language}
           findings={configuredStationaryFindings}
           errors={reviewErrors}
           warnings={reviewWarnings}
@@ -897,14 +890,14 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           onWarning={(id, acknowledged) => dispatch({ type: "review-warning-acknowledged", id, acknowledged })}
           onNoteBlocker={(blocker, trigger) => openNoteReadinessBlocker(blocker, trigger)}
           onSign={() => void signRecord()}
-          blockedReason={!restored ? "The report is still loading."
-            : !online ? "Signing is unavailable while offline. Reconnect and finish synchronization."
-              : syncStatus !== "Saved" ? "Signing is unavailable until all changes finish synchronizing."
-                : noteBlockers.length || (report && hasPendingProtectedMedia(report.id)) ? "Signing is unavailable until every note is ready. Open a Note readiness item to retry or delete it."
-                : unresolvedDispatchConflicts.length ? "Resolve every dispatch difference before signing."
+          blockedReason={!restored ? t("mobile.reportLoading")
+            : !online ? t("mobile.signOffline")
+              : syncStatus !== "Saved" ? t("mobile.signSync")
+                : noteBlockers.length || (report && hasPendingProtectedMedia(report.id)) ? t("mobile.signNotes")
+                : unresolvedDispatchConflicts.length ? t("mobile.signConflicts")
                   : undefined}
         />
-        <DispatchConflictList conflicts={dispatchConflicts} onDispose={disposeConflict} />
+        <DispatchConflictList language={language} conflicts={dispatchConflicts} onDispose={disposeConflict} />
         {conflictError && <p className="finish-help" role="alert">{conflictError}</p>}
         </>
       )}
@@ -944,18 +937,18 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                 disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{noteDefinition.labels.remove}</button>}
             </div>
             {confirmingNoteDelete ? <>
-              <p id="note-delete-description">Delete this text note from the draft report? This action cannot be undone.</p>
+              <p id="note-delete-description">{t("mobile.noteDeleteConfirm")}</p>
               <div className="note-dialog-actions">
-                <button data-dialog-initial-focus type="button" disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)}>Keep note</button>
+                <button data-dialog-initial-focus type="button" disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)}>{t("mobile.keepNote")}</button>
                 <button className="remove-entry-button" type="button" disabled={noteSaving} onClick={() => void confirmDeleteTextNote()}>
-                  {noteSaving ? "Deleting…" : "Delete note"}
+                  {noteSaving ? t("mobile.deleting") : t("mobile.deleteNote")}
                 </button>
               </div>
             </> : <>
               <p className="note-metadata">
-                Captured {formatClinicalDate(textNoteDraft.capturedAt, region)} (local time)
+                {t("mobile.captured", { date: formatClinicalDate(textNoteDraft.capturedAt, region) })}
                 {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
-                {!textNoteDraft.isNew ? " · Ready" : ""}
+                {!textNoteDraft.isNew ? ` · ${t("mobile.ready")}` : ""}
               </p>
               <label htmlFor="report-text-note">{noteDefinition.labels.summary}</label>
               <textarea
@@ -974,23 +967,23 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                   setTextNoteDraft((draft) => draft ? { ...draft, content: event.target.value } : null);
                 }}
               />
-              <small id="report-text-note-count">{formatClinicalNumber(textNoteValidation.characterCount, region)} / {formatClinicalNumber(REPORT_TEXT_NOTE_MAX_CHARACTERS, region)} characters</small>
+              <small id="report-text-note-count">{t("mobile.characters", { count: formatClinicalNumber(textNoteValidation.characterCount, region), max: formatClinicalNumber(REPORT_TEXT_NOTE_MAX_CHARACTERS, region) })}</small>
               <p id="report-text-note-error" className="finish-help" role={noteError || textNoteValidation.error ? "alert" : undefined}>
                 {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
               </p>
               <div className="note-dialog-actions">
                 <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{noteDefinition.labels.cancel}</button>
                 <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
-                  {noteSaving ? "Saving…" : textNoteDraft.isNew ? "Save text note" : noteDefinition.labels.save}
+                  {noteSaving ? t("settings.saving") : textNoteDraft.isNew ? t("mobile.saveTextNote") : noteDefinition.labels.save}
                 </button>
               </div>
             </>}
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog definition={{ ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events, medication: medicationDefinition } }} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingActionableFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog language={language} definition={{ ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events, medication: medicationDefinition } }} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding && editingFinding.eventType === "medication" ? editingActionableFinding : undefined} />}
 
-      {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
+      {shell.procedureDraft && <ProcedureDialog language={language} dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
 
       {shell.vitalDraft && (
         <div className="dialog-backdrop" role="presentation">
@@ -999,7 +992,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
               <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
-            <TimePicker className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
@@ -1013,19 +1006,19 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                     <button
                       type="button"
                       className={`null-value-trigger ${shell.vitalDraft!.values.nullValues[field] ? "active" : ""}`}
-                      aria-label={`Set unavailable or pertinent-negative value for ${configuredField.label}`}
+                      aria-label={t("mobile.setExceptional", { label: configuredField.label })}
                       aria-expanded={openNullField === field}
                       onClick={() => setOpenNullField((current) => current === field ? null : field)}
                     >×</button>
                     {openNullField === field && (
-                      <div className="null-value-menu" role="menu" aria-label={`${configuredField.label} unavailable or pertinent-negative value`}>
+                      <div className="null-value-menu" role="menu" aria-label={t("mobile.exceptionalMenu", { label: configuredField.label })}>
                         {shell.vitalDraft!.values.nullValues[field] && (
                           <button
                             autoFocus
                             type="button"
                             role="menuitem"
                             onClick={() => { dispatch({ type: "vitals-null-changed", field, value: "" }); setOpenNullField(null); }}
-                          >Clear exceptional value</button>
+                          >{t("mobile.clearExceptional")}</button>
                         )}
                         {nullOptionsFor(configuredField).filter((option) => option.value).map((option, index) => (
                           <button
@@ -1053,39 +1046,41 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
 }
 
 export default function Home() {
-  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged }) => (
-    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
+  return <ClinicianSessionGate>{({ session, report, presentationMode, closeReport, completeReport, sessionEnded, reportErrorStateChanged, language }) => (
+    <EncounterWorkspace key={report?.id ?? "standalone"} session={session} report={report} presentationMode={presentationMode} language={language} onSaveAndClose={closeReport} onReportCompleted={completeReport} onSessionEnded={sessionEnded} onErrorStateChange={reportErrorStateChanged} />
   )}</ClinicianSessionGate>;
 }
 
-function conflictValue(value: EncounterValue | null): string {
-  if (value === null) return "Retracted by dispatch";
+function conflictValue(value: EncounterValue | null, language: AgencyLanguage): string {
+  if (value === null) return resolveMessage(language, "mobile.retracted");
   const pn = value.pertinentNegative ? ` — ${value.pertinentNegative.display ?? value.pertinentNegative.code}` : "";
   if (value.kind === "coded") return `${value.display ?? value.code}${pn}`;
   if (value.kind === "pertinent-negative") return value.display ?? value.code;
-  if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? "Null";
-  if (value.kind === "absent") return "Not documented";
+  if (value.kind === "null") return value.notValue?.display ?? value.notValue?.code ?? resolveMessage(language, "mobile.null");
+  if (value.kind === "absent") return resolveMessage(language, "mobile.notDocumented");
   return `${String(value.value)}${pn}`;
 }
 
-function DispatchConflictList({ conflicts, onDispose }: {
+function DispatchConflictList({ language, conflicts, onDispose }: {
+  readonly language: AgencyLanguage;
   readonly conflicts: ReadonlyArray<DispatchConflict>;
   readonly onDispose: (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => void;
 }) {
   const unresolved = conflicts.filter(({ disposition }) => disposition === null);
+  const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   return (
     <section className="review-group dispatch-conflicts" aria-labelledby="dispatch-conflicts-heading">
-      <h2 id="dispatch-conflicts-heading">Dispatch differences <span>{unresolved.length}</span></h2>
-      {!unresolved.length ? <p className="review-empty">✓ No unresolved dispatch differences.</p> : (
+      <h2 id="dispatch-conflicts-heading">{t("mobile.dispatchDifferences")} <span>{unresolved.length}</span></h2>
+      {!unresolved.length ? <p className="review-empty">✓ {t("mobile.noDispatchDifferences")}</p> : (
         <ul className="review-findings">
           {unresolved.map((conflict) => <li key={conflict.id} className="warning">
-            <span className="finding-category">Dispatch revision {conflict.dispatchRevision} · {conflict.elementId}</span>
-            <strong>Clinician value: {conflictValue(conflict.clinicianValue)}</strong>
-            <span>Dispatch proposes: {conflictValue(conflict.dispatchValue)}</span>
+            <span className="finding-category">{t("mobile.dispatchRevision", { revision: conflict.dispatchRevision, element: conflict.elementId })}</span>
+            <strong>{t("mobile.clinicianValue", { value: conflictValue(conflict.clinicianValue, language) })}</strong>
+            <span>{t("mobile.dispatchProposes", { value: conflictValue(conflict.dispatchValue, language) })}</span>
             <div className="dispatch-conflict-actions">
-              <button type="button" onClick={() => onDispose(conflict, "keep")}>Keep my value</button>
-              <button type="button" onClick={() => onDispose(conflict, "accept")}>Accept dispatch value</button>
-              <button type="button" onClick={() => onDispose(conflict, "acknowledge")}>Acknowledge difference</button>
+              <button type="button" onClick={() => onDispose(conflict, "keep")}>{t("mobile.keepValue")}</button>
+              <button type="button" onClick={() => onDispose(conflict, "accept")}>{t("mobile.acceptDispatch")}</button>
+              <button type="button" onClick={() => onDispose(conflict, "acknowledge")}>{t("mobile.acknowledgeDifference")}</button>
             </div>
           </li>)}
         </ul>
@@ -1094,8 +1089,9 @@ function DispatchConflictList({ conflicts, onDispose }: {
   );
 }
 
-function ReviewPanel({ findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
+function ReviewPanel({ language, findings, errors, warnings, noteBlockers, groups, canFinish, validationClear, signing, signError,
   blockedReason, onFinding, onWarning, onNoteBlocker, onSign }: {
+  readonly language: AgencyLanguage;
   readonly findings: ReadonlyArray<SigningFinding>;
   readonly errors: ReadonlyArray<SigningFinding>;
   readonly warnings: ReadonlyArray<SigningFinding>;
@@ -1114,37 +1110,38 @@ function ReviewPanel({ findings, errors, warnings, noteBlockers, groups, canFini
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
       <div className="section-heading">
-        <div><p className="eyebrow">Consolidated validation</p><h1 id="review-heading">Review and sign</h1></div>
-        <span>{errors.length} errors · {warnings.length} warnings</span>
+        <div><p className="eyebrow">{resolveMessage(language, "mobile.reviewChecks")}</p><h1 id="review-heading">{resolveMessage(language, "mobile.reviewSign")}</h1></div>
+        <span>{resolveMessage(language, "mobile.errorsWarnings", { errors: resolveMessage(language, "mobile.errorCount", { count: errors.length }, errors.length), warnings: resolveMessage(language, "mobile.warningCount", { count: warnings.length }, warnings.length) })}</span>
       </div>
       <p className="review-intro">{errors.length || warnings.length
-        ? "Resolve blocking errors by section and acknowledge each warning before signing."
-        : "The record has no validation findings. Review your documentation before signing."}</p>
-      {errors[0] && <button type="button" className="next-review-error" onClick={(event) => onFinding(errors[0]!, event.currentTarget)}>Fix next error →</button>}
+        ? resolveMessage(language, "mobile.reviewIntroFindings")
+        : resolveMessage(language, "mobile.reviewIntroClear")}</p>
+      {errors[0] && <button type="button" className="next-review-error" onClick={(event) => onFinding(errors[0]!, event.currentTarget)}>{resolveMessage(language, "mobile.fixNext")}</button>}
 
-      <NoteReadinessList blockers={noteBlockers} onOpen={onNoteBlocker} />
-      {groups.map((group) => <FindingGroup key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
-      <FindingGroup title="Information" empty="No informational findings." findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
+      <NoteReadinessList language={language} blockers={noteBlockers} onOpen={onNoteBlocker} />
+      {groups.map((group) => <FindingGroup language={language} key={group.severity} title={group.title} empty={group.empty} findings={findings.filter((finding) => finding.severity === group.severity)} onFinding={onFinding} onWarning={onWarning} />)}
+      <FindingGroup language={language} title="Information" empty="No informational findings." findings={findings.filter((finding) => finding.severity === "information")} onFinding={onFinding} onWarning={onWarning} />
 
       <div className="review-actions">
-        <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? "Signing…" : "Sign record"}</button>
+        <button className={validationClear ? "validation-clear" : undefined} type="button" disabled={!canFinish || signing} onClick={onSign}>{signing ? resolveMessage(language, "mobile.signing") : resolveMessage(language, "mobile.sign")}</button>
       </div>
-      {!canFinish && <p className="finish-help" role="status">{blockedReason ?? "Signing stays blocked until errors are fixed and every warning is acknowledged."}</p>}
+      {!canFinish && <p className="finish-help" role="status">{blockedReason ?? resolveMessage(language, "mobile.signBlocked")}</p>}
       {signError && <p className="finish-help" role="alert">{signError}</p>}
     </section>
   );
 }
 
-function NoteReadinessList({ blockers, onOpen }: {
+function NoteReadinessList({ language, blockers, onOpen }: {
+  readonly language: AgencyLanguage;
   readonly blockers: ReadonlyArray<NoteReadinessBlocker>;
   readonly onOpen: (blocker: NoteReadinessBlocker, trigger: HTMLElement) => void;
 }) {
   return <section className="review-group note-readiness" aria-labelledby="note-readiness-heading">
-    <h2 id="note-readiness-heading">Note readiness <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
-    {!blockers.length ? <p className="review-empty">✓ All notes are ready.</p> : <ul className="review-findings">
+    <h2 id="note-readiness-heading">{resolveMessage(language, "mobile.noteReadiness")} <span className={blockers.length ? undefined : "zero-count"}>{blockers.length}</span></h2>
+    {!blockers.length ? <p className="review-empty">✓ {resolveMessage(language, "mobile.allNotesReady")}</p> : <ul className="review-findings">
       {blockers.map((blocker) => <li key={`${blocker.note.type}:${blocker.note.id}`} className="error">
         <button type="button" onClick={(event) => onOpen(blocker, event.currentTarget)}>
-          <span className="finding-category">Error · Note readiness</span>
+          <span className="finding-category">{resolveMessage(language, "mobile.error")} · {resolveMessage(language, "mobile.noteReadiness")}</span>
           <strong>{blocker.title}</strong>
           <span>{blocker.message}</span>
           <small>{blocker.action}</small>
@@ -1154,7 +1151,8 @@ function NoteReadinessList({ blockers, onOpen }: {
   </section>;
 }
 
-function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
+function FindingGroup({ language, title, empty, findings, onFinding, onWarning }: {
+  readonly language: AgencyLanguage;
   readonly title: string;
   readonly empty: string;
   readonly findings: ReadonlyArray<SigningFinding>;
@@ -1177,12 +1175,12 @@ function FindingGroup({ title, empty, findings, onFinding, onWarning }: {
                 <span className="finding-category">{finding.category} · {finding.reference}</span>
                 <strong>{finding.title}</strong>
                 <span>{finding.message}</span>
-                <small>Open affected entry →</small>
+                <small>{resolveMessage(language, "mobile.openAffected")}</small>
               </button>
               {finding.severity === "warning" && (
                 <label className="review-acknowledgement">
                   <input type="checkbox" checked={finding.acknowledged} onChange={(event) => onWarning(finding.id, event.target.checked)} />
-                  I reviewed and acknowledge this warning
+                  {resolveMessage(language, "mobile.ackWarning")}
                 </label>
               )}
             </li>

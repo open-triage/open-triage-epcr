@@ -71,7 +71,7 @@ test("one shared photo lifecycle includes every offline and transfer state", asy
 
 test("workspace permits offline capture and warns before closing with pending media", async () => {
   const source = await readFile(path.join(webRoot, "app/page.tsx"), "utf8");
-  assert.match(source, /aria-label="Add photo note"[^\n]+disabled={!report \|\| editingBlocked}/);
+  assert.match(source, /aria-label={t\("mobile.addPhoto"\)}[^\n]+disabled={!report \|\| editingBlocked}/);
   assert.match(source, /hasPendingProtectedMedia/);
-  assert.match(source, /Media uploads may pause after closing/);
+  assert.match(source, /mobile.mediaCloseWarning/);
 });

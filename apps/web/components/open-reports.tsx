@@ -5,7 +5,7 @@ import type {
   OpenCall as OpenReportSummary,
   ReopenOpenCallResponse as ReopenOpenReportResponse,
 } from "@open-triage/contracts";
-import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
+import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
 import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -34,6 +34,7 @@ import {
 } from "../app/offline-reports";
 import { TransientNotice } from "./transient-notice";
 import { LoadingStatus } from "./loading-status";
+import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
   flushProtectedReport,
   prepareProtectedReport,
@@ -46,6 +47,7 @@ function savedTime(value: string, region: ReturnType<typeof useRegionalFormat>):
 }
 export function OpenReports({
   session,
+  language,
   activeReportId,
   onCompleted,
   onReopened,
@@ -53,6 +55,7 @@ export function OpenReports({
   refreshRequest = 0,
 }: {
   readonly session: ClinicianSession;
+  readonly language: AgencyLanguage;
   readonly activeReportId?: string;
   readonly onCompleted?: (reportId: string) => void;
   readonly onReopened?: (opened: ReopenOpenReportResponse) => void;
@@ -73,6 +76,7 @@ export function OpenReports({
   const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
+  const t = useCallback((key: string, params?: Record<string, string | number>) => resolveMessage(language, key, params), [language]);
   const showReports = useCallback((next: OpenReportSummary[]) => {
     if (sameJsonValue(reportsRef.current, next)) return;
     reportsRef.current = next;
@@ -165,8 +169,8 @@ export function OpenReports({
         : response.openCalls).filter((report) => !completedIds.has(report.reportId));
       showReports(syncedVisible);
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
-        ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
-        : `${removed.length} calls were completed on the stationary interface.`);
+        ? t("reports.completedOne", { call: removed[0]!.callNumber })
+        : t("reports.completedMany", { count: removed.length }));
       if (activeReportId && completedIds.has(activeReportId)
           && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
@@ -177,11 +181,11 @@ export function OpenReports({
       const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
       showReports(cached);
       setLoaded(true);
-      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open reports could not be refreshed.");
+      setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : t("reports.refreshFailed"));
     } finally {
       refreshing.current = false;
     }
-  }, [activeReportId, csrfToken, onCompleted, onSessionEnded, session, showReports, syncCachedReports]);
+  }, [activeReportId, csrfToken, onCompleted, onSessionEnded, session, showReports, syncCachedReports, t]);
 
   const reopen = useCallback(async (report: OpenReportSummary) => {
     setReopeningId(report.reportId);
@@ -209,11 +213,11 @@ export function OpenReports({
         setReauthenticationId(report.reportId);
         return;
       }
-      setError(reopenError instanceof Error ? reopenError.message : "The report could not be reopened.");
+      setError(reopenError instanceof Error ? reopenError.message : t("reports.reopenFailed"));
     } finally {
       setReopeningId(null);
     }
-  }, [csrfToken, onReopened, session]);
+  }, [csrfToken, onReopened, session, t]);
 
   const reauthenticateAndReopen = useCallback(async (event: FormEvent<HTMLFormElement>, report: OpenReportSummary) => {
     event.preventDefault();
@@ -226,11 +230,11 @@ export function OpenReports({
       setReauthenticationId(null);
       await reopen(report);
     } catch (reauthenticationError) {
-      setError(reauthenticationError instanceof Error ? reauthenticationError.message : "Reauthentication failed.");
+      setError(reauthenticationError instanceof Error ? reauthenticationError.message : t("reports.reauthFailed"));
     } finally {
       setReauthenticating(false);
     }
-  }, [csrfToken, reopen]);
+  }, [csrfToken, reopen, t]);
 
   useEffect(() => {
     let pollTimer: number | null = null;
@@ -271,14 +275,14 @@ export function OpenReports({
     <section className="assigned-calls open-reports" aria-labelledby="open-reports-title">
       <div className="assigned-calls-heading">
         <div>
-          <p className="eyebrow">Your documentation</p>
-          <h1 id="open-reports-title">Open reports</h1>
+          <p className="eyebrow">{t("reports.yourDocumentation")}</p>
+          <h1 id="open-reports-title">{t("reports.openReports")}</h1>
         </div>
       </div>
       <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <LoadingStatus className="assignment-empty">Loading open reports…</LoadingStatus>}
-      {loaded && reports.length === 0 && <p className="assignment-empty">You have no open reports.</p>}
+      {!loaded && !error && <LoadingStatus className="assignment-empty">{t("reports.loading")}</LoadingStatus>}
+      {loaded && reports.length === 0 && <p className="assignment-empty">{t("reports.none")}</p>}
       {reports.length > 0 && (
         <ul className="assigned-call-list">
           {reports.map((report) => (
@@ -289,23 +293,23 @@ export function OpenReports({
             >
               <div className="assigned-call-title">
                 <strong>{report.callNumber}</strong>
-                <span>{report.syncStatus === "pending" ? "Pending sync" : "Saved"}</span>
+                <span>{report.syncStatus === "pending" ? t("reports.pending") : t("reports.saved")}</span>
               </div>
               <dl>
-                <div><dt>Priority</dt><dd>{report.dispatchPriority?.display ?? "Not provided"}</dd></div>
-                <div><dt>Last saved</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt, region)}</time></dd></div>
-                <div><dt>Saved checks</dt><dd>{report.validationErrorCount} errors · review before signing</dd></div>
+                <div><dt>{t("calls.priority")}</dt><dd>{report.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
+                <div><dt>{t("reports.lastSaved")}</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt, region)}</time></dd></div>
+                <div><dt>{t("reports.savedChecks")}</dt><dd>{t("reports.reviewBeforeSigning", { count: formatClinicalNumber(report.validationErrorCount, region) })}</dd></div>
               </dl>
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
-                {reopeningId === report.reportId ? "Reopening…" : "Reopen report"}
+                {reopeningId === report.reportId ? t("reports.reopening") : t("reports.reopen")}
               </button>
               {reauthenticationId === report.reportId && <form className="report-reauthentication"
                 onSubmit={(event) => void reauthenticateAndReopen(event, report)}>
-                <p>Confirm your password to recover protected work from this browser.</p>
-                <label>Current password<input name="currentPassword" type="password"
+                <p>{t("reports.reauthHelp")}</p>
+                <label>{t("reports.currentPassword")}<input name="currentPassword" type="password"
                   autoComplete="current-password" required /></label>
                 <button type="submit" disabled={reauthenticating}>
-                  {reauthenticating ? "Confirming…" : "Confirm and recover"}
+                  {reauthenticating ? t("reports.confirming") : t("reports.confirmRecover")}
                 </button>
               </form>}
             </li>
