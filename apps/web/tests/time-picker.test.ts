@@ -34,3 +34,11 @@ test("an initial dial position does not render as an entered timestamp", () => {
   assert.doesNotMatch(html, /Choose date &amp; time/);
   assert.doesNotMatch(html, /Sep 4, 2026 · 10:30/);
 });
+
+
+test("Swedish time picker announces missing value without creating one", () => {
+  const html = renderToStaticMarkup(createElement(TimePicker, { language: "sv", label: "Bedömningstid", value: "", initialDate: "2026-09-04", initialValue: "10:30", onChange() {} }));
+  assert.match(html, /Ej registrerat/);
+  assert.match(html, /Bedömningstid: ej registrerat/);
+  assert.doesNotMatch(html, /10:30/);
+});

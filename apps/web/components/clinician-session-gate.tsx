@@ -24,7 +24,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
-import { resolveMessage } from "../app/localization";
+import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
 import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
@@ -60,6 +60,7 @@ export function ClinicianSessionGate({ children }: {
     reportErrorStateChanged: (hasErrors: boolean) => void;
     sessionEnded: () => void;
     presentationMode: PresentationMode;
+    language: AgencyLanguage;
   }) => ReactNode);
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
@@ -401,7 +402,7 @@ export function ClinicianSessionGate({ children }: {
         />}
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
-        <AssignedCalls session={session} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
+        <AssignedCalls session={session} language={installation.settings.language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpened={async (opened, call) => {
           setCompletionNotice(null);
           await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
@@ -410,7 +411,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} session={session} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
+        <OpenReports key={openReportsRevision} session={session} language={installation.settings.language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
         }} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
@@ -420,20 +421,20 @@ export function ClinicianSessionGate({ children }: {
       </div>}
       <TransientNotice
         message={activeReport && dismissedActiveReportNoticeId !== activeReport.id
-          ? activeReport.callNumber ? `Documenting call ${activeReport.callNumber} in its pinned form` : "Documenting opened call"
+          ? activeReport.callNumber ? t("mobile.documentingCall", { call: activeReport.callNumber }) : t("mobile.documentingOpened")
           : null}
         onDismiss={() => setDismissedActiveReportNoticeId(activeReport?.id ?? null)}
         className="active-report-notice"
         data-report-id={activeReport?.id}
         data-form-version-id={activeReport?.formVersionId}
       />
-      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode,
+      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, language: installation.settings.language,
         reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       }, completeReport: () => {
         if (activeReport.callNumber) setCompletedCallNumbers((current) => current.includes(activeReport.callNumber!) ? current : [...current, activeReport.callNumber!]);
-        setCompletionNotice(activeReport.callNumber ? `Call ${activeReport.callNumber} was signed and removed from active calls.` : "The report was signed and removed from active calls.");
+        setCompletionNotice(activeReport.callNumber ? t("mobile.callSigned", { call: activeReport.callNumber }) : t("mobile.reportSigned"));
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}

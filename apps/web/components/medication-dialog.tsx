@@ -1,5 +1,6 @@
 "use client";
 
+import type { AgencyLanguage } from "../app/localization";
 import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { MEDICATIONS, searchMedicationCatalog } from "../app/medication-catalog";
 import type { EncounterDefinition, MedicationFieldId } from "../app/encounter-definition";
@@ -10,13 +11,14 @@ import { DialogValidationMessage } from "./dialog-validation-message";
 
 type Props = {
   readonly draft: MedicationDraft;
+  readonly language: AgencyLanguage;
   readonly dispatch: React.Dispatch<ShellAction>;
   readonly dialogRef: RefObject<HTMLElement | null>;
   readonly definition: EncounterDefinition;
   readonly finding?: Pick<ReviewFinding, "severity" | "message">;
 };
 
-export function MedicationDialog({ draft, dispatch, dialogRef, definition, finding }: Props) {
+export function MedicationDialog({ language, draft, dispatch, dialogRef, definition, finding }: Props) {
   const region = useRegionalFormat();
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
@@ -50,7 +52,7 @@ export function MedicationDialog({ draft, dispatch, dialogRef, definition, findi
           {validation(field.id)}
         </div>;
       case "time":
-        return <div className="dialog-field" key={field.id}><TimePicker className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><TimePicker language={language} className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
       case "dose":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={displayDecimal(draft.dose, region)} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
       case "unit":

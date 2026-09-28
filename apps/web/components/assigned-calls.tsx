@@ -5,6 +5,7 @@ import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoadingStatus } from "./loading-status";
+import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   fetchAssignedCalls,
@@ -16,12 +17,14 @@ function dispatchTime(value: string, region: ReturnType<typeof useRegionalFormat
 }
 export function AssignedCalls({
   session,
+  language,
   onOpened,
   refreshRequest = 0,
   suppressedCallNumbers = [],
   focusAssignmentId = null,
 }: {
   readonly session: ClinicianSession;
+  readonly language: AgencyLanguage;
   readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void | Promise<void>;
   readonly refreshRequest?: number;
   readonly suppressedCallNumbers?: ReadonlyArray<string>;
@@ -35,6 +38,7 @@ export function AssignedCalls({
   const callsRef = useRef<AssignedCall[]>([]);
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
+  const t = useCallback((key: string) => resolveMessage(language, key), [language]);
 
   const refresh = useCallback(async () => {
     try {
@@ -45,9 +49,9 @@ export function AssignedCalls({
       setLoaded(true);
       setError(null);
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "Assigned calls could not be refreshed.");
+      setError(refreshError instanceof Error ? refreshError.message : t("calls.refreshFailed"));
     }
-  }, [suppressedCallNumbers]);
+  }, [suppressedCallNumbers, t]);
 
   const open = useCallback(async (call: AssignedCall) => {
     setOpeningId(call.id);
@@ -65,11 +69,11 @@ export function AssignedCalls({
       setCalls(nextCalls);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
-      setError(openError instanceof Error ? openError.message : "The call could not be opened.");
+      setError(openError instanceof Error ? openError.message : t("calls.openFailed"));
     } finally {
       setOpeningId(null);
     }
-  }, [csrfToken, onOpened]);
+  }, [csrfToken, onOpened, t]);
 
   useEffect(() => {
     let pollTimer: number | null = null;
@@ -110,29 +114,29 @@ export function AssignedCalls({
     <section className="assigned-calls" aria-labelledby="assigned-calls-title">
       <div className="assigned-calls-heading">
         <div>
-          <p className="eyebrow">Demo unit</p>
-          <h1 id="assigned-calls-title">Assigned calls</h1>
+          <p className="eyebrow">{t("calls.demoUnit")}</p>
+          <h1 id="assigned-calls-title">{t("calls.assigned")}</h1>
         </div>
       </div>
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <LoadingStatus className="assignment-empty">Loading assigned calls…</LoadingStatus>}
-      {loaded && calls.length === 0 && <p className="assignment-empty">No calls are currently assigned.</p>}
+      {!loaded && !error && <LoadingStatus className="assignment-empty">{t("calls.loading")}</LoadingStatus>}
+      {loaded && calls.length === 0 && <p className="assignment-empty">{t("calls.none")}</p>}
       {calls.length > 0 && (
         <ul className="assigned-call-list">
           {calls.map((call) => (
             <li key={call.id} className="assigned-call-card" data-assignment-id={call.id}>
               <div className="assigned-call-title">
                 <strong>{call.callNumber}</strong>
-                <span>{call.status}</span>
+                <span>{call.status === "assigned" ? t("calls.status.assigned") : call.status === "open" ? t("calls.status.open") : call.status}</span>
               </div>
-              <p>{call.dispatchReason || "Dispatch reason not provided"}</p>
+              <p>{call.dispatchReason || t("calls.reasonMissing")}</p>
               <dl>
-                <div><dt>Unit</dt><dd>{call.unit.callSign}</dd></div>
-                <div><dt>Priority</dt><dd>{call.dispatchPriority?.display ?? "Not provided"}</dd></div>
-                <div><dt>Unit notified</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region)}</time></dd></div>
+                <div><dt>{t("calls.unit")}</dt><dd>{call.unit.callSign}</dd></div>
+                <div><dt>{t("calls.priority")}</dt><dd>{call.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
+                <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region)}</time></dd></div>
               </dl>
               <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
-                {openingId === call.id ? "Opening…" : "Open call"}
+                {openingId === call.id ? t("calls.opening") : t("calls.open")}
               </button>
             </li>
           ))}

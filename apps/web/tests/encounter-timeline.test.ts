@@ -18,7 +18,7 @@ const events: EncounterTimelineItem[] = [
 ];
 
 test("the reusable encounter timeline renders shared rows and exposes accessible filters", () => {
-  const html = renderToStaticMarkup(createElement(EncounterTimeline, { events, validationStatuses: new Map(), definition: standardEncounterDefinition, headingId: "timeline-heading", onOpenTextNote: () => undefined, onOpenPhoto: () => undefined, onOpenAudio: () => undefined, onOpenEvent: () => undefined }));
+  const html = renderToStaticMarkup(createElement(EncounterTimeline, { events, validationStatuses: new Map(), definition: standardEncounterDefinition, headingId: "timeline-heading", language: "en", onOpenTextNote: () => undefined, onOpenPhoto: () => undefined, onOpenAudio: () => undefined, onOpenEvent: () => undefined }));
   assert.match(html, /<h1 id="timeline-heading">Timeline<\/h1>/);
   assert.match(html, /role="group" aria-labelledby=/);
   assert.match(html, /aria-pressed="true">All/);
@@ -40,4 +40,17 @@ test("stationary timeline preference is closed by default and scoped to the clin
   assert.equal(values.get(stationaryTimelinePreferenceKey("clinician/a")), "open");
   assert.equal(loadStationaryTimelineOpen(storage, "clinician/a"), true);
   assert.equal(loadStationaryTimelineOpen(storage, "clinician/b"), false);
+});
+
+
+test("Swedish timeline keeps authored note text and canonical event identity", () => {
+  const html = renderToStaticMarkup(createElement(EncounterTimeline, { events, validationStatuses: new Map(), definition: standardEncounterDefinition, headingId: "sv-timeline", language: "sv", onOpenTextNote: () => undefined, onOpenPhoto: () => undefined, onOpenAudio: () => undefined, onOpenEvent: () => undefined }));
+  assert.match(html, /<h1 id="sv-timeline">Tidslinje<\/h1>/);
+  assert.match(html, /aria-pressed="true">Alla/);
+  assert.match(html, /aria-pressed="false">Anteckningar/);
+  assert.match(html, /Patient feels better/);
+  assert.match(html, /Medication labels/);
+  assert.match(html, /Breathing improved/);
+  assert.match(html, /Öppna ljudanteckning/);
+  assert.deepEqual(filterEncounterTimeline(events, "notes").map(({ id }) => id), ["audio-1", "photo-1", "note-1"]);
 });
