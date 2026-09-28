@@ -10,11 +10,11 @@ import { validateCreateReportPhotoNoteCommand } from "../dist/reports/report-pho
 function caught(command) {
   try { command(); assert.fail("expected rejected command"); } catch (error) { return error; }
 }
-function filtered(exception, path) {
+function filtered(exception, path, language = "en") {
   let status;
   let body;
   new PlatformErrorFilter().catch(exception, { switchToHttp: () => ({
-    getRequest: () => ({ path }),
+    getRequest: () => ({ path, headers: { "accept-language": language } }),
     getResponse: () => ({ status(value) { status = value; return { json(value) { body = value; } }; } })
   }) });
   return { status, body };
@@ -58,4 +58,11 @@ test("named parameters, authorization, media conflict, and pinned findings are p
 test("explicit identity is independent of English source wording", () => {
   assert.deepEqual(identifyPlatformError(409, "/api/calls/x", { code: "calls.changed", params: { revision: 7 }, message: "Arbitrary source text" }),
     { code: "calls.changed", params: { revision: 7 } });
+});
+
+test("agency language never changes API status, parameters, or canonical findings", () => {
+  const findings = [{ ruleId: "r1", message: "Pinned authored wording" }];
+  const exception = new UnprocessableEntityException({ message: "Validation failed", findings });
+  assert.deepEqual(filtered(exception, "/api/reports/r/sign", "en"),
+    filtered(exception, "/api/reports/r/sign", "sv"));
 });

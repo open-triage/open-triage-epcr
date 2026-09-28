@@ -1,4 +1,6 @@
 "use client";
+import React from "react";
+import { PlatformRequestError } from "../app/platform-errors";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 
@@ -313,7 +315,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       }
     } catch (caught) {
       if (caught instanceof Error && caught.message === "session") onSessionEnded();
-      else setError(resolveErrorMessage(language, caught instanceof Error ? caught.message : null, "noteUi.the.recording.could.not.be.saved"));
+      else setError(caught instanceof PlatformRequestError ? caught.message : resolveErrorMessage(language, caught instanceof Error ? caught.message : null, "noteUi.the.recording.could.not.be.saved"));
     } finally { setSaving(false); }
   }
 
@@ -335,7 +337,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       stopActiveAudio(); onDeleted(note.id, response.revision);
     } catch (caught) {
       if (caught instanceof Error && caught.message === "session") onSessionEnded();
-      else setError(resolveErrorMessage(language, caught instanceof Error ? caught.message : null, "noteUi.the.recording.could.not.be.deleted"));
+      else setError(caught instanceof PlatformRequestError ? caught.message : resolveErrorMessage(language, caught instanceof Error ? caught.message : null, "noteUi.the.recording.could.not.be.deleted"));
       setConfirmingDelete(false);
     } finally { setSaving(false); }
   }

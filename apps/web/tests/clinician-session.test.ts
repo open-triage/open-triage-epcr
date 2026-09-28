@@ -108,11 +108,11 @@ test("server session adapters send credentials and map authentication failures",
     assert.equal((requests[1]!.init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
 
     globalThis.fetch = async () => new Response(null, { status: 401 });
-    await assert.rejects(createClinicianSession({ username: "bad", password: "bad" }), /incorrect/i);
-    await assert.rejects(changeClinicianPassword("bad", "new password value", "csrf"), /current password/i);
+    await assert.rejects(createClinicianSession({ username: "bad", password: "bad" }), /legacy.http401/i);
+    await assert.rejects(changeClinicianPassword("bad", "new password value", "csrf"), /legacy.http401/i);
     globalThis.fetch = async () => new Response(null, { status: 503 });
-    await assert.rejects(createClinicianSession({ username: "user", password: "password" }), /unavailable/i);
-    await assert.rejects(changeClinicianPassword("old", "new password value", "csrf"), /could not be changed/i);
+    await assert.rejects(createClinicianSession({ username: "user", password: "password" }), /legacy.http503/i);
+    await assert.rejects(changeClinicianPassword("old", "new password value", "csrf"), /legacy.http503/i);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;

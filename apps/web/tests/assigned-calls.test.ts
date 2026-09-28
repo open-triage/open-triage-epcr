@@ -79,11 +79,11 @@ test("a generation race reports an assignment conflict rather than blaming an op
   const originalFetch = globalThis.fetch;
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  globalThis.fetch = async () => Response.json({ message: "conflict" }, { status: 409 });
+  globalThis.fetch = async () => Response.json({ code: "calls.http409", params: {}, message: "conflict" }, { status: 409 });
   try {
     await assert.rejects(
       generateSyntheticCall("csrf-token", "unit-id"),
-      /current assignments/i
+      /information changed/i
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -160,11 +160,11 @@ test("call-list adapters distinguish expired sessions from server failures", asy
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     globalThis.fetch = async () => new Response(null, { status: 401 });
-    await assert.rejects(fetchAssignedCalls(), /session has ended/i);
-    await assert.rejects(fetchOpenCalls(), /session has ended/i);
+    await assert.rejects(fetchAssignedCalls(), /legacy.http401/i);
+    await assert.rejects(fetchOpenCalls(), /legacy.http401/i);
     globalThis.fetch = async () => new Response(null, { status: 503 });
-    await assert.rejects(fetchAssignedCalls(), /could not be refreshed/i);
-    await assert.rejects(fetchOpenCalls(), /could not be refreshed/i);
+    await assert.rejects(fetchAssignedCalls(), /legacy.http503/i);
+    await assert.rejects(fetchOpenCalls(), /legacy.http503/i);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
@@ -178,10 +178,10 @@ test("opening and reopening map stale, missing, mismatched, and network response
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   try {
     globalThis.fetch = async () => new Response(null, { status: 409 });
-    await assert.rejects(openAssignedCall("token", "assignment"), /can no longer be opened/i);
-    await assert.rejects(reopenOpenCall("token", "report"), /no longer available/i);
+    await assert.rejects(openAssignedCall("token", "assignment"), /legacy.http409/i);
+    await assert.rejects(reopenOpenCall("token", "report"), /legacy.http409|legacy.http404/i);
     globalThis.fetch = async () => new Response(null, { status: 404 });
-    await assert.rejects(reopenOpenCall("token", "report"), /no longer available/i);
+    await assert.rejects(reopenOpenCall("token", "report"), /legacy.http409|legacy.http404/i);
     globalThis.fetch = async () => Response.json({ ...demoOpenAssignment, assignmentId: "different" });
     await assert.rejects(openAssignedCall("token", "assignment"), /does not match/i);
     globalThis.fetch = async () => { throw new TypeError("network unavailable"); };

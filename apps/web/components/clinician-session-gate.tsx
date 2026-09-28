@@ -1,5 +1,5 @@
-import { PlatformRequestError } from "../app/platform-errors";
 "use client";
+import { PlatformRequestError } from "../app/platform-errors";
 
 import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";

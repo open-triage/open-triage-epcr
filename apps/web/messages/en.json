@@ -519,7 +519,7 @@
   "platform.error.auth.capabilityRequired": "You do not have permission for this action.",
   "platform.error.calls.unitUnavailable": "The selected unit is no longer eligible.",
   "platform.error.calls.callUnavailable": "This call can no longer be opened.",
-  "platform.error.feedback.rateLimited": "You have sent feedback in the last minute. Try again later.",
+  "platform.error.feedback.rateLimited": "You have sent feedback in the last minute. Your description is still here; try again later.",
   "platform.error.admin.temporaryPasswordDuration": "Temporary password duration must be {hours} hours.",
   "platform.error.generic": "{domain}: {reason}",
   "platform.error.unknown": "The request failed (error {code}).",
