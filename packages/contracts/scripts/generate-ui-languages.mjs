@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -52,6 +52,7 @@ export async function generateUiLanguages({ directory = messageDirectory, output
       const current = await readFile(file, "utf8").catch(() => "");
       if (current !== content) throw new Error(`${path.relative(root, file)} is stale; regenerate UI languages`);
     } else {
+      await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, content);
     }
   }

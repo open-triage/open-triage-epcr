@@ -10,7 +10,10 @@ test("a new message JSON is discovered and included in both build manifests", as
   t.after(() => rm(directory, { recursive: true, force: true }));
   await writeFile(path.join(directory, "en.json"), JSON.stringify({ "hello": "Hello" }));
   await writeFile(path.join(directory, "fr.json"), JSON.stringify({ "hello": "Bonjour" }));
-  const outputs = [path.join(directory, "contracts.ts"), path.join(directory, "web.ts")];
+  const outputs = [
+    path.join(directory, "contracts", "contracts.ts"),
+    path.join(directory, "web", "app", "web.ts"),
+  ];
   assert.deepEqual(await generateUiLanguages({ directory, outputs }), ["en", "fr"]);
   assert.match(await readFile(outputs[0], "utf8"), /\["en","fr"\]/);
   assert.match(await readFile(outputs[1], "utf8"), /messages\/fr\.json/);
