@@ -1,5 +1,7 @@
 "use client";
 
+import { useAgencyTimeZone } from "../app/agency-time-zone";
+
 import type { CreateReportAudioNoteCommand, ReportAudioNote, ReportAudioSourceContentType, ReportMediaPolicy } from "@open-triage/contracts";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { createReportAudioNote, deleteReportAudioNote, fetchReportAudio, updateReportAudioCaption } from "../app/report-audio-api";
@@ -85,6 +87,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
   readonly onQueued: (note: ReportAudioNote) => void;
   readonly onSessionEnded: () => void;
 }) {
+  const zone = useAgencyTimeZone();
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -379,7 +382,7 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       {mode === "preview" && capture && <div className="audio-preview"><p role={capture.interrupted ? "alert" : "status"}>{capture.interrupted ? "Recording interrupted. Review it, then explicitly Use or Discard it." : `Captured ${formatAudioDuration(capture.durationMilliseconds)}.`}</p>
         <PreviewAudioButton source={capture.previewUrl} /></div>}
       {mode === "viewer" && note && <div className="audio-preview"><AuthorizedAudioButton reportId={reportId} noteId={note.id} label="Play complete audio note" />
-        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+        <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString(undefined, zone ? { timeZone: zone } : undefined)} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
         {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>Retry upload</button>}</div>}
       {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">Caption <small>(optional)</small></label>
         <textarea id="report-audio-caption" rows={3} maxLength={REPORT_AUDIO_CAPTION_MAX_CHARACTERS} value={caption}

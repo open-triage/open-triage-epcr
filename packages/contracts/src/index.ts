@@ -283,6 +283,7 @@ export interface AgencyMediaSettings {
   organizationId: string;
   language: "en" | "sv";
   regionalFormat: "en-US" | "sv-SE" | null;
+  timeZone: string | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -299,6 +300,7 @@ export interface UpdateAgencyMediaSettingsCommand {
   expectedRevision: number;
   language: "en" | "sv";
   regionalFormat?: "en-US" | "sv-SE" | null;
+  timeZone?: string | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;

@@ -52,7 +52,7 @@ export function MedicationDialog({ language, draft, dispatch, dialogRef, definit
           {validation(field.id)}
         </div>;
       case "time":
-        return <div className="dialog-field" key={field.id}><TimePicker language={language} className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><TimePicker language={language} className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} selectedInstant={draft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "medication", date, time, dateTime })} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
       case "dose":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={displayDecimal(draft.dose, region)} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
       case "unit":

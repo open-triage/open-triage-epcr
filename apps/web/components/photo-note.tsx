@@ -1,5 +1,7 @@
 "use client";
 
+import { useAgencyTimeZone } from "../app/agency-time-zone";
+
 import type { CreateReportPhotoNoteCommand, ReportMediaPolicy, ReportPhotoNote } from "@open-triage/contracts";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import {
@@ -88,6 +90,7 @@ export function PhotoNoteDialog({
   readonly onDeleted: (noteId: string, revision: number) => void;
   readonly onSessionEnded: () => void;
 }) {
+  const zone = useAgencyTimeZone();
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
@@ -317,7 +320,7 @@ export function PhotoNoteDialog({
         </>}
         {mode === "viewer" && note && <>
           <AuthorizedPhotoImage reportId={reportId} noteId={note.id} alt={note.caption || "Clinical photo note"} className="photo-viewer-image" />
-          <p className="note-metadata">Captured {new Date(note.capturedAt).toLocaleString()} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
+          <p className="note-metadata">Captured {new Date(note.capturedAt).toLocaleString(undefined, zone ? { timeZone: zone } : undefined)} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
           {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>Retry upload</button>}
         </>}
         {mode !== "camera" && <>

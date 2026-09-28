@@ -15,7 +15,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat,
+  return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -139,6 +139,14 @@ export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
           <option value="sv-SE">Svenska (Sverige)</option>
         </select>
         <p aria-live="polite">{language === "sv" ? "Förhandsvisning" : "Preview"}: {formatClinicalDate("2026-09-28T13:45:00Z", draft.regionalFormat ?? null)} · {formatClinicalNumber(1234.5, draft.regionalFormat ?? null)}</p>
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{language === "sv" ? "Tidszon" : "Time zone"}</legend>
+        <label htmlFor="agency-time-zone"><strong>{language === "sv" ? "Klinisk tidszon" : "Clinical time zone"}</strong>
+          <span>{language === "sv" ? "Ange ett IANA-namn, till exempel Europe/Stockholm. Gäller nästa gång arbetsytan öppnas." : "Enter an IANA name, such as America/New_York. Applies on the next workspace load."}</span></label>
+        <input id="agency-time-zone" value={draft.timeZone ?? ""} placeholder="Use device time zone"
+          onChange={(event) => setDraft((current) => current ? { ...current, timeZone: event.target.value || null } : current)} />
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>

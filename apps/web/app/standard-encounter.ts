@@ -35,7 +35,7 @@ export type EncounterEvent = {
 export type VitalField = ConfiguredVitalField;
 export type NullValue = "" | VitalNullValue;
 export type VitalValues = Record<VitalField, string> & { readonly nullValues: Partial<Record<VitalField, NullValue>> };
-export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly values: VitalValues; readonly isNew: boolean };
+export type VitalDraft = { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly values: VitalValues; readonly isNew: boolean };
 
 export type Encounter = {
   readonly definitionId: string;
@@ -66,7 +66,7 @@ export function createSyntheticEncounter(definition: EncounterDefinition): Encou
 
 export const syntheticEncounter: Encounter = createSyntheticEncounter(bundledEncounterDefinition);
 
-export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly summary: string; readonly isNew: boolean };
+export type NoteDraft = { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly summary: string; readonly isNew: boolean };
 export type MedicationAdministration = {
   readonly medicationCode: string;
   readonly codeType: "RxNorm" | "SNOMED-CT";
@@ -77,7 +77,7 @@ export type MedicationAdministration = {
   readonly response: string;
   readonly warningAcknowledged: boolean;
 };
-export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly date: string; readonly time: string; readonly isNew: boolean };
+export type MedicationDraft = MedicationAdministration & { readonly id: string; readonly date: string; readonly time: string; readonly dateTime?: string; readonly isNew: boolean };
 export type MedicationField = keyof Pick<MedicationDraft, "date" | "time" | "medicationCode" | "codeType" | "label" | "dose" | "unit" | "route" | "response">;
 export type ShellState = {
   readonly view: ShellView;
@@ -87,8 +87,11 @@ export type ShellState = {
   readonly vitalDraft: VitalDraft | null;
   readonly medicationDraft: MedicationDraft | null;
   readonly acknowledgedWarnings: ReadonlyArray<string>;
+  readonly timeZone?: string | null;
 };
 export type ShellAction =
+  | { readonly type: "clinical-time-selected"; readonly kind: "vitals" | "procedure" | "medication"; readonly date: string; readonly time: string; readonly dateTime?: string }
+  | { readonly type: "time-zone-loaded"; readonly timeZone: string | null }
   | { readonly type: "view-selected"; readonly view: ShellView }
   | { readonly type: "document-opened"; readonly document: EncounterDocument }
   | { readonly type: "demo-populated" }
@@ -266,7 +269,7 @@ function definitionGroup(eventType: ConfiguredEventType): string {
 
 /** Consolidates validation for timeline entries before signing. */
 export function reviewEncounter(state: ShellState, definition: EncounterDefinition = bundledEncounterDefinition): ReadonlyArray<ReviewFinding> {
-  const canonicalEvents = encounterEvents(state.encounter.document, definition);
+  const canonicalEvents = encounterEvents(state.encounter.document, definition, state.timeZone ?? null);
   const events = canonicalEvents.flatMap((event): ReadonlyArray<ReviewFinding> => {
     if (event.vitals) {
       const vitalDefinition = definition.events.vitals;
@@ -282,7 +285,7 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
       return [...errors, ...warnings];
     }
     if (event.medication) {
-      const validation = validateMedication({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, ...event.medication, isNew: false }, definition);
+      const validation = validateMedication({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, dateTime: event.dateTime, ...event.medication, isNew: false }, definition);
       const presentation = encounterEventPresentation(event, definition);
       return [
         ...validation.errorFindings.map((finding, index) => eventFinding(state, { ...event, ...presentation, detail: encounterEventDetail(event, definition) }, "medication", "error", definition.events.medication.labels.category, finding.reference, finding.message, index)),
@@ -292,7 +295,7 @@ export function reviewEncounter(state: ShellState, definition: EncounterDefiniti
     if (event.procedure) {
       const procedureDefinition = definition.events.procedure;
       const validation = validateProcedure({
-        id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
+        id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, dateTime: event.dateTime, procedureCode: event.procedure.code, procedureLabel: event.procedure.label,
         attempts: String(event.procedure.attempts), success: event.procedure.success, outcome: event.procedure.outcome,
         complications: event.procedure.complications, warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
       }, procedureDefinition);
@@ -362,8 +365,15 @@ export function vitalSummary(values: VitalValues, definition: EncounterDefinitio
 }
 
 export function transitionShell(state: ShellState, action: ShellAction, definition: EncounterDefinition = bundledEncounterDefinition): ShellState {
-  const events = encounterEvents(state.encounter.document, definition);
+  const events = encounterEvents(state.encounter.document, definition, state.timeZone ?? null);
   switch (action.type) {
+    case "clinical-time-selected": {
+      const field = action.kind === "vitals" ? "vitalDraft" : action.kind === "procedure" ? "procedureDraft" : "medicationDraft";
+      const draft = state[field];
+      return draft ? { ...state, [field]: { ...draft, date: action.date, time: action.time, dateTime: action.dateTime } } : state;
+    }
+    case "time-zone-loaded":
+      return { ...state, timeZone: action.timeZone };
     case "document-opened":
       return { ...state, encounter: { ...state.encounter, document: action.document } };
     case "demo-populated":
@@ -400,7 +410,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       return { ...state, noteDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time, summary: "", isNew: true } };
     case "note-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "note");
-      return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, summary: event.detail, isNew: false } } : state;
+      return event ? { ...state, noteDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, dateTime: event.dateTime, summary: event.detail, isNew: false } } : state;
     }
     case "note-draft-changed":
       return state.noteDraft ? { ...state, noteDraft: { ...state.noteDraft, [action.field]: action.value } } : state;
@@ -425,7 +435,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         ...state,
         view: "timeline",
         noteDraft: null,
-        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, note, definition) },
+        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, note, definition, state.timeZone ?? null) },
       };
     }
     case "procedure-started":
@@ -454,6 +464,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
           id: event.id,
           date: event.date ?? DEMO_FALLBACK_DATE,
           time: event.time,
+          dateTime: event.dateTime,
           procedureCode: event.procedure.code,
           procedureLabel: event.procedure.label,
           attempts: String(event.procedure.attempts),
@@ -479,7 +490,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
     case "procedure-draft-changed":
       return state.procedureDraft ? {
         ...state,
-        procedureDraft: { ...state.procedureDraft, [action.field]: action.value, warningAcknowledged: false } as ProcedureDraft,
+        procedureDraft: { ...state.procedureDraft, [action.field]: action.value, dateTime: action.field === "date" || action.field === "time" ? undefined : state.procedureDraft.dateTime, warningAcknowledged: false } as ProcedureDraft,
       } : state;
     case "procedure-complication-toggled": {
       if (!state.procedureDraft) return state;
@@ -520,6 +531,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         id: draft.id,
         date: draft.date,
         time: draft.time,
+        dateTime: draft.dateTime,
         kind: "procedure",
         title: procedure.label,
         detail: describeProcedure(procedure, definition.events.procedure),
@@ -531,7 +543,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         ...state,
         view: "timeline",
         procedureDraft: null,
-        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition) },
+        encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition, state.timeZone ?? null) },
       };
     }
     case "medication-started":
@@ -541,12 +553,12 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       };
     case "medication-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.kind === "medication" && candidate.medication);
-      return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, ...event.medication, isNew: false } } : state;
+      return event?.medication ? { ...state, medicationDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, dateTime: event.dateTime, ...event.medication, isNew: false } } : state;
     }
     case "medication-selected":
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, medicationCode: action.code, codeType: action.codeType, label: action.label } } : state;
     case "medication-draft-changed":
-      return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, [action.field]: action.value, warningAcknowledged: action.field === "response" ? false : state.medicationDraft.warningAcknowledged } } : state;
+      return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, [action.field]: action.value, dateTime: action.field === "date" || action.field === "time" ? undefined : state.medicationDraft.dateTime, warningAcknowledged: action.field === "response" ? false : state.medicationDraft.warningAcknowledged } } : state;
     case "medication-warning-acknowledged":
       return state.medicationDraft ? { ...state, medicationDraft: { ...state.medicationDraft, warningAcknowledged: action.acknowledged } } : state;
     case "medication-cancelled":
@@ -570,6 +582,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         id: draft.id,
         date: draft.date,
         time: draft.time,
+        dateTime: draft.dateTime,
         kind: "medication",
         title: "",
         detail: "",
@@ -578,18 +591,18 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         medication: administration,
       };
       const presentedMedicationEvent = { ...medicationEvent, ...encounterEventPresentation(medicationEvent, definition), detail: encounterEventDetail(medicationEvent, definition) };
-      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, presentedMedicationEvent, definition) } };
+      return { ...state, view: "timeline", medicationDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, presentedMedicationEvent, definition, state.timeZone ?? null) } };
     }
     case "vitals-started":
       return { ...state, vitalDraft: { id: action.id, date: action.date ?? DEMO_FALLBACK_DATE, time: action.time, values: { ...EMPTY_VITALS, nullValues: {} }, isNew: true } };
     case "vitals-opened": {
       const event = events.find((candidate) => candidate.id === action.id && candidate.vitals);
-      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
+      return event?.vitals ? { ...state, vitalDraft: { id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time, dateTime: event.dateTime, values: { ...EMPTY_VITALS, ...event.vitals, nullValues: event.vitals.nullValues ?? {} }, isNew: false } } : state;
     }
     case "vitals-time-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value } } : state;
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, time: action.value, dateTime: undefined } } : state;
     case "vitals-date-changed":
-      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value } } : state;
+      return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, date: action.value, dateTime: undefined } } : state;
     case "vitals-value-changed":
       return state.vitalDraft ? { ...state, vitalDraft: { ...state.vitalDraft, values: { ...state.vitalDraft.values, [action.field]: action.value, nullValues: { ...state.vitalDraft.values.nullValues, [action.field]: "" } } } } : state;
     case "vitals-null-changed":
@@ -602,12 +615,12 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       const draft = state.vitalDraft;
       if (!draft) return state;
       const vitalDefinition = definition.events.vitals;
-      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
-      return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition) } };
+      const event: EncounterEvent = { id: draft.id, date: draft.date, time: draft.time, dateTime: draft.dateTime, kind: "care", title: vitalDefinition.labels.timelineTitle, detail: vitalSummary(draft.values, definition), reference: vitalDefinition.references.group, visitorEntered: true, vitals: draft.values };
+      return { ...state, view: "timeline", vitalDraft: null, encounter: { ...state.encounter, document: saveCanonicalEvent(state.encounter.document, event, definition, state.timeZone ?? null) } };
     }
     case "state-restored":
       return action.state.encounter.definitionId === definition.id && action.state.encounter.definitionVersion === definition.version
-        ? { ...action.state, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
+        ? { ...action.state, timeZone: state.timeZone ?? null, noteDraft: action.state.noteDraft ?? null, procedureDraft: action.state.procedureDraft ?? null, medicationDraft: action.state.medicationDraft ?? null, vitalDraft: action.state.vitalDraft ?? null, acknowledgedWarnings: action.state.acknowledgedWarnings ?? [] }
         : state;
     default:
       return state;

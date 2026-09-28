@@ -3,6 +3,7 @@
 import type { ScalarEncounterValue } from "@open-triage/contracts";
 import React, { useId, useSyncExternalStore } from "react";
 import type { ChangeEvent } from "react";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { canonicalDecimal, displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { localStationaryDateTimeParts, stationaryLocalDateTimeInput } from "../app/stationary-date-time";
 import type { ScalarControlPresentation, ScalarValidationFinding } from "../app/stationary-scalar";
@@ -33,6 +34,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
 }) {
   const id = useId();
   const region = useRegionalFormat();
+  const zone = useAgencyTimeZone();
   const shownValue = inputValue ?? (presentation.family === "numeric"
     ? displayDecimal(String(value?.lexical ?? value?.value ?? ""), region) : value?.lexical ?? value?.value ?? "");
   const commit = (input: string | boolean) => onBlur?.(presentation.family === "numeric" && typeof input === "string"
@@ -51,7 +53,7 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
     const candidate = inputValue ?? value?.value;
     // Server-render and first hydration use the source clock; after mount the
     // browser converts it to local time without a timezone hydration mismatch.
-    const parts = localClockReady ? localStationaryDateTimeParts : sourceDateTimeParts;
+    const parts = localClockReady ? (input: string) => localStationaryDateTimeParts(input, zone) : sourceDateTimeParts;
     const selected = parts(String(candidate ?? ""));
     const initial = parts(defaultDateTime ?? "");
     const control = <>
@@ -61,12 +63,16 @@ export function StationaryScalarControl({ presentation, value, inputValue, defau
         value={selected?.time ?? ""}
         initialDate={initial?.date}
         initialValue={initial?.time}
+        selectedInstant={typeof candidate === "string" && !Number.isNaN(Date.parse(candidate)) ? new Date(candidate).toISOString() : undefined}
         invalid={findings.length > 0}
         describedBy={`${embedded ? "" : helpId}${findings.length ? ` ${errorId}` : ""}`.trim() || undefined}
         initialFocus={initialFocus}
         hideLabel
         onChange={() => undefined}
-        onDateTimeChange={(date, time) => onInput(stationaryLocalDateTimeInput(date, time))}
+        onDateTimeChange={(date, time, selectedInstant) => {
+          if (selected && selected.date === date && selected.time === time) return;
+          onInput(stationaryLocalDateTimeInput(date, time, zone, selectedInstant));
+        }}
       />
       {findings.length > 0 && <small className="stationary-validation-message error" id={errorId} role="alert">{findings.map(({ message }) => message).join(" ")}</small>}
     </>;

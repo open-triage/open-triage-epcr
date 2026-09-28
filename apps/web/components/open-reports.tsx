@@ -5,6 +5,7 @@ import type {
   OpenCall as OpenReportSummary,
   ReopenOpenCallResponse as ReopenOpenReportResponse,
 } from "@open-triage/contracts";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
 import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
@@ -42,8 +43,8 @@ import {
   RecoveryReauthenticationRequiredError,
 } from "../app/protected-clinical-storage";
 
-function savedTime(value: string, region: ReturnType<typeof useRegionalFormat>): string {
-  return formatClinicalDate(value, region);
+function savedTime(value: string, region: ReturnType<typeof useRegionalFormat>, zone: string | null): string {
+  return formatClinicalDate(value, region, undefined, zone);
 }
 export function OpenReports({
   session,
@@ -63,6 +64,7 @@ export function OpenReports({
   readonly refreshRequest?: number;
 }) {
   const region = useRegionalFormat();
+  const zone = useAgencyTimeZone();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
@@ -297,7 +299,7 @@ export function OpenReports({
               </div>
               <dl>
                 <div><dt>{t("calls.priority")}</dt><dd>{report.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
-                <div><dt>{t("reports.lastSaved")}</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt, region)}</time></dd></div>
+                <div><dt>{t("reports.lastSaved")}</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt, region, zone)}</time></dd></div>
                 <div><dt>{t("reports.savedChecks")}</dt><dd>{t("reports.reviewBeforeSigning", { count: formatClinicalNumber(report.validationErrorCount, region) })}</dd></div>
               </dl>
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
