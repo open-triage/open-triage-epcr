@@ -84,6 +84,10 @@ jobs:
         run: npm run build -w @open-triage/web
       - name: Require the generated service worker
         run: test -s apps/web/out/sw.js
+      - name: Require CSP-compatible static HTML
+        run: >-
+          node deploy/docker/generate-nginx-config.mjs
+          deploy/docker/nginx.conf apps/web/out /tmp/open-triage-nginx.conf
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Test the root-hosted web artifact

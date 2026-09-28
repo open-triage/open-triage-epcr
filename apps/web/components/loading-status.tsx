@@ -13,7 +13,7 @@ export function LoadingStatus({ children, className = "", delayMs = 400 }: {
     const timer = window.setTimeout(() => setVisible(true), delayMs);
     return () => window.clearTimeout(timer);
   }, [delayMs]);
-  return <p className={className} role="status" style={{ minHeight: "1.35em" }}>
+  return <p className={["loading-status", className].filter(Boolean).join(" ")} role="status">
     {visible ? children : <span aria-hidden="true">&nbsp;</span>}
   </p>;
 }

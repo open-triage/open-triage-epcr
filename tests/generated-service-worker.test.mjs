@@ -64,6 +64,7 @@ test("build and CI require the generated worker in deployable output", async () 
   assert.match(dockerfile, /COPY --from=build \/workspace\/apps\/web\/out/);
   assert.match(validation, /npm run build -w @open-triage\/web/);
   assert.match(validation, /test -s apps\/web\/out\/sw\.js/);
+  assert.match(validation, /generate-nginx-config\.mjs/);
   assert.match(validation, /npm run test:deployment -w @open-triage\/web/);
 });
 

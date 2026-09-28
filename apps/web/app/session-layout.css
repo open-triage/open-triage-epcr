@@ -8,6 +8,10 @@
   background: var(--paper);
 }
 
+.loading-status {
+  min-height: 1.35em;
+}
+
 .authenticated-shell .encounter-header {
   scroll-margin-top: calc(var(--session-bar-height, 98px) + 8px);
 }
