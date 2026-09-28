@@ -72,7 +72,7 @@ export function FormElementPicker({ definition, results, query, targetSection, o
       setResultLimit(20); onQueryChange(event.target.value);
     }} />
     {!query.trim() && <p><AdminText english="Search the catalog to add an element." /></p>}
-    {query.trim() && <ul className="form-picker-results" aria-label="Catalog element search results">
+    {query.trim() && <ul className="form-picker-results" aria-label={t("Catalog element search results")}>
       {results.slice(0, resultLimit).map((element) => {
         const duplicate = placed.has(`nemsis:${element.elementId}`);
         return <li key={element.elementId}>
@@ -206,7 +206,7 @@ export function FormLocalizedEditor({ definition, readOnly, onChange, language: 
       </label>}
     </div>;
   }
-  return <section className="form-localized-editor" aria-label="Form wording">
+  return <section className="form-localized-editor" aria-label={t("Form wording")}>
     <h3><AdminText english="Form wording" /></h3>
     <TranslationIssueSummary issues={issues} filter={issueFilter} onFilter={setIssueFilter} onNavigate={(issue) => {
       setLanguage(issue.kind === "english" ? "en" : "sv");

@@ -425,11 +425,11 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         <div><dt><AdminText english="Original expression" /></dt><dd><code>{source.originalExpression}</code></dd></div>
         <div><dt><AdminText english="Original message" /></dt><dd>{source.originalMessage}</dd></div>
       </dl>)}</details> : null}
-    {inlineValidation && inlineValidation.diagnostics.length > 0 && <div role="alert" aria-label="Inline rule diagnostics"><ul>
+    {inlineValidation && inlineValidation.diagnostics.length > 0 && <div role="alert" aria-label={t("Inline rule diagnostics")}><ul>
       {inlineValidation.diagnostics.map((item, index) => <li key={`${item.code}:${index}`}>
         {item.line ? `Line ${item.line}, column ${item.column}: ` : ""}{item.message}</li>)}
     </ul></div>}
-    {explanation && <details aria-label="Generated rule explanation"><summary><AdminText english="Explanation" /></summary><p>{explanation}</p></details>}
+    {explanation && <details aria-label={t("Generated rule explanation")}><summary><AdminText english="Explanation" /></summary><p>{explanation}</p></details>}
     {validation && <ValidationResultFeedback result={validation} ruleCount={draft.rules.length} />}
     <div className="form-actions">
       {canWrite && <button type="button" disabled={busy || !dirty} onClick={() => action(async () => {

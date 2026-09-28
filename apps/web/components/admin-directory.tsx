@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState, type FormEvent } from "react";
@@ -422,17 +422,18 @@ export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHis
   readonly onReactivate: (role: AdminRole) => void;
 }) {
   const t = useAdminText();
+  const capabilityText = useAdminCapabilityText();
   const rows = capabilityRows(roles, capabilityOptions);
   return <div className="admin-role-matrix-scroll">
     <table className="admin-role-matrix">
       <caption><AdminText english="Capabilities assigned to each role" /></caption>
       <thead><tr><th scope="col"><AdminText english="Capability" /></th>{roles.map((role) => <th scope="col" key={role.id}>
         <span className="admin-role-column-heading" title={`${role.active ? t("Active") : t("Deactivated")} · ${role.protected ? t("Protected") : t("Custom")} · Version ${role.version} · ${role.assigneeCount} assignee${role.assigneeCount === 1 ? "" : "s"}${role.description ? ` · ${role.description}` : ""}`}>
-          <strong>{role.displayName}</strong><span className="sr-only">. {role.active ? t("Active") : t("Deactivated")}, {role.protected ? t("protected") : t("custom")}, version {role.version}, {role.assigneeCount} assignees{role.description ? `. ${role.description}` : ""}</span>
+          <strong>{role.displayName}</strong><span className="sr-only">. {role.active ? t("Active") : t("Deactivated")}, {role.protected ? t("protected") : t("custom")}, {t("version {version}, {count} assignees", { version: role.version, count: role.assigneeCount })}{role.description ? `. ${role.description}` : ""}</span>
         </span>
       </th>)}</tr></thead>
       <tbody>{rows.map((capability) => <tr key={capability.key}>
-        <th scope="row" title={t(capability.description)}><code>{capability.key}</code><span className="sr-only">. {t(capability.description)}</span></th>
+        <th scope="row" title={capabilityText(capability.key, capability.description)}><code>{capability.key}</code><span className="sr-only">. {capabilityText(capability.key, capability.description)}</span></th>
         {roles.map((role) => {
           const included = role.capabilities.some(({ key }) => key === capability.key);
           return <td key={role.id} className={included ? "capability-included" : "capability-not-included"}>
@@ -461,6 +462,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   readonly csrfToken?: string; readonly capabilities?: string[];
 }) {
   const t = useAdminText();
+  const capabilityText = useAdminCapabilityText();
   const adminError = useAdminError();
   const [items, setItems] = useState<AdminRole[]>([]);
   const [capabilityOptions, setCapabilityOptions] = useState<AdminCapabilityOption[]>([]);
@@ -599,7 +601,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
           {capabilityOptions.map((option) => <label key={option.key}>
             <input type="checkbox" checked={draft.capabilityKeys.includes(option.key)} disabled={!option.mutable}
               onChange={(event) => toggle(option, event.target.checked)} />
-            <span><code>{option.key}</code> — {t(option.description)}
+            <span><code>{option.key}</code> — {capabilityText(option.key, option.description)}
               {option.prerequisites.length > 0 && <small>{t("Requires {keys}", { keys: option.prerequisites.join(", ") })}</small>}
               {!option.mutable && <small><AdminText english="You cannot change this capability because it is not granted to you." /></small>}</span>
           </label>)}

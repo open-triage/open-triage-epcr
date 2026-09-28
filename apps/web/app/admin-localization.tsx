@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext } from "react";
-import { resolveMessage, type AgencyLanguage } from "./localization";
+import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "./localization";
+import { PlatformRequestError } from "./platform-errors";
 
 export const AdminLanguageContext = createContext<AgencyLanguage>("en");
 
@@ -27,7 +28,18 @@ export function AdminText({ english, parameters }: {
 /** Server exception prose is not localized; Swedish screens show a safe operation summary. */
 export function useAdminError() {
   const language = useContext(AdminLanguageContext);
-  const t = useAdminText();
   return useCallback((reason: unknown, englishFallback: string) =>
-    language === "sv" ? t(englishFallback) : reason instanceof Error ? reason.message : t(englishFallback), [language, t]);
+    reason instanceof PlatformRequestError ? reason.message :
+      resolveErrorMessage(language, reason instanceof Error ? reason.message : null, `admin.${englishFallback}`), [language]);
+}
+
+/** Stable capability keys identify translated descriptions; grants keep using those keys. */
+export function useAdminCapabilityText() {
+  const language = useContext(AdminLanguageContext);
+  return useCallback((key: string, description: string) => {
+    if (language === "en") return description;
+    const messageKey = `admin.capability.${key}`;
+    const localized = resolveMessage(language, messageKey);
+    return localized === messageKey ? description : localized;
+  }, [language]);
 }

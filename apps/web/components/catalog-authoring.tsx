@@ -152,14 +152,14 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <tbody>{visible.slice(currentPage * 25, (currentPage + 1) * 25).map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
         <td>
-          <label><span className="visually-hidden">{editingLanguage === "en" ? t("English") : t("Swedish")} label for {element.elementId}</span>
+          <label><span className="visually-hidden">{t("{language} label for {id}", { language: t(editingLanguage === "en" ? "English" : "Swedish"), id: element.elementId })}</span>
             <input disabled={!canEdit} value={editingLanguage === "en" ? element.label : element.localization?.sv?.label ?? ""}
               onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
                 ? updateCatalogEnglish(value, "label", event.target.value)
                 : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
                     label: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, label: value.label } } } })} />
           </label>
-          <label><span className="visually-hidden">{editingLanguage === "en" ? t("English") : t("Swedish")} description for {element.elementId}</span>
+          <label><span className="visually-hidden">{t("{language} description for {id}", { language: t(editingLanguage === "en" ? "English" : "Swedish"), id: element.elementId })}</span>
             <textarea disabled={!canEdit} value={editingLanguage === "en" ? element.description ?? "" : element.localization?.sv?.description ?? ""}
               onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
                 ? updateCatalogEnglish(value, "description", event.target.value)
