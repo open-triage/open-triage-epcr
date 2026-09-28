@@ -18,6 +18,7 @@ import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import type { StationarySectionFinding } from "../app/stationary-record";
 import { resolveCatalogElementText } from "../app/catalog-localization";
+import { resolveMessage } from "../app/localization";
 import { formFieldForElement, formFieldText, type FormLanguage } from "../app/form-localization";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
 
@@ -36,7 +37,7 @@ function canonicalValueText(value: EncounterValue): string {
   return "Collection attempted; value absent";
 }
 
-function ReadOnlyField({ field, instance }: { readonly field: StationaryNonRepeatingField; readonly instance?: EncounterGroupInstance }) {
+function ReadOnlyField({ field, instance, language }: { readonly field: StationaryNonRepeatingField; readonly instance?: EncounterGroupInstance; readonly language: FormLanguage }) {
   const id = useId();
   const values = instance?.elements.find(({ id }) => id === field.id)?.values ?? [];
   return (
@@ -45,9 +46,9 @@ function ReadOnlyField({ field, instance }: { readonly field: StationaryNonRepea
       {values.length ? (
         <ul>{values.map((value) => <li key={value.occurrenceId}>
           <output>{canonicalValueText(value)}</output>
-          {value.attributes && <small>Source attributes: {JSON.stringify(value.attributes)}</small>}
+          {value.attributes && <small>{resolveMessage(language, "stationary.sourceAttributes")} {JSON.stringify(value.attributes)}</small>}
         </li>)}</ul>
-      ) : <output>Not provided</output>}
+      ) : <output>{resolveMessage(language, "stationary.notProvided")}</output>}
     </fieldset>
   );
 }
@@ -166,7 +167,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
 }) {
   const visibleGroups = groups.filter(({ fields }) => fields.length > 0);
   if (!visibleGroups.length) return null;
-  return <div className="stationary-non-repeating-record" aria-label="Complete non-repeating NEMSIS record">
+  return <div className="stationary-non-repeating-record" aria-label={resolveMessage(language, "stationary.nonRepeating")}>
     {visibleGroups.map((group) => {
       const contexts = renderContexts(document, group);
       const ancestry = group.path.join(" / ");
@@ -179,7 +180,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
         data-cardinality="single"
         id={`stationary-group-${group.id.replaceAll(".", "-")}`}
         key={group.id}
-        aria-label={`${group.label} fields`}
+        aria-label={resolveMessage(language, "stationary.fields", { label: group.label })}
       >
         {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={instance?.instanceId ?? parentInstanceId ?? contextIndex}>
           {group.fields.map((field) => {
@@ -208,9 +209,9 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
             });
             const fieldSeverity = stationaryFindingSeverity(fieldFindings);
             return <div className={`stationary-field-shell${fieldSeverity ? ` stationary-validation-state ${fieldSeverity}` : ""}`} key={field.id}>
-              {disabled && <p className="stationary-applicability" data-element-id={field.id}>Not applicable{fieldApplicability.reason ? `: ${fieldApplicability.reason}` : ""}</p>}
+              {disabled && <p className="stationary-applicability" data-element-id={field.id}>{resolveMessage(language, fieldApplicability.reason ? "stationary.notApplicableReason" : "stationary.notApplicable", { reason: fieldApplicability.reason ?? "" })}</p>}
               {field.readOnly
-                ? <ReadOnlyField field={localizedField} instance={instance} />
+                ? <ReadOnlyField field={localizedField} instance={instance} language={language} />
                 : field.scalar
                   ? <EditableScalarField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />
                 : <EditableCodedField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
