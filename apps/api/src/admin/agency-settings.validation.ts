@@ -128,7 +128,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
@@ -151,7 +151,10 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
       "imageMediaLimitBytes must be a whole MiB between 1 MiB and the total report media allowance"
     );
   }
-  return { expectedRevision: Number(body.expectedRevision), reportMediaAllowanceBytes: allowance,
+  if (body.language !== "en" && body.language !== "sv") {
+    throw new UnprocessableEntityException("language must be en or sv");
+  }
+  return { expectedRevision: Number(body.expectedRevision), language: body.language, reportMediaAllowanceBytes: allowance,
     imageMediaLimitBytes: imageLimit,
     appearance: appearance(body.appearance), demographics: demographics(body.demographics) };
 }

@@ -24,6 +24,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
+import { resolveMessage } from "../app/localization";
 import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
@@ -62,6 +63,8 @@ export function ClinicianSessionGate({ children }: {
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
   const [startupState, setStartupState] = useState<"loading" | "ready" | "failed">("loading");
+  const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
+    resolveMessage(installation?.settings.language ?? "en", key, parameters), [installation?.settings.language]);
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -91,7 +94,7 @@ export function ClinicianSessionGate({ children }: {
   }, []);
 
   useEffect(() => {
-    if (installation) applyAgencyAppearance(installation.appearance, document);
+    if (installation) applyAgencyAppearance(installation.appearance, document, installation.settings.language);
   }, [installation]);
 
   useEffect(() => {
@@ -184,14 +187,14 @@ export function ClinicianSessionGate({ children }: {
     if (!session) return;
     const remaining = Date.parse(session.expiresAt) - Date.now();
     if (remaining <= 0) {
-      queueMicrotask(() => void lockAndEndLocalSession("Your shift session expired. Sign in to continue."));
+      queueMicrotask(() => void lockAndEndLocalSession(t("login.sessionExpired")));
       return;
     }
     const timeout = window.setTimeout(() => {
-      void lockAndEndLocalSession("Your shift session expired. Sign in to continue.");
+      void lockAndEndLocalSession(t("login.sessionExpired"));
     }, Math.min(remaining, 2_147_483_647));
     return () => window.clearTimeout(timeout);
-  }, [lockAndEndLocalSession, session]);
+  }, [lockAndEndLocalSession, session, t]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -211,7 +214,8 @@ export function ClinicianSessionGate({ children }: {
       storePresentationMode(window.localStorage, initialMode);
       setPresentationMode(initialMode);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sign in is unavailable.");
+      setMessage(error instanceof Error && error.message === "The username or password is incorrect."
+        ? t("login.invalidCredentials") : t("login.unavailable"));
     } finally {
       setSubmitting(false);
     }
@@ -225,7 +229,7 @@ export function ClinicianSessionGate({ children }: {
     const form = new FormData(event.currentTarget);
     const next = String(form.get("newPassword") ?? "");
     if (next !== String(form.get("confirmPassword") ?? "")) {
-      setMessage("The new passwords do not match.");
+      setMessage(t("login.passwordMismatch"));
       setSubmitting(false);
       return;
     }
@@ -236,7 +240,8 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, changed);
       setSession(changed);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The password could not be changed.");
+      setMessage(error instanceof Error && error.message === "The current password is incorrect."
+        ? t("login.passwordIncorrect") : t("login.passwordChangeFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +260,7 @@ export function ClinicianSessionGate({ children }: {
   async function logOut() {
     const csrfToken = session ? sessionRequestToken(session) : "";
     setLockingSession(true);
-    await lockAndEndLocalSession("You have logged out.");
+    await lockAndEndLocalSession(t("login.loggedOut"));
     if (csrfToken) void endClinicianSession(csrfToken).catch(() => undefined);
   }
 
@@ -272,16 +277,16 @@ export function ClinicianSessionGate({ children }: {
   }
 
   const sessionEnded = useCallback(() => {
-    void lockAndEndLocalSession("Your shift session ended. Sign in again to sync your saved work.");
-  }, [lockAndEndLocalSession]);
+    void lockAndEndLocalSession(t("login.sessionEnded"));
+  }, [lockAndEndLocalSession, t]);
 
-  if (startupState !== "ready") return <main className="session-loading" aria-label="Opening OpenTriage" aria-busy={startupState === "loading"}>
-    {startupState === "loading" ? <LoadingStatus>Opening OpenTriage…</LoadingStatus> : <div role="alert">
-      <p>{online ? "OpenTriage could not connect. Retrying automatically…" : "Reconnect to continue."}</p>
+  if (startupState !== "ready") return <main className="session-loading" aria-label={t("login.opening")} aria-busy={startupState === "loading"}>
+    {startupState === "loading" ? <LoadingStatus>{t("login.opening")}</LoadingStatus> : <div role="alert">
+      <p>{online ? t("login.connectFailed") : t("login.reconnect")}</p>
       {online && startupFailure && <p>{startupFailure}</p>}
     </div>}
   </main>;
-  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
+  if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? t("login.configurationUnavailable")}</p></main>;
   if (!session) {
     return (
       <main className="login-shell">
@@ -293,20 +298,20 @@ export function ClinicianSessionGate({ children }: {
               <img className="agency-logo" src={installation.appearance.logoPngDataUrl} alt="" />
             </>}
             <p className="eyebrow">{installation.settings.signIn.brandText}</p>
-            <h1>Sign in</h1>
+            <h1>{t("login.signIn")}</h1>
             <p>{emphasizedText(installation.settings.signIn.helperText)}</p>
           </header>
           <div className="login-fields">
             {message && <p className="login-message" role="status">{message}</p>}
             <label>
-              Username
+              {t("login.username")}
               <input name="username" autoComplete="username" required />
             </label>
             <label>
-              Password
+              {t("login.password")}
               <input name="password" type="password" autoComplete="current-password" required />
             </label>
-            <button type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</button>
+            <button type="submit" disabled={submitting}>{submitting ? t("login.signingIn") : t("login.signIn")}</button>
           </div>
         </form>
       </main>
@@ -315,24 +320,24 @@ export function ClinicianSessionGate({ children }: {
   if (session.passwordChangeRequired) {
     return <main className="login-shell">
       <form className="login-card" onSubmit={replacePassword}>
-        <p className="eyebrow">Account security</p>
-        <h1>Replace temporary password</h1>
-        <p>Your temporary password can only open this password-replacement screen.</p>
+        <p className="eyebrow">{t("login.accountSecurity")}</p>
+        <h1>{t("login.replaceTemporaryPassword")}</h1>
+        <p>{t("login.temporaryPasswordHelp")}</p>
         {message && <p className="login-message" role="status">{message}</p>}
-        <label>Temporary password<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
-        <label>New password<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
-        <label>Confirm new password<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
-        <button type="submit" disabled={submitting}>{submitting ? "Replacing…" : "Replace password"}</button>
+        <label>{t("login.temporaryPassword")}<input name="currentPassword" type="password" autoComplete="current-password" required /></label>
+        <label>{t("login.newPassword")}<input name="newPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
+        <label>{t("login.confirmPassword")}<input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} required /></label>
+        <button type="submit" disabled={submitting}>{submitting ? t("login.replacing") : t("login.replacePassword")}</button>
       </form>
     </main>;
   }
   if (session.workspaceAvailable === false || session.capabilities?.length === 0) {
     return <main className="login-shell">
       <section className="login-card" aria-labelledby="no-workspace-heading">
-        <p className="eyebrow">Signed in</p>
-        <h1 id="no-workspace-heading">No workspace assigned</h1>
-        <p>Your account is active, but it does not have an active workspace role. Contact an administrator for access.</p>
-        <button type="button" onClick={requestLogout}>Log out</button>
+        <p className="eyebrow">{t("login.signedIn")}</p>
+        <h1 id="no-workspace-heading">{t("login.noWorkspace")}</h1>
+        <p>{t("login.noWorkspaceHelp")}</p>
+        <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </section>
     </main>;
   }
@@ -344,35 +349,35 @@ export function ClinicianSessionGate({ children }: {
           <FeedbackControl csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}
         {presentationMode !== "admin"
-          ? <button className="call-list-refresh" type="button" aria-label="Refresh calls" onClick={() => {
+          ? <button className="call-list-refresh" type="button" aria-label={t("navigation.refreshCalls")} onClick={() => {
             recordFeedbackInteraction("session.refresh.requested");
             setRefreshRequest((value) => value + 1);
-          }}>Refresh</button>
+          }}>{t("navigation.refresh")}</button>
           : <span className="call-list-refresh session-bar-spacer" aria-hidden="true" />}
-        <span className="session-identity">Signed in as <strong>{session.user.displayName}</strong></span>
-        <div className="presentation-selector" role="group" aria-label="Documentation presentation">
+        <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
+        <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
           {hasClinicalMode(session.capabilities) && <>
-            <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>Mobile</button>
-            <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>Stationary</button>
+            <button type="button" aria-pressed={presentationMode === "mobile"} onClick={() => selectPresentationMode("mobile")}>{t("navigation.mobile")}</button>
+            <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>{t("navigation.stationary")}</button>
           </>}
           {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
             disabled={activeReport !== null}
-            onClick={() => selectPresentationMode("admin")}>Admin</button>}
+            onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
         </div>
-        <button type="button" onClick={requestLogout}>Log out</button>
+        <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
       </header>
       {logoutWarning && <div className="dialog-backdrop logout-backdrop" role="presentation">
         <section ref={logoutDialog} className="note-dialog logout-dialog" role="alertdialog" aria-modal="true"
           aria-labelledby={logoutHeadingId} onKeyDown={logoutDialogKeys}>
-          <div className="note-dialog-heading"><div><p className="eyebrow">Pending protected work</p>
-            <h2 id={logoutHeadingId}>Log out and lock this work?</h2></div></div>
-          <p role="note">{logoutWarning.pendingReportCount === 1 ? "One report has" : `${logoutWarning.pendingReportCount} reports have`} unsynchronized changes. Logging out will immediately remove readable access from this browser.</p>
-          <p className="feedback-warning"><strong>Recovery deadline:</strong> {logoutWarning.recoveryDeadline
+          <div className="note-dialog-heading"><div><p className="eyebrow">{t("login.pendingWork")}</p>
+            <h2 id={logoutHeadingId}>{t("login.lockWork")}</h2></div></div>
+          <p role="note">{resolveMessage(installation.settings.language, "login.unsynchronized", {}, logoutWarning.pendingReportCount)}</p>
+          <p className="feedback-warning"><strong>{t("login.recoveryDeadline")}</strong> {logoutWarning.recoveryDeadline
             ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(logoutWarning.recoveryDeadline))
-            : "Unavailable"}. Sign in as the same clinician before this deadline to recover the encrypted work.</p>
+            : t("login.valueUnavailable")}. {t("login.recoveryHelp")}</p>
           <div className="note-dialog-actions">
-            <button type="button" disabled={lockingSession} onClick={() => setLogoutWarning(null)}>Stay signed in</button>
-            <button type="button" disabled={lockingSession} onClick={() => void logOut()}>{lockingSession ? "Locking…" : "Log out and lock work"}</button>
+            <button type="button" disabled={lockingSession} onClick={() => setLogoutWarning(null)}>{t("login.staySignedIn")}</button>
+            <button type="button" disabled={lockingSession} onClick={() => void logOut()}>{lockingSession ? t("login.locking") : t("login.logOutLock")}</button>
           </div>
         </section>
       </div>}
@@ -430,7 +435,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} />}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={installation.settings.language} />}
     </div>
   );
 }
