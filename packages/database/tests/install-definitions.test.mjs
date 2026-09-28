@@ -38,3 +38,19 @@ test("installation definitions provide one full default and an inactive Sweden o
   assert.equal(swedenValidation.rules.filter(({ primaryTargetElementId, enabled }) =>
     primaryTargetElementId.startsWith("ePayment.") && !enabled).length, 52);
 });
+
+test("fresh install definitions carry Swedish headings and field wording for all shipped fields", async () => {
+  for (const key of ["form_nemsis-full", "form_sweden"]) {
+    const form = (await definition("forms", key)).definition;
+    const swedish = form.locales?.find(({ locale }) => locale === "sv");
+    assert.ok(swedish, `${key} must publish Swedish wording`);
+    for (const section of form.sections) {
+      assert.ok(swedish.translations.sections?.[section.key]?.title?.trim(), `${key}/${section.key} heading`);
+      for (const field of section.fields) {
+        assert.ok(swedish.translations.fields?.[field.key]?.label?.trim(), `${key}/${field.key} label`);
+        if (field.configuration?.helpText) assert.ok(swedish.translations.fields?.[field.key]?.helpText?.trim(),
+          `${key}/${field.key} help text`);
+      }
+    }
+  }
+});
