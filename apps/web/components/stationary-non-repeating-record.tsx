@@ -17,6 +17,7 @@ import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import type { StationarySectionFinding } from "../app/stationary-record";
+import { currentCatalogLanguage, resolveCatalogElementText } from "../app/catalog-localization";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
 
 export type StationaryApplicability = {
@@ -179,6 +180,15 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
       >
         {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={instance?.instanceId ?? parentInstanceId ?? contextIndex}>
           {group.fields.map((field) => {
+            const pinned = catalogFields[field.id];
+            const localizedField = pinned ? { ...field,
+              catalog: { ...field.catalog,
+                name: resolveCatalogElementText(pinned, field.id, currentCatalogLanguage(), "label"),
+                definition: resolveCatalogElementText(pinned, field.id, currentCatalogLanguage(), "description") },
+              ...(field.scalar ? { scalar: { ...field.scalar,
+                label: resolveCatalogElementText(pinned, field.id, currentCatalogLanguage(), "label"),
+                help: resolveCatalogElementText(pinned, field.id, currentCatalogLanguage(), "description") } } : {})
+            } : field;
             const fieldApplicability = applicability[field.id];
             const disabled = fieldApplicability?.applicable === false;
             const fieldFindings = findings.filter((finding) => {
@@ -190,10 +200,10 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
             return <div className={`stationary-field-shell${fieldSeverity ? ` stationary-validation-state ${fieldSeverity}` : ""}`} key={field.id}>
               {disabled && <p className="stationary-applicability" data-element-id={field.id}>Not applicable{fieldApplicability.reason ? `: ${fieldApplicability.reason}` : ""}</p>}
               {field.readOnly
-                ? <ReadOnlyField field={field} instance={instance} />
+                ? <ReadOnlyField field={localizedField} instance={instance} />
                 : field.scalar
-                  ? <EditableScalarField document={document} group={group} field={field} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />
-                : <EditableCodedField document={document} group={group} field={field} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
+                  ? <EditableScalarField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} onDocumentChange={onDocumentChange} />
+                : <EditableCodedField document={document} group={group} field={localizedField} instance={instance} parentInstanceId={parentInstanceId} disabled={disabled} catalogField={catalogFields[field.id]} onDocumentChange={onDocumentChange} />}
               <StationaryValidationMessages findings={fieldFindings} />
             </div>;
           })}

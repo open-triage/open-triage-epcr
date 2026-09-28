@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "catalogKey": "nemsis-3.5.1",
+  "elements": {
+    "eVitals.10": {
+      "label": "Hjärtfrekvens",
+      "description": "Patientens hjärtfrekvens i slag per minut."
+    }
+  }
+}

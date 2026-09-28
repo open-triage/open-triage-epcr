@@ -5,13 +5,13 @@ import { CatalogAuthoringService, catalogDefinitionSha256 } from "../dist/admin/
 
 const sourceElement = {
   element_id: "ePatient.01", element_identity_id: "11111111-1111-4111-8111-111111111111",
-  name: "Patient Name",
+  name: "Patient Name", description: "Patient name as documented.",
   base_datatype: "string", source_datatype: "xs:string", group_path: ["Patient"], min_occurs: 0,
   max_occurs: 1, nillable: true, supports_not_values: true, supports_pertinent_negatives: false,
   usage: "Recommended", agency_required_severity: null, analytical_location: "wide", sql_type: "text"
 };
 const element = {
-  elementId: sourceElement.element_id, label: sourceElement.name, identityId: sourceElement.element_identity_id, baseDatatype: "string",
+  elementId: sourceElement.element_id, label: sourceElement.name, description: sourceElement.description, identityId: sourceElement.element_identity_id, baseDatatype: "string",
   storageSemantics: { sourceDatatype: "xs:string", groupPath: ["Patient"], analyticalLocation: "wide", sqlType: "text" },
   requirednessSeverity: null,
   constraints: { minOccurs: 0, maxOccurs: 1, nillable: true, supportsNotValues: true, supportsPertinentNegatives: false }
@@ -302,4 +302,84 @@ test("a disabled code cannot be the list default", async () => {
     defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
   await assert.rejects(serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid }),
     (error) => error instanceof UnprocessableEntityException && /default must reference an enabled value/.test(JSON.stringify(error.getResponse())));
+});
+
+
+test("Swedish text survives a revision-checked save and incomplete translations are advisory", async () => {
+  let savedDefinition;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: savedDefinition ? 2 : 1, canonical_definition: savedDefinition ?? definition,
+      definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("update catalog.authoring_draft")) {
+      savedDefinition = JSON.parse(parameters[2]);
+      return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
+        canonical_definition: savedDefinition, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const localized = { ...definition, elements: [{ ...element, label: "Updated name", description: "Updated description",
+    localization: { schemaVersion: 1, sv: { label: "Patientnamn", description: "Patientens namn",
+      reviewedSource: { label: element.label, description: element.description } } } }] };
+  const service = serviceWith(manager);
+  const saved = await service.save("session", "draft-1", { expectedRevision: 1, definition: localized });
+  assert.equal(saved.definition.elements[0].localization.sv.label, "Patientnamn");
+  assert.equal(savedDefinition.elements[0].description, "Updated description");
+  const validation = await service.validate("session", "draft-1");
+  assert.equal(validation.valid, true);
+  assert.ok(validation.warnings.some((warning) => warning.includes("needs English source review")));
+});
+
+test("malformed catalog localization remains a publication-blocking structural error", async () => {
+  const manager = { query: async (sql) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: 1, canonical_definition: definition,
+      definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const changed = { ...definition, elements: [{ ...element, localization: { schemaVersion: 1, sv: { label: 12 } } }] };
+  await assert.rejects(serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: changed }),
+    (error) => error instanceof UnprocessableEntityException && /localization is malformed/.test(JSON.stringify(error.getResponse())));
+});
+
+test("publishing seals localized text with its catalog digest without editing the source release", async () => {
+  const localized = { ...definition, elements: [{ ...element, label: "Updated name", description: "Updated description",
+    localization: { schemaVersion: 1, sv: { label: "Patientnamn", description: "Patientens namn",
+      reviewedSource: { label: "Updated name", description: "Updated description" } } } }] };
+  const digest = catalogDefinitionSha256(localized);
+  let publishedProvenance;
+  let publishedDigest;
+  let projected = false;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: 2, canonical_definition: localized,
+      definition_sha256: digest, updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.release source")) return [{ standard: "NEMSIS", version: "3.5.1",
+      dataset: "EMSDataSet", artifact_schema_version: "1.0.0", data_model_version: "3.5.1" }];
+    if (sql.includes("insert into catalog.release")) {
+      publishedDigest = parameters[5];
+      publishedProvenance = JSON.parse(parameters[6]);
+      return [];
+    }
+    if (sql.includes("source_counts")) return [{ source_counts: [0, 1, 0, 0, 0, 0, 0, 0],
+      published_counts: [0, 1, 0, 0, 0, 0, 0, 0], expected_option_count: 0, expected_element_option_count: 0 }];
+    if (sql.includes("update catalog.authoring_draft set published_release_id")) return [{ published_at: new Date() }];
+    return [];
+  } };
+  const service = serviceWith(manager);
+  service.validateDefinition = async () => ({ valid: true, findings: [], warnings: [], definitionSha256: digest, projectionsVerified: true });
+  service.project = async () => { projected = true; };
+  service.cloneAgencyDemographics = async () => {};
+  const published = await service.publish("session", "draft-1", { expectedRevision: 2, definitionSha256: digest,
+    displayName: "Swedish catalog", changeNote: "Reviewed Swedish text" });
+  assert.equal(projected, true);
+  assert.equal(published.definitionSha256, digest);
+  assert.equal(publishedDigest, digest);
+  assert.equal(publishedProvenance.elementLocalization["ePatient.01"].sv.label, "Patientnamn");
+  assert.equal(publishedProvenance.sourceReleaseId, "release-1");
+  assert.equal(definition.elements[0].localization, undefined);
 });

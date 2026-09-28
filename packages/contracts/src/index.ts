@@ -639,6 +639,13 @@ export interface CatalogDraftElement {
   elementId: string;
   /** Agency-editable clinical label; the stable element identity remains elementId. */
   label: string;
+  /** English source description; optional for legacy catalogs. */
+  description?: string;
+  /** Translation and English source values recorded at review time. */
+  localization?: { schemaVersion: 1; sv?: {
+    label?: string; description?: string;
+    reviewedSource?: { label?: string; description?: string };
+  } };
   identityId: string;
   baseDatatype: string;
   storageSemantics: {
@@ -715,6 +722,7 @@ export interface AuthoringVersionOption {
 export interface CatalogValidationResult {
   valid: boolean;
   findings: string[];
+  warnings?: string[];
   definitionSha256: string;
   projectionsVerified: boolean;
 }
@@ -858,6 +866,9 @@ export interface FormDraftDefinition {
 export interface ClinicalFormConfiguration {
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    name?: string;
+    description?: string;
+    localization?: CatalogDraftElement["localization"];
     agencyRequired: boolean;
     requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;

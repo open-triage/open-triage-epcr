@@ -3,6 +3,9 @@ import type { EntityManager } from "typeorm";
 
 type FieldRow = {
   element_id: string;
+  name: string;
+  description: string | null;
+  localization: ClinicalFormConfiguration["catalogFields"][string]["localization"] | null;
   agency_required: boolean | null;
   agency_required_severity: "warning" | "error" | null;
   min_occurs: number;
@@ -66,9 +69,12 @@ export async function catalogFieldsConfiguration(
 ): Promise<ClinicalFormConfiguration["catalogFields"]> {
 
   const fields = elementIds.length ? await manager.query<FieldRow[]>(`
-    select element_id, agency_required, agency_required_severity, min_occurs, max_occurs, nillable,
-           supports_not_values, supports_pertinent_negatives
-    from catalog.element_definition where release_id = $1 and element_id = any($2::text[])
+    select e.element_id, e.name, e.description,
+           cr.provenance->'elementLocalization'->e.element_id as localization,
+           e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
+           e.supports_not_values, e.supports_pertinent_negatives
+    from catalog.element_definition e join catalog.release cr on cr.id=e.release_id
+    where e.release_id = $1 and e.element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
     select * from (select vse.element_id, option.code, option.code_system, option.display as label,
@@ -102,6 +108,9 @@ export async function catalogFieldsConfiguration(
     choicesByElement.set(choice.element_id, current);
   }
   return Object.fromEntries(fields.map((field) => [field.element_id, {
+      name: field.name,
+      description: field.description ?? "",
+      ...(field.localization ? { localization: field.localization } : {}),
       agencyRequired: field.agency_required === true,
       requirednessSeverity: field.agency_required_severity,
       minOccurs: Number(field.min_occurs),

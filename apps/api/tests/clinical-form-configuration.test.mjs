@@ -44,3 +44,27 @@ test("report configuration verifies the pinned artifact and distributes only its
   await assert.rejects(clinicalFormConfiguration(manager, "form-version", "catalog-release", "validation-1", "0".repeat(64)),
     /integrity/);
 });
+
+test("clinical form text is loaded only from its pinned catalog release", async () => {
+  const releases = new Map([
+    ["old-release", { name: "Heart Rate", description: "Heart rate per minute", localization: null }],
+    ["new-release", { name: "Heart Rate", description: "Heart rate per minute",
+      localization: { schemaVersion: 1, sv: { label: "Hjärtfrekvens", description: "Hjärtfrekvens per minut" } } }],
+  ]);
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [
+      { key: "vitals", fields: [{ key: "heart-rate", source: { kind: "nemsis", elementId: "eVitals.10" } }] }
+    ] } }];
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eVitals.10",
+      ...releases.get(parameters[0]), agency_required: false, agency_required_severity: null,
+      min_occurs: 0, max_occurs: 1, nillable: true, supports_not_values: true,
+      supports_pertinent_negatives: false }];
+    if (sql.includes("from catalog.value_set_element")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const oldReport = await clinicalFormConfiguration(manager, "form-old", "old-release");
+  const newReport = await clinicalFormConfiguration(manager, "form-new", "new-release");
+  assert.equal(oldReport.catalogFields["eVitals.10"].localization, undefined);
+  assert.equal(newReport.catalogFields["eVitals.10"].localization.sv.label, "Hjärtfrekvens");
+  assert.equal(oldReport.catalogFields["eVitals.10"].name, "Heart Rate");
+});

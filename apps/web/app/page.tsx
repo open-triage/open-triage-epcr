@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
+import { currentCatalogLanguage, resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -163,9 +164,22 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
     [...incidentEvents, ...clinicalEvents], reportNotes,
   ), [incidentEvents, clinicalEvents, reportNotes]);
   const noteDefinition = bundledEncounterDefinition.events.note;
-  const procedureDefinition = bundledEncounterDefinition.events.procedure;
-  const medicationDefinition = bundledEncounterDefinition.events.medication;
-  const vitalDefinition = bundledEncounterDefinition.events.vitals;
+  const catalogText = (elementId: string, kind: "label" | "description") => {
+    const field = report?.clinicalForm?.catalogFields[elementId];
+    return field ? resolveCatalogElementText(field, elementId, currentCatalogLanguage(), kind) : undefined;
+  };
+  const baseProcedure = bundledEncounterDefinition.events.procedure;
+  const procedureDefinition = { ...baseProcedure, labels: { ...baseProcedure.labels,
+    ...Object.fromEntries(Object.entries(baseProcedure.references).flatMap(([key, elementId]) => {
+      const label = catalogText(elementId, "label");
+      return label ? [[key, label]] : [];
+    })) } };
+  const medicationDefinition = { ...bundledEncounterDefinition.events.medication,
+    fields: bundledEncounterDefinition.events.medication.fields.map((field) => ({ ...field,
+      label: catalogText(field.reference, "label") ?? field.label })) };
+  const vitalDefinition = { ...bundledEncounterDefinition.events.vitals,
+    fields: bundledEncounterDefinition.events.vitals.fields.map((field) => ({ ...field,
+      label: catalogText(field.reference, "label") ?? field.label })) };
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const validationEvaluationTimestamp = useMemo(() => validationTimestampFor(encounter.document, report?.clinicalForm),
     [encounter.document, report?.clinicalForm]);
@@ -974,7 +988,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog definition={bundledEncounterDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingActionableFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog definition={{ ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events, medication: medicationDefinition } }} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding?.category === medicationDefinition.labels.category ? editingActionableFinding : undefined} />}
 
       {shell.procedureDraft && <ProcedureDialog dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
 
@@ -993,6 +1007,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                 return (
                 <div className={`vital-field ${vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()} key={field}>
                   <label htmlFor={`vital-${field}`}>{configuredField.label} <small>{configuredField.unit}</small></label>
+                  {catalogText(configuredField.reference, "description") && <p className="field-help">{catalogText(configuredField.reference, "description")}</p>}
                   <div className="vital-inputs">
                     <input id={`vital-${field}`} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
                     <button
