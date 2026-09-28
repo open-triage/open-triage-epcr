@@ -31,7 +31,7 @@ test("Admin navigation waits for server-authorized panels", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
-  assert.match(markup, /class="admin-loading" role="status"/);
+  assert.match(markup, /class="loading-status admin-loading" role="status"/);
   assert.doesNotMatch(markup, /Loading active configuration/, "fast initialization does not flash loading copy");
   assert.doesNotMatch(markup, />Users<\/button>|>Roles<\/button>|>Element catalog<\/button>/);
 });
