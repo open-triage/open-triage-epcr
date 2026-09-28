@@ -66,6 +66,7 @@ test("the pruned runtime explicitly retains approved database operations and the
     "COPY defines defines",
     "seed-initial-validation-versions.mjs",
     "seed-install-definitions.mjs",
+    "COPY packages/database/scripts/lib packages/database/scripts/lib",
     "packages/contracts/examples/dispatch",
   ]) {
     assert.ok(dockerfile.includes(asset), `runtime is missing ${asset}`);
