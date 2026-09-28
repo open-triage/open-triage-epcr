@@ -42,10 +42,14 @@ export function procedureElementMetadata(references: Record<ProcedureField, Nems
   const attemptMin = attemptsElement.datatype.constraints.minInclusive;
   const attemptMax = attemptsElement.datatype.constraints.maxInclusive;
   if (typeof attemptMin !== "number" || typeof attemptMax !== "number") throw new Error(`${references.attempts} lacks numeric attempt boundaries`);
-  const successOptions = elementValues(references.success).map(({ code, label }) => ({ value: label.toLocaleLowerCase() as "yes" | "no", label, code }));
-  const outcomeOptions = elementValues(references.outcome).map(({ code, label }) => ({ value: label.toLocaleLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "") as "improved" | "unchanged" | "worse" | "not-applicable", code, label }));
+  const successCodeToState = { "9923001": "no", "9923003": "yes" } as const;
+  const successOptions = elementValues(references.success).map(({ code, label }) => ({ value: successCodeToState[code as keyof typeof successCodeToState], label, code }));
+  if (successOptions.some(({ value }) => !value)) throw new Error("Unknown procedure success code");
+  const outcomeCodeToState = { "9916001": "improved", "9916003": "unchanged", "9916005": "worse" } as const;
+  const outcomeOptions = elementValues(references.outcome).map(({ code, label }) => ({ value: outcomeCodeToState[code as keyof typeof outcomeCodeToState], code, label }));
+  if (outcomeOptions.some(({ value }) => !value)) throw new Error("Unknown procedure outcome code");
   const complicationOptions = elementValues(references.complications);
-  const noneCode = complicationOptions.find(({ label }) => label.toLocaleLowerCase() === "none")?.code;
+  const noneCode = "3907033";
   if (!noneCode) throw new Error(`${references.complications} has no None value`);
   const procedure = requireNemsisDataElement(references.procedure);
   const codeSystem = procedure.valueSource.kind === "external-code-system" ? procedure.valueSource.systems[0]?.label ?? "" : "";

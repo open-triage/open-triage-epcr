@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -17,7 +17,7 @@ type DraftRow = {
 };
 
 type SourceElementRow = {
-  hidden_element_ids?: string[];
+  hidden_element_ids?: string[]; special_choices?: CatalogDraftElement["specialChoices"];
   element_id: string; name: string; description: string | null; localization: CatalogDraftElement["localization"] | null; element_identity_id: string; base_datatype: string; source_datatype: string;
   group_path: string[]; min_occurs: number; max_occurs: number | null; nillable: boolean;
   supports_not_values: boolean; supports_pertinent_negatives: boolean; usage: string;
@@ -28,8 +28,9 @@ type SourceElementRow = {
 type SourceCodeListRow = {
   list_id: string; name: string; classification: "defined" | "suggested" | "agency" | "inline"; element_ids: string[];
   values: Array<{ code: string; codeSystem: string; label: string; sourceLabel: string;
-    category: string | null; enabled: boolean }>;
+    category: string | null; enabled: boolean; localization?: CatalogDraftCodeValue["localization"] }>;
   default_value: { code: string; codeSystem: string } | null;
+  localization?: CatalogDraftCodeList["localization"];
 };
 
 function stable(value: unknown): unknown {
@@ -226,9 +227,21 @@ export class CatalogAuthoringService {
           dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote,
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
+          specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
+            .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
+            .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
+              .map((kind) => [kind, Object.fromEntries(element.specialChoices!
+                .filter((choice) => choice.kind === kind && choice.localization?.sv)
+                .map((choice) => [choice.code, choice.localization]))]))])),
           elementLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.localization?.sv)
-            .map((element) => [element.elementId, element.localization])) }), body.displayName]);
+            .map((element) => [element.elementId, element.localization])),
+          codeListLocalization: Object.fromEntries(draft.canonical_definition.codeLists.map((list) => [list.listId, {
+            ...(list.localization ? { localization: list.localization } : {}),
+            values: Object.fromEntries([...new Set(list.values.map((value) => value.codeSystem))].map((system) =>
+              [system, Object.fromEntries(list.values.filter((value) => value.codeSystem === system && value.localization?.sv)
+                .map((value) => [value.code, value.localization]))]))
+          }])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -318,6 +331,10 @@ export class CatalogAuthoringService {
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
     return manager.query(`select e.element_id, e.name, e.description, cr.provenance->'elementLocalization'->e.element_id as localization,
+      (select coalesce(jsonb_agg(jsonb_build_object('kind', o.source_kind, 'code', o.code, 'label', o.display,
+        'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)
+        order by o.source_kind, o.code), '[]'::jsonb) from catalog.element_option o
+        where o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind in ('not-value', 'pertinent-negative')) as special_choices,
       e.element_identity_id, e.base_datatype, e.source_datatype,
       e.group_path, e.min_occurs, e.max_occurs, e.nillable, e.supports_not_values,
       e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type,
@@ -332,36 +349,41 @@ export class CatalogAuthoringService {
 
   private async sourceCodeLists(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceCodeListRow[]> {
     const valueSets = await manager.query<SourceCodeListRow[]>(`select v.value_set_id as list_id, v.name, v.classification,
+      cr.provenance->'codeListLocalization'->v.value_set_id->'localization' as localization,
       coalesce((select array_agg(vse.element_id order by vse.element_id)
         from catalog.value_set_element vse where vse.release_id=v.release_id
           and vse.value_set_id=v.value_set_id), array[]::text[]) as element_ids,
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.source_display, 'category', o.category,
-        'enabled', coalesce(c.enabled, true)) order by c.sort_order nulls last, o.code_system, o.code)
+        'enabled', coalesce(c.enabled, true), 'localization',
+        cr.provenance->'codeListLocalization'->v.value_set_id->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
       from catalog.value_set v left join catalog.value_set_option o
         on o.release_id=v.release_id and o.value_set_id=v.value_set_id
+      join catalog.release cr on cr.id=v.release_id
       left join catalog.value_set_option_configuration c
         on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
       where v.release_id=$1 and v.classification in ('defined', 'suggested', 'agency')
-      group by v.release_id, v.value_set_id, v.name, v.classification order by v.value_set_id`, [releaseId]);
+      group by v.release_id, v.value_set_id, v.name, v.classification, cr.provenance order by v.value_set_id`, [releaseId]);
     const inline = await manager.query<SourceCodeListRow[]>(`select 'inline:' || e.element_id as list_id,
       e.name, 'inline'::text as classification, array[e.element_id] as element_ids,
+      cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'localization' as localization,
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.display, 'category', null,
-        'enabled', coalesce(c.enabled, true)) order by c.sort_order nulls last, o.code_system, o.code)
+        'enabled', coalesce(c.enabled, true), 'localization',
+        cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
-      from catalog.element_definition e join catalog.element_option o
+      from catalog.element_definition e join catalog.release cr on cr.id=e.release_id join catalog.element_option o
         on o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind='inline'
       left join catalog.element_option_configuration c
         on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
         and c.code_system=o.code_system and c.code=o.code
       where e.release_id=$1
-      group by e.element_id, e.name order by e.element_id`, [releaseId]);
+      group by e.element_id, e.name, cr.provenance order by e.element_id`, [releaseId]);
     return [...inline, ...valueSets];
   }
 
@@ -372,7 +394,7 @@ export class CatalogAuthoringService {
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
       elementId: row.element_id, label: row.name, description: row.description ?? "",
-      ...(row.localization ? { localization: row.localization } : {}), identityId: row.element_identity_id, baseDatatype: row.base_datatype,
+      ...(row.localization ? { localization: row.localization } : {}), ...(row.special_choices?.length ? { specialChoices: row.special_choices } : {}), identityId: row.element_identity_id, baseDatatype: row.base_datatype,
       storageSemantics: { sourceDatatype: row.source_datatype, groupPath: row.group_path,
         analyticalLocation: row.analytical_location, sqlType: row.sql_type },
       requirednessSeverity: row.agency_required_severity ??
@@ -381,6 +403,7 @@ export class CatalogAuthoringService {
         supportsNotValues: row.supports_not_values, supportsPertinentNegatives: row.supports_pertinent_negatives }
     })), codeLists: codeLists.map((list) => ({
       listId: list.list_id, name: list.name, classification: list.classification,
+      ...(list.localization ? { localization: list.localization } : {}),
       elementIds: list.element_ids, values: list.values, defaultValue: list.default_value
     })) };
   }
@@ -402,6 +425,7 @@ export class CatalogAuthoringService {
           label: typeof prior.label === "string" ? prior.label : element.label,
           description: typeof prior.description === "string" ? prior.description : element.description,
           ...(prior.localization ? { localization: prior.localization } : {}),
+          ...(prior.specialChoices?.length || element.specialChoices?.length ? { specialChoices: prior.specialChoices ?? element.specialChoices } : {}),
           requirednessSeverity: element.requirednessSeverity,
           constraints: { ...prior.constraints, minOccurs: element.constraints.minOccurs, maxOccurs: element.constraints.maxOccurs } };
       }),
@@ -471,6 +495,23 @@ export class CatalogAuthoringService {
             warnings.push(`${element.elementId}.description Swedish text needs English source review`);
         }
       } else warnings.push(`${element.elementId}.label is missing Swedish text`);
+      const baseChoices = base.special_choices ?? [];
+      if (!Array.isArray(element.specialChoices ?? []) || (element.specialChoices ?? []).length !== baseChoices.length) {
+        findings.push(`${element.elementId} special choices must preserve source identities`);
+      } else {
+        const sourceChoices = new Map(baseChoices.map((choice) => [`${choice.kind}\u0000${choice.code}`, choice]));
+        const seenChoices = new Set<string>();
+        for (const choice of element.specialChoices ?? []) {
+          const key = `${choice.kind}\u0000${choice.code}`;
+          if (!sourceChoices.has(key) || seenChoices.has(key) || sourceChoices.get(key)!.label !== choice.label)
+            findings.push(`${element.elementId} special choice identity ${key} is unknown, duplicate, or changed`);
+          seenChoices.add(key);
+          if (choice.localization?.sv?.label !== undefined && typeof choice.localization.sv.label !== "string")
+            findings.push(`${element.elementId} special choice ${key} translation is malformed`);
+          if (choice.localization?.sv?.reviewedSource?.label && choice.localization.sv.reviewedSource.label !== choice.label)
+            warnings.push(`${element.elementId} special choice ${key} needs source review`);
+        }
+      }
       const constraints = element.constraints;
       if (!constraints || !Number.isInteger(constraints.minOccurs) || constraints.minOccurs < 0 ||
           !(constraints.maxOccurs === null || Number.isInteger(constraints.maxOccurs) && constraints.maxOccurs >= 1) ||
@@ -507,6 +548,13 @@ export class CatalogAuthoringService {
           !Array.isArray(list.elementIds) || list.elementIds.length !== baseList.element_ids.length ||
           list.elementIds.some((elementId, index) => elementId !== baseList.element_ids[index]))
         findings.push(`${list.listId} identity and classification cannot change`);
+      const listTranslation = list.localization?.sv;
+      if (list.localization !== undefined && (list.localization.schemaVersion !== 1 ||
+          (listTranslation !== undefined && (typeof listTranslation.name !== "string" ||
+            (listTranslation.reviewedSource !== undefined && typeof listTranslation.reviewedSource.name !== "string")))))
+        findings.push(`${list.listId} localized list name is malformed`);
+      else if (listTranslation?.reviewedSource && listTranslation.reviewedSource.name !== list.name)
+        warnings.push(`${list.listId} localized list name needs source review`);
       const sourceValues = new Map(baseList.values.map((value) => [`${value.codeSystem}\u0000${value.code}`, value]));
       const seenValues = new Set<string>();
       const enabledByKey = new Map<string, boolean>();
@@ -527,6 +575,14 @@ export class CatalogAuthoringService {
             typeof unknownValue.sourceLabel !== "string" || !unknownValue.sourceLabel.trim() ||
             !(unknownValue.category === null || typeof unknownValue.category === "string") ||
             typeof unknownValue.enabled !== "boolean") findings.push(`${list.listId} value ${code} is malformed`);
+        const translation = (unknownValue as CatalogDraftCodeValue).localization?.sv;
+        if ((unknownValue as CatalogDraftCodeValue).localization != null &&
+            ((unknownValue as CatalogDraftCodeValue).localization?.schemaVersion !== 1 ||
+              (translation !== undefined && (typeof translation.label !== "string" ||
+                (translation.reviewedSource !== undefined && typeof translation.reviewedSource.label !== "string")))))
+          findings.push(`${list.listId} value ${code} localization is malformed`);
+        else if (translation?.reviewedSource && translation.reviewedSource.label !== unknownValue.label)
+          warnings.push(`${list.listId} value ${code} needs source review`);
         const baseValue = sourceValues.get(key);
         if (baseValue && (unknownValue.sourceLabel !== baseValue.sourceLabel || unknownValue.category !== baseValue.category))
           findings.push(`${list.listId} published code ${code} identity and source meaning cannot change`);

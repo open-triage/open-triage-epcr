@@ -23,7 +23,7 @@ export function ProcedureDialog({ language, dialogRef, draft, definition, search
         <label htmlFor="procedure-search">{definition.labels.search}</label>
         <input autoFocus data-dialog-initial-focus id="procedure-search" type="search" placeholder={definition.labels.searchPlaceholder} value={search} onChange={(event) => onSearch(event.target.value)} />
         <p className="catalog-caption">{results.length} {definition.labels.offlineCaption}</p>
-        <ul className="catalog-results">{results.map((procedure) => <li key={procedure.code}><button type="button" onClick={() => dispatch({ type: "procedure-selected", code: procedure.code })}><strong>{procedure.label}</strong><span>{procedure.category}</span></button></li>)}</ul>
+        <ul className="catalog-results">{results.map((procedure) => <li key={procedure.code}><button type="button" onClick={() => dispatch({ type: "procedure-selected", code: procedure.code, label: procedure.label })}><strong>{procedure.label}</strong><span>{procedure.category}</span></button></li>)}</ul>
         {!results.length && <p className="empty-results">{definition.labels.noResults}</p>}
         {validationFor(field)}
       </div>

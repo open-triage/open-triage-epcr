@@ -68,3 +68,23 @@ test("clinical form text is loaded only from its pinned catalog release", async 
   assert.equal(newReport.catalogFields["eVitals.10"].localization.sv.label, "Hjärtfrekvens");
   assert.equal(oldReport.catalogFields["eVitals.10"].name, "Heart Rate");
 });
+
+test("pinned Swedish choice metadata preserves code system and English source label", async () => {
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition")) return [{ element_id: "eProcedures.06",
+      name: "Procedure Successful", description: "", localization: null,
+      exceptional_choices: [{ key: "not-value:7701003", localization: { schemaVersion: 1, sv: { label: "Ej registrerat" } } }],
+      agency_required: false, agency_required_severity: null, min_occurs: 0, max_occurs: 1,
+      nillable: true, supports_not_values: true, supports_pertinent_negatives: false }];
+    if (sql.includes("from catalog.value_set_element")) return [{ element_id: "eProcedures.06", code: "9923003",
+      code_system: "", label: "Yes", localization: { schemaVersion: 1, sv: { label: "Ja" } },
+      terminology_version: null }];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const fields = await (await import("../dist/forms/clinical-form-configuration.js"))
+    .catalogFieldsConfiguration(manager, "published-release", ["eProcedures.06"]);
+  assert.equal(fields["eProcedures.06"].codeChoices[0].code, "9923003");
+  assert.equal(fields["eProcedures.06"].codeChoices[0].label, "Yes");
+  assert.equal(fields["eProcedures.06"].codeChoices[0].localization.sv.label, "Ja");
+  assert.equal(fields["eProcedures.06"].exceptionalChoices[0].localization.sv.label, "Ej registrerat");
+});

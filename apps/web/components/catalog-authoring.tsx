@@ -153,6 +153,16 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
                 : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
                     description: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, description: value.description ?? "" } } } })} />
           </label>
+          {element.specialChoices?.map((choice) => <label key={`${choice.kind}:${choice.code}`}>
+            <span>{choice.kind} {choice.code}</span>
+            <input disabled={!canEdit || editingLanguage === "en"}
+              aria-label={`Swedish ${choice.kind} label for ${element.elementId} ${choice.code}`}
+              value={editingLanguage === "sv" ? choice.localization?.sv?.label ?? "" : choice.label}
+              onChange={(event) => edit(element.elementId, (value) => ({ ...value,
+                specialChoices: value.specialChoices?.map((item) => item.kind === choice.kind && item.code === choice.code
+                  ? { ...item, localization: { schemaVersion: 1, sv: { label: event.target.value,
+                    reviewedSource: { label: item.label } } } } : item) }))} />
+          </label>)}
           {!(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim() &&
             <small role="note">Missing {editingLanguage === "en" ? "English" : "Swedish"} label; clinical display will use fallback text.</small>}
           {editingLanguage === "sv" && element.localization?.sv?.reviewedSource &&
@@ -182,7 +192,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         onChange={(event) => setSelectedListKey(event.target.value)}>
         {listOptions.map(({ key, elementId, list }) => <option key={key} value={key}>{elementId} — {list.name}</option>)}
       </select>
-      {selectedList && <CatalogCodeListEditor list={selectedList} readOnly={!canEdit} onChange={editCodeList} />}
+      {selectedList && <CatalogCodeListEditor list={selectedList} language={editingLanguage} readOnly={!canEdit} onChange={editCodeList} />}
     </section>}
     <div className="catalog-actions">
       {canEdit && authoringDraft && <button type="button" disabled={busy} onClick={() => action(async () => {
@@ -222,9 +232,10 @@ export function moveCodeValue(list: CatalogDraftCodeList, from: number, to: numb
   return { ...list, values };
 }
 
-export function CatalogCodeListEditor({ list, readOnly = false, onChange }: {
+export function CatalogCodeListEditor({ list, language = "en", readOnly = false, onChange }: {
   readonly list: CatalogDraftCodeList;
   readonly readOnly?: boolean;
+  readonly language?: "en" | "sv";
   readonly onChange: (next: CatalogDraftCodeList, announcement: string) => void;
 }) {
   const [code, setCode] = useState("");
@@ -251,6 +262,14 @@ export function CatalogCodeListEditor({ list, readOnly = false, onChange }: {
   }
 
   return <div className="code-list-values">
+    <label>List name {language === "sv" ? "(Swedish)" : "(English source)"}<input disabled={readOnly || language === "en"}
+      value={language === "sv" ? list.localization?.sv?.name ?? "" : list.name}
+      onChange={(event) => onChange({ ...list, localization: { schemaVersion: 1, sv: {
+        name: event.target.value, reviewedSource: { name: list.name } } } }, `Changed Swedish name for ${list.listId}.`)} /></label>
+    {language === "sv" && list.localization?.sv?.reviewedSource?.name !== undefined &&
+      list.localization.sv.reviewedSource.name !== list.name && <p role="note">English list name changed. Review Swedish text.
+        <button type="button" disabled={readOnly} onClick={() => onChange({ ...list, localization: { schemaVersion: 1,
+          sv: { ...list.localization?.sv, reviewedSource: { name: list.name } } } }, `Reviewed ${list.listId}.`)}>Confirm review</button></p>}
     <fieldset className="code-list-add">
       <legend>Add value</legend>
       <label>Code <input disabled={readOnly} value={code} onChange={(event) => setCode(event.target.value)} /></label>
@@ -264,8 +283,16 @@ export function CatalogCodeListEditor({ list, readOnly = false, onChange }: {
         const isDefault = list.defaultValue ? valueKey(list.defaultValue) === key : false;
         return <li key={key}>
           <div><strong>{value.code}</strong>{value.codeSystem && <small>{value.codeSystem}</small>}</div>
-          <label>Label <input disabled={readOnly} aria-label={`Label for ${value.code}`} value={value.label} onChange={(event) => updateValue(index,
-            (current) => ({ ...current, label: event.target.value }), `Changed the label for ${value.code}.`)} /></label>
+          <label>Label <input disabled={readOnly} aria-label={`${language === "sv" ? "Swedish" : "English"} label for ${list.listId} ${value.codeSystem} ${value.code}`}
+            value={language === "sv" ? value.localization?.sv?.label ?? "" : value.label} onChange={(event) => updateValue(index,
+            (current) => language === "sv" ? { ...current, localization: { schemaVersion: 1,
+              sv: { label: event.target.value, reviewedSource: { label: current.label } } } } :
+              { ...current, label: event.target.value }, `Changed the ${language === "sv" ? "Swedish" : "English"} label for ${value.code}.`)} /></label>
+          {language === "sv" && !value.localization?.sv?.label?.trim() && <small role="note">Missing Swedish choice label; English will be shown.</small>}
+          {language === "sv" && value.localization?.sv?.reviewedSource && value.localization.sv.reviewedSource.label !== value.label &&
+            <p role="note">English choice changed. Review Swedish text. <button type="button" disabled={readOnly}
+              onClick={() => updateValue(index, (current) => ({ ...current, localization: { schemaVersion: 1,
+                sv: { ...current.localization?.sv, reviewedSource: { label: current.label } } } }), `Reviewed ${value.code}.`)}>Confirm review</button></p>}
           <label><input disabled={readOnly} type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
             (current) => ({ ...current, enabled: event.target.checked }), `${event.target.checked ? "Enabled" : "Disabled"} ${value.label}.`)} /> Enabled</label>
           <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={readOnly || !value.enabled}

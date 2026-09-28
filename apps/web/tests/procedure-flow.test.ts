@@ -176,3 +176,17 @@ test("saved procedure records remain readable with current configured presentati
   assert.match(encounterEventDetail(event, definition), /^1 configured attempt,/);
   assert.equal(event.procedure?.code, "268400002");
 });
+
+test("Swedish procedure search retains English and code search with the same canonical code", () => {
+  const definition = { ...standardEncounterDefinition.events.procedure,
+    terminology: { ...standardEncounterDefinition.events.procedure.terminology, choices: [{
+      code: "268400002", label: "EKG, 12 avledningar", sourceLabel: "12 lead electrocardiogram", category: "Kardiologi",
+    }] } };
+  assert.equal(searchProcedures("avledningar", 30, definition)[0]?.code, "268400002");
+  assert.equal(searchProcedures("electrocardiogram", 30, definition)[0]?.code, "268400002");
+  assert.equal(searchProcedures("268400002", 30, definition)[0]?.label, "EKG, 12 avledningar");
+  const state = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "translated", time: "10:00" });
+  const selected = transitionShell(state, { type: "procedure-selected", code: "268400002", label: "EKG, 12 avledningar" });
+  assert.equal(selected.procedureDraft?.procedureCode, "268400002");
+  assert.equal(selected.procedureDraft?.procedureLabel, "EKG, 12 avledningar");
+});

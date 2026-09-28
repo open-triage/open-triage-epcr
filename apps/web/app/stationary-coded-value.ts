@@ -8,6 +8,7 @@ import {
   type NemsisCodeValue,
   type NemsisDataElement,
 } from "./nemsis-data-model";
+import { currentCatalogLanguage } from "./catalog-localization";
 import { clinicianOwnedAttributes, withoutDemoProvenance } from "./demo-provenance";
 
 export type StationaryCodedControlKind = "select" | "combobox" | "external-search";
@@ -88,10 +89,15 @@ export function configuredStationaryCodedField(
   configured?: ClinicalFormConfiguration["catalogFields"][string],
 ): StationaryCodedField {
   const base = stationaryCodedField(elementOrId);
-  if (!configured?.codeChoices) return base;
-  return { ...base, options: configured.codeChoices.map((choice) => ({
+  const language = currentCatalogLanguage();
+  const exceptionalChoices = base.exceptionalChoices.map((choice) => {
+    const localization = configured?.exceptionalChoices?.find((candidate) => candidate.key === choice.key)?.localization;
+    return { ...choice, label: language === "sv" ? localization?.sv?.label?.trim() || choice.label : choice.label };
+  }) as StationaryCodedField["exceptionalChoices"];
+  if (!configured?.codeChoices) return { ...base, exceptionalChoices };
+  return { ...base, exceptionalChoices, options: configured.codeChoices.map((choice) => ({
     code: choice.code,
-    label: choice.label,
+    label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
     ...(choice.codeSystem ? { system: choice.codeSystem } : {}),
     ...(choice.terminologyVersion ? { terminologyVersion: choice.terminologyVersion } : {}),
     suggested: true,
@@ -108,7 +114,8 @@ export function validateStationaryCodedSelection(field: StationaryCodedField, se
   }
   if (selection.kind === "coded") {
     if (!selection.code.trim()) throw new Error(`${field.elementId} requires a code`);
-    if (field.exhaustive && !field.options.some(({ code }) => code === selection.code)) {
+    if (field.exhaustive && !field.options.some(({ code, system }) => code === selection.code &&
+      (system ?? "") === (selection.system ?? ""))) {
       throw new Error(`${selection.code} is not in the exhaustive value set for ${field.elementId}`);
     }
     if (field.controlKind === "external-search" && !selection.system) {

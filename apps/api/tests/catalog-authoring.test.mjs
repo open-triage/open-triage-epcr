@@ -383,3 +383,48 @@ test("publishing seals localized text with its catalog digest without editing th
   assert.equal(publishedProvenance.sourceReleaseId, "release-1");
   assert.equal(definition.elements[0].localization, undefined);
 });
+
+test("authors save Swedish list and choice text without changing code, source name, or default", async () => {
+  const localized = { ...definition, codeLists: [{ listId: sourceCodeList.list_id,
+    name: sourceCodeList.name, classification: "suggested", elementIds: sourceCodeList.element_ids,
+    localization: { schemaVersion: 1, sv: { name: "Patientaktivitet",
+      reviewedSource: { name: sourceCodeList.name } } },
+    values: sourceCodeList.values.map((value, index) => index === 0 ? { ...value,
+      localization: { schemaVersion: 1, sv: { label: "Djurvård", reviewedSource: { label: value.label } } } } : value),
+    defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
+  const saved = await serviceWith(listManager(localized)).save("session", "draft-1", { expectedRevision: 1, definition: localized });
+  const list = saved.definition.codeLists[0];
+  assert.equal(list.values[0].localization.sv.label, "Djurvård");
+  assert.equal(list.values[0].code, "Y93.K");
+  assert.equal(list.values[0].sourceLabel, "Activities involving animal care");
+  assert.deepEqual(list.defaultValue, { code: "Y93.K", codeSystem: "ICD-10-CM" });
+});
+
+test("publishing choice translations seals nested list, system, and code identities", async () => {
+  const value = { ...sourceCodeList.values[0], localization: { schemaVersion: 1,
+    sv: { label: "Djurvård", reviewedSource: { label: sourceCodeList.values[0].label } } } };
+  const localized = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: [value], defaultValue: null }] };
+  const digest = catalogDefinitionSha256(localized);
+  let provenance;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
+      source_release_id: "release-1", revision: 2, canonical_definition: localized,
+      definition_sha256: digest, updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("from catalog.release source")) return [{ standard: "NEMSIS", version: "3.5.1",
+      dataset: "EMSDataSet", artifact_schema_version: "1.0.0", data_model_version: "3.5.1" }];
+    if (sql.includes("insert into catalog.release")) { provenance = JSON.parse(parameters[6]); return []; }
+    if (sql.includes("source_counts")) return [{ source_counts: [0, 1, 0, 1, 1, 1, 0, 0],
+      published_counts: [0, 1, 0, 1, 1, 1, 0, 0], expected_option_count: 1, expected_element_option_count: 0 }];
+    if (sql.includes("update catalog.authoring_draft set published_release_id")) return [{ published_at: new Date() }];
+    return [];
+  } };
+  const service = serviceWith(manager);
+  service.validateDefinition = async () => ({ valid: true, findings: [], warnings: [], definitionSha256: digest, projectionsVerified: true });
+  service.project = async () => {};
+  service.cloneAgencyDemographics = async () => {};
+  await service.publish("session", "draft-1", { expectedRevision: 2, definitionSha256: digest,
+    displayName: "Swedish choices", changeNote: "Reviewed Swedish choices" });
+  assert.equal(provenance.codeListLocalization["patient-activity"].values["ICD-10-CM"]["Y93.K"].sv.label, "Djurvård");
+  assert.equal(JSON.stringify(provenance).includes("\\u0000"), false);
+});

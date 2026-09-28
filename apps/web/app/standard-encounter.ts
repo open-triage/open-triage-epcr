@@ -107,7 +107,7 @@ export type ShellAction =
   | { readonly type: "review-warning-acknowledged"; readonly id: string; readonly acknowledged: boolean }
   | { readonly type: "procedure-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "procedure-opened"; readonly id: string }
-  | { readonly type: "procedure-selected"; readonly code: string }
+  | { readonly type: "procedure-selected"; readonly code: string; readonly label?: string }
   | { readonly type: "procedure-draft-changed"; readonly field: "date" | "time" | "attempts" | "success" | "outcome"; readonly value: string }
   | { readonly type: "procedure-complication-toggled"; readonly code: string }
   | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
@@ -165,7 +165,7 @@ export function validateMedication(draft: MedicationDraft, definition: Encounter
   const error = (id: MedicationFieldId, message: string) => errorFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
   const warning = (id: MedicationFieldId, message: string) => warningFindings.push({ field: id, reference: field(id).reference, message: withReference(message, field(id).reference) });
   if ((field("time").required || draft.time) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) error("time", medication.validationMessages.invalidTime);
-  const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType && item.displayLabel === draft.label);
+  const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType);
   if ((field("medication").required || draft.medicationCode) && !catalogMedication) error("medication", medication.validationMessages.invalidMedication);
   if ((field("dose").required || draft.dose) && (!draft.dose || canonicalDecimal(draft.dose) === null || Number(canonicalDecimal(draft.dose)) <= 0)) error("dose", medication.validationMessages.invalidDose);
   if ((field("unit").required || draft.unit) && !medication.doseUnits.includes(draft.unit)) error("unit", medication.validationMessages.invalidUnit);
@@ -483,7 +483,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         procedureDraft: {
           ...state.procedureDraft,
           procedureCode: selected?.code ?? "",
-          procedureLabel: selected?.label ?? "",
+          procedureLabel: selected ? action.label ?? selected.label : "",
         },
       } : state;
     }
