@@ -30,7 +30,13 @@ for (const language of ["en", "sv"] as const) {
       schemaVersion: 1, recoveryDeadline: "2099-09-29T12:00:00Z",
     } }));
     await page.route(`**/api/reports/${reportId}/protected-ciphertext-checkpoint`, (route) => route.fulfill({ json: route.request().postDataJSON() }));
-    await page.route(`**/api/calls/${call.id}/open`, (route) => route.fulfill({ json: demoOpenAssignment }));
+    const opened = { ...demoOpenAssignment, report: { ...demoOpenAssignment.report, clinicalForm: {
+      definition: { schemaVersion: 1, sections: [] },
+      catalogFields: { "eVitals.06": { name: "Systolic BP", agencyRequired: false, minOccurs: 0, maxOccurs: 1,
+        nillable: true, supportsNotValues: true, supportsPertinentNegatives: true,
+        localization: { sv: { label: "Systoliskt blodtryck" } } } },
+    } } };
+    await page.route(`**/api/calls/${call.id}/open`, (route) => route.fulfill({ json: opened }));
     await page.route(`**/api/reports/${reportId}/draft-changes`, (route) => route.fulfill({ json: { id: reportId, status: "draft", revision: 2 } }));
 
     await page.goto("/");
@@ -45,7 +51,8 @@ for (const language of ["en", "sv"] as const) {
     await addVitals.click();
     const dialog = page.getByRole("dialog", { name: "Vital signs" }); // Authored clinical label falls back to English.
     await expect(dialog).toBeVisible();
-    const systolic = dialog.getByRole("textbox", { name: /Systolic BP/ });
+    const systolicLabel = language === "sv" ? /Systoliskt blodtryck/ : /Systolic BP/;
+    const systolic = dialog.getByRole("textbox", { name: systolicLabel });
     await systolic.fill("120");
     await page.keyboard.press("Tab");
     await expect(systolic).toHaveValue("120");
@@ -54,7 +61,7 @@ for (const language of ["en", "sv"] as const) {
     await page.getByRole("button", { name: new RegExp(language === "sv" ? "Checklista" : "Checklist") }).click();
     await page.getByRole("button", { name: new RegExp(language === "sv" ? "Tidslinje" : "Timeline") }).click();
     await page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first().click();
-    await expect(page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: /Systolic BP/ })).toHaveValue("120");
+    await expect(page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: systolicLabel })).toHaveValue("120");
     await page.keyboard.press("Escape");
     await expect(page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first()).toBeFocused();
     const violations = (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations

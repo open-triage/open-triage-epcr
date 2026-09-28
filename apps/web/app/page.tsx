@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
-import { currentCatalogLanguage, resolveCatalogElementText } from "./catalog-localization";
+import { resolveCatalogElementText } from "./catalog-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -159,7 +159,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const noteDefinition = bundledEncounterDefinition.events.note;
   const catalogText = (elementId: string, kind: "label" | "description") => {
     const field = report?.clinicalForm?.catalogFields[elementId];
-    return field ? resolveCatalogElementText(field, elementId, currentCatalogLanguage(), kind) : undefined;
+    return field ? resolveCatalogElementText(field, elementId, language, kind) : undefined;
   };
   const baseProcedure = bundledEncounterDefinition.events.procedure;
   const procedureDefinition = { ...baseProcedure, labels: { ...baseProcedure.labels,
@@ -173,6 +173,8 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const vitalDefinition = { ...bundledEncounterDefinition.events.vitals,
     fields: bundledEncounterDefinition.events.vitals.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
+  const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
+    procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
   const validationEvaluationTimestamp = useMemo(() => validationTimestampFor(encounter.document, report?.clinicalForm),
     [encounter.document, report?.clinicalForm]);
@@ -826,7 +828,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       {presentationMode === "mobile" && shell.view === "timeline" && <EncounterTimeline
         events={timelineEvents}
         validationStatuses={eventValidationStatuses}
-        definition={bundledEncounterDefinition}
+        definition={displayDefinition}
         headingId="timeline-heading" language={language}
         onOpenTextNote={openTextNote}
         onOpenPhoto={openPhoto}
@@ -840,7 +842,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         storeStationaryTimelineOpen(window.localStorage, session.user.id, false);
         timelineToggle.current?.focus();
       }}>
-        <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={bundledEncounterDefinition}
+        <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={displayDefinition}
           headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </aside>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
@@ -981,7 +983,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           </section>
         </div>
       )}
-      {shell.medicationDraft && <MedicationDialog language={language} definition={{ ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events, medication: medicationDefinition } }} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding && editingFinding.eventType === "medication" ? editingActionableFinding : undefined} />}
+      {shell.medicationDraft && <MedicationDialog language={language} definition={displayDefinition} dialogRef={dialog} draft={shell.medicationDraft} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding && editingFinding.eventType === "medication" ? editingActionableFinding : undefined} />}
 
       {shell.procedureDraft && <ProcedureDialog language={language} dialogRef={dialog} draft={shell.procedureDraft} definition={procedureDefinition} search={procedureSearch} onSearch={setProcedureSearch} dispatch={dispatch} finding={editingFinding && "eventType" in editingFinding ? editingFinding : undefined} />}
 
