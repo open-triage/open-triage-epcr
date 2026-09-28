@@ -11,6 +11,18 @@
       "source": "require minimum(\"eArrest.01\", 1)",
       "enabled": true,
       "message": "Cardiac Arrest requires at least 1 documented occurrence(s)",
+      "localization": {
+        "schemaVersion": 1,
+        "sv": {
+          "name": "Hjärtstopp dokumenterat minst en gång",
+          "message": "Dokumentera minst {minimum} förekomst av hjärtstopp.",
+          "reviewedSource": {
+            "name": "Cardiac Arrest documented minimum",
+            "message": "Cardiac Arrest requires at least 1 documented occurrence(s)"
+          }
+        }
+      },
+      "messageParameters": { "minimum": 1 },
       "severity": "error",
       "sourceKind": "catalog",
       "executionTargets": [

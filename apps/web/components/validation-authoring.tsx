@@ -1,6 +1,6 @@
 "use client";
 
-import { compileValidationRule, explainValidationRule, formatValidationSource,
+import { compileValidationRule, explainValidationRule, formatValidationSource, validationRuleText,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
@@ -162,6 +162,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   const [hiddenElementIds, setHiddenElementIds] = useState<readonly string[]>([]);
   const [referenceElementId, setReferenceElementId] = useState("");
   const [selectedRuleIndex, setSelectedRuleIndex] = useState(0);
+  const [wordingLanguage, setWordingLanguage] = useState<"en" | "sv">("en");
   const [library, setLibrary] = useState<ValidationRulePage | null>(null);
   const [filters, setFilters] = useState({ search: "", element: "", source: "", severity: "",
     executionTarget: "", enabled: "", validity: "" });
@@ -304,7 +305,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           <th scope="row"><button type="button" disabled={index < 0}
           aria-current={index === selectedRuleIndex ? "page" : undefined} onClick={() => {
             setSelectedRuleIndex(index); setReferenceElementId(item.rule.primaryTargetElementId);
-          }}>{item.rule.name}</button></th><td><code>{item.rule.primaryTargetElementId}</code></td>
+          }}>{validationRuleText(item.rule, wordingLanguage, "name")}</button></th><td><code>{item.rule.primaryTargetElementId}</code></td>
           <td>{item.source}</td><td>{item.rule.severity}</td><td>{item.rule.executionTargets.join(", ")}</td>
           <td>{item.rule.enabled ? "Enabled" : "Disabled"}</td><td>{item.validity}
             {item.diagnostics.length > 0 && <span className="validation-help" tabIndex={0}
@@ -321,9 +322,16 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     </section>
     {selectedRule && <fieldset className="validation-rule-editor" disabled={!canWrite}>
       <legend>Conditional validation rule</legend>
-      <div className="validation-rule-row"><label htmlFor="validation-rule-name">Name</label>
-      <input id="validation-rule-name" value={selectedRule.name}
-        onChange={(event) => changeRule((rule) => ({ ...rule, name: event.target.value }))} /></div>
+      <div className="validation-rule-row"><label htmlFor="validation-wording-language">Wording language</label>
+        <select id="validation-wording-language" value={wordingLanguage}
+          onChange={(event) => setWordingLanguage(event.target.value as "en" | "sv")}>
+          <option value="en">English</option><option value="sv">Swedish</option>
+        </select></div>
+      <div className="validation-rule-row"><label htmlFor="validation-rule-name">Name ({wordingLanguage})</label>
+      <input id="validation-rule-name" value={wordingLanguage === "en" ? selectedRule.name : selectedRule.localization?.sv?.name ?? ""}
+        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? { ...rule, name: event.target.value } :
+          { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
+            name: event.target.value } } })} /></div>
       <div className="validation-rule-row"><label><span>Enabled</span><input type="checkbox" checked={selectedRule.enabled}
         onChange={(event) => changeRule((rule) => ({ ...rule, enabled: event.target.checked }))} /></label></div>
       <div className="validation-rule-row"><label htmlFor="validation-severity">Severity</label>
@@ -355,9 +363,23 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
             aria-label="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid."
             title="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.">ⓘ</span></span></div>;
       })()}
-      <div className="validation-rule-row"><label htmlFor="validation-message">Message</label>
-      <input id="validation-message" value={selectedRule.message}
-        onChange={(event) => changeRule((rule) => ({ ...rule, message: event.target.value }))} /></div>
+      <div className="validation-rule-row"><label htmlFor="validation-message">Message ({wordingLanguage})</label>
+      <input id="validation-message" value={wordingLanguage === "en" ? selectedRule.message : selectedRule.localization?.sv?.message ?? ""}
+        onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? { ...rule, message: event.target.value } :
+          { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
+            message: event.target.value } } })} /></div>
+      <div className="validation-rule-row"><label htmlFor="validation-message-parameters">Named message parameters (JSON)</label>
+        <textarea id="validation-message-parameters" key={selectedRule.id}
+          defaultValue={JSON.stringify(selectedRule.messageParameters ?? {}, null, 2)} rows={3}
+          onBlur={(event) => { try { const parameters = JSON.parse(event.target.value) as Record<string, string | number>;
+            if (!parameters || Array.isArray(parameters) || typeof parameters !== "object") throw new Error();
+            changeRule((rule) => ({ ...rule, messageParameters: parameters })); setError("");
+          } catch { setError("Named message parameters must be a JSON object."); } }} /></div>
+      {wordingLanguage === "sv" && <div className="validation-rule-row"><span>Source review</span>
+        <button type="button" onClick={() => changeRule((rule) => ({ ...rule,
+          localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
+            reviewedSource: { name: rule.name, message: rule.message } } } }))}>
+          Mark English source reviewed</button></div>}
       <div className="validation-rule-row validation-source-row"><label htmlFor="validation-source">Rule source <span className="validation-help"
         tabIndex={0} aria-label="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order."
         title="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.">ⓘ</span></label>
