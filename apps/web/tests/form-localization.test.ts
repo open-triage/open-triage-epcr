@@ -38,3 +38,20 @@ test("missing Swedish source text warns only for authored English content", () =
   assert.deepEqual(formTranslationWarnings(incomplete, "en"), []);
   assert.equal(formSectionTitle({ schemaVersion: 1, sections: [{ key: "old", fields: [] }] }, "old", "sv"), undefined);
 });
+
+
+test("historical form pins retain their own wording after a new version is activated", () => {
+  const oldForm: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "patient", presentation: { title: "Original patient" },
+    fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.02" }, configuration: { label: "Original name" } }] }] };
+  const newForm: FormDraftDefinition = { ...oldForm, sections: oldForm.sections.map((section) => ({ ...section,
+    presentation: { title: "Updated patient" }, fields: section.fields.map((field) => ({ ...field,
+      configuration: { label: "Updated name" } })) })) };
+  const render = (formDefinition: FormDraftDefinition) => renderToStaticMarkup(createElement(StationaryRecord, {
+    document: synthetic as EncounterDocument, formDefinition, language: "en", onDocumentChange() {},
+  }));
+  assert.match(render(oldForm), /Original patient/);
+  assert.match(render(oldForm), /Original name/);
+  assert.doesNotMatch(render(oldForm), /Updated patient|Updated name/);
+  assert.match(render(newForm), /Updated patient/);
+  assert.match(render(newForm), /Updated name/);
+});
