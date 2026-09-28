@@ -1,3 +1,4 @@
+import { resolveMessage, type AgencyLanguage } from "./localization";
 import type { ReportAudioNote, ReportNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { localStationaryDateTimeParts } from "./stationary-date-time";
 
@@ -10,15 +11,15 @@ export type ReportTextNoteValidation = {
   readonly characterCount: number;
 };
 
-export function validateReportTextNote(value: string): ReportTextNoteValidation {
+export function validateReportTextNote(value: string, language: AgencyLanguage = "en"): ReportTextNoteValidation {
   const content = value.normalize("NFC").trim();
   const characterCount = [...content].length;
   const error = !content
-    ? "Enter a text note before saving."
+    ? resolveMessage(language, "noteUi.textRequired")
     : UNSAFE_CONTROL_CHARACTER.test(content)
-      ? "Text notes cannot contain control characters."
+      ? resolveMessage(language, "noteUi.textControls")
       : characterCount > REPORT_TEXT_NOTE_MAX_CHARACTERS
-        ? `Text notes are limited to ${REPORT_TEXT_NOTE_MAX_CHARACTERS.toLocaleString()} characters.`
+        ? resolveMessage(language, "noteUi.textLimit", { max: REPORT_TEXT_NOTE_MAX_CHARACTERS.toLocaleString() })
         : null;
   return { content, error, characterCount };
 }
@@ -36,15 +37,15 @@ export type NoteReadinessBlocker = {
   readonly action: string;
 };
 
-export function noteReadinessBlockers(notes: ReadonlyArray<ReportNote>): ReadonlyArray<NoteReadinessBlocker> {
+export function noteReadinessBlockers(notes: ReadonlyArray<ReportNote>, language: AgencyLanguage = "en"): ReadonlyArray<NoteReadinessBlocker> {
   return notes.filter(({ persistenceState }) => persistenceState !== "ready").map((note) => {
-    const kind = note.type === "audio" ? "Audio" : note.type === "photo" ? "Photo" : "Text";
-    const state = note.persistenceState === "saved-on-device" ? "saved on this device" : note.persistenceState;
+    const kind = resolveMessage(language, `noteUi.kind.${note.type}`);
+    const state = resolveMessage(language, `noteUi.state.${note.persistenceState}`);
     return {
       note,
-      title: `${kind} note is not ready`,
-      message: `${kind} note is ${state}. It must be ready or deleted before signing.`,
-      action: note.persistenceState === "failed" ? "Open to retry or delete →" : "Open note actions →",
+      title: resolveMessage(language, "noteUi.readinessTitle", { kind }),
+      message: resolveMessage(language, "noteUi.readinessMessage", { kind, state }),
+      action: resolveMessage(language, note.persistenceState === "failed" ? "noteUi.readinessRetry" : "noteUi.readinessActions"),
     };
   });
 }

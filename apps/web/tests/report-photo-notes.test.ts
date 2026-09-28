@@ -16,7 +16,7 @@ test("camera capture prefers the rear camera and cycles explicit video devices w
   assert.deepEqual(cameraRequestConstraints("rear-device"), { audio: false, video: { deviceId: { exact: "rear-device" } } });
   const component = await readFile(path.join(webRoot, "components/photo-note.tsx"), "utf8");
   assert.match(component, /enumerateDevices\(\)/);
-  assert.match(component, /Cycle camera/);
+  assert.match(component, /noteUi.cycle.camera/);
   assert.doesNotMatch(component, /Live camera only|never offered for selection/);
   assert.doesNotMatch(component, /type=["']file["']/);
   assert.doesNotMatch(component, /accept=["']image/);
@@ -37,20 +37,20 @@ test("optional captions normalize safely and enforce the accessible editor bound
 
 test("photo dialog exposes named rotation, discard, capture, delete, and caption controls without a download action", async () => {
   const component = await readFile(path.join(webRoot, "components/photo-note.tsx"), "utf8");
-  for (const label of ["Rotate counterclockwise 90°", "Rotate clockwise 90°", "Discard &amp; retake", "Take photo", "Delete photo", "Save caption"]) {
+  for (const label of ["noteUi.rotate.counterclockwise.90", "noteUi.rotate.clockwise.90", "noteUi.discard.retake", "noteUi.take.photo", "noteUi.delete.photo", "noteUi.save.caption"]) {
     assert.match(component, new RegExp(label));
   }
   assert.match(component, /role={confirmingDelete \? "alertdialog" : "dialog"}/);
   assert.match(component, /aria-modal="true"/);
   assert.doesNotMatch(component, /download=/);
-  assert.match(component, /Retry upload/);
+  assert.match(component, /noteUi.retry.upload/);
 });
 
 test("live camera controls put icon rotation around camera cycling and capture with close on a second row", async () => {
   const component = await readFile(path.join(webRoot, "components/photo-note.tsx"), "utf8");
   const styles = await readFile(path.join(webRoot, "app/styles.css"), "utf8");
-  assert.match(component, /camera-control-row[\s\S]+Rotate counterclockwise 90°[\s\S]+Cycle camera[\s\S]+Rotate clockwise 90°/);
-  assert.match(component, /camera-capture-row[\s\S]+camera-capture-button[\s\S]+Take photo[\s\S]+camera-close-button[\s\S]+Close/);
+  assert.match(component, /camera-control-row[\s\S]+noteUi.rotate.counterclockwise.90[\s\S]+noteUi.cycle.camera[\s\S]+noteUi.rotate.clockwise.90/);
+  assert.match(component, /camera-capture-row[\s\S]+camera-capture-button[\s\S]+noteUi.take.photo[\s\S]+camera-close-button[\s\S]+noteUi.close/);
   assert.match(styles, /\.camera-control-row\s*{[^}]*grid-template-columns:\s*56px minmax\(120px, 1fr\) 56px/);
   assert.match(styles, /\.camera-capture-row \.camera-capture-button\s*{[^}]*min-height:\s*64px[^}]*background:\s*var\(--green\)/);
   assert.match(styles, /\.camera-capture-row \.camera-close-button\s*{[^}]*min-height:\s*64px[^}]*background:\s*#b42318/);

@@ -1,3 +1,4 @@
+import { resolveMessage, type AgencyLanguage } from "./localization";
 import type { ReportAudioSourceContentType } from "@open-triage/contracts";
 
 export const REPORT_AUDIO_MAX_MILLISECONDS = 300_000;
@@ -19,12 +20,12 @@ export function supportedAudioRecorderType(): { recorderType: string; sourceCont
   return candidates.find(({ recorderType }) => MediaRecorder.isTypeSupported(recorderType)) ?? null;
 }
 
-export function normalizeAudioCaption(value: string): { caption: string | null; characterCount: number; error: string | null } {
+export function normalizeAudioCaption(value: string, language: AgencyLanguage = "en"): { caption: string | null; characterCount: number; error: string | null } {
   const caption = value.normalize("NFC").trim();
   const characterCount = [...caption].length;
   return { caption: caption || null, characterCount,
-    error: UNSAFE_CONTROL_CHARACTER.test(caption) ? "Audio captions cannot contain control characters."
-      : characterCount > REPORT_AUDIO_CAPTION_MAX_CHARACTERS ? `Audio captions are limited to ${REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters.` : null };
+    error: UNSAFE_CONTROL_CHARACTER.test(caption) ? resolveMessage(language, "noteUi.audioCaptionControls")
+      : characterCount > REPORT_AUDIO_CAPTION_MAX_CHARACTERS ? resolveMessage(language, "noteUi.audioCaptionLimit", { max: REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") }) : null };
 }
 
 export function formatAudioDuration(milliseconds: number): string {

@@ -11,13 +11,14 @@ const session = {
   workspaceAvailable: true
 };
 
-async function openAuthenticatedMobile(page: Page) {
+async function openAuthenticatedMobile(page: Page, language: "en" | "sv" = "en") {
   await page.addInitScript((stored) => localStorage.setItem("open-triage.clinician-session.v1", JSON.stringify(stored)), session);
-  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/api/sessions/current", (route) => route.fulfill({ json: session }));
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: { ...productionSettings, language } } }));
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() } }));
   await page.route("**/api/reports/open", (route) => route.fulfill({ json: { reports: [] } }));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Send feedback" })).toBeVisible();
+  await expect(page.getByRole("button", { name: language === "sv" ? "Skicka feedback" : "Send feedback" })).toBeVisible();
 }
 
 test("feedback cancel restores focus and failure preserves the selected draft", async ({ page }) => {
@@ -125,6 +126,7 @@ test("wide viewports keep the narrow mobile shell header and demo banner from ov
     user: { ...session.user, displayName: "Demo" },
     capabilities: ["clinical:demo", "clinical:document"]
   });
+  await page.route("**/api/sessions/current", (route) => route.fulfill({ json: { ...session, user: { ...session.user, displayName: "Demo" }, capabilities: ["clinical:demo", "clinical:document"] } }));
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: {
     assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString()
@@ -152,4 +154,24 @@ test("wide viewports keep the narrow mobile shell header and demo banner from ov
   expect(barBox!.width).toBeLessThanOrEqual(480);
   expect(identityBox!.y + identityBox!.height).toBeLessThanOrEqual(selectorBox!.y);
   expect(bannerBox!.y).toBeGreaterThanOrEqual(barBox!.y + barBox!.height);
+});
+
+
+test("Swedish feedback retains authored text and accessible focus after an upload failure", async ({ page }) => {
+  await openAuthenticatedMobile(page, "sv");
+  await page.route("**/api/feedback/v1/submissions", (route) => route.fulfill({ status: 503, json: { message: "unavailable" } }));
+  const trigger = page.locator(".feedback-trigger");
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Skicka feedback" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Fel" }).click();
+  const description = dialog.getByRole("textbox");
+  const content = "Åke föreslår en bättre uppdragslista";
+  await description.fill(content);
+  await expect(dialog.locator("small").filter({ hasText: "tecken" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Skicka feedback" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("beskrivning finns kvar");
+  await expect(description).toHaveValue(content);
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
 });

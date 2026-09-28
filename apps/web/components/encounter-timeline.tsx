@@ -58,7 +58,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
             <button aria-label={t("mobile.openPhoto", { time: event.time, author: event.note.author.displayName, caption: event.note.caption ?? t("mobile.noCaption") })} className="timeline-event-button photo-timeline-button" type="button" onClick={(clickEvent) => onOpenPhoto(event.note, clickEvent.currentTarget)}>
               <span className="photo-timeline-copy"><span className="event-title">{t("mobile.photoNote")}</span><span className="event-detail">{event.note.caption || t("mobile.noCaption")}</span>
                 <small>{event.note.author.displayName} · {photoState} · {t("mobile.openPhotoShort")}</small></span>
-              <AuthorizedPhotoImage reportId={event.note.reportId} noteId={event.note.id} alt="" className="photo-thumbnail" />
+              <AuthorizedPhotoImage language={language} reportId={event.note.reportId} noteId={event.note.id} alt="" className="photo-thumbnail" />
             </button>
           </li>;
         }
@@ -75,7 +75,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
                 <span className="event-title">{t("mobile.audioNote")} · {duration}</span><span className="event-detail">{event.note.caption || t("mobile.noCaption")}</span>
                 <small>{event.note.author.displayName} · {audioState} · {t("mobile.openAudioShort")}</small>
               </button>
-              <AuthorizedAudioButton reportId={event.note.reportId} noteId={event.note.id} label={`Play audio note, ${duration}`} className="timeline-audio-action" />
+              <AuthorizedAudioButton language={language} reportId={event.note.reportId} noteId={event.note.id} label={`Play audio note, ${duration}`} className="timeline-audio-action" />
             </div>
           </li>;
         }

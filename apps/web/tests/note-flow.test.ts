@@ -121,3 +121,14 @@ test("timeline excerpts are compact without changing stored content", () => {
   assert.match(excerpt, /…$/);
   assert.match(content, /^  /);
 });
+
+test("Swedish note validation and readiness preserve note contents", () => {
+  const content = "Åke observerade: andning normal";
+  assert.deepEqual(validateReportTextNote(content, "sv"), { content, error: null, characterCount: [...content].length });
+  assert.match(validateReportTextNote(" ", "sv").error!, /textanteckning/);
+  const blocked = noteReadinessBlockers([note({ content, persistenceState: "failed" })], "sv");
+  assert.match(blocked[0]!.title, /Textanteckningen/);
+  assert.match(blocked[0]!.action, /försöka igen/);
+  assert.equal(blocked[0]!.note.type, "text");
+  if (blocked[0]!.note.type === "text") assert.equal(blocked[0]!.note.content, content);
+});

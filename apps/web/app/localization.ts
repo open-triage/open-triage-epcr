@@ -21,3 +21,11 @@ export function resolveMessage(language: AgencyLanguage, key: string,
 export function applyDocumentLanguage(language: AgencyLanguage, document: Document): void {
   document.documentElement.lang = language;
 }
+
+/** Translate application error copy; unrecognized server detail uses a safe localized fallback. */
+export function resolveErrorMessage(language: AgencyLanguage, message: string | null | undefined, fallbackKey: string): string {
+  if (!message) return resolveMessage(language, fallbackKey);
+  const entry = Object.entries(dictionaries.en).find(([, value]) => value === message);
+  if (entry) return resolveMessage(language, entry[0]);
+  return language === "en" ? message : resolveMessage(language, fallbackKey);
+}

@@ -64,6 +64,27 @@ for (const language of ["en", "sv"] as const) {
     await expect(page.getByRole("dialog", { name: "Vital signs" }).getByRole("textbox", { name: systolicLabel })).toHaveValue("120");
     await page.keyboard.press("Escape");
     await expect(page.locator(".timeline-event-button").filter({ hasText: /Vital signs/ }).first()).toBeFocused();
+    await page.getByRole("button", { name: language === "sv" ? "Textanteckning" : "Text note" }).click();
+    const noteDialog = page.getByRole("dialog", { name: language === "sv" ? "Textanteckning" : "Text note" });
+    const noteText = noteDialog.getByRole("textbox");
+    await noteText.fill("Åke observerade förbättring");
+    await expect(noteText).toHaveValue("Åke observerade förbättring");
+    await expect(noteDialog.locator("#report-text-note-count")).toContainText(language === "sv" ? "tecken" : "characters");
+    await page.keyboard.press("Tab");
+    await expect(noteText).toHaveValue("Åke observerade förbättring");
+    await noteDialog.getByRole("button", { name: language === "sv" ? "Avbryt" : "Cancel" }).click();
+
+    await page.getByRole("button", { name: language === "sv" ? "Lägg till fotoanteckning" : "Add photo note" }).click();
+    const photoDialog = page.getByRole("dialog", { name: language === "sv" ? "Fotoanteckning" : "Photo note" });
+    await expect(photoDialog).toBeVisible();
+    await expect(photoDialog.getByRole("button", { name: language === "sv" ? "Byt kamera" : "Cycle camera" })).toBeVisible();
+    await photoDialog.getByRole("button", { name: language === "sv" ? "Stäng" : "Close" }).click();
+
+    await page.getByRole("button", { name: language === "sv" ? "Lägg till ljudanteckning" : "Add audio note" }).click();
+    const audioDialog = page.getByRole("dialog", { name: language === "sv" ? "Ljudanteckning" : "Audio note" });
+    await expect(audioDialog).toBeVisible();
+    await expect(audioDialog.getByRole("button", { name: language === "sv" ? "Håll intryckt för att spela in" : "Hold to record" })).toBeVisible();
+    await audioDialog.getByRole("button", { name: language === "sv" ? "Stäng" : "Close" }).click();
     const violations = (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations
       .filter((violation) => violation.impact === "critical" || violation.impact === "serious");
     expect(violations, violations.map((violation) => `${violation.id}: ${violation.help}`).join("\n")).toEqual([]);
