@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue, FormDraftDefinition } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { useId, useState } from "react";
 import {
   editNonRepeatingCodedValue,
@@ -17,9 +17,9 @@ import { StationaryScalarControl } from "./stationary-scalar-control";
 import { StationaryScalarOccurrences } from "./stationary-scalar-occurrences";
 import { StationaryPickerLegend } from "./stationary-picker-label";
 import type { StationarySectionFinding } from "../app/stationary-record";
-import { resolveCatalogElementText } from "../app/catalog-localization";
+import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catalog-localization";
 import { resolveMessage } from "../app/localization";
-import { formFieldForElement, formFieldText, type FormLanguage } from "../app/form-localization";
+import type { FormLanguage } from "../app/form-localization";
 import { StationaryValidationMessages, stationaryFindingSeverity } from "./stationary-validation-messages";
 
 export type StationaryApplicability = {
@@ -155,13 +155,13 @@ function renderContexts(document: EncounterDocument, group: StationaryNonRepeati
 }
 
 /** Full inline stationary projection. Fields stay in the DOM even when optional or not applicable. */
-export function StationaryNonRepeatingRecord({ document, applicability = {}, groups = STATIONARY_NON_REPEATING_GROUPS, findings = [], catalogFields = {}, formDefinition, language = "en", onDocumentChange }: {
+export function StationaryNonRepeatingRecord({ document, applicability = {}, groups = STATIONARY_NON_REPEATING_GROUPS, findings = [], catalogFields = {}, catalogGroups, language = "en", onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly applicability?: Readonly<Record<string, StationaryApplicability>>;
   readonly groups?: ReadonlyArray<StationaryNonRepeatingGroup>;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
-  readonly formDefinition?: FormDraftDefinition;
+  readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
@@ -180,14 +180,11 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
         data-cardinality="single"
         id={`stationary-group-${group.id.replaceAll(".", "-")}`}
         key={group.id}
-        aria-label={resolveMessage(language, "stationary.fields", { label: group.label })}
+        aria-label={resolveMessage(language, "stationary.fields", { label: resolveCatalogGroupText(catalogGroups, group.id, language, group.label) })}
       >
         {contexts.map(({ instance, parentInstanceId }, contextIndex) => <div className="stationary-inline-fields" key={instance?.instanceId ?? parentInstanceId ?? contextIndex}>
           {group.fields.map((field) => {
             const pinned = catalogFields[field.id];
-            const authored = formFieldForElement(formDefinition, field.id);
-            const labelOverride = formDefinition && formFieldText(formDefinition, authored, language, "label");
-            const helpOverride = formDefinition && formFieldText(formDefinition, authored, language, "helpText");
             const catalogLocalizedField = pinned ? { ...field,
               catalog: { ...field.catalog,
                 name: resolveCatalogElementText(pinned, field.id, language, "label"),
@@ -196,10 +193,7 @@ export function StationaryNonRepeatingRecord({ document, applicability = {}, gro
                 label: resolveCatalogElementText(pinned, field.id, language, "label"),
                 help: resolveCatalogElementText(pinned, field.id, language, "description") } } : {})
             } : field;
-            const localizedField = { ...catalogLocalizedField, catalog: { ...catalogLocalizedField.catalog,
-              ...(labelOverride ? { name: labelOverride } : {}), ...(helpOverride ? { definition: helpOverride } : {}) },
-              ...(catalogLocalizedField.scalar ? { scalar: { ...catalogLocalizedField.scalar,
-                ...(labelOverride ? { label: labelOverride } : {}), ...(helpOverride ? { help: helpOverride } : {}) } } : {}) };
+            const localizedField = catalogLocalizedField;
             const fieldApplicability = applicability[field.id];
             const disabled = fieldApplicability?.applicable === false;
             const fieldFindings = findings.filter((finding) => {

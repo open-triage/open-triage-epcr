@@ -2,56 +2,76 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
+import type { ClinicalFormConfiguration, EncounterDocument, FormDraftDefinition } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
-import { formFieldForElement, formFieldText, formSectionTitle, formTranslationWarnings } from "../app/form-localization";
 import { StationaryRecord } from "../components/stationary-record";
 
-const form: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "patient", presentation: { title: "Patient details" }, fields: [
-  { key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.02" }, configuration: { label: "Patient's name", helpText: "Enter legal name" } },
-  { key: "patient-sex", source: { kind: "nemsis", elementId: "ePatient.25" } },
-] }], locales: [{ locale: "sv", translations: { sections: { patient: { title: "Patientuppgifter" } },
-  fields: { "patient-name": { label: "Patientens namn", helpText: "Ange juridiskt namn" } } },
-  sourceReview: { "fields.patient-name.label": true } }] };
+const form: FormDraftDefinition = { schemaVersion: 1, sections: [{
+  key: "ePatientSection",
+  fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.02" } }],
+}] };
+const catalogFields: ClinicalFormConfiguration["catalogFields"] = {
+  "ePatient.02": {
+    name: "Catalog patient name",
+    description: "Catalog patient help",
+    localization: { schemaVersion: 1, sv: { label: "Katalogens patientnamn", description: "Katalogens patienthjälp" } },
+    agencyRequired: false,
+    minOccurs: 0,
+    maxOccurs: 1,
+    nillable: true,
+    supportsNotValues: true,
+    supportsPertinentNegatives: false,
+  },
+};
+const catalogGroups: NonNullable<ClinicalFormConfiguration["catalogGroups"]> = {
+  ePatientSection: {
+    name: "ePatient",
+    localization: { schemaVersion: 1, sv: { name: "Katalogens patient" } },
+  },
+};
 
-test("pinned form text resolves translated headings and overrides before catalog fallback", () => {
-  assert.equal(formSectionTitle(form, "patient", "sv"), "Patientuppgifter");
-  const field = formFieldForElement(form, "ePatient.02");
-  assert.equal(formFieldText(form, field, "sv", "label"), "Patientens namn");
-  assert.equal(formFieldText(form, field, "en", "label"), "Patient's name");
-  assert.equal(formFieldText(form, formFieldForElement(form, "ePatient.25"), "sv", "label"), undefined);
-  assert.deepEqual(formTranslationWarnings(form, "sv"), []);
-  const html = renderToStaticMarkup(createElement(StationaryRecord, {
-    document: synthetic as EncounterDocument, formDefinition: form, language: "sv", onDocumentChange() {},
+function render(definition: FormDraftDefinition, language: string): string {
+  return renderToStaticMarkup(createElement(StationaryRecord, {
+    document: synthetic as EncounterDocument,
+    formDefinition: definition,
+    catalogFields,
+    catalogGroups,
+    language,
+    onDocumentChange() {},
   }));
-  assert.match(html, /Patientuppgifter/);
-  assert.match(html, /Patientens namn/);
-  assert.doesNotMatch(html, /Patient details/);
+}
+
+test("stationary field and section wording comes from the pinned catalog", () => {
+  const english = render(form, "en");
+  assert.match(english, /Catalog patient name/);
+  assert.match(english, /Catalog patient help/);
+  assert.match(english, />Patient</);
+
+  const swedish = render(form, "sv");
+  assert.match(swedish, /Katalogens patientnamn/);
+  assert.match(swedish, /Katalogens patienthjälp/);
+  assert.match(swedish, /Katalogens patient/);
 });
 
-test("missing Swedish source text warns only for authored English content", () => {
-  const incomplete = { ...form, locales: [] };
-  assert.deepEqual(formTranslationWarnings(incomplete, "sv"), [
-    "patient: Swedish heading missing", "patient / patient-name: Swedish label missing", "patient / patient-name: Swedish help text missing",
-  ]);
-  assert.equal(formFieldText(incomplete, formFieldForElement(incomplete, "ePatient.02"), "sv", "label"), "Patient's name");
-  assert.deepEqual(formTranslationWarnings(incomplete, "en"), []);
-  assert.equal(formSectionTitle({ schemaVersion: 1, sections: [{ key: "old", fields: [] }] }, "old", "sv"), undefined);
-});
+test("legacy form wording cannot override catalog text", () => {
+  const legacy = {
+    ...form,
+    sections: form.sections.map((section) => ({
+      ...section,
+      presentation: { title: "Legacy section" },
+      fields: section.fields.map((field) => ({
+        ...field,
+        configuration: { label: "Legacy label", helpText: "Legacy help" },
+      })),
+    })),
+    locales: [{ locale: "sv", translations: {
+      sections: { ePatientSection: { title: "Äldre avsnitt" } },
+      fields: { "patient-name": { label: "Äldre etikett", helpText: "Äldre hjälp" } },
+    } }],
+  } as unknown as FormDraftDefinition;
 
-
-test("historical form pins retain their own wording after a new version is activated", () => {
-  const oldForm: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "patient", presentation: { title: "Original patient" },
-    fields: [{ key: "patient-name", source: { kind: "nemsis", elementId: "ePatient.02" }, configuration: { label: "Original name" } }] }] };
-  const newForm: FormDraftDefinition = { ...oldForm, sections: oldForm.sections.map((section) => ({ ...section,
-    presentation: { title: "Updated patient" }, fields: section.fields.map((field) => ({ ...field,
-      configuration: { label: "Updated name" } })) })) };
-  const render = (formDefinition: FormDraftDefinition) => renderToStaticMarkup(createElement(StationaryRecord, {
-    document: synthetic as EncounterDocument, formDefinition, language: "en", onDocumentChange() {},
-  }));
-  assert.match(render(oldForm), /Original patient/);
-  assert.match(render(oldForm), /Original name/);
-  assert.doesNotMatch(render(oldForm), /Updated patient|Updated name/);
-  assert.match(render(newForm), /Updated patient/);
-  assert.match(render(newForm), /Updated name/);
+  const html = render(legacy, "sv");
+  assert.match(html, /Katalogens patientnamn/);
+  assert.match(html, /Katalogens patienthjälp/);
+  assert.doesNotMatch(html, /Legacy|Äldre/);
 });

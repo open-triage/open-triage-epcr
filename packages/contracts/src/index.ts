@@ -1,3 +1,5 @@
+export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
+
 export interface HealthResponse {
   status: "ok";
   service: "open-triage-api";
@@ -282,7 +284,7 @@ export interface ReportMediaPolicy {
 
 export interface AgencyMediaSettings {
   organizationId: string;
-  language: "en" | "sv";
+  language: string;
   regionalFormat: "en-US" | "sv-SE" | null;
   timeZone: string | null;
   reportMediaAllowanceBytes: number;
@@ -299,7 +301,7 @@ export interface AgencyMediaSettings {
 
 export interface UpdateAgencyMediaSettingsCommand {
   expectedRevision: number;
-  language: "en" | "sv";
+  language: string;
   regionalFormat?: "en-US" | "sv-SE" | null;
   timeZone?: string | null;
   reportMediaAllowanceBytes: number;
@@ -859,21 +861,20 @@ export interface FormDraftField {
     { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
-  configuration?: Record<string, unknown>;
   rules?: FormDraftRule[];
 }
 
 export interface FormDraftDefinition {
   schemaVersion: 1;
-  sections: Array<{ key: string; presentation?: Record<string, unknown>; fields: FormDraftField[] }>;
-  locales?: Array<{ locale: "sv"; translations: {
-    sections?: Record<string, { title?: string }>;
-    fields?: Record<string, { label?: string; helpText?: string }>;
-  }; sourceReview?: Record<string, boolean> }>;
+  sections: Array<{ key: string; fields: FormDraftField[] }>;
 }
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
+  /** Group wording from the same immutable catalog as the fields. */
+  catalogGroups?: Record<string, { name: string; localization?: {
+    schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
+  } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
     name?: string;
@@ -921,6 +922,7 @@ export interface StationaryFormDraft {
   definition: FormDraftDefinition;
   /** Published catalog configuration used by the detached authoring preview. */
   catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
   updatedAt: string;
 }
@@ -934,7 +936,7 @@ export interface PublishedStationaryForm {
   status: "published";
   definitionSha256: string;
   publishedAt: string;
-  structuralSummary: { sections: number; fields: number; rules: number; locales: number };
+  structuralSummary: { sections: number; fields: number; rules: number };
 }
 
 export interface StationaryFormActivation {

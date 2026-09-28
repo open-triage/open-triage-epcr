@@ -1,8 +1,8 @@
 "use client";
 
-import { resolveCatalogElementText } from "../app/catalog-localization";
+import { resolveCatalogElementText, resolveCatalogGroupText } from "../app/catalog-localization";
 import { resolveMessage } from "../app/localization";
-import { formFieldForElement, formFieldText, type FormLanguage } from "../app/form-localization";
+import type { FormLanguage } from "../app/form-localization";
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { createContext, useContext, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
@@ -16,7 +16,7 @@ import {
   sortRepeatingGroupInstancesByTimestamp,
   type RepeatingGroupFinding,
 } from "../app/stationary-repeating-group";
-import { requireNemsisDataElement } from "../app/nemsis-data-model";
+import { getNemsisGroup, requireNemsisDataElement } from "../app/nemsis-data-model";
 import { editScalarOccurrence, scalarControlPresentation, stationaryDateTimeDefault, type ScalarControlPresentation, type ScalarValidationFinding } from "../app/stationary-scalar";
 import { configuredStationaryCodedField, editStationaryCodedValue } from "../app/stationary-coded-value";
 import type { CompiledStationaryGroup, StationaryElementPlacement } from "../app/stationary-layout";
@@ -53,7 +53,7 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
   });
 }
 
-const FormPresentationContext = createContext<{ definition?: ClinicalFormConfiguration["definition"]; language: FormLanguage }>({ language: "en" });
+const FormPresentationContext = createContext<{ language: FormLanguage }>({ language: "en" });
 
 function GroupField({ document, instance, placement, findings = [], initialFocus = false, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
@@ -64,10 +64,7 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const { definition, language } = useContext(FormPresentationContext);
-  const authored = formFieldForElement(definition, placement.id);
-  const labelOverride = definition && formFieldText(definition, authored, language, "label");
-  const helpOverride = definition && formFieldText(definition, authored, language, "helpText");
+  const { language } = useContext(FormPresentationContext);
   const sourceElement = requireNemsisDataElement(placement.id);
   const pinned = catalogFields?.[placement.id];
   const catalogElement = pinned ? { ...sourceElement,
@@ -82,8 +79,8 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   if (catalogElement.valueSource.kind !== "scalar") {
     const field = configuredStationaryCodedField(catalogElement, catalogFields[placement.id]);
     const translated = pinned && language === "sv";
-    const presentation = { ...field, label: labelOverride ?? (translated ? catalogElement.name : placement.label ?? field.label),
-      help: helpOverride ?? (translated ? catalogElement.definition : placement.help ?? field.help) };
+    const presentation = { ...field, label: translated ? catalogElement.name : placement.label ?? field.label,
+      help: translated ? catalogElement.definition : placement.help ?? field.help };
     const values = element?.values ?? [];
     const repeatable = catalogElement.occurrence.max === "unbounded" || catalogElement.occurrence.max > 1;
     if (repeatable) return withValidation(<StationaryCodedOccurrencesField field={presentation} values={values} onChange={(value, selection) => onDocumentChange(editStationaryCodedValue(document, {
@@ -108,8 +105,8 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   }
   const translated = pinned && language === "sv";
   const presentation = scalarControlPresentation(catalogElement,
-    labelOverride ?? (translated ? catalogElement.name : placement.label ?? catalogElement.name),
-    helpOverride ?? (translated ? catalogElement.definition : placement.help ?? catalogElement.definition));
+    translated ? catalogElement.name : placement.label ?? catalogElement.name,
+    translated ? catalogElement.definition : placement.help ?? catalogElement.definition);
   if (presentation.repeatable) return withValidation(<StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} />);
   const value = element?.values.find((candidate) => candidate.kind === "scalar");
   return withValidation(<SingleScalarGroupField document={document} instance={instance} placement={placement} presentation={presentation}
@@ -218,8 +215,10 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
   }, [focusTarget]);
   if (!instance) return null;
   const editable = placement.mode !== "read-only";
-  const label = stationaryDisplayLabel(placement.presentation.label ?? placement.id);
-  const actionLabel = stationaryActionLabel(placement.presentation.label ?? placement.id);
+  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
+    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
+  const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
+    stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
   const validationFindings = groupValidationFindings(liveFindings, placement.id, instance.instanceId);
   const groupOnlyFindings = validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId));
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
@@ -257,7 +256,8 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, cl
   const catalog = requireNemsisDataElement;
   const { language } = useContext(FormPresentationContext);
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
-  const label = stationaryDisplayLabel(placement.presentation.label ?? placement.id);
+  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
+    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
   const instance = document.groups.find(({ id }) => id === placement.id)?.instances.find((candidate) => candidate.parentInstanceId === parentInstanceId);
   const editable = placement.mode !== "read-only";
   const validationFindings = groupValidationFindings(findings, placement.id, instance?.instanceId);
@@ -312,16 +312,16 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
   const [dialogState, setDialogState] = useState<{ draft: EncounterDocument; instanceId: string; isNew: boolean; returnFocus: HTMLElement }>();
   const [finding, setFinding] = useState<RepeatingGroupFinding>();
   const editable = placement.mode !== "read-only";
-  const label = stationaryDisplayLabel(placement.presentation.label ?? placement.id);
-  const actionLabel = stationaryActionLabel(placement.presentation.label ?? placement.id);
+  const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
+    placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
+  const actionLabel = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
+    stationaryActionLabel(placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? placement.id));
   const localFindings: ReadonlyArray<StationarySectionFinding> = finding ? [{ severity: "error", message: finding.message, target: { groupId: placement.id } }] : [];
   const validationFindings = [...groupValidationFindings(findings, placement.id), ...localFindings];
   const validationSeverity = stationaryFindingSeverity(validationFindings);
   const columnLabel = (elementId: string, fallback?: string) => {
-    const authored = formFieldForElement(clinicalForm?.definition, elementId);
-    const formLabel = clinicalForm?.definition && formFieldText(clinicalForm.definition, authored, language, "label");
     const pinned = clinicalForm?.catalogFields?.[elementId];
-    return formLabel ?? (pinned ? resolveCatalogElementText(pinned, elementId, language, "label") : fallback ?? requireNemsisDataElement(elementId).name);
+    return pinned ? resolveCatalogElementText(pinned, elementId, language, "label") : fallback ?? requireNemsisDataElement(elementId).name;
   };
   const openAdd = (event: React.MouseEvent<HTMLButtonElement>) => {
     const result = addRepeatingGroupOccurrence(document, placement.id, parentInstanceId ?? (selectedParentId || undefined));
@@ -368,5 +368,5 @@ export function StationaryRepeatingGroups({ document, groups: configuredGroups, 
 }) {
   const defaultGroups = useMemo(() => configuredRepeatingGroupRoots(), []);
   const groups = configuredGroups ?? defaultGroups;
-  return <FormPresentationContext.Provider value={{ definition: clinicalForm?.definition, language }}><div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div></FormPresentationContext.Provider>;
+  return <FormPresentationContext.Provider value={{ language }}><div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div></FormPresentationContext.Provider>;
 }

@@ -179,6 +179,34 @@ export class CatalogAuthoringService {
     });
   }
 
+  async delete(sessionToken: string, draftId: string, input: unknown): Promise<void> {
+    const session = await this.authorize(sessionToken, "catalog:write");
+    const expectedRevision = this.expectedRevision(input);
+    await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
+      const rows = await manager.query<DraftRow[]>(`
+        select * from catalog.authoring_draft
+        where id=$1 and organization_id=$2 and published_release_id is null for update
+      `, [draftId, session.organization.id]);
+      const draft = rows[0];
+      if (!draft) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
+      if (draft.revision !== expectedRevision) throw new ConflictException({
+        message: "Catalog draft revision is stale", expectedRevision, actualRevision: draft.revision
+      });
+      await manager.query(`insert into app_identity.configuration_event
+        (organization_id,actor_id,action,result,form_version_id,catalog_release_id,
+         change_note,content_sha256,details)
+        values ($1,$2,'catalog.draft_delete','succeeded',null,$3,'Catalog draft deleted',$4,$5::jsonb)`,
+      [session.organization.id, session.user.id, draft.source_release_id, draft.definition_sha256,
+        JSON.stringify({ catalogDraftId: draft.id, sourceReleaseId: draft.source_release_id, revision: draft.revision })]);
+      const deleted = mutationRows<{ id: string }>(await manager.query(`
+        delete from catalog.authoring_draft
+        where id=$1 and organization_id=$2 and revision=$3 and published_release_id is null returning id
+      `, [draftId, session.organization.id, expectedRevision]));
+      if (!deleted[0]) throw new ConflictException("Catalog draft revision is stale or the catalog was published");
+    });
+  }
+
   async validate(sessionToken: string, draftId: string): Promise<CatalogValidationResult> {
     const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
@@ -366,7 +394,7 @@ export class CatalogAuthoringService {
       left join catalog.value_set_option_configuration c
         on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
       where v.release_id=$1 and v.classification in ('defined', 'suggested', 'agency')
-      group by v.release_id, v.value_set_id, v.name, v.classification, cr.provenance order by v.value_set_id`, [releaseId]);
+      group by v.release_id, v.value_set_id, v.name, v.classification, cr.id order by v.value_set_id`, [releaseId]);
     const inline = await manager.query<SourceCodeListRow[]>(`select 'inline:' || e.element_id as list_id,
       e.name, 'inline'::text as classification, array[e.element_id] as element_ids,
       cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'localization' as localization,
@@ -383,7 +411,7 @@ export class CatalogAuthoringService {
         on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
         and c.code_system=o.code_system and c.code=o.code
       where e.release_id=$1
-      group by e.element_id, e.name, cr.provenance order by e.element_id`, [releaseId]);
+      group by e.element_id, e.name, cr.id order by e.element_id`, [releaseId]);
     return [...inline, ...valueSets];
   }
 
@@ -665,6 +693,13 @@ export class CatalogAuthoringService {
       [releaseId, JSON.stringify(projectedValues)]);
     await manager.query(`insert into catalog.repeating_group_time_mapping select $2,group_id,resolution,time_element_id,inherited_from_group_id,candidate_time_element_ids,note from catalog.repeating_group_time_mapping where release_id=$1`, [source, releaseId]);
     await manager.query(`insert into catalog.analytics_element_mapping select $2,element_id,element_identity_id,analytical_location,sql_column,sql_type,identifying,mapping from catalog.analytics_element_mapping where release_id=$1`, [source, releaseId]);
+  }
+
+  private expectedRevision(input: unknown): number {
+    const revision = isRecord(input) ? input.expectedRevision : undefined;
+    if (!Number.isSafeInteger(revision) || Number(revision) < 1)
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    return Number(revision);
   }
 
   private saveBody(input: unknown): { expectedRevision: number; displayName: string | null; definition: CatalogDraftDefinition } {

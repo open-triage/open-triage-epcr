@@ -13,7 +13,7 @@ const definitions = await readInstallDefinitions(path.join(repoRoot, "defines"))
 const selectedCatalog = definitions.defaultPair.catalog;
 const catalogPath = path.join(repoRoot, "defines/catalog", selectedCatalog.file);
 const mappingPath = path.join(packageRoot, `generated/${selectedCatalog.key}-analytics-mapping.json`);
-const localizationPath = path.join(repoRoot, "defines/localization/sv/catalog_nemsis-3.5.1.json");
+const localizationPath = path.join(repoRoot, "defines/localization/localization_sv.json");
 const catalogStandard = selectedCatalog.standard;
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -26,7 +26,7 @@ const [catalogText, mappingText] = await Promise.all([
 const catalog = JSON.parse(catalogText);
 const mapping = JSON.parse(mappingText);
 const { elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization,
-  coverage, seedSha256 } = await readCatalogLocalizationSeed(localizationPath, selectedCatalog.key, catalog);
+  coverage, seedSha256 } = await readCatalogLocalizationSeed(localizationPath, catalog);
 const missing = Object.entries(coverage.missing).flatMap(([kind, ids]) => ids.map((id) => `${kind}:${id}`));
 if (missing.length) throw new Error(`Swedish catalog seed is incomplete: ${missing.join(", ")}`);
 console.log(`Swedish catalog coverage: ${JSON.stringify(coverage.supplied)}; ${coverage.reviewPending.length} candidates require clinical review.`);

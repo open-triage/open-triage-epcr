@@ -15,16 +15,14 @@ test("compiles the neutral JSON form while preserving catalog-owned semantics", 
   assert.deepEqual(configuredQuickActions(definition).map(({ id }) => id), ["vitals", "medication", "procedure", "note"]);
 });
 
-test("a test profile hides, relabels, removes, adds, and reorders supported elements", () => {
+test("a test profile hides, removes, adds, and reorders supported elements", () => {
   const profile = structuredClone(standardEncounterFormProfile) as unknown as {
     sections: Array<{ id: string; visible: boolean; elements: string[] }>;
-    labels: Record<string, string>;
     summary: { vitalOrder: string[] };
   };
   const medication = profile.sections.find(({ id }) => id === "medication")!;
   const vitals = profile.sections.find(({ id }) => id === "vitals")!;
   medication.visible = false;
-  profile.labels["eVitals.10"] = "Configured pulse";
   vitals.elements = vitals.elements.filter((id) => id !== "eVitals.27");
   vitals.elements = ["eVitals.10", "eVitals.27", ...vitals.elements.filter((id) => id !== "eVitals.10")];
   profile.summary.vitalOrder = ["eVitals.10", "eVitals.27", ...profile.summary.vitalOrder.filter((id) => id !== "eVitals.10" && id !== "eVitals.27")];
@@ -32,7 +30,6 @@ test("a test profile hides, relabels, removes, adds, and reorders supported elem
 
   assert.ok(!configuredQuickActions(definition).some(({ id }) => id === "medication"));
   assert.deepEqual(definition.events.vitals.fields.slice(0, 2).map(({ reference }) => reference), ["eVitals.10", "eVitals.27"]);
-  assert.equal(definition.events.vitals.fields[0]!.label, "Configured pulse");
 });
 
 test("reports unknown elements, duplicate placements, illegal semantic overrides, and bad groups with JSON paths", () => {
@@ -40,11 +37,13 @@ test("reports unknown elements, duplicate placements, illegal semantic overrides
   const sections = profile.sections as Array<{ elements: string[] }>;
   sections[0]!.elements = ["eVitals.06", "eVitals.06", "acme:unknown"];
   profile.cardinality = { min: 0 };
+  profile.labels = { "eVitals.06": "Override" };
   const review = profile.review as { groups: unknown[] };
   review.groups = [{ severity: "error", title: "Errors", empty: "None" }];
 
   assert.throws(() => compileEncounterFormProfile(profile), (error: unknown) => error instanceof EncounterFormProfileError
     && error.message.includes("$.cardinality: illegal override")
+    && error.message.includes("$.labels: illegal override")
     && error.message.includes("$.sections[0].elements[1]: duplicate placement")
     && error.message.includes("$.sections[0].elements[2]: unknown standard or namespaced custom element")
     && error.message.includes("$.review.groups: must contain error and warning exactly once"));

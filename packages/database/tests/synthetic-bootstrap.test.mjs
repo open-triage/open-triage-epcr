@@ -35,7 +35,8 @@ test("builds the Stationary bootstrap from the complete NEMSIS dataset", async (
 test("exposes fixture accounts only through an explicit insert-only command", () => {
   assert.equal(databasePackage.scripts["bootstrap:synthetic:runtime"],
     "node scripts/bootstrap-synthetic-installation.mjs");
-  assert.match(databasePackage.scripts["bootstrap:synthetic"], /migrate.*load:catalog.*bootstrap:synthetic:runtime/);
+  assert.match(databasePackage.scripts["bootstrap:synthetic"], /migrate.*bootstrap:synthetic:runtime/);
+  assert.match(databasePackage.scripts["install:synthetic:runtime"], /migrate.*bootstrap-synthetic-installation.*seed-initial-validation-versions.*seed-install-definitions/);
   for (const productionEntryPoint of [apiMain, apiModule, initialMigration]) {
     assert.ok(!productionEntryPoint.includes("bootstrap-synthetic-installation"));
   }

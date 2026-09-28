@@ -278,12 +278,11 @@ test("coded picker distinguishes the same code in different systems", () => {
 
 
 test("shipped Swedish choice seed appears in the clinical picker without changing coded values", async () => {
-  const seed = JSON.parse(await readFile(new URL("../../../defines/localization/sv/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
+  const seed = JSON.parse(await readFile(new URL("../../../defines/localization/localization_sv.json", import.meta.url), "utf8"));
   const source = requireNemsisDataElement("eMedications.06");
   assert.equal(source.valueSource.kind, "inline-enumerated");
   if (source.valueSource.kind !== "inline-enumerated") return;
-  const translated = seed.domains.eMedications.choices.find((choice: { listId: string; code: string }) =>
-    choice.listId === "inline:eMedications.06" && choice.code === "3706021");
+  const translated = ({ code: "3706021", ...seed.catalog.codeLists["inline:eMedications.06"].choices[""]["3706021"] });
   const original = source.valueSource.values.find(({ code }) => code === translated.code)!;
   const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
   Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { lang: "sv" } } });

@@ -59,6 +59,7 @@ export async function clinicalFormConfiguration(
   return {
     definition: versions[0].canonical_definition,
     catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
+    catalogGroups: await catalogGroupsConfiguration(manager, catalogReleaseId),
     ...(liveBundle ? { validation: { versionId: validationVersionId!,
       compiledSha256: compiledValidationBundleSha256(liveBundle), bundle: liveBundle } } : {}),
   };
@@ -134,4 +135,20 @@ export async function catalogFieldsConfiguration(
       supportsPertinentNegatives: field.supports_pertinent_negatives,
       ...(choicesByElement.has(field.element_id) ? { codeChoices: choicesByElement.get(field.element_id) } : {}),
     }]));
+}
+
+/** Group wording is loaded from the report or preview's pinned catalog release. */
+export async function catalogGroupsConfiguration(
+  manager: Pick<EntityManager, "query">,
+  catalogReleaseId: string,
+): Promise<NonNullable<ClinicalFormConfiguration["catalogGroups"]>> {
+  const groups = await manager.query<Array<{
+    group_id: string; name: string;
+    localization: NonNullable<ClinicalFormConfiguration["catalogGroups"]>[string]["localization"];
+  }>>(`select g.group_id, g.name,
+      r.provenance->'groupLocalization'->g.group_id as localization
+    from catalog.group_definition g join catalog.release r on r.id=g.release_id
+    where g.release_id=$1`, [catalogReleaseId]);
+  return Object.fromEntries(groups.map(({ group_id, name, localization }) =>
+    [group_id, { name, ...(localization ? { localization } : {}) }]));
 }

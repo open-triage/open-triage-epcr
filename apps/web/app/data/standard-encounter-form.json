@@ -3,37 +3,81 @@
   "id": "standard-encounter-v1",
   "version": 1,
   "sections": [
-    { "id": "vitals", "visible": true, "quickActionLabel": "Add vital signs", "elements": ["eVitals.06", "eVitals.07", "eVitals.10", "eVitals.12", "eVitals.14", "eVitals.23", "eVitals.27"] },
-    { "id": "medication", "visible": true, "quickActionLabel": "Add medication", "elements": ["eMedications.03", "eMedications.01", "eMedications.05", "eMedications.06", "eMedications.04", "eMedications.07"] },
-    { "id": "procedure", "visible": true, "quickActionLabel": "Add procedure", "elements": ["eProcedures.03", "eProcedures.01", "eProcedures.05", "eProcedures.06", "eProcedures.08", "eProcedures.07"] },
-    { "id": "note", "visible": true, "quickActionLabel": "Text note", "elements": [] }
+    {
+      "id": "vitals",
+      "visible": true,
+      "quickActionLabel": "Add vital signs",
+      "elements": [
+        "eVitals.06",
+        "eVitals.07",
+        "eVitals.10",
+        "eVitals.12",
+        "eVitals.14",
+        "eVitals.23",
+        "eVitals.27"
+      ]
+    },
+    {
+      "id": "medication",
+      "visible": true,
+      "quickActionLabel": "Add medication",
+      "elements": [
+        "eMedications.03",
+        "eMedications.01",
+        "eMedications.05",
+        "eMedications.06",
+        "eMedications.04",
+        "eMedications.07"
+      ]
+    },
+    {
+      "id": "procedure",
+      "visible": true,
+      "quickActionLabel": "Add procedure",
+      "elements": [
+        "eProcedures.03",
+        "eProcedures.01",
+        "eProcedures.05",
+        "eProcedures.06",
+        "eProcedures.08",
+        "eProcedures.07"
+      ]
+    },
+    {
+      "id": "note",
+      "visible": true,
+      "quickActionLabel": "Text note",
+      "elements": []
+    }
   ],
-  "labels": {
-    "eVitals.06": "Systolic BP",
-    "eVitals.07": "Diastolic BP",
-    "eVitals.10": "Heart rate",
-    "eVitals.12": "SpO₂",
-    "eVitals.14": "Respiratory rate",
-    "eVitals.23": "GCS total",
-    "eVitals.27": "Pain score",
-    "eMedications.03": "Search medications",
-    "eMedications.01": "Medication time",
-    "eMedications.05": "Dose",
-    "eMedications.06": "Unit",
-    "eMedications.04": "Route",
-    "eMedications.07": "Patient response"
-  },
-  "helpText": {
-    "eVitals.06": "Unavailable and pertinent-negative choices vary by field."
-  },
   "review": {
     "groups": [
-      { "severity": "error", "title": "Blocking errors", "empty": "No blocking errors." },
-      { "severity": "warning", "title": "Warnings to acknowledge", "empty": "No warnings." }
+      {
+        "severity": "error",
+        "title": "Blocking errors",
+        "empty": "No blocking errors."
+      },
+      {
+        "severity": "warning",
+        "title": "Warnings to acknowledge",
+        "empty": "No warnings."
+      }
     ],
-    "sectionOrder": ["vitals", "medication", "procedure", "note"]
+    "sectionOrder": [
+      "vitals",
+      "medication",
+      "procedure",
+      "note"
+    ]
   },
   "summary": {
-    "vitalOrder": ["eVitals.06", "eVitals.10", "eVitals.12", "eVitals.14", "eVitals.23", "eVitals.27"]
+    "vitalOrder": [
+      "eVitals.06",
+      "eVitals.10",
+      "eVitals.12",
+      "eVitals.14",
+      "eVitals.23",
+      "eVitals.27"
+    ]
   }
 }

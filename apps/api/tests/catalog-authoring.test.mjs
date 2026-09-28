@@ -51,6 +51,45 @@ test("stale catalog saves fail before changing canonical content", async () => {
   await assert.rejects(serviceWith(manager).save("session", "draft-1", { expectedRevision: 2, definition }), ConflictException);
 });
 
+test("catalog writers delete only their unpublished draft at the expected revision and retain audit evidence", async () => {
+  const calls = [];
+  const capabilities = [];
+  const draft = { id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 4,
+    canonical_definition: definition, definition_sha256: catalogDefinitionSha256(definition),
+    updated_at: new Date(), published_release_id: null };
+  const manager = { query: async (sql, parameters) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select * from catalog.authoring_draft")) return [draft];
+    if (sql.includes("insert into app_identity.configuration_event")) return [];
+    if (sql.includes("delete from catalog.authoring_draft")) return [{ id: draft.id }];
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const service = serviceWith(manager, { requireCapability: async (_token, capability) => {
+    capabilities.push(capability); return session;
+  } });
+  await service.delete("session", draft.id, { expectedRevision: 4 });
+  assert.deepEqual(capabilities, ["catalog:write"]);
+  const audit = calls.find(({ sql }) => sql.includes("insert into app_identity.configuration_event"));
+  assert.deepEqual(audit.parameters.slice(0, 4), ["org-1", "owner-1", "release-1", draft.definition_sha256]);
+  assert.deepEqual(JSON.parse(audit.parameters[4]), {
+    catalogDraftId: "draft-1", sourceReleaseId: "release-1", revision: 4
+  });
+  const deletion = calls.find(({ sql }) => sql.includes("delete from catalog.authoring_draft"));
+  assert.match(deletion.sql, /organization_id=\$2 and revision=\$3 and published_release_id is null/);
+  assert.deepEqual(deletion.parameters, ["draft-1", "org-1", 4]);
+
+  const mutations = [];
+  const staleManager = { query: async (sql) => {
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select * from catalog.authoring_draft")) return [draft];
+    mutations.push(sql); return [];
+  } };
+  await assert.rejects(serviceWith(staleManager).delete("session", draft.id, { expectedRevision: 3 }),
+    (error) => error instanceof ConflictException && error.getResponse().actualRevision === 4);
+  assert.deepEqual(mutations, []);
+});
+
 test("saving normalizes legacy element labels and requiredness before validation", async () => {
   const legacyDefinition = { ...definition, elements: definition.elements.map(({ label, requirednessSeverity, ...legacy }) => legacy) };
   let persisted;

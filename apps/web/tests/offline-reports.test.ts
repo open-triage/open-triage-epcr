@@ -420,8 +420,7 @@ test("reconnection preserves pinned translations, integrity data, canonical edit
   const pinned = { ...opened, report: { ...opened.report, validationVersionId: "validation-1",
     formDefinitionSha256: "a".repeat(64), catalogArtifactSha256: "b".repeat(64),
     validationCompiledSha256: "c".repeat(64),
-    clinicalForm: { definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [] }],
-      locales: [{ locale: "sv" as const, translations: { sections: { patient: { title: "Patient äldre" } } } }] },
+    clinicalForm: { definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [] }] },
       catalogFields: { "ePatient.02": { name: "Patient name", localization: { schemaVersion: 1 as const, sv: { label: "Patient äldre" } },
         agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: false,
         supportsNotValues: false, supportsPertinentNegatives: false } } } } };
@@ -431,7 +430,7 @@ test("reconnection preserves pinned translations, integrity data, canonical edit
   cacheLocalReportDocument(storage, opened.report.id, edited);
   queueDraftChange(storage, opened.report.id, command("queued-1", 4));
   const refreshed = { ...pinned, report: { ...pinned.report, clinicalForm: {
-    ...pinned.report.clinicalForm, definition: { schemaVersion: 1 as const, sections: [], locales: [] },
+    ...pinned.report.clinicalForm, definition: { schemaVersion: 1 as const, sections: [] },
     catalogFields: {} } } };
   cacheOpenedReport(storage, session, refreshed, "CALL-51");
   const reopened = cachedReopenResponse(storage, session.user.id, opened.report.id)!.report;

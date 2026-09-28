@@ -17,7 +17,8 @@ import {
   canonicalDefinitionSha256,
   FormPublicationValidationError,
   validateCanonicalFormDefinition,
-  validatePublishCommand
+  validatePublishCommand,
+  withoutLegacyFormWording
 } from "./form-publication.validation.js";
 
 type FormVersionRow = {
@@ -92,11 +93,12 @@ export class FormPublicationService {
 
         let definition: CanonicalFormDefinition;
         try {
-          definition = validateCanonicalFormDefinition(version.canonical_definition);
+          definition = validateCanonicalFormDefinition(withoutLegacyFormWording(version.canonical_definition));
         } catch (error) {
           this.rethrowValidation(error);
         }
 
+        const normalizedDigest = canonicalDefinitionSha256(definition);
         const publisher = await manager.query<Array<{ id: string }>>(`
           select id from app_identity.app_user
           where id = $1 and organization_id = $2 and active
@@ -110,16 +112,15 @@ export class FormPublicationService {
         await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_field where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_section where form_version_id = $1", [version.id]);
-        await manager.query("delete from forms.form_locale where form_version_id = $1", [version.id]);
 
         const fieldIds = new Map<string, string>();
         for (const [sectionPosition, section] of definition.sections.entries()) {
           const sectionId = randomUUID();
           await manager.query(`
             insert into forms.form_section
-              (id, form_version_id, stable_key, position, presentation)
-            values ($1, $2, $3, $4, $5::jsonb)
-          `, [sectionId, version.id, section.key, sectionPosition, JSON.stringify(section.presentation ?? {})]);
+              (id, form_version_id, stable_key, position)
+            values ($1, $2, $3, $4)
+          `, [sectionId, version.id, section.key, sectionPosition]);
 
           for (const [fieldPosition, field] of section.fields.entries()) {
             const fieldId = randomUUID();
@@ -129,13 +130,13 @@ export class FormPublicationService {
               insert into forms.form_field
                 (id, form_version_id, section_id, stable_key, position, source_kind,
                  catalog_element_identity_id, custom_element_definition_id, custom_group_definition_id,
-                 required, analytical_repeatable, allowed_absence_states, configuration)
-              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::text[], $13::jsonb)
+                 required, analytical_repeatable, allowed_absence_states)
+              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::text[])
             `, [
               fieldId, version.id, sectionId, field.key, fieldPosition, field.source.kind,
               resolved.catalogElementIdentityId, resolved.customElementDefinitionId,
               resolved.customGroupDefinitionId, field.required ?? false, resolved.analyticalRepeatable,
-              field.allowedAbsenceStates ?? [], JSON.stringify(field.configuration ?? {})
+              field.allowedAbsenceStates ?? []
             ]);
           }
         }
@@ -150,24 +151,19 @@ export class FormPublicationService {
           }
         }
 
-        for (const locale of definition.locales ?? []) {
-          await manager.query(`
-            insert into forms.form_locale (form_version_id, locale, translations)
-            values ($1, $2, $3::jsonb)
-          `, [version.id, locale.locale, JSON.stringify(locale.translations)]);
-        }
-
         const published = await manager.query<Array<{ published_at: Date | string }>>(`
           with updated as (
             update forms.form_version
             set status = 'published', change_note = $2, published_by = $3, published_at = now(),
-                publication_acknowledgements = $4::jsonb, display_name = coalesce($5, display_name)
+                publication_acknowledgements = $4::jsonb, display_name = coalesce($5, display_name),
+                canonical_definition = $6::jsonb, definition_sha256 = $7
             where id = $1 and status = 'draft'
             returning published_at
           )
           select published_at from updated
         `, [version.id, command.changeNote.trim(), command.publishedBy,
-          JSON.stringify(command.warningAcknowledgements ?? {}), command.displayName?.trim() ?? null]);
+          JSON.stringify(command.warningAcknowledgements ?? {}), command.displayName?.trim() ?? null,
+          JSON.stringify(definition), normalizedDigest]);
         if (!published[0]) throw new ConflictException("Form version is no longer a draft");
         const counts = await this.projectionCounts(manager, version.id);
         await manager.query(`
@@ -176,8 +172,8 @@ export class FormPublicationService {
              change_note, content_sha256, details)
           values ($1,$2,'form.publish','succeeded',$3,$4,$5,$6,$7::jsonb)
         `, [version.organization_id, command.publishedBy, version.id, version.catalog_release_id,
-          command.changeNote.trim(), digest, JSON.stringify({ structuralSummary: counts })]);
-        return this.publishedResult(manager, version.id, digest, published[0].published_at);
+          command.changeNote.trim(), normalizedDigest, JSON.stringify({ structuralSummary: counts })]);
+        return this.publishedResult(manager, version.id, normalizedDigest, published[0].published_at);
       });
     } catch (error) {
       this.rethrowDatabaseConflict(error);
@@ -306,13 +302,12 @@ export class FormPublicationService {
   private async projectionCounts(
     manager: EntityManager,
     id: string
-  ): Promise<{ sections: number; fields: number; rules: number; locales: number }> {
-    const counts = await manager.query<Array<{ sections: number; fields: number; rules: number; locales: number }>>(`
+  ): Promise<{ sections: number; fields: number; rules: number }> {
+    const counts = await manager.query<Array<{ sections: number; fields: number; rules: number }>>(`
       select
         (select count(*)::integer from forms.form_section where form_version_id = $1) as sections,
         (select count(*)::integer from forms.form_field where form_version_id = $1) as fields,
-        (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules,
-        (select count(*)::integer from forms.form_locale where form_version_id = $1) as locales
+        (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules
     `, [id]);
     return counts[0]!;
   }

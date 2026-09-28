@@ -1,6 +1,6 @@
 import type { FormDraftDefinition } from "@open-triage/contracts";
 import { getNemsisGroup } from "./nemsis-data-model";
-import { formSectionTitle, type FormLanguage } from "./form-localization";
+import type { FormLanguage } from "./form-localization";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup, type StationaryElementPlacement } from "./stationary-layout";
 
 export type StationarySectionFinding = {
@@ -38,6 +38,7 @@ export type ConfiguredStationarySection = {
   readonly id: string;
   readonly hash: string;
   readonly label: string;
+  readonly catalogGroupId: string;
   readonly blocks: ReadonlyArray<StationaryRenderBlock>;
   readonly fields: FormDraftDefinition["sections"][number]["fields"];
   readonly groupIds: ReadonlySet<string>;
@@ -125,7 +126,8 @@ export function configuredStationaryPreviewSections(definition: FormDraftDefinit
     return [{
       id: `draft-${sectionIndex}-${section.key}`,
       hash: `stationary-preview-section-${sectionIndex}-${section.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`,
-      label: formSectionTitle(definition, section.key, language) ?? section.key,
+      label: getNemsisGroup(section.key)?.name ?? section.key,
+      catalogGroupId: section.key,
       blocks,
       fields,
       groupIds,

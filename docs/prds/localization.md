@@ -50,7 +50,7 @@ Provide an initial Swedish translation of the whole shipped experience, using co
 
 17. As a catalog author, I want to translate element labels, descriptions, coded-choice labels, and unit names, so that clinical vocabulary is consistent.
 
-18. As a form author, I want to translate authored headings, label overrides, and help text, so that form-specific wording is localized.
+18. As a catalog author, I want group names, element labels, and descriptions localized in the catalog, so every form uses the same definitive wording.
 
 19. As a validation author, I want to translate rule names and messages without modifying expressions, so that localized guidance preserves the same validation behavior.
 
@@ -134,7 +134,7 @@ The following five modules and testing all five were explicitly approved during 
 ## Authoring, persistence, and publication
 
 - Add a language editing selector to the existing Catalog, Form, and Validation editors. Changing the editing language changes which content is edited, not the language of the surrounding application interface.
-- Catalog translations cover element labels, descriptions, choice labels, and unit names. Include displayed catalog-derived group and list names where required for complete clinical localization. Form translations cover authored section headings, help text, and label overrides. Validation translations cover names and user-facing messages.
+- Catalog translations cover group names, element labels, descriptions, choice labels, and unit names. Forms contain structure only and never override catalog wording. Validation translations cover names and user-facing messages.
 - Carry localized text and review metadata through draft creation, cloning, revision-checked save, read-only inspection, validation, publication, and activation. Extend existing persisted definition representations and public contracts accordingly. Exact physical storage changes are left to implementation review; there is no independent translation-version entity required by this design.
 - Reuse any existing form-locale representation where compatible after checking its contract and publication behavior. Its current presence does not establish a complete runtime localization system.
 - Preserve the existing catalog-to-form binding. Correcting a catalog translation requires publishing a new catalog version and activating a compatible form that references it. Form and validation translations follow their corresponding existing lifecycle.
@@ -148,7 +148,7 @@ The following five modules and testing all five were explicitly approved during 
 
 - Resolve text in this order: selected language, English, stable identifier. For English, resolve base text and then the identifier. A translation awaiting review remains eligible for display.
 - Resolve report content only from its pinned catalog, form, and validation versions. The application's surrounding interface uses the workspace's agency language. Do not fetch a newer catalog solely to supply a missing historical translation.
-- Preserve existing presentation precedence, including form-specific label overrides, while localizing each applicable source. Document exact resolver precedence during implementation and test it so fallback does not accidentally defeat authored overrides.
+- Resolve section and field wording from the report-pinned catalog version and test that legacy form presentation data cannot override it.
 - Inventory and replace English-label-dependent logic, including procedure outcomes, success values, special choices, and state-derived CSS or behavior. Use stable codes or internal states for behavior, and translate only their display text.
 - Use stable error identifiers and structured parameters for user-facing platform/API errors, with compatible English fallback for legacy or unknown errors. Validation findings retain stable rule/version identity so their displayed message can be resolved from the report's pinned validation definition.
 - Localize search and selection presentation consistently with rendered labels while preserving code identity and existing search capabilities. Verify Swedish characters and direct code searches. Do not make persistence depend on translated search text.

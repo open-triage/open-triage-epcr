@@ -103,6 +103,7 @@ test("review-only rules are omitted from the offline live bundle", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (sql.includes("from catalog.group_definition")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const configuration = await clinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
@@ -113,6 +114,7 @@ test("review-only rules are omitted from the offline live bundle", async () => {
 test("review-only rules do not participate in authoritative signing", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (sql.includes("from catalog.group_definition")) return [];
     if (sql.includes("select r.id, r.created_at")) return [{ id: reportId,
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",

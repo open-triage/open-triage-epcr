@@ -120,7 +120,7 @@ export type ValidationComparison = "equal" | "not-equal" | "less-than" | "less-o
 export interface ValidationEvaluationContext {
   /** Caller-owned clock: evaluation never reads the ambient system time. */
   timestamp: string;
-  language?: "en" | "sv";
+  language?: string;
   limits?: Partial<{ maxExpressionNodes: number; maxTraversalSteps: number; maxValues: number }>;
 }
 
@@ -181,7 +181,7 @@ export interface ValidationFinding {
 
 /** Select wording from the rule which produced the finding; identity never depends on locale. */
 export function validationRuleText(rule: Pick<CompiledValidationRule, "name" | "message" | "localization" | "messageParameters"> & { ruleId?: string; id?: string },
-  language: "en" | "sv", field: "name" | "message"): string {
+  language: string, field: "name" | "message"): string {
   const source = language === "sv" ? rule.localization?.sv?.[field] : undefined;
   const template = source?.trim() || rule[field]?.trim() || rule.name?.trim() || rule.ruleId || rule.id || "Validation rule";
   return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (match, key: string) =>

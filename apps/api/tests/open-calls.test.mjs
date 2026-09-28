@@ -195,6 +195,9 @@ test("reopening restores the creator's report with its pinned form and saved con
       element_id: "ePatient.17", agency_required: false, min_occurs: 0, max_occurs: 1,
       nillable: true, supports_not_values: true, supports_pertinent_negatives: false
     }];
+    if (normalized.includes("from catalog.group_definition")) return [{
+      group_id: "ePatientSection", name: "ePatient", localization: null
+    }];
     if (normalized.includes("from catalog.value_set_element")) return [];
     if (normalized.includes("join forms.form_version")) return [{
       id: reportId, created_at: "2026-09-03T12:00:00.000Z", updated_at: "2026-09-03T12:05:00.000Z",

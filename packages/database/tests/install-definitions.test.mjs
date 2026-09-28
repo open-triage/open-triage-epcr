@@ -39,18 +39,15 @@ test("installation definitions provide one full default and an inactive Sweden o
     primaryTargetElementId.startsWith("ePayment.") && !enabled).length, 52);
 });
 
-test("fresh install definitions carry Swedish headings and field wording for all shipped fields", async () => {
+test("fresh install definitions leave all wording to the catalog", async () => {
+  const localization = await definition("localization", "localization_sv");
+  assert.equal(localization.catalog.groups.eResponseSection.name, "Uppdrag");
+  assert.equal(localization.catalog.elements["eVitals.14"].label, "Andningsfrekvens");
+  assert.equal(Object.hasOwn(localization, "formPresentation"), false);
   for (const key of ["form_nemsis-full", "form_sweden"]) {
     const form = (await definition("forms", key)).definition;
-    const swedish = form.locales?.find(({ locale }) => locale === "sv");
-    assert.ok(swedish, `${key} must publish Swedish wording`);
-    for (const section of form.sections) {
-      assert.ok(swedish.translations.sections?.[section.key]?.title?.trim(), `${key}/${section.key} heading`);
-      for (const field of section.fields) {
-        assert.ok(swedish.translations.fields?.[field.key]?.label?.trim(), `${key}/${field.key} label`);
-        if (field.configuration?.helpText) assert.ok(swedish.translations.fields?.[field.key]?.helpText?.trim(),
-          `${key}/${field.key} help text`);
-      }
-    }
+    assert.equal(Object.hasOwn(form, "locales"), false);
+    assert.ok(form.sections.every((section) => !Object.hasOwn(section, "presentation")));
+    assert.ok(form.sections.flatMap(({ fields }) => fields).every((field) => !Object.hasOwn(field, "configuration")));
   }
 });

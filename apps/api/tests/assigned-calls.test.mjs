@@ -276,6 +276,9 @@ test("opening and retrying one assignment creates one draft without an automatic
       element_id: "eRecord.01", agency_required: true, min_occurs: 0, max_occurs: 1,
       nillable: false, supports_not_values: false, supports_pertinent_negatives: false
     }];
+    if (normalized.includes("from catalog.group_definition")) return [{
+      group_id: "eRecordSection", name: "eRecord", localization: null
+    }];
     if (normalized.includes("from catalog.value_set_element")) return [{
       element_id: "eRecord.01", code: "configured", code_system: "urn:test", label: "Configured choice",
       terminology_version: "2026-09-03T00:00:00.000Z"

@@ -68,10 +68,12 @@ test("rejects attempts to override catalog-owned datatype, cardinality, values, 
   }
 });
 
-test("table metadata supports dialogues and descendant columns and rejects invalid columns", () => {
+test("standard table metadata leaves wording to the catalog and validates descendant columns", () => {
   const repeating = layout.groups.find(({ id }) => id === "eVitals.VitalGroup")!;
   assert.equal(repeating.presentation.kind, "table");
-  assert.ok(repeating.presentation.dialog?.addLabel);
+  assert.ok(!("label" in repeating.presentation));
+  assert.ok(!("help" in repeating.presentation));
+  assert.ok(!("dialog" in repeating.presentation));
   assert.ok(repeating.presentation.columns?.length);
   const malformed = structuredClone(layout) as unknown as { groups: Array<{ id: string; presentation: { columns?: Array<{ elementId: string }> } }> };
   malformed.groups.find(({ id }) => id === "eVitals.VitalGroup")!.presentation.columns = [{ elementId: "ePatient.01" }];

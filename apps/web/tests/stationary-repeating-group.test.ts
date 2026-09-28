@@ -283,3 +283,17 @@ test("offline reopen and cross-presentation reconciliation retain a pending tabl
   const row = repeatingGroupInstances(merged, "eScene.ResponderGroup").find(({ instanceId }) => instanceId === "offline-responder-row");
   assert.equal(row?.elements[0]?.values[0]?.occurrenceId, "offline-responder-value");
 });
+
+test("group headings and add actions render pinned Swedish names", () => {
+  const group = configuredRepeatingGroupRoots().find(({ id }) => id === "eLabs.LabGroup")!;
+  const clinicalForm = { definition: { schemaVersion: 1 as const, sections: [] }, catalogFields: {},
+    catalogGroups: { [group.id]: { name: "Lab Group", localization: {
+      schemaVersion: 1 as const, sv: { name: "Laboratorieprover" }
+    } } } };
+  const html = renderToStaticMarkup(createElement(StationaryRepeatingGroups, {
+    document: documentWithSceneResponderParent(), groups: [group], clinicalForm, language: "sv", onDocumentChange() {}
+  }));
+  assert.ok(html.includes("Laboratorieprover"));
+  assert.ok(html.includes("Lägg till Laboratorieprover"));
+  assert.ok(!html.includes("Lab Group"));
+});

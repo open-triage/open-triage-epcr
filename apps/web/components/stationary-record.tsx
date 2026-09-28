@@ -15,7 +15,7 @@ import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record"
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
-import { currentCatalogLanguage } from "../app/catalog-localization";
+import { currentCatalogLanguage, resolveCatalogGroupText } from "../app/catalog-localization";
 import type { FormLanguage } from "../app/form-localization";
 import { resolveMessage } from "../app/localization";
 
@@ -25,13 +25,14 @@ function statusText(language: FormLanguage, errors: number, warnings: number): s
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, validation, language = currentCatalogLanguage(), onDocumentChange }: {
+  formDefinition, catalogFields = {}, catalogGroups, validation, language = currentCatalogLanguage(), onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   /** Includes encounter-review findings for section counts without duplicating inline field messages. */
   readonly sectionFindings?: ReadonlyArray<StationarySectionFinding>;
   readonly formDefinition?: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   readonly validation?: ClinicalFormConfiguration["validation"];
   readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
@@ -44,7 +45,8 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
   const sectionLabel = (section: (typeof sections)[number]) => "blocks" in section
-    ? stationaryDisplayLabel(section.label) : resolveMessage(language, "stationary.section." + section.id);
+    ? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, section.catalogGroupId, language, section.label))
+    : resolveMessage(language, "stationary.section." + section.id);
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {
     if (!previewSections) return stationarySectionStatuses(sectionFindings, defaultSections);
@@ -150,9 +152,9 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
               { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
                 ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
                 : inlineGroups.get(block.group.id)!.fields }
-            ]} findings={findings} catalogFields={catalogFields} formDefinition={formDefinition} language={language} onDocumentChange={onDocumentChange} />
+            ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} />
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
-              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

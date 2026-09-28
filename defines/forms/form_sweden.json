@@ -13,10 +13,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.03"
-            },
-            "configuration": {
-              "label": "Response number",
-              "helpText": "Enter the dispatch response number."
             }
           },
           {
@@ -24,93 +20,79 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.08",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eResponse.23",
             "source": {
               "kind": "nemsis",
               "elementId": "eResponse.23"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "Dispatch"
-        }
+        ]
       },
       {
         "key": "eDispatchSection",
@@ -120,53 +102,44 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDispatch.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDispatch.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDispatch.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDispatch.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDispatch.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eDispatch.06"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eDispatch"
-        }
+        ]
       },
       {
         "key": "eCrewSection",
@@ -176,29 +149,23 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eCrew.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eCrew.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eCrew.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eCrew.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eCrew.03"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eCrew"
-        }
+        ]
       },
       {
         "key": "eTimesSection",
@@ -208,101 +175,86 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eTimes.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eTimes.16"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eTimes"
-        }
+        ]
       },
       {
         "key": "ePatientSection",
@@ -312,189 +264,163 @@
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.02",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.03",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.04",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.05",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.06",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.07",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.08",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.09",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.10",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.11",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.12",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.15",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.16",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.17",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.18",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.19",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.20",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.20"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.21",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.21"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.22",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.22"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.23",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.23"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.24",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.24"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "ePatient.25",
             "source": {
               "kind": "nemsis",
               "elementId": "ePatient.25"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "ePatient"
-        }
+        ]
       },
       {
         "key": "eSceneSection",
@@ -504,157 +430,135 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.08",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.19",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.21",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.21"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.22",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.22"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.23",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.23"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eScene.24",
             "source": {
               "kind": "nemsis",
               "elementId": "eScene.24"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eScene"
-        }
+        ]
       },
       {
         "key": "eSituationSection",
@@ -664,136 +568,119 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.08",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eSituation.18",
             "source": {
               "kind": "nemsis",
               "elementId": "eSituation.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProtocols.01",
@@ -802,10 +689,7 @@
               "elementId": "eProtocols.01"
             }
           }
-        ],
-        "presentation": {
-          "title": "eSituation"
-        }
+        ]
       },
       {
         "key": "eArrestSection",
@@ -815,157 +699,135 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.18",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.19",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.20",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.20"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.21",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.21"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eArrest.22",
             "source": {
               "kind": "nemsis",
               "elementId": "eArrest.22"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eArrest"
-        }
+        ]
       },
       {
         "key": "eHistorySection",
@@ -975,165 +837,142 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.08",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.18",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.19",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eHistory.20",
             "source": {
               "kind": "nemsis",
               "elementId": "eHistory.20"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eHistory"
-        }
+        ]
       },
       {
         "key": "eNarrativeSection",
@@ -1143,15 +982,9 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eNarrative.01"
-            },
-            "configuration": {
-              "helpText": "Correct the time if documentation was entered later."
             }
           }
-        ],
-        "presentation": {
-          "title": "eNarrative"
-        }
+        ]
       },
       {
         "key": "eVitalsSection",
@@ -1161,50 +994,41 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.06"
-            },
-            "configuration": {
-              "label": "Systolic BP",
-              "helpText": "Unavailable and pertinent-negative choices vary by field."
             }
           },
           {
@@ -1212,9 +1036,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.07"
-            },
-            "configuration": {
-              "label": "Diastolic BP"
             }
           },
           {
@@ -1222,17 +1043,13 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.10"
-            },
-            "configuration": {
-              "label": "Heart rate"
             }
           },
           {
@@ -1240,9 +1057,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.12"
-            },
-            "configuration": {
-              "label": "SpO₂"
             }
           },
           {
@@ -1250,17 +1064,13 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.14"
-            },
-            "configuration": {
-              "label": "Respiratory rate"
             }
           },
           {
@@ -1268,25 +1078,20 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.18",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.23",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.23"
-            },
-            "configuration": {
-              "label": "GCS total"
             }
           },
           {
@@ -1294,25 +1099,20 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.24"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.26",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.26"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.27",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.27"
-            },
-            "configuration": {
-              "label": "Pain score"
             }
           },
           {
@@ -1320,61 +1120,51 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.28"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.29",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.29"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.30",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.30"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.31",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.31"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.32",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.32"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.33",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.33"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eVitals.34",
             "source": {
               "kind": "nemsis",
               "elementId": "eVitals.34"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eVitals"
-        }
+        ]
       },
       {
         "key": "eExamSection",
@@ -1384,197 +1174,170 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.15"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.16",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.16"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.18",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.18"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.19",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.20",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.20"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.21",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.21"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.22",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.22"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.23",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.23"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.24",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.24"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eExam.25",
             "source": {
               "kind": "nemsis",
               "elementId": "eExam.25"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eExam"
-        }
+        ]
       },
       {
         "key": "eMedicationsSection",
@@ -1584,9 +1347,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.01"
-            },
-            "configuration": {
-              "label": "Medication time"
             }
           },
           {
@@ -1594,17 +1354,13 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eMedications.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.03"
-            },
-            "configuration": {
-              "label": "Search medications"
             }
           },
           {
@@ -1612,9 +1368,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.04"
-            },
-            "configuration": {
-              "label": "Route"
             }
           },
           {
@@ -1622,9 +1375,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.05"
-            },
-            "configuration": {
-              "label": "Dose"
             }
           },
           {
@@ -1632,9 +1382,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.06"
-            },
-            "configuration": {
-              "label": "Unit"
             }
           },
           {
@@ -1642,9 +1389,6 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.07"
-            },
-            "configuration": {
-              "label": "Patient response"
             }
           },
           {
@@ -1652,45 +1396,37 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eMedications.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eMedications.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eMedications.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eMedications.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eMedications.13"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eMedications"
-        }
+        ]
       },
       {
         "key": "eProceduresSection",
@@ -1700,125 +1436,107 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.02",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.02"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.03",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.03"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.04",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.04"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.05",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.05"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.06",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.06"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.07",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.07"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.08",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.08"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.09",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.09"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.10",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.10"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.11",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.11"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.12",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.12"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.13",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.13"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.14",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.14"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eProcedures.15",
             "source": {
               "kind": "nemsis",
               "elementId": "eProcedures.15"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eProcedures"
-        }
+        ]
       },
       {
         "key": "eDispositionSection",
@@ -1828,764 +1546,46 @@
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.01"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDisposition.17",
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.17"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDisposition.19",
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.19"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDisposition.24",
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.24"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDisposition.30",
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.30"
-            },
-            "configuration": {}
+            }
           },
           {
             "key": "eDisposition.31",
             "source": {
               "kind": "nemsis",
               "elementId": "eDisposition.31"
-            },
-            "configuration": {}
+            }
           }
-        ],
-        "presentation": {
-          "title": "eDisposition"
-        }
+        ]
       }
     ],
-    "schemaVersion": 1,
-    "locales": [
-      {
-        "locale": "sv",
-        "translations": {
-          "sections": {
-            "eResponseSection": {
-              "title": "Utlarmning"
-            },
-            "eDispatchSection": {
-              "title": "EDispatch"
-            },
-            "eCrewSection": {
-              "title": "ECrew"
-            },
-            "eTimesSection": {
-              "title": "ETimes"
-            },
-            "ePatientSection": {
-              "title": "EPatient"
-            },
-            "eSceneSection": {
-              "title": "EScene"
-            },
-            "eSituationSection": {
-              "title": "ESituation"
-            },
-            "eArrestSection": {
-              "title": "EArrest"
-            },
-            "eHistorySection": {
-              "title": "EHistory"
-            },
-            "eNarrativeSection": {
-              "title": "ENarrative"
-            },
-            "eVitalsSection": {
-              "title": "EVitals"
-            },
-            "eExamSection": {
-              "title": "EExam"
-            },
-            "eMedicationsSection": {
-              "title": "EMedications"
-            },
-            "eProceduresSection": {
-              "title": "EProcedures"
-            },
-            "eDispositionSection": {
-              "title": "EDisposition"
-            }
-          },
-          "fields": {
-            "eResponse.03": {
-              "label": "Uppdragsnummer",
-              "helpText": "Ange uppdragets nummer från larmcentralen."
-            },
-            "eResponse.04": {
-              "label": "Ambulanssjukvård respons nummer"
-            },
-            "eResponse.05": {
-              "label": "Typ av tjänst begärd"
-            },
-            "eResponse.08": {
-              "label": "Typ av utlarmning fördröjning"
-            },
-            "eResponse.09": {
-              "label": "Typ av respons fördröjning"
-            },
-            "eResponse.10": {
-              "label": "Typ av skadeplats fördröjning"
-            },
-            "eResponse.11": {
-              "label": "Typ av transport fördröjning"
-            },
-            "eResponse.12": {
-              "label": "Typ av Turn-Around fördröjning"
-            },
-            "eResponse.14": {
-              "label": "Ambulanssjukvård enhet samtal Sign"
-            },
-            "eResponse.16": {
-              "label": "Fordon utlarmning plats"
-            },
-            "eResponse.17": {
-              "label": "Fordon utlarmning GPS plats"
-            },
-            "eResponse.23": {
-              "label": "Respons läge till skadeplats"
-            },
-            "eDispatch.01": {
-              "label": "Utlarmning orsak"
-            },
-            "eDispatch.02": {
-              "label": "EMD utförd"
-            },
-            "eDispatch.03": {
-              "label": "EMD Determinant kod"
-            },
-            "eDispatch.04": {
-              "label": "Utlarmning Center namn eller ID"
-            },
-            "eDispatch.05": {
-              "label": "Utlarmning Priority (patientens vårdbehov)"
-            },
-            "eDispatch.06": {
-              "label": "Enhet Dispatched CAD journal ID"
-            },
-            "eCrew.01": {
-              "label": "Besättningsmedlem ID"
-            },
-            "eCrew.02": {
-              "label": "Besättningsmedlem nivå"
-            },
-            "eCrew.03": {
-              "label": "Besättningsmedlem respons roll"
-            },
-            "eTimes.01": {
-              "label": "PSAP samtal datum/tid"
-            },
-            "eTimes.02": {
-              "label": "Utlarmning aviserad datum/tid"
-            },
-            "eTimes.03": {
-              "label": "Enhet aviserad av utlarmning datum/tid"
-            },
-            "eTimes.04": {
-              "label": "Utlarmning Acknowledged datum/tid"
-            },
-            "eTimes.05": {
-              "label": "Enhet En administreringsväg datum/tid"
-            },
-            "eTimes.06": {
-              "label": "Enhet anlände på skadeplats datum/tid"
-            },
-            "eTimes.07": {
-              "label": "Anlände vid patient datum/tid"
-            },
-            "eTimes.09": {
-              "label": "Enhet vänster skadeplats datum/tid"
-            },
-            "eTimes.11": {
-              "label": "Patient anlände vid destination datum/tid"
-            },
-            "eTimes.13": {
-              "label": "Enhet rygg i tjänst datum/tid"
-            },
-            "eTimes.15": {
-              "label": "Enhet rygg vid hem plats datum/tid"
-            },
-            "eTimes.16": {
-              "label": "Ambulanssjukvård samtal Completed datum/tid"
-            },
-            "ePatient.01": {
-              "label": "Ambulanssjukvård patient ID"
-            },
-            "ePatient.02": {
-              "label": "Efternamn"
-            },
-            "ePatient.03": {
-              "label": "Förnamn"
-            },
-            "ePatient.04": {
-              "label": "Mellannamn/initial"
-            },
-            "ePatient.05": {
-              "label": "Patientens hem adress"
-            },
-            "ePatient.06": {
-              "label": "Patientens hem stad"
-            },
-            "ePatient.07": {
-              "label": "Patientens hem län"
-            },
-            "ePatient.08": {
-              "label": "Patientens hem delstat"
-            },
-            "ePatient.09": {
-              "label": "Patientens hem amerikanskt postnummer (ZIP)"
-            },
-            "ePatient.10": {
-              "label": "Patientens land av Residence"
-            },
-            "ePatient.11": {
-              "label": "Patient hem Census Tract"
-            },
-            "ePatient.12": {
-              "label": "Amerikanskt socialförsäkringsnummer"
-            },
-            "ePatient.15": {
-              "label": "Ålder"
-            },
-            "ePatient.16": {
-              "label": "Ålder Units"
-            },
-            "ePatient.17": {
-              "label": "Datum av födelse"
-            },
-            "ePatient.18": {
-              "label": "Patientens telefon nummer"
-            },
-            "ePatient.19": {
-              "label": "Patientens e-post adress"
-            },
-            "ePatient.20": {
-              "label": "Delstat Issuing körkort"
-            },
-            "ePatient.21": {
-              "label": "Körkort nummer"
-            },
-            "ePatient.22": {
-              "label": "Alternate hem Residence"
-            },
-            "ePatient.23": {
-              "label": "Namn Suffix"
-            },
-            "ePatient.24": {
-              "label": "Patientens Preferred Language(s)"
-            },
-            "ePatient.25": {
-              "label": "Sex"
-            },
-            "eScene.01": {
-              "label": "Första ambulanssjukvård enhet på skadeplats"
-            },
-            "eScene.02": {
-              "label": "Annat ambulanssjukvård eller allmän säkerhet Agencies vid skadeplats"
-            },
-            "eScene.04": {
-              "label": "Typ av Annat tjänst vid skadeplats"
-            },
-            "eScene.05": {
-              "label": "Datum/tid inledande Responder anlände på skadeplats"
-            },
-            "eScene.06": {
-              "label": "Nummer av patienter vid skadeplats"
-            },
-            "eScene.07": {
-              "label": "Mass Casualty händelse"
-            },
-            "eScene.08": {
-              "label": "Triage Classification för MCI patient"
-            },
-            "eScene.09": {
-              "label": "Typ av skadeplats"
-            },
-            "eScene.10": {
-              "label": "Händelse vårdinrättning kod"
-            },
-            "eScene.11": {
-              "label": "Skadeplats GPS plats"
-            },
-            "eScene.13": {
-              "label": "Händelse vårdinrättning eller plats namn"
-            },
-            "eScene.15": {
-              "label": "Händelse gata adress"
-            },
-            "eScene.16": {
-              "label": "Händelse Apartment, Suite, eller Room"
-            },
-            "eScene.17": {
-              "label": "Händelse stad"
-            },
-            "eScene.19": {
-              "label": "Händelse amerikanskt postnummer (ZIP)"
-            },
-            "eScene.21": {
-              "label": "Händelse län"
-            },
-            "eScene.22": {
-              "label": "Händelse land"
-            },
-            "eScene.23": {
-              "label": "Händelse Census Tract"
-            },
-            "eScene.24": {
-              "label": "Första Annat ambulanssjukvård eller allmän säkerhet organisation vid skadeplats till Provide patient vård"
-            },
-            "eSituation.01": {
-              "label": "Datum/tid av symtom debut"
-            },
-            "eSituation.02": {
-              "label": "Möjlig skada"
-            },
-            "eSituation.03": {
-              "label": "Besvär typ"
-            },
-            "eSituation.04": {
-              "label": "Besvär"
-            },
-            "eSituation.05": {
-              "label": "Duration av besvär"
-            },
-            "eSituation.06": {
-              "label": "Tid Units av Duration av besvär"
-            },
-            "eSituation.07": {
-              "label": "Huvudbesvär Anatomic plats"
-            },
-            "eSituation.08": {
-              "label": "Huvudbesvär Organ System"
-            },
-            "eSituation.09": {
-              "label": "Primär symtom"
-            },
-            "eSituation.10": {
-              "label": "Annat Associated Symtom"
-            },
-            "eSituation.11": {
-              "label": "Provider's primär Klinisk bedömning"
-            },
-            "eSituation.12": {
-              "label": "Provider's sekundär Impressions"
-            },
-            "eSituation.13": {
-              "label": "Inledande patientens vårdbehov"
-            },
-            "eSituation.14": {
-              "label": "Work-Related Illness/skada"
-            },
-            "eSituation.15": {
-              "label": "Patientens Occupational Industry"
-            },
-            "eSituation.17": {
-              "label": "Patientaktivitet"
-            },
-            "eSituation.18": {
-              "label": "Datum/tid senaste Known Well"
-            },
-            "eProtocols.01": {
-              "label": "Protokoll använd"
-            },
-            "eArrest.01": {
-              "label": "Hjärtstopp"
-            },
-            "eArrest.02": {
-              "label": "Hjärtstopp etiologi"
-            },
-            "eArrest.03": {
-              "label": "Återupplivning försökte av ambulanssjukvård"
-            },
-            "eArrest.04": {
-              "label": "Arrest Witnessed av"
-            },
-            "eArrest.07": {
-              "label": "AED användning före till ambulanssjukvård ankomst"
-            },
-            "eArrest.09": {
-              "label": "Typ av CPR given"
-            },
-            "eArrest.10": {
-              "label": "Therapeutic Hypothermia av ambulanssjukvård"
-            },
-            "eArrest.11": {
-              "label": "Första Monitored Arrest rytm av patient"
-            },
-            "eArrest.12": {
-              "label": "Any Return av Spontaneous Circulation"
-            },
-            "eArrest.13": {
-              "label": "Neurologisk Outcome vid sjukhus utskrivning"
-            },
-            "eArrest.14": {
-              "label": "Datum/tid av hjärtstopp"
-            },
-            "eArrest.15": {
-              "label": "Datum/tid återupplivning avbruten"
-            },
-            "eArrest.16": {
-              "label": "Orsak CPR/återupplivning avbruten"
-            },
-            "eArrest.17": {
-              "label": "Hjärt- rytm på ankomst vid destination"
-            },
-            "eArrest.18": {
-              "label": "Slut av ambulanssjukvård hjärtstopp händelse"
-            },
-            "eArrest.19": {
-              "label": "Datum/tid av inledande CPR"
-            },
-            "eArrest.20": {
-              "label": "Vem första Initiated CPR"
-            },
-            "eArrest.21": {
-              "label": "Vem första Applied AED"
-            },
-            "eArrest.22": {
-              "label": "Vem första Defibrillated patient"
-            },
-            "eHistory.01": {
-              "label": "Barriers till patient vård"
-            },
-            "eHistory.02": {
-              "label": "Efternamn av patientens behandlare"
-            },
-            "eHistory.03": {
-              "label": "Förnamn av patientens behandlare"
-            },
-            "eHistory.04": {
-              "label": "Middle namn/inledande av patientens behandlare"
-            },
-            "eHistory.05": {
-              "label": "Advance Directives"
-            },
-            "eHistory.06": {
-              "label": "Läkemedel Allergies"
-            },
-            "eHistory.07": {
-              "label": "Miljö- och födoämnesallergier"
-            },
-            "eHistory.08": {
-              "label": "Medicinsk och kirurgisk anamnes"
-            },
-            "eHistory.09": {
-              "label": "Medicinsk anamnes inhämtad från"
-            },
-            "eHistory.10": {
-              "label": "Patientens typ av Immunization"
-            },
-            "eHistory.11": {
-              "label": "Immunization år"
-            },
-            "eHistory.12": {
-              "label": "Aktuell läkemedel"
-            },
-            "eHistory.13": {
-              "label": "Aktuell medicinering dos"
-            },
-            "eHistory.14": {
-              "label": "Aktuell medicinering dosering enhet"
-            },
-            "eHistory.15": {
-              "label": "Aktuell medicinering administrering administreringsväg"
-            },
-            "eHistory.16": {
-              "label": "Presence av akut information Form"
-            },
-            "eHistory.17": {
-              "label": "Alcohol/Drug användning Indicators"
-            },
-            "eHistory.18": {
-              "label": "Pregnancy"
-            },
-            "eHistory.19": {
-              "label": "Senaste Oral Intake"
-            },
-            "eHistory.20": {
-              "label": "Aktuell medicinering frekvens"
-            },
-            "eNarrative.01": {
-              "label": "Patientjournal fritextberättelse",
-              "helpText": "Fritextberättelse av patientjournal (PCR)."
-            },
-            "eVitals.01": {
-              "label": "Datum/tid vitala tecken tagna"
-            },
-            "eVitals.02": {
-              "label": "Inhämtad före denna enhets vårdinsats"
-            },
-            "eVitals.03": {
-              "label": "Hjärt- rytm / Electrocardiography (ECG)"
-            },
-            "eVitals.04": {
-              "label": "ECG typ"
-            },
-            "eVitals.05": {
-              "label": "Metod av ECG tolkning"
-            },
-            "eVitals.06": {
-              "label": "SBP (systoliskt blodtryck)",
-              "helpText": "Patientens systoliskt blodtryck."
-            },
-            "eVitals.07": {
-              "label": "DBP (diastoliskt blodtryck)"
-            },
-            "eVitals.08": {
-              "label": "Metod av blodtryck Measurement"
-            },
-            "eVitals.10": {
-              "label": "Hjärtfrekvens"
-            },
-            "eVitals.12": {
-              "label": "Pulsoximetri"
-            },
-            "eVitals.13": {
-              "label": "Puls rytm"
-            },
-            "eVitals.14": {
-              "label": "Andningsfrekvens"
-            },
-            "eVitals.16": {
-              "label": "Slut Tidal kol dioxid (ETCO2)"
-            },
-            "eVitals.18": {
-              "label": "Blodglukosnivå"
-            },
-            "eVitals.23": {
-              "label": "Totalt Glasgow Coma Scale"
-            },
-            "eVitals.24": {
-              "label": "Temperatur"
-            },
-            "eVitals.26": {
-              "label": "Nivå av Responsiveness (AVPU)"
-            },
-            "eVitals.27": {
-              "label": "Smärta skala poäng"
-            },
-            "eVitals.28": {
-              "label": "Smärta skala typ"
-            },
-            "eVitals.29": {
-              "label": "Stroke skala resultat"
-            },
-            "eVitals.30": {
-              "label": "Stroke skala typ"
-            },
-            "eVitals.31": {
-              "label": "Reperfusion Checklist"
-            },
-            "eVitals.32": {
-              "label": "APGAR"
-            },
-            "eVitals.33": {
-              "label": "Revised Trauma poäng"
-            },
-            "eVitals.34": {
-              "label": "Stroke skala poäng"
-            },
-            "eExam.01": {
-              "label": "Uppskattad kropp vikt i Kilogram"
-            },
-            "eExam.02": {
-              "label": "Längd baserad band mått"
-            },
-            "eExam.03": {
-              "label": "Datum/tid av bedömning"
-            },
-            "eExam.04": {
-              "label": "Hud bedömning"
-            },
-            "eExam.05": {
-              "label": "Huvud bedömning"
-            },
-            "eExam.06": {
-              "label": "Ansikte bedömning"
-            },
-            "eExam.07": {
-              "label": "Hals bedömning"
-            },
-            "eExam.09": {
-              "label": "Hjärta bedömning"
-            },
-            "eExam.10": {
-              "label": "Buk- lokalisation för undersökningsfynd"
-            },
-            "eExam.11": {
-              "label": "Buk bedömning"
-            },
-            "eExam.12": {
-              "label": "Bäcken/Genitourinary bedömning"
-            },
-            "eExam.13": {
-              "label": "Rygg och ryggrad lokalisation för undersökningsfynd"
-            },
-            "eExam.14": {
-              "label": "Rygg och ryggrad bedömning"
-            },
-            "eExam.15": {
-              "label": "Extremitet lokalisation för undersökningsfynd"
-            },
-            "eExam.16": {
-              "label": "Extremiteter bedömning"
-            },
-            "eExam.17": {
-              "label": "Öga lokalisation för undersökningsfynd"
-            },
-            "eExam.18": {
-              "label": "Öga bedömning"
-            },
-            "eExam.19": {
-              "label": "Mental status bedömning"
-            },
-            "eExam.20": {
-              "label": "Neurologisk bedömning"
-            },
-            "eExam.21": {
-              "label": "Stroke/CVA Symtom Resolved"
-            },
-            "eExam.22": {
-              "label": "Lunga lokalisation för undersökningsfynd"
-            },
-            "eExam.23": {
-              "label": "Lunga bedömning"
-            },
-            "eExam.24": {
-              "label": "Bröstkorg lokalisation för undersökningsfynd"
-            },
-            "eExam.25": {
-              "label": "Bröstkorg bedömning"
-            },
-            "eMedications.01": {
-              "label": "Datum/tid läkemedel administrerad"
-            },
-            "eMedications.02": {
-              "label": "Läkemedel administrerad före denna enhets vårdinsats"
-            },
-            "eMedications.03": {
-              "label": "Läkemedel administrerad"
-            },
-            "eMedications.04": {
-              "label": "Läkemedel administrerad administreringsväg"
-            },
-            "eMedications.05": {
-              "label": "Läkemedel dosering"
-            },
-            "eMedications.06": {
-              "label": "Läkemedelsdosenheter"
-            },
-            "eMedications.07": {
-              "label": "Svar på läkemedel"
-            },
-            "eMedications.08": {
-              "label": "Läkemedel komplikation"
-            },
-            "eMedications.09": {
-              "label": "Läkemedel besättning (hälso- och sjukvård Professionals) ID"
-            },
-            "eMedications.11": {
-              "label": "Läkemedel godkännande"
-            },
-            "eMedications.12": {
-              "label": "Läkemedel Authorizing läkare"
-            },
-            "eMedications.13": {
-              "label": "Läkemedel administrerad av Another enhet"
-            },
-            "eProcedures.01": {
-              "label": "Datum/tid åtgärd utförd"
-            },
-            "eProcedures.02": {
-              "label": "Åtgärd utförd före denna enhets vårdinsats"
-            },
-            "eProcedures.03": {
-              "label": "Åtgärd"
-            },
-            "eProcedures.04": {
-              "label": "Size av åtgärd utrustning"
-            },
-            "eProcedures.05": {
-              "label": "Nummer av åtgärd försök"
-            },
-            "eProcedures.06": {
-              "label": "Åtgärden lyckades"
-            },
-            "eProcedures.07": {
-              "label": "Åtgärd komplikation"
-            },
-            "eProcedures.08": {
-              "label": "Respons till åtgärd"
-            },
-            "eProcedures.09": {
-              "label": "Åtgärd besättning Members ID"
-            },
-            "eProcedures.10": {
-              "label": "Roll/typ av person Performing åtgärd"
-            },
-            "eProcedures.11": {
-              "label": "Åtgärd godkännande"
-            },
-            "eProcedures.12": {
-              "label": "Åtgärd Authorizing läkare"
-            },
-            "eProcedures.13": {
-              "label": "Vascular Access plats"
-            },
-            "eProcedures.14": {
-              "label": "Airway placering Technique"
-            },
-            "eProcedures.15": {
-              "label": "Åtgärd utförd av Another enhet"
-            },
-            "eDisposition.01": {
-              "label": "Destination/överlämnad till, namn"
-            },
-            "eDisposition.17": {
-              "label": "Transport läge från skadeplats"
-            },
-            "eDisposition.19": {
-              "label": "Acuity Upon ambulanssjukvård Release av patient"
-            },
-            "eDisposition.24": {
-              "label": "Destination Team Pre-Arrival Alert eller Activation"
-            },
-            "eDisposition.30": {
-              "label": "Transport utfall"
-            },
-            "eDisposition.31": {
-              "label": "Orsak för Refusal/Release"
-            }
-          }
-        },
-        "sourceReview": {
-          "sections.eResponseSection.title": true,
-          "fields.eResponse.03.label": true,
-          "fields.eResponse.03.helpText": true
-        }
-      }
-    ]
+    "schemaVersion": 1
   }
 }

@@ -41,17 +41,17 @@ export function StationaryFormPreview({ draft, onReturn }: {
   return <section className="stationary-form-preview" aria-labelledby="stationary-preview-heading">
     <header className="stationary-preview-heading">
       <div>
-        <p className="eyebrow"><AdminText english="Synthetic preview" /></p>
-        <h3 id="stationary-preview-heading"><AdminText english="Draft Stationary form" /></h3>
-        <p><AdminText english="Interactive fictional data only. Changes here are temporary and never create or update a clinical report." /></p>
+        <p className="eyebrow"><AdminText messageKey="admin.syntheticPreview" /></p>
+        <h3 id="stationary-preview-heading"><AdminText messageKey="admin.draftStationaryForm" /></h3>
+        <p><AdminText messageKey="admin.interactiveFictionalData" /></p>
       </div>
       <div className="form-actions">
-        <label htmlFor="form-preview-language"><AdminText english="Preview language" /></label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en"><AdminText english="English" /></option><option value="sv"><AdminText english="Swedish" /></option></select>
-        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}><AdminText english="Reset synthetic data" /></button>
-        <button type="button" onClick={onReturn}><AdminText english="Return to form draft" /></button>
+        <label htmlFor="form-preview-language"><AdminText messageKey="admin.previewLanguage" /></label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en"><AdminText messageKey="admin.english" /></option><option value="sv"><AdminText messageKey="admin.swedish" /></option></select>
+        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}><AdminText messageKey="admin.resetSyntheticData" /></button>
+        <button type="button" onClick={onReturn}><AdminText messageKey="admin.returnToForm" /></button>
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
-      catalogFields={draft.catalogFields} language={language} onDocumentChange={setDocument} />
+      catalogFields={draft.catalogFields} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
   </section>;
 }

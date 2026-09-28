@@ -4,7 +4,7 @@ import type { ClinicalFormConfiguration } from "@open-triage/contracts";
 export function resolveCatalogElementText(
   field: Pick<ClinicalFormConfiguration["catalogFields"][string], "name" | "description" | "localization"> | undefined,
   elementId: string,
-  language: "en" | "sv",
+  language: string,
   kind: "label" | "description",
 ): string {
   const translated = language === "sv" ? field?.localization?.sv?.[kind] : undefined;
@@ -14,4 +14,13 @@ export function resolveCatalogElementText(
 
 export function currentCatalogLanguage(): "en" | "sv" {
   return typeof document !== "undefined" && document.documentElement.lang === "sv" ? "sv" : "en";
+}
+
+/** Prefer pinned group translations and retain the layout label for older configurations. */
+export function resolveCatalogGroupText(
+  groups: ClinicalFormConfiguration["catalogGroups"], groupId: string, language: string, fallback: string,
+): string {
+  const group = groups?.[groupId];
+  return (language === "sv" ? group?.localization?.sv?.name?.trim() : undefined)
+    || group?.name?.trim() || fallback;
 }

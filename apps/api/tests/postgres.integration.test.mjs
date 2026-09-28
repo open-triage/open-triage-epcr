@@ -1237,10 +1237,8 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
   const [firstElement, secondElement] = catalogElements.rows.map((row) => row.element_id);
   const validDefinition = {
     schemaVersion: 1,
-    locales: [{ locale: "en-US", translations: { title: "Clinical form" } }],
     sections: [{
       key: "clinical",
-      presentation: { title: "Clinical" },
       fields: [
         { key: "first", source: { kind: "nemsis", elementId: firstElement }, required: true },
         {
@@ -1260,7 +1258,7 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
       definitionSha256: draft.digest
     });
     assert.equal(response.status, 201, JSON.stringify(payload));
-    assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1, locales: 1 });
+    assert.deepEqual(payload.projections, { sections: 1, fields: 2, rules: 1 });
     const event = await client.query(`select action,actor_id,form_version_id,catalog_release_id,change_note,content_sha256
       from app_identity.configuration_event where form_version_id=$1`, [draft.versionId]);
     assert.equal(event.rows[0].action, "form.publish");
@@ -1362,10 +1360,9 @@ integrationTest("form publication is atomic, catalog-aware, projected, and immut
     const state = await client.query(`select status,
       (select count(*)::integer from forms.form_section where form_version_id = $1) as sections,
       (select count(*)::integer from forms.form_field where form_version_id = $1) as fields,
-      (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules,
-      (select count(*)::integer from forms.form_locale where form_version_id = $1) as locales
+      (select count(*)::integer from forms.form_rule where form_version_id = $1) as rules
       from forms.form_version where id = $1`, [draft.versionId]);
-    assert.deepEqual(state.rows[0], { status: "draft", sections: 0, fields: 0, rules: 0, locales: 0 });
+    assert.deepEqual(state.rows[0], { status: "draft", sections: 0, fields: 0, rules: 0 });
   });
 
   await t.test("rejects a custom clinical repeating group without exactly its one date-time field", async () => {

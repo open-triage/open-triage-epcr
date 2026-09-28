@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CatalogDraftDefinition, FormDraftDefinition, ValidationRuleSource } from "@open-triage/contracts";
-import { catalogTranslationIssues, formTranslationIssues, validationTranslationIssues, updateCatalogEnglish, updateCatalogChoiceEnglish, updateValidationEnglish } from "../app/translation-diagnostics";
+import type { CatalogDraftDefinition, ValidationRuleSource } from "@open-triage/contracts";
+import { catalogTranslationIssues, validationTranslationIssues, updateCatalogEnglish, updateCatalogChoiceEnglish, updateValidationEnglish } from "../app/translation-diagnostics";
 
 const catalog = { elements: [{ elementId: "ePatient.01", label: "Patient", description: "Optional source",
   localization: { schemaVersion: 1, sv: { label: "Patient sv", description: "Valfri källa",
@@ -26,22 +26,6 @@ test("catalog diagnostics detect whitespace labels and ignore absent optional En
       sv: { ...element.localization?.sv, label: "  ", description: undefined } } })) };
   assert.deepEqual(catalogTranslationIssues(missing as CatalogDraftDefinition).map(({ kind, field }) => [kind, field]),
     [["english", "label"], ["agency", "label"]]);
-});
-
-const form: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "patient", presentation: { title: "Patient" },
-  fields: [{ key: "name", source: { kind: "nemsis", elementId: "ePatient.01" }, configuration: { label: "Name" } }] }],
-  locales: [{ locale: "sv", translations: { sections: { patient: { title: "Patient sv" } }, fields: { name: { label: "Namn" } } },
-    sourceReview: { "sections.patient.title": true, "fields.name.label": true } }] };
-
-test("form diagnostics inspect stored translations and source review while respecting optional overrides", () => {
-  assert.deepEqual(formTranslationIssues(form), []);
-  const changed = { ...form, locales: form.locales?.map((locale) => ({ ...locale,
-    sourceReview: { ...locale.sourceReview, "fields.name.label": false } })) };
-  assert.deepEqual(formTranslationIssues(changed).map(({ kind, field }) => [kind, field]), [["review", "label"]]);
-  assert.deepEqual(formTranslationIssues(changed, "en"), []);
-  const missing = { ...form, locales: [] };
-  assert.deepEqual(formTranslationIssues(missing).map(({ kind, field }) => [kind, field]),
-    [["agency", "title"], ["agency", "label"]]);
 });
 
 test("validation diagnostics distinguish missing English, missing Swedish, and source review", () => {

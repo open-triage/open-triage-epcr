@@ -191,7 +191,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
  * carry enough canonical identity to reopen the exact row and focus its field.
  */
 export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
-  evaluationTimestamp: string, language: "en" | "sv" = "en"): ReadonlyArray<StationaryValidationFinding> {
+  evaluationTimestamp: string, language: string = "en"): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
   const authoredPolicy = clinicalForm?.validation !== undefined;
   const configuredFields = clinicalForm
