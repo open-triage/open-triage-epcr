@@ -9,6 +9,7 @@ COPY packages/database/package.json packages/database/package.json
 RUN npm ci
 
 COPY apps/api apps/api
+COPY apps/web/messages apps/web/messages
 COPY packages/contracts packages/contracts
 RUN npm run build -w @open-triage/contracts && npm run build -w @open-triage/api
 

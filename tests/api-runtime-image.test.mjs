@@ -11,11 +11,13 @@ test("the API container separates its build toolchain from the production runtim
   const runtime = dockerfile.slice(dockerfile.indexOf("FROM node:22-bookworm-slim AS runtime"));
 
   assert.equal((dockerfile.match(/^FROM /gm) ?? []).length, 2);
+  assert.match(dockerfile, /COPY apps\/web\/messages apps\/web\/messages/);
   assert.match(runtime, /npm ci --omit=dev/);
   for (const workspace of ["api", "contracts", "database"]) {
     assert.match(runtime, new RegExp(`--workspace @open-triage/${workspace}`));
   }
   assert.doesNotMatch(runtime, /COPY apps\/web\/package\.json/);
+  assert.doesNotMatch(runtime, /COPY apps\/web\/messages/);
   assert.doesNotMatch(runtime, /COPY apps\/api apps\/api/);
   assert.doesNotMatch(runtime, /COPY packages\/database packages\/database/);
   assert.match(runtime, /COPY --from=build \/workspace\/apps\/api\/dist apps\/api\/dist/);

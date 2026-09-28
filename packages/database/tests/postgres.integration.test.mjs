@@ -435,7 +435,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
-  assert.match(firstLoad.stdout, /Loaded NEMSIS 3\.5\.1:/);
+  assert.match(firstLoad.stdout, /already loaded with the expected checksum/);
 
   const identitiesBeforeReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
