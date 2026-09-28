@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readCatalogLocalizationSeed } from "../scripts/lib/catalog-localization.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+test("Swedish installation seed binds to a stable element and retains English review source", async () => {
+  const catalog = JSON.parse(await readFile(path.join(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"));
+  const result = await readCatalogLocalizationSeed(path.join(root, "defines/localization/sv/catalog_nemsis-3.5.1.json"), "nemsis-3.5.1", catalog);
+  assert.equal(result.elementLocalization["eVitals.10"].sv.label, "Hjärtfrekvens");
+  assert.equal(result.elementLocalization["eVitals.10"].sv.reviewedSource.label, "Heart Rate");
+  assert.match(result.seedSha256, /^[0-9a-f]{64}$/);
+});
+
+test("installation seed rejects unknown element identities", async () => {
+  const folder = await mkdtemp(path.join(os.tmpdir(), "catalog-localization-"));
+  try {
+    const file = path.join(folder, "seed.json");
+    await writeFile(file, JSON.stringify({ schemaVersion: 1, catalogKey: "nemsis-3.5.1",
+      elements: { "unknown.01": { label: "Okänd" } } }));
+    await assert.rejects(readCatalogLocalizationSeed(file, "nemsis-3.5.1", { elements: [] }), /unknown.01/);
+  } finally { await rm(folder, { recursive: true, force: true }); }
+});

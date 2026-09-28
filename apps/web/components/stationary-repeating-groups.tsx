@@ -1,5 +1,6 @@
 "use client";
 
+import { currentCatalogLanguage, resolveCatalogElementText } from "../app/catalog-localization";
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
 import React, { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
@@ -59,7 +60,11 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const catalogElement = requireNemsisDataElement(placement.id);
+  const sourceElement = requireNemsisDataElement(placement.id);
+  const pinned = catalogFields?.[placement.id];
+  const catalogElement = pinned ? { ...sourceElement,
+    name: resolveCatalogElementText(pinned, placement.id, currentCatalogLanguage(), "label"),
+    definition: resolveCatalogElementText(pinned, placement.id, currentCatalogLanguage(), "description") } : sourceElement;
   const element = instance.elements.find(({ id }) => id === placement.id);
   const validationFindings = elementValidationFindings(findings, placement.groupId, instance.instanceId, placement.id);
   const validationSeverity = stationaryFindingSeverity(validationFindings);
@@ -68,7 +73,9 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   </div>;
   if (catalogElement.valueSource.kind !== "scalar") {
     const field = configuredStationaryCodedField(catalogElement, catalogFields[placement.id]);
-    const presentation = { ...field, label: placement.label ?? field.label, help: placement.help ?? field.help };
+    const translated = pinned && currentCatalogLanguage() === "sv";
+    const presentation = { ...field, label: translated ? catalogElement.name : placement.label ?? field.label,
+      help: translated ? catalogElement.definition : placement.help ?? field.help };
     const values = element?.values ?? [];
     const repeatable = catalogElement.occurrence.max === "unbounded" || catalogElement.occurrence.max > 1;
     if (repeatable) return withValidation(<StationaryCodedOccurrencesField field={presentation} values={values} onChange={(value, selection) => onDocumentChange(editStationaryCodedValue(document, {
@@ -91,7 +98,10 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
         }, selection))} />}
     </div>);
   }
-  const presentation = scalarControlPresentation(catalogElement, placement.label ?? catalogElement.name, placement.help ?? catalogElement.definition);
+  const translated = pinned && currentCatalogLanguage() === "sv";
+  const presentation = scalarControlPresentation(catalogElement,
+    translated ? catalogElement.name : placement.label ?? catalogElement.name,
+    translated ? catalogElement.definition : placement.help ?? catalogElement.definition);
   if (presentation.repeatable) return withValidation(<StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} />);
   const value = element?.values.find((candidate) => candidate.kind === "scalar");
   return withValidation(<SingleScalarGroupField document={document} instance={instance} placement={placement} presentation={presentation}

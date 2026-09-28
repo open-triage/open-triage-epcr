@@ -18,7 +18,7 @@ type DraftRow = {
 
 type SourceElementRow = {
   hidden_element_ids?: string[];
-  element_id: string; name: string; element_identity_id: string; base_datatype: string; source_datatype: string;
+  element_id: string; name: string; description: string | null; localization: CatalogDraftElement["localization"] | null; element_identity_id: string; base_datatype: string; source_datatype: string;
   group_path: string[]; min_occurs: number; max_occurs: number | null; nillable: boolean;
   supports_not_values: boolean; supports_pertinent_negatives: boolean; usage: string;
   agency_required_severity: "warning" | "error" | null;
@@ -225,7 +225,10 @@ export class CatalogAuthoringService {
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote,
-          hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [] }), body.displayName]);
+          hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
+          elementLocalization: Object.fromEntries(draft.canonical_definition.elements
+            .filter((element) => element.localization?.sv)
+            .map((element) => [element.elementId, element.localization])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -314,13 +317,15 @@ export class CatalogAuthoringService {
   }
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
-    return manager.query(`select e.element_id, e.name, e.element_identity_id, e.base_datatype, e.source_datatype,
+    return manager.query(`select e.element_id, e.name, e.description, cr.provenance->'elementLocalization'->e.element_id as localization,
+      e.element_identity_id, e.base_datatype, e.source_datatype,
       e.group_path, e.min_occurs, e.max_occurs, e.nillable, e.supports_not_values,
       e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type,
       (select coalesce(array_agg(value),array[]::text[]) from jsonb_array_elements_text(
         coalesce((select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)) value) as hidden_element_ids
       from catalog.element_definition e left join catalog.analytics_element_mapping m
         on m.release_id=e.release_id and m.element_id=e.element_id
+      join catalog.release cr on cr.id=e.release_id
       where e.release_id=$1 order by e.element_id`, [releaseId]).then((rows: Array<SourceElementRow & { analytical_location: string | null; sql_type: string | null }>) =>
         rows.map((row) => ({ ...row, analytical_location: row.analytical_location ?? "unmapped", sql_type: row.sql_type ?? "" })) as SourceElementRow[]);
   }
@@ -366,7 +371,8 @@ export class CatalogAuthoringService {
     return { schemaVersion: 1, sourceReleaseId,
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
-      elementId: row.element_id, label: row.name, identityId: row.element_identity_id, baseDatatype: row.base_datatype,
+      elementId: row.element_id, label: row.name, description: row.description ?? "",
+      ...(row.localization ? { localization: row.localization } : {}), identityId: row.element_identity_id, baseDatatype: row.base_datatype,
       storageSemantics: { sourceDatatype: row.source_datatype, groupPath: row.group_path,
         analyticalLocation: row.analytical_location, sqlType: row.sql_type },
       requirednessSeverity: row.agency_required_severity ??
@@ -393,7 +399,9 @@ export class CatalogAuthoringService {
         // Catalog authoring owns labels and vocabulary. Requiredness and documented
         // occurrence policy are migrated to Validation and cannot be changed here.
         return { ...prior,
-          label: typeof prior.label === "string" && prior.label.trim() ? prior.label : element.label,
+          label: typeof prior.label === "string" ? prior.label : element.label,
+          description: typeof prior.description === "string" ? prior.description : element.description,
+          ...(prior.localization ? { localization: prior.localization } : {}),
           requirednessSeverity: element.requirednessSeverity,
           constraints: { ...prior.constraints, minOccurs: element.constraints.minOccurs, maxOccurs: element.constraints.maxOccurs } };
       }),
@@ -408,6 +416,7 @@ export class CatalogAuthoringService {
     manager: Pick<EntityManager, "query">, sourceReleaseId: string, definition: unknown
   ): Promise<CatalogValidationResult> {
     const findings: string[] = [];
+    const warnings: string[] = [];
     if (!isRecord(definition) || definition.schemaVersion !== 1 || definition.sourceReleaseId !== sourceReleaseId ||
         !Array.isArray(definition.elements)) {
       findings.push("The canonical catalog must be schema version 1 and remain pinned to its source release");
@@ -436,8 +445,32 @@ export class CatalogAuthoringService {
         storage?.sqlType === base.sql_type && Array.isArray(storage?.groupPath) &&
         storage.groupPath.length === base.group_path.length && storage.groupPath.every((part, i) => part === base.group_path[i]);
       if (!immutable) findings.push(`${element.elementId} identity, datatype, and storage semantics cannot change`);
-      if (typeof element.label !== "string" || !element.label.trim())
-        findings.push(`${element.elementId}.label must be a non-empty label`);
+      if (typeof element.label !== "string") findings.push(`${element.elementId}.label must be text`);
+      else if (!element.label.trim()) warnings.push(`${element.elementId}.label is missing English text`);
+      if (element.description !== undefined && typeof element.description !== "string")
+        findings.push(`${element.elementId}.description must be text`);
+      const localization = element.localization;
+      if (localization !== undefined) {
+        if (!isRecord(localization) || localization.schemaVersion !== 1 ||
+            Object.keys(localization).some((key) => !["schemaVersion", "sv"].includes(key)) ||
+            localization.sv !== undefined && (!isRecord(localization.sv) ||
+              Object.keys(localization.sv).some((key) => !["label", "description", "reviewedSource"].includes(key)) ||
+              [localization.sv.label, localization.sv.description].some((value) => value !== undefined && typeof value !== "string") ||
+              localization.sv.reviewedSource !== undefined && (!isRecord(localization.sv.reviewedSource) ||
+                Object.keys(localization.sv.reviewedSource).some((key) => !["label", "description"].includes(key)) ||
+                Object.values(localization.sv.reviewedSource).some((value) => typeof value !== "string"))))
+          findings.push(`${element.elementId}.localization is malformed`);
+        else if (isRecord(localization.sv)) {
+          if (typeof localization.sv.label !== "string" || !localization.sv.label.trim())
+            warnings.push(`${element.elementId}.label is missing Swedish text`);
+          if (localization.sv.label && localization.sv.reviewedSource &&
+              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.label !== element.label)
+            warnings.push(`${element.elementId}.label Swedish text needs English source review`);
+          if (localization.sv.description && localization.sv.reviewedSource &&
+              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.description !== element.description)
+            warnings.push(`${element.elementId}.description Swedish text needs English source review`);
+        }
+      } else warnings.push(`${element.elementId}.label is missing Swedish text`);
       const constraints = element.constraints;
       if (!constraints || !Number.isInteger(constraints.minOccurs) || constraints.minOccurs < 0 ||
           !(constraints.maxOccurs === null || Number.isInteger(constraints.maxOccurs) && constraints.maxOccurs >= 1) ||
@@ -510,7 +543,7 @@ export class CatalogAuthoringService {
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
     const digest = catalogDefinitionSha256(definition);
-    return { valid: findings.length === 0, findings, definitionSha256: digest,
+    return { valid: findings.length === 0, findings, warnings, definitionSha256: digest,
       projectionsVerified: findings.length === 0 && seen.size === source.length && seenLists.size === sourceLists.length };
   }
 
@@ -522,13 +555,13 @@ export class CatalogAuthoringService {
       (release_id,element_id,element_identity_id,section,name,description,national,state,usage,source_datatype,base_datatype,
        group_path,min_occurs,max_occurs,unbounded,nillable,supports_not_values,supports_pertinent_negatives,definition,
        agency_required,agency_required_severity)
-      select $2,e.element_id,e.element_identity_id,e.section,x.label,e.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
+      select $2,e.element_id,e.element_identity_id,e.section,x.label,x.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
        e.group_path,x.min_occurs,x.max_occurs,e.unbounded,x.nillable,x.supports_not_values,x.supports_pertinent_negatives,e.definition,
        x.requiredness_severity is not null,x.requiredness_severity
-      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,label text,min_occurs integer,max_occurs integer,
+      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,label text,description text,min_occurs integer,max_occurs integer,
         nillable boolean,supports_not_values boolean,supports_pertinent_negatives boolean,requiredness_severity text) on x.element_id=e.element_id
       where e.release_id=$1`, [source, releaseId, JSON.stringify(draft.canonical_definition.elements.map((e) => ({
-        element_id:e.elementId,label:e.label,min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
+        element_id:e.elementId,label:e.label,description:e.description ?? "",min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
         supports_not_values:e.constraints.supportsNotValues,supports_pertinent_negatives:e.constraints.supportsPertinentNegatives,
         requiredness_severity:e.requirednessSeverity })))]);
     await manager.query(`insert into catalog.element_option

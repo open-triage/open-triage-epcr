@@ -27,6 +27,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
+  const [editingLanguage, setEditingLanguage] = useState<"en" | "sv">("en");
+  const [showMissing, setShowMissing] = useState(false);
   const [elementPage, setElementPage] = useState(0);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -61,7 +63,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   }, [loaded, selectedVersionId, hasAuthoringDraft]);
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     !draft.definition.hiddenElementIds?.includes(element.elementId) &&
-    `${element.elementId} ${element.label}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query]);
+    (!showMissing || !(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim()) &&
+    `${element.elementId} ${element.label} ${element.localization?.sv?.label ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [], [draft, query, editingLanguage, showMissing]);
   const listOptions = useMemo(() => draft?.definition.codeLists.flatMap((list) =>
     (list.elementIds.length ? list.elementIds : [list.name])
       .filter((elementId) => !draft.definition.hiddenElementIds?.includes(elementId)).map((elementId) => ({
@@ -116,6 +119,12 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         : `${draft.status === "active" ? "Active" : "Published"} Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>
     <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
     <h3 id="element-catalog-heading">Element catalog</h3>
+    <label htmlFor="catalog-edit-language">Editing language</label>
+    <select id="catalog-edit-language" value={editingLanguage} onChange={(event) => { setEditingLanguage(event.target.value as "en" | "sv"); setElementPage(0); }}>
+      <option value="en">English source</option><option value="sv">Swedish translation</option>
+    </select>
+    <label><input type="checkbox" checked={showMissing} onChange={(event) => { setShowMissing(event.target.checked); setElementPage(0); }} /> Show fields missing {editingLanguage === "en" ? "English" : "Swedish"} labels</label>
+    <p role="note">{draft.definition.elements.filter((element) => !element.label.trim()).length} English labels missing; {draft.definition.elements.filter((element) => !element.localization?.sv?.label?.trim()).length} Swedish labels missing. These warnings do not block publication.</p>
     <label htmlFor="catalog-search">Find by identifier or label</label>
     <input id="catalog-search" type="search" value={query} onChange={(event) => {
       setQuery(event.target.value); setElementPage(0);
@@ -126,11 +135,33 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <colgroup><col className="catalog-element-column" /><col className="catalog-label-column" />
           <col className="catalog-type-column" />
           <col className="catalog-occurrence-column" /><col className="catalog-occurrence-column" /></colgroup>
-        <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Intrinsic minimum</th><th>Intrinsic maximum</th></tr></thead>
+        <thead><tr><th>Element</th><th>Label and description</th><th>Type and storage</th><th>Intrinsic minimum</th><th>Intrinsic maximum</th></tr></thead>
         <tbody>{visible.slice(currentPage * 25, (currentPage + 1) * 25).map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
-        <td><label><span className="visually-hidden">Label for {element.elementId}</span><input disabled={!canEdit} value={element.label}
-          onChange={(event) => edit(element.elementId, (value) => ({ ...value, label: event.target.value }))} /></label></td>
+        <td>
+          <label><span className="visually-hidden">{editingLanguage === "en" ? "English" : "Swedish"} label for {element.elementId}</span>
+            <input disabled={!canEdit} value={editingLanguage === "en" ? element.label : element.localization?.sv?.label ?? ""}
+              onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
+                ? { ...value, label: event.target.value }
+                : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
+                    label: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, label: value.label } } } })} />
+          </label>
+          <label><span className="visually-hidden">{editingLanguage === "en" ? "English" : "Swedish"} description for {element.elementId}</span>
+            <textarea disabled={!canEdit} value={editingLanguage === "en" ? element.description ?? "" : element.localization?.sv?.description ?? ""}
+              onChange={(event) => edit(element.elementId, (value) => editingLanguage === "en"
+                ? { ...value, description: event.target.value }
+                : { ...value, localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
+                    description: event.target.value, reviewedSource: { ...value.localization?.sv?.reviewedSource, description: value.description ?? "" } } } })} />
+          </label>
+          {!(editingLanguage === "en" ? element.label : element.localization?.sv?.label)?.trim() &&
+            <small role="note">Missing {editingLanguage === "en" ? "English" : "Swedish"} label; clinical display will use fallback text.</small>}
+          {editingLanguage === "sv" && element.localization?.sv?.reviewedSource &&
+            ((element.localization.sv.label && element.localization.sv.reviewedSource.label !== element.label) ||
+              (element.localization.sv.description && element.localization.sv.reviewedSource.description !== (element.description ?? ""))) &&
+            <p role="note">English source changed. Review Swedish text. {canEdit && <button type="button" onClick={() => edit(element.elementId, (value) => ({ ...value,
+              localization: { schemaVersion: 1, sv: { ...value.localization?.sv,
+                reviewedSource: { label: value.label, description: value.description ?? "" } } } }))}>Confirm review</button>}</p>}
+        </td>
         <td>{element.baseDatatype} · {element.storageSemantics.analyticalLocation}</td>
         <td>{element.constraints.minOccurs}</td>
         <td>{element.constraints.maxOccurs ?? "Unbounded"}</td>
@@ -159,7 +190,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       })}>Save draft</button>}
       {authoringDraft && <button type="button" disabled={busy || dirty} onClick={() => action(async () => {
         const result = await validateCatalogDraft(csrfToken, authoringDraft.id);
-        setStatus(result.valid && result.projectionsVerified ? "Catalog is valid and projections are verified." : result.findings.join("; "));
+        setStatus(result.valid && result.projectionsVerified ? `Catalog is valid. ${result.warnings?.length ?? 0} localization warnings.` : result.findings.join("; "));
       })}>Validate</button>}
       <label htmlFor="catalog-display-name">Catalog version display name</label>
       <input id="catalog-display-name" disabled={!canEdit} maxLength={120} required value={draft.displayName ?? ""}
