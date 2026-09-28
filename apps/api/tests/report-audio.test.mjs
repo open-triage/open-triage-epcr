@@ -78,12 +78,23 @@ test("audio creation counts aggregate media, verifies authorized stored bytes, a
       sha256, duration_milliseconds: 2400 }];
     return [];
   } };
-  const dataSource = { transaction: async (...args) => (typeof args[0] === "function" ? args[0](manager) : args[1](manager)) };
+  let transactions = 0;
+  const dataSource = { transaction: async (_isolation, work) => {
+    transactions += 1;
+    if (transactions === 1) return work({ query: async () => { throw Object.assign(new Error("rolled back"), { code: "40001" }); } });
+    return work(manager);
+  } };
   const sessions = { assertCsrf: async () => undefined, requireCapability: async () => ({ organization: { id: organizationId }, user: { id: userId } }) };
-  const service = new ReportAudioService(dataSource, sessions, { normalize: async () => ({ bytes: canonical, durationMilliseconds: 2400 }) });
+  let conversions = 0;
+  const service = new ReportAudioService(dataSource, sessions, { normalize: async () => {
+    conversions += 1;
+    return { bytes: canonical, durationMilliseconds: 2400 };
+  } });
   const result = await service.create("token", reportId, command, "csrf");
   assert.equal(result.note.persistenceState, "ready");
   assert.equal(result.note.durationMilliseconds, 2400);
+  assert.equal(transactions, 2);
+  assert.equal(conversions, 1, "transaction retries must not repeat audio conversion");
   assert.ok(statements.some(({ sql }) => /insert into clinical\.report_audio_blob/.test(sql)));
   assert.ok(statements.some(({ sql }) => /select blob\.canonical_bytes/.test(sql)));
   assert.ok(statements.some(({ sql }) => /report_photo_note[\s\S]*report_audio_note/.test(sql)));

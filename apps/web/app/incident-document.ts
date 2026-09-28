@@ -1,6 +1,7 @@
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import { getNemsisDataElement } from "./nemsis-data-model";
 import type { EncounterEvent } from "./standard-encounter";
+import { localStationaryDateTimeParts } from "./stationary-date-time";
 
 export const INCIDENT_FIELD_LOCATIONS = {
   incidentNumber: { groupId: "eResponseSection", elementId: "eResponse.03" },
@@ -15,7 +16,6 @@ export const INCIDENT_FIELD_LOCATIONS = {
   zip: { groupId: "eSceneSection", elementId: "eScene.19" },
 } as const;
 
-export const DEFAULT_AGENCY_TIME_ZONE = "America/New_York";
 const OPERATIONAL_TIME_IDS = new Set([
   "eTimes.02", "eTimes.03", "eTimes.04", "eTimes.05", "eTimes.06", "eTimes.14", "eTimes.17",
 ]);
@@ -67,18 +67,8 @@ export function assignmentSummary(document: EncounterDocument) {
   };
 }
 
-export function agencyDateTimeParts(value: string, timeZone = DEFAULT_AGENCY_TIME_ZONE): { date: string; time: string } {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new TypeError(`Invalid operational timestamp: ${value}`);
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((candidate) => candidate.type === type)?.value ?? "";
-  return { date: `${part("year")}-${part("month")}-${part("day")}`, time: `${part("hour")}:${part("minute")}` };
-}
-
-/** Projects only configured operational times in agency time, retaining source lexical offsets. */
-export function documentTimeline(document: EncounterDocument, timeZone = DEFAULT_AGENCY_TIME_ZONE): ReadonlyArray<EncounterEvent> {
+/** Present operational instants in the browser's local time without changing their stored offsets. */
+export function documentTimeline(document: EncounterDocument): ReadonlyArray<EncounterEvent> {
   const entries = document.groups.flatMap((group) => group.instances.flatMap((instance) => instance.elements.flatMap((element) => {
     if (!OPERATIONAL_TIME_IDS.has(element.id)) return [];
     const catalogElement = getNemsisDataElement(element.id);
@@ -86,10 +76,11 @@ export function documentTimeline(document: EncounterDocument, timeZone = DEFAULT
     return element.values.flatMap((value) => {
       if (value.kind !== "scalar" || typeof value.value !== "string") return [];
       if (Number.isNaN(Date.parse(value.value))) return [];
-      const presented = agencyDateTimeParts(value.value, timeZone);
+      const presented = localStationaryDateTimeParts(value.value);
+      if (!presented) return [];
       return [{
         id: `document-${value.occurrenceId}`,
-        ...presented,
+        date: presented.date, time: presented.time,
         dateTime: value.value,
         kind: "document" as const,
         title: catalogElement.name.replace(/ Date\/Time$/, ""),

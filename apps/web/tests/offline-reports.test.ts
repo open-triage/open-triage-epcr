@@ -10,6 +10,7 @@ import {
   cachedOpenCalls,
   cachedOpenReports,
   cachedReopenResponse,
+  clearProtectedRuntimeReports,
   discardQueuedDraftChanges,
   expectedRevisionForNextChange,
   markDraftChangeAttempted,
@@ -131,6 +132,61 @@ test("a locally edited canonical document makes an opened report self-contained 
   assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.document.encounter.updatedAt, "2026-09-04T12:00:00.000Z");
 });
 
+test("unchanged summaries, documents and validation counts do not rewrite persisted reports", () => {
+  const values = memoryStorage();
+  let writes = 0;
+  const storage = { ...values, setItem(key: string, value: string) { writes += 1; values.setItem(key, value); } };
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  cacheOpenedReport(storage, session, { ...opened, report: { ...opened.report, id: "report-2" } }, "CALL-52");
+  // The first summary fills optional server-summary metadata.
+  const summary = cachedOpenCalls(storage, session.user.id).find(({ reportId }) => reportId === opened.report.id)!;
+  cacheOpenCallSummary(storage, session, summary);
+  saveCachedValidationErrorCount(storage, opened.report.id, 3);
+  const before = writes;
+  for (let poll = 0; poll < 5; poll += 1) {
+    cacheOpenCallSummary(storage, session, summary);
+    cacheLocalReportDocument(storage, opened.report.id, structuredClone(opened.report.document));
+    saveCachedValidationErrorCount(storage, opened.report.id, 3);
+  }
+  assert.equal(writes, before);
+  assert.equal(cachedOpenReports(storage, session.user.id).length, 2);
+  const edited = structuredClone(opened.report.document);
+  const changed = { ...edited, encounter: { ...edited.encounter, updatedAt: "2026-09-04T12:00:00.000Z" } };
+  cacheLocalReportDocument(storage, opened.report.id, changed);
+  assert.equal(writes, before + 1);
+  assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.document.encounter.updatedAt, changed.encounter.updatedAt);
+});
+
+test("browser cache snapshots and queued commands cannot mutate the private synchronization baseline", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  clearProtectedRuntimeReports();
+  try {
+    const storage = memoryStorage();
+    const initial = cacheOpenedReport(storage, session, opened, "CALL-51");
+    const unchanged = cacheOpenedReport(storage, session, opened, "CALL-51");
+    Object.assign(initial.report.document!.encounter, { updatedAt: "mutated-first-return" });
+    Object.assign(unchanged.report.document!.encounter, { updatedAt: "mutated-unchanged-return" });
+    const listing = cachedOpenReports(storage, session.user.id);
+    Object.assign(listing[0]!.report.document!.encounter, { updatedAt: "mutated-listing" });
+    const reopened = cachedReopenResponse(storage, session.user.id, opened.report.id)!;
+    Object.assign(reopened.report.document.encounter, { updatedAt: "mutated-reopen" });
+    assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)!.report.document.encounter.updatedAt,
+      opened.report.document.encounter.updatedAt);
+
+    queueDraftChange(storage, opened.report.id, command("private-command", 4));
+    Object.assign(nextDraftChange(storage, opened.report.id)!.command, { expectedRevision: 99 });
+    Object.assign(queuedDraftChanges(storage, opened.report.id)[0]!.command, { commandId: "mutated-command" });
+    assert.equal(nextDraftChange(storage, opened.report.id)!.command.expectedRevision, 4);
+    assert.equal(nextDraftChange(storage, opened.report.id)!.command.commandId, "private-command");
+    assert.equal(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY), null, "clinical data must not fall back to browser localStorage");
+  } finally {
+    clearProtectedRuntimeReports();
+    if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
 test("an opened report caches its pinned live rules, messages, targets, and integrity metadata for offline use", () => {
   const storage = memoryStorage();
   const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
@@ -167,6 +223,33 @@ test("cached work is listable and reopenable only when both ownership fields mat
   assert.equal(cachedReopenResponse(storage, "clinician-2", opened.report.id), null);
 });
 
+test("coalescing unsent deltas retains earlier fields and explicit removals", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  const first = { id: "first", elementId: "ePatient.03", groupInstanceId: "patient", ordinal: 0, value: { kind: "text" as const, value: "First" } };
+  const second = { id: "second", elementId: "ePatient.02", groupInstanceId: "patient", ordinal: 0, value: { kind: "text" as const, value: "Last" } };
+  queueDraftChange(storage, opened.report.id, { ...command("first-command", 4), occurrences: [first] });
+  queueDraftChange(storage, opened.report.id, { ...command("second-command", 4), occurrences: [second] });
+  assert.deepEqual(nextDraftChange(storage, opened.report.id)?.command.occurrences, [first, second]);
+  const removed = { id: first.id, elementId: first.elementId, groupInstanceId: first.groupInstanceId, ordinal: 0, tombstone: true };
+  queueDraftChange(storage, opened.report.id, { ...command("third-command", 4), occurrences: [removed] });
+  assert.deepEqual(nextDraftChange(storage, opened.report.id)?.command.occurrences, [removed, second]);
+  assert.equal(queuedDraftChanges(storage, opened.report.id).length, 1);
+});
+
+test("Populate cannot replace unsaved clinician work or absorb later ordinary edits", () => {
+  const storage = memoryStorage();
+  cacheOpenedReport(storage, session, opened, "CALL-51");
+  queueDraftChange(storage, opened.report.id, command("manual", 4));
+  assert.equal(expectedRevisionForNextChange(storage, opened.report.id, 4, "populate"), 5);
+  queueDraftChange(storage, opened.report.id, { ...command("populate", 5), demoAction: "populate" });
+  assert.equal(expectedRevisionForNextChange(storage, opened.report.id, 4), 6);
+  queueDraftChange(storage, opened.report.id, command("later-manual", 6));
+  assert.deepEqual(queuedDraftChanges(storage, opened.report.id).map(({ command: item }) =>
+    [item.commandId, item.demoAction, item.expectedRevision]),
+  [["manual", undefined, 4], ["populate", "populate", 5], ["later-manual", undefined, 6]]);
+});
+
 test("reconnect replay keeps attempted command identities and advances queued revisions in order", () => {
   const storage = memoryStorage();
   cacheOpenedReport(storage, session, opened, "CALL-51");
@@ -200,7 +283,7 @@ test("queued draft snapshots expose every optimistic mutation in order", () => {
   ]);
 });
 
-test("dispatch reconciliation rebases pending work and updates the offline report snapshot", () => {
+test("dispatch reconciliation retains every delta and rebases only unattempted commands", () => {
   const storage = memoryStorage();
   cacheOpenedReport(storage, session, opened, "CALL-51");
   queueDraftChange(storage, opened.report.id, command("command-1", 4));
@@ -212,9 +295,9 @@ test("dispatch reconciliation rebases pending work and updates the offline repor
     document: opened.report.document, dispatchConflicts: [], dispatchCancellation: null,
   }, opened.report.document);
 
-  assert.equal(nextDraftChange(storage, opened.report.id)?.command.expectedRevision, 7);
-  assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "command-2");
-  assert.equal(nextDraftChange(storage, opened.report.id)?.attempted, false);
+  const changes = queuedDraftChanges(storage, opened.report.id);
+  assert.deepEqual(changes.map(({ command, attempted }) => [command.commandId, command.expectedRevision, attempted]),
+    [["command-1", 4, true], ["command-2", 8, false]]);
   assert.equal(cachedReopenResponse(storage, session.user.id, opened.report.id)?.report.revision, 7);
 });
 

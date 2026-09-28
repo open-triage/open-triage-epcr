@@ -6,6 +6,7 @@ import { DraftReportController } from "../dist/reports/draft-report.controller.j
 import { ReportPhotoService } from "../dist/reports/report-photo.service.js";
 import {
   inspectCanonicalJpeg,
+  stripPhotoMetadata,
   normalizePhotoCaption,
   ReportPhotoValidationError,
   validateCreateReportPhotoNoteCommand,
@@ -15,6 +16,31 @@ function jpeg(width = 2, height = 3) {
   return Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x07, 0x08,
     height >> 8, height & 0xff, width >> 8, width & 0xff, 0xff, 0xd9]);
 }
+
+function segment(marker, text = "encoder metadata") {
+  const payload = Buffer.from(text);
+  const header = Buffer.from([0xff, marker, 0, 0]);
+  header.writeUInt16BE(payload.length + 2, 2);
+  return Buffer.concat([header, payload]);
+}
+
+test("photo normalization strips metadata while preserving color information and compressed scans", () => {
+  const scan = Buffer.from([0xff, 0xda, 0, 2, 0x42, 0xff, 0, 0xe1, 0xff, 0xd0, 0x24]);
+  const colors = Buffer.concat([segment(0xe0, "JFIF"), segment(0xe2, "ICC_PROFILE"), segment(0xee, "Adobe")]);
+  const frame = jpeg().subarray(2, -2);
+  const clean = Buffer.concat([Buffer.from([0xff, 0xd8]), colors, frame, scan, scan, Buffer.from([0xff, 0xd9])]);
+  const withMetadata = Buffer.concat([clean.subarray(0, 2), segment(0xe1, "Exif"), colors, frame,
+    scan, segment(0xed, "IPTC"), segment(0xfe, "comment"), scan, segment(0xef), clean.subarray(-2)]);
+  assert.deepEqual(stripPhotoMetadata(withMetadata), clean);
+  assert.deepEqual(stripPhotoMetadata(clean), clean);
+  assert.deepEqual(inspectCanonicalJpeg(stripPhotoMetadata(withMetadata)), { width: 2, height: 3 });
+  for (const malformed of [Buffer.from("not JPEG"), withMetadata.subarray(0, -1),
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0, 1, 0xff, 0xd9]),
+    Buffer.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 0xff, 0xd9]),
+    Buffer.concat([clean, Buffer.from("trailing metadata")])]) {
+    assert.throws(() => stripPhotoMetadata(malformed), ReportPhotoValidationError);
+  }
+});
 
 test("canonical JPEG validation verifies dimensions and rejects metadata segments", () => {
   assert.deepEqual(inspectCanonicalJpeg(jpeg(2560, 1200)), { width: 2560, height: 1200 });
@@ -46,6 +72,7 @@ test("photo creation reserves aggregate quota while the report row is locked and
   const reportId = randomUUID();
   const noteId = randomUUID();
   const bytes = jpeg(2, 3);
+  const uploaded = Buffer.concat([bytes.subarray(0, 2), segment(0xe1, "Exif"), bytes.subarray(2)]);
   const statements = [];
   const manager = { query: async (sql, parameters = []) => {
     statements.push({ sql, parameters });
@@ -69,15 +96,29 @@ test("photo creation reserves aggregate quota while the report row is locked and
   const result = await service.create("session", reportId, {
     commandId: randomUUID(), expectedRevision: 4, noteId, capturedAt: "2026-09-24T12:00:00Z",
     capturedUtcOffsetMinutes: 120, caption: " Scene ", contentType: "image/jpeg",
-    canonicalBase64: bytes.toString("base64"), sha256: createHash("sha256").update(bytes).digest("hex"), width: 2, height: 3,
+    canonicalBase64: uploaded.toString("base64"), sha256: createHash("sha256").update(uploaded).digest("hex"), width: 2, height: 3,
     settingsRevision: 2, effectiveAllowanceBytes: 10_000, effectiveImageLimitBytes: 10_000,
   }, "csrf");
   assert.equal(result.note.type, "photo");
   assert.equal(result.revision, 5);
+  assert.equal(result.note.byteSize, bytes.length);
+  assert.equal(result.note.sha256, createHash("sha256").update(bytes).digest("hex"));
+  assert.deepEqual(statements.find(({ sql }) => /insert into clinical\.report_photo_blob/.test(sql)).parameters[3], bytes);
   assert.ok(statements.some(({ sql }) => /for update/.test(sql)));
   assert.ok(statements.some(({ sql }) => /insert into clinical\.report_photo_blob/.test(sql)));
   assert.equal(statements.find(({ sql }) => /insert into clinical\.report_photo_blob/.test(sql)).parameters[3] instanceof Buffer, true);
   assert.equal(statements.some(({ sql }) => /canonical_bytes/.test(sql) && /from clinical\.report_photo_note note/.test(sql)), false);
+});
+
+test("photo normalization still rejects a tampered upload before any transaction", async () => {
+  const service = new ReportPhotoService({ transaction: () => assert.fail("must not persist") }, {});
+  const bytes = jpeg();
+  await assert.rejects(service.create("session", randomUUID(), {
+    commandId: randomUUID(), expectedRevision: 0, noteId: randomUUID(), capturedAt: "2026-09-24T12:00:00Z",
+    capturedUtcOffsetMinutes: 0, contentType: "image/jpeg", canonicalBase64: bytes.toString("base64"),
+    sha256: "0".repeat(64), width: 2, height: 3,
+    settingsRevision: 1, effectiveAllowanceBytes: 10_000, effectiveImageLimitBytes: 10_000,
+  }), /hash verification failed/);
 });
 
 test("aggregate quota rejection occurs before either metadata or bytes are inserted", async () => {

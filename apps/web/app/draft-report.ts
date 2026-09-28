@@ -265,6 +265,24 @@ export function demoActionMutationDelta(
   };
 }
 
+/** Recover a mixed optimistic snapshot without relabeling clinician work as demo data. */
+export function recoveryMutationBatches(
+  mutations: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+  persisted: Pick<SaveDraftReportCommand, "groups" | "occurrences">,
+): ReadonlyArray<Pick<SaveDraftReportCommand, "groups" | "occurrences" | "demoAction">> {
+  const populate = demoActionMutationDelta("populate", mutations, persisted);
+  const clear = demoActionMutationDelta("clear", mutations, persisted);
+  const demoGroups = new Set([...populate.groups, ...clear.groups].map(({ id }) => id));
+  const demoOccurrences = new Set([...populate.occurrences, ...clear.occurrences].map(({ id }) => id));
+  // Pending manual groups must reach the server before Populate's dependent values.
+  return [
+    { groups: mutations.groups.filter(({ id }) => !demoGroups.has(id)),
+      occurrences: mutations.occurrences.filter(({ id }) => !demoOccurrences.has(id)) },
+    { ...populate, demoAction: "populate" as const },
+    { ...clear, demoAction: "clear" as const },
+  ].filter(({ groups, occurrences }) => groups.length || occurrences.length);
+}
+
 /** Advances an accepted full baseline by one target-level mutation set. */
 export function applyDraftMutationDelta(
   baseline: Pick<SaveDraftReportCommand, "groups" | "occurrences">,

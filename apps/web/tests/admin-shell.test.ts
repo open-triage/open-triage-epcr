@@ -14,6 +14,9 @@ import { configuredStationaryPreviewSections } from "../app/stationary-record";
 import { syntheticEncounter } from "../app/standard-encounter";
 import { createStationaryPreviewDocument, stationaryPreviewFindings, StationaryFormPreview } from "../components/stationary-form-preview";
 import { ValidationReferenceAssistance, ValidationResultFeedback, ValidationRuleFilterControls } from "../components/validation-authoring";
+import { deleteValidationDraft } from "../app/admin-context";
+import { formSectionLabel } from "../components/form-authoring";
+import { groupValidationDiagnostics } from "../components/validation-authoring";
 
 const session: ClinicianSession = {
   csrfToken: "csrf",
@@ -28,7 +31,8 @@ test("Admin navigation waits for server-authorized panels", () => {
   const markup = renderToStaticMarkup(createElement(AdminShell, { session }));
   assert.match(markup, /aria-labelledby="admin-heading"/);
   assert.match(markup, /class="admin-tabs"/);
-  assert.match(markup, /Loading active configuration/);
+  assert.match(markup, /class="admin-loading" role="status"/);
+  assert.doesNotMatch(markup, /Loading active configuration/, "fast initialization does not flash loading copy");
   assert.doesNotMatch(markup, />Users<\/button>|>Roles<\/button>|>Element catalog<\/button>/);
 });
 
@@ -153,7 +157,39 @@ test("Validation feedback keeps the draft-wide explanation collapsed and summari
   } }));
   assert.match(failure, /Validation found 4 issues/);
   assert.match(failure, /Show all 4 issues/);
-  assert.equal((failure.match(/<li>/g) ?? []).length, 7);
+  assert.equal((failure.match(/<li>/g) ?? []).length, 3, "closed issue details do not render the entire rule library");
+});
+
+test("validation feedback deduplicates identical messages without losing rule references or counts", () => {
+  const diagnostics = ["rule-one", "rule-two", "rule-two"].map((ruleId) => ({ ruleId, code: "syntax" as const,
+    severity: "warning" as const, message: "Review this rule" }));
+  assert.deepEqual(groupValidationDiagnostics(diagnostics), [{ code: "syntax", severity: "warning",
+    message: "Review this rule", count: 3, ruleIds: ["rule-one", "rule-two"] }]);
+  const markup = renderToStaticMarkup(createElement(ValidationResultFeedback, {
+    ruleCount: 2, result: { valid: true, diagnostics },
+  }));
+  assert.match(markup, /3 warnings/);
+  assert.match(markup, /1 distinct messages/);
+  assert.doesNotMatch(markup, /<li>/);
+});
+
+test("validation deletion accepts empty 200 and 204 success and still surfaces conflicts", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", catalogReleaseId: "catalog-id", clonedFromId: null, revision: 4,
+    displayName: "Test rules", rules: [], updatedAt: "2026-09-28T12:00:00Z" };
+  for (const status of [200, 204]) {
+    globalThis.fetch = async (input, init) => {
+      assert.match(String(input), /validation-drafts\/draft-id$/);
+      assert.equal(init?.method, "DELETE");
+      assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+      assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 4 });
+      return new Response(null, { status });
+    };
+    await deleteValidationDraft("csrf-proof", draft);
+  }
+  globalThis.fetch = async () => Response.json({ message: "Draft revision is stale" }, { status: 409 });
+  await assert.rejects(deleteValidationDraft("csrf-proof", draft), /Draft revision is stale/);
 });
 
 test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
@@ -421,7 +457,8 @@ test("live form section controls expose named keyboard-operable move and removal
   const markup = renderToStaticMarkup(createElement(StationaryFormAuthoring, {
     csrfToken: "csrf", capabilities: session.capabilities ?? [], catalogReleaseId: "catalog-id",
   }));
-  assert.match(markup, /Loading Stationary form draft/);
+  assert.match(markup, /role="status"/);
+  assert.doesNotMatch(markup, /Loading Stationary form draft/);
   const controls = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition,
     onChange: () => {}, onMoveSection: () => {}, onRequestRemoveSection: () => {} }));
   assert.match(controls, /aria-label="Move patient down"/);
@@ -589,6 +626,25 @@ test("form catalog picker is searchable, labels duplicates, and exposes an add c
   assert.match(markup, /aria-label="Add ePatient.01"/);
   assert.match(markup, /ePatient.02 is already in the form/);
   assert.match(markup, /Already added/);
+});
+
+test("form editor initially renders one section and bounds search result rows", () => {
+  const markup = renderToStaticMarkup(createElement(FormSectionElements, { definition: formDefinition, onChange() {} }));
+  assert.match(markup, /Go to section/);
+  assert.match(markup, /ePatient\.02/);
+  assert.doesNotMatch(markup, /eSituation\.11/);
+  assert.equal((markup.match(/aria-expanded="true"/g) ?? []).length, 1);
+  assert.equal(formSectionLabel({ key: "ePatient", fields: [] }), "Patient");
+  assert.equal(formSectionLabel({ key: "dispatch", presentation: { title: "Dispatch details" }, fields: [] }), "Dispatch details");
+  const props = { definition: formDefinition, results: Array.from({ length: 100 }, (_, index) => ({
+    ...catalogElement, elementId: `eTest.${index}`,
+  })), targetSection: "patient", onQueryChange() {}, onSectionChange() {}, onAdd() {} };
+  const blank = renderToStaticMarkup(createElement(FormElementPicker, { ...props, query: "" }));
+  assert.match(blank, /Search the catalog to add an element/);
+  assert.doesNotMatch(blank, /<li>/);
+  const search = renderToStaticMarkup(createElement(FormElementPicker, { ...props, query: "test" }));
+  assert.equal((search.match(/<li>/g) ?? []).length, 20);
+  assert.match(search, /Show more elements/);
 });
 
 test("form element helpers prevent duplicates and add, remove, and reorder immutably", () => {

@@ -4,6 +4,8 @@ import demoAssignedCalls from "../public/demo-assigned-calls.json";
 import demoOpenAssignment from "../public/demo-open-assignment.json";
 import productionSettings from "@open-triage/contracts/config/installation.production.json";
 
+test.use({ timezoneId: "Europe/Stockholm" });
+
 const assignedCall = demoAssignedCalls.assignedCalls[0] as AssignedCall;
 const dashboard = {
   availableCalls: 3, ongoingReports: 2, signedReports: 14, signedLast24Hours: 4,
@@ -61,6 +63,84 @@ const catalogDraft = {
       supportsPertinentNegatives: false }
   }], codeLists: [] }
 };
+
+test("admin drafts retain edits and filters across tabs and validation deletion accepts an empty success", async ({ page }) => {
+  const formDraft = { id: "form-draft-id", displayName: "UX regression form", formId: "form-id", catalogReleaseId: "catalog-id",
+    clonedFromId: null, revision: 4, definitionSha256: "a".repeat(64), diagnostics: [], updatedAt: new Date().toISOString(),
+    definition: { schemaVersion: 1, sections: [
+      { key: "patient", fields: [{ key: "name", source: { kind: "nemsis", elementId: "ePatient.02" } },
+        { key: "age", source: { kind: "nemsis", elementId: "ePatient.15" } }] },
+      { key: "assessment", fields: [{ key: "impression", source: { kind: "nemsis", elementId: "eSituation.11" } }] },
+    ] } };
+  const validationDraft = { id: "validation-draft-id", catalogReleaseId: "catalog-id", clonedFromId: null,
+    revision: 2, displayName: "UX regression rules", rules: [], updatedAt: new Date().toISOString() };
+  const capabilities = ["clinical:document", "admin-dashboard:read", "forms:read", "forms:write", "validation:read", "validation:write"];
+  let formLoads = 0;
+  let validationLoads = 0;
+  let catalogSearches = 0;
+  let deleted = false;
+  await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
+  await page.route("**/demo-assigned-calls.json", assignedCalls);
+  await page.route("**/api/admin/**", async (route) => {
+    const path = new URL(route.request().url()).pathname.replace("/api/admin/", "");
+    if (path === "context") return route.fulfill({ json: {
+      organization: { id: "organization-id", name: "Example EMS" }, panels: ["dashboard", "forms", "validation"], capabilities,
+      dashboard, activeConfiguration: { catalog: { id: "catalog-id", name: "Test catalog", standard: "NEMSIS", version: "3.5.1" },
+        stationaryForm: { id: "version-id", formId: "form-id", name: "Test form", version: 1 } },
+    } });
+    if (path === "form-draft") { formLoads += 1; return route.fulfill({ json: formDraft }); }
+    if (path === "validation-draft") { validationLoads += 1; return route.fulfill({ json: deleted ? null : validationDraft }); }
+    if (path === "validation-drafts/validation-draft-id" && route.request().method() === "DELETE") {
+      expect(route.request().postDataJSON()).toEqual({ expectedRevision: 2 });
+      deleted = true; return route.fulfill({ status: 204 });
+    }
+    if (path === "form-drafts/form-draft-id/catalog-elements") {
+      catalogSearches += 1; return route.fulfill({ json: { items: [], nextOffset: null } });
+    }
+    if (path === "catalog-definition" || path === "catalog-versions/catalog-id") return route.fulfill({ json: {
+      id: "catalog-id", displayName: "Test catalog", version: 1, status: "active", definition: catalogDraft.definition,
+    } });
+    if (path === "validation-rules") return route.fulfill({ json: { items: [], nextCursor: null, total: 0 } });
+    return route.fulfill({ json: [] });
+  });
+  await signInAsCombinedOwner(page, capabilities);
+  await page.getByRole("button", { name: "Admin", exact: true }).click();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  const editor = page.locator(".form-editor");
+  await expect(editor.getByRole("group", { name: "Form draft actions" })).toBeVisible();
+  await expect(editor.locator(".form-section-toggle[aria-expanded=true]")).toHaveCount(1);
+  await expect(editor.getByRole("button", { name: "Move eSituation.11 up", exact: true })).toHaveCount(0);
+  expect(catalogSearches).toBe(0);
+  await editor.getByLabel("Go to section").selectOption("assessment");
+  await expect(editor.getByRole("button", { name: "Move eSituation.11 up", exact: true })).toBeVisible();
+  await editor.getByLabel("Go to section").selectOption("patient");
+  await editor.getByRole("button", { name: "Move ePatient.02 down", exact: true }).click();
+  await editor.getByLabel("Find by identifier, name, or description").fill("patient name");
+  await expect.poll(() => catalogSearches).toBe(1);
+  const initialFormLoads = formLoads;
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await expect(editor).toBeHidden();
+  await page.getByRole("button", { name: "Stationary form", exact: true }).click();
+  await expect(editor.getByLabel("Find by identifier, name, or description")).toHaveValue("patient name");
+  await expect(editor.getByRole("button", { name: "Save form draft", exact: true })).toBeEnabled();
+  await expect(editor.locator(".form-section ol li").first()).toContainText("ePatient.15");
+  expect(formLoads).toBe(initialFormLoads);
+
+  await page.getByRole("button", { name: "Validation rules", exact: true }).click();
+  const deleteButton = page.getByRole("button", { name: "Delete draft", exact: true });
+  await expect(deleteButton).toBeVisible();
+  const initialValidationLoads = validationLoads;
+  page.once("dialog", (dialog) => dialog.accept());
+  await deleteButton.click();
+  await expect(page.getByText("Validation draft deleted. You can now start a draft from a selected version.")).toBeVisible();
+  await expect(deleteButton).toHaveCount(0);
+  expect(deleted).toBe(true);
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("button", { name: "Validation rules", exact: true }).click();
+  await expect(deleteButton).toHaveCount(0);
+  await expect(page.getByText("The administration server returned an empty response.")).toHaveCount(0);
+  expect(validationLoads).toBe(initialValidationLoads);
+});
 
 test("Demo can inspect Agency Settings without write controls", async ({ page }) => {
   await page.route("**/api/installation", (route) => route.fulfill({ json: { settings: productionSettings } }));
@@ -587,6 +667,11 @@ test("a role author deactivates, inspects redacted history, and reactivates with
   await expect(page.getByText(/redacted-user-id/)).toBeVisible();
   await expect(page.getByText(/Version 1: Dispatch Lead/)).toBeVisible();
   await expect(page.getByText(/Note: Duty retired/)).toBeVisible();
+  const localHistoryTime = await page.evaluate(() => new Date("2026-09-11T11:00:00.000Z").toLocaleString());
+  await expect(page.locator('time[datetime="2026-09-11T11:00:00.000Z"]')).toHaveCount(2);
+  for (const time of await page.locator('time[datetime="2026-09-11T11:00:00.000Z"]').all()) {
+    await expect(time).toHaveText(localHistoryTime);
+  }
   await page.getByRole("button", { name: "Close history" }).click();
 
   await page.getByRole("button", { name: "Reactivate", exact: true }).click();
@@ -657,6 +742,7 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await page.getByRole("button", { name: "Stationary form", exact: true }).click();
 
   const editor = page.locator(".form-editor");
+  await editor.getByLabel("Find by identifier, name, or description").fill("patient");
   await editor.getByRole("button", { name: "Add ePatient.01" }).click();
   await expect(editor.getByRole("button", { name: "ePatient.01 is already in the form" })).toBeDisabled();
   await editor.getByRole("button", { name: "Move ePatient.01 up" }).click();

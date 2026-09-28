@@ -2,12 +2,14 @@
 
 import type { ClinicianSession, DispatchCancellation, DispatchConflict, DispatchConflictDisposition, ReportMediaPolicy, ReportNote } from "@open-triage/contracts";
 import { sessionRequestToken } from "./clinician-session";
+import { sameJsonValue } from "./json-values";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject } from "react";
 import { resolveDispatchConflict } from "./assigned-calls";
 import {
   ACTIVE_REPORT_POLL_INTERVAL_MS,
   applyDraftMutationDelta,
   demoActionMutationDelta,
+  recoveryMutationBatches,
   DRAFT_CONFLICT_RECOVERY_LIMIT,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
@@ -277,7 +279,8 @@ export function useReportWorkspace({
   useEffect(() => {
     if (!restored || completed.current || !report) return;
     const projected = shellStateToDraftMutations(report.id, shellRef.current, persistedDraft.current);
-    const optimisticDraft = queuedDraftChanges(window.localStorage, report.id).reduce(
+    const pendingChanges = queuedDraftChanges(window.localStorage, report.id);
+    const optimisticDraft = pendingChanges.reduce(
       (baseline, queued) => applyDraftMutationDelta(baseline, queued.command),
       persistedDraft.current,
     );
@@ -297,8 +300,9 @@ export function useReportWorkspace({
       }
       return;
     }
-    const existing = nextDraftChange(window.localStorage, report.id);
-    const demoAction = pendingDemoAction.current ?? existing?.command.demoAction;
+    const demoAction = pendingDemoAction.current ?? undefined;
+    const last = pendingChanges.at(-1);
+    const existing = last && !last.attempted && last.command.demoAction === demoAction ? last : undefined;
     const mutations = demoAction
       ? demoActionMutationDelta(demoAction, unscopedMutations, optimisticDraft)
       : unscopedMutations;
@@ -309,7 +313,7 @@ export function useReportWorkspace({
     queueInitialSnapshot.current = false;
     queueDraftChange(window.localStorage, report.id, {
       commandId: existing && !existing.attempted ? existing.command.commandId : crypto.randomUUID(),
-      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current),
+      expectedRevision: expectedRevisionForNextChange(window.localStorage, report.id, revision.current, demoAction),
       authorId: session.user.id,
       // Presentation is a view choice, not a synchronization identity. Keeping
       // this stable prevents mobile/stationary switches from looking like a new
@@ -358,8 +362,10 @@ export function useReportWorkspace({
     if (!report || !restored) return;
     let pollTimer: number | null = null;
     let stopped = false;
+    let polling = false;
     const poll = async () => {
-      if (stopped || document.visibilityState !== "visible" || activeSave.current) return;
+      if (stopped || polling || document.visibilityState !== "visible" || activeSave.current) return;
+      polling = true;
       let retryRecoveredChange = false;
       const previousEtag = activeEtag.current;
       try {
@@ -370,16 +376,20 @@ export function useReportWorkspace({
         if (response.resource.reportRevision < revision.current) return;
         activeEtag.current = response.etag || previousEtag;
         const local = shellRef.current.encounter.document;
-        const queued = nextDraftChange(window.localStorage, report.id);
+        const pending = queuedDraftChanges(window.localStorage, report.id);
+        const queued = pending[0];
         const localDraft = encounterDocumentToDraftMutations(report.id, local);
-        const optimisticDraft = queuedDraftChanges(window.localStorage, report.id).reduce(
+        const optimisticDraft = pending.reduce(
           (baseline, change) => applyDraftMutationDelta(baseline, change.command),
           persistedDraft.current,
         );
         const localDelta = draftMutationDelta(localDraft, optimisticDraft);
         const hasUnqueuedChanges = localDelta.groups.length > 0 || localDelta.occurrences.length > 0;
-        const hasPending = queued !== null || hasUnqueuedChanges;
-        const queuedTargets = queued ? pendingDraftTargets(queued.command, persistedDraft.current) : undefined;
+        const hasPending = pending.length > 0 || hasUnqueuedChanges;
+        const queuedTargets = queued ? pendingDraftTargets({
+          groups: pending.flatMap(({ command }) => command.groups),
+          occurrences: pending.flatMap(({ command }) => command.occurrences),
+        }, persistedDraft.current) : undefined;
         const localTargets = hasUnqueuedChanges ? pendingDraftTargets(localDelta, persistedDraft.current) : undefined;
         const targets = hasPending ? {
           groupIds: new Set([...(queuedTargets?.groupIds ?? []), ...(localTargets?.groupIds ?? [])]),
@@ -397,12 +407,16 @@ export function useReportWorkspace({
             if (!retryDelta.groups.length && !retryDelta.occurrences.length) {
               conflictRecoveryAttempts.current = 0;
             } else {
-              queueDraftChange(window.localStorage, report.id, {
-                ...queued.command,
-                commandId: crypto.randomUUID(),
-                expectedRevision: response.resource.reportRevision,
-                clientTime: new Date().toISOString(),
-                ...retryDelta,
+              recoveryMutationBatches(retryDelta, serverDraft).forEach((batch, index) => {
+                queueDraftChange(window.localStorage, report.id, {
+                  ...queued.command,
+                  commandId: crypto.randomUUID(),
+                  expectedRevision: response.resource.reportRevision + index,
+                  clientTime: new Date().toISOString(),
+                  demoAction: batch.demoAction,
+                  groups: batch.groups,
+                  occurrences: batch.occurrences,
+                });
               });
               retryRecoveredChange = true;
             }
@@ -425,11 +439,15 @@ export function useReportWorkspace({
           skipReconciledQueue.current = !hasUnqueuedChanges;
         }
         reconcileCachedActiveReport(window.localStorage, report.id, response.resource, merged);
-        setDispatchConflicts(response.resource.dispatchConflicts);
-        setDispatchCancellation(response.resource.dispatchCancellation);
-        setMediaPolicy(response.resource.mediaPolicy ?? mediaPolicy);
+        setDispatchConflicts((current) => sameJsonValue(current, response.resource.dispatchConflicts)
+          ? current : response.resource.dispatchConflicts);
+        setDispatchCancellation((current) => sameJsonValue(current, response.resource.dispatchCancellation)
+          ? current : response.resource.dispatchCancellation);
+        setMediaPolicy((current) => !response.resource.mediaPolicy || sameJsonValue(current, response.resource.mediaPolicy)
+          ? current : response.resource.mediaPolicy);
         onNotesChange(response.resource.notes ?? []);
-        dispatch({ type: "document-opened", document: merged });
+        if (!sameJsonValue(local, merged)) dispatch({ type: "document-opened", document: merged });
+        else skipReconciledQueue.current = false;
         if (retryRecoveredChange) queueMicrotask(() => void flushSave());
       } catch (error) {
         if (!(error instanceof Error)) return;
@@ -443,6 +461,8 @@ export function useReportWorkspace({
         }
         else if (error.message === "purged") completeReport();
         else if (recoverConflictingQueue.current) setSyncStatus("Conflict");
+      } finally {
+        polling = false;
       }
     };
     const startOrPause = () => {
@@ -463,7 +483,7 @@ export function useReportWorkspace({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, mediaPolicy, onNotesChange, onSessionEnded, report, restored]);
+  }, [completeReport, conflictRecoveryRequest, dispatch, flushSave, onNotesChange, onSessionEnded, report, restored]);
 
   const resolveConflict = useCallback(async (conflict: DispatchConflict, disposition: DispatchConflictDisposition) => {
     if (!report) return;

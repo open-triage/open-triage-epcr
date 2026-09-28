@@ -1,5 +1,6 @@
 import type { CreateReportAudioNoteCommand, CreateReportPhotoNoteCommand, ProtectedCiphertextReceipt, ProtectedReportKeyEnvelope, ReportAudioNote, ReportAudioSourceContentType, ReportPhotoNote } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
+import { sameJsonValue } from "./json-values";
 
 export const PROTECTED_CLINICAL_DATABASE = "open-triage-protected-clinical-v1";
 export const PROTECTED_CLINICAL_STORE = "encrypted-reports";
@@ -22,6 +23,7 @@ export interface ProtectedClinicalRecord {
 export interface ProtectedPhotoQueueEntry {
   readonly note: ReportPhotoNote;
   readonly command: CreateReportPhotoNoteCommand;
+  readonly verifiedBase64?: string;
   readonly attempted?: boolean;
   readonly serverRevision?: number;
   readonly failure?: string;
@@ -114,9 +116,14 @@ export class LatestProtectedWriteQueue<T> {
   private heldSnapshot: { readonly sequence: number; readonly value: T } | null = null;
   private failed: unknown = null;
 
-  constructor(private readonly write: (value: T) => Promise<void>) {}
+  constructor(
+    private readonly write: (value: T) => Promise<void>,
+    private readonly unchanged?: (previous: T, next: T) => boolean,
+  ) {}
 
   request(value: T): void {
+    // A failed write must remain retryable, even when the payload is unchanged.
+    if (!this.failed && this.latest && this.unchanged?.(this.latest.value, value)) return;
     this.requested += 1;
     this.latest = { sequence: this.requested, value };
     this.failed = null;
@@ -261,7 +268,7 @@ export function hasPendingProtectedMedia(reportId: string): boolean {
 export function protectedPhotoBlob(reportId: string, noteId: string): Blob | null {
   const entry = protectedPhotoEntries(reportId).find(({ note }) => note.id === noteId);
   if (!entry) return null;
-  const binary = atob(entry.command.canonicalBase64);
+  const binary = atob(entry.verifiedBase64 ?? entry.command.canonicalBase64);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   return new Blob([bytes], { type: "image/jpeg" });
 }
@@ -771,7 +778,7 @@ function queuePersist(reportId: string): void {
 }
 
 function createProtectedWriter(reportId: string, context: RuntimeContext): LatestProtectedWriteQueue<ProtectedClinicalPayload> {
-  return new LatestProtectedWriteQueue(async (payload) => {
+  return new LatestProtectedWriteQueue<ProtectedClinicalPayload>(async (payload) => {
     try {
       await persist(reportId, payload);
     } catch (error) {
@@ -786,7 +793,7 @@ function createProtectedWriter(reportId: string, context: RuntimeContext): Lates
       }
       throw context.failure;
     }
-  });
+  }, sameJsonValue);
 }
 
 export async function persistentStorageGranted(
@@ -889,6 +896,7 @@ export async function prepareProtectedReport(csrfToken: string, reportId: string
 export async function recoverProtectedReport(
   csrfToken: string,
   reportId: string,
+  options: { readonly onNoRetainedWork?: () => void } = {},
 ): Promise<RecoveredProtectedPayload | null> {
   if (browserRequestConfiguration().mode !== "server" || contexts.has(reportId) ||
       !("indexedDB" in globalThis) || !globalThis.crypto?.subtle || !navigator.locks?.request) return null;
@@ -907,6 +915,7 @@ export async function recoverProtectedReport(
     // retained work enumerable or risking deletion of another pending report.
     // The server has destroyed access to the key; opaque bytes age out at the
     // immutable deadline.
+    options.onNoRetainedWork?.();
     return null;
   }
   if (!grantResponse.ok) throw new Error(grantResponse.status === 401
@@ -918,7 +927,10 @@ export async function recoverProtectedReport(
   const record = await recordForRecoveryHandle(grant.recoveryHandle);
   if (Date.parse(grant.expiresAt) <= Date.now() || (record && (record.schemaVersion !== 1 ||
       record.algorithm !== "AES-256-GCM" || protectedRecordExpired(record)))) return null;
-  if (!record && grant.reportStatus === "signed") return null;
+  if (!record && grant.reportStatus === "signed") {
+    options.onNoRetainedWork?.();
+    return null;
+  }
 
   const releaseLock = await acquireEditLock(reportId);
   if (!releaseLock) {

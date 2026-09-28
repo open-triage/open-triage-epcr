@@ -70,7 +70,8 @@ export async function normalizeCapturedPhoto(source: Blob, quarterTurns: number)
     const orientedWidth = rotated ? image.height : image.width;
     const scale = canvas.width / orientedWidth;
     context.drawImage(image, -image.width * scale / 2, -image.height * scale / 2, image.width * scale, image.height * scale);
-    const blob = await canvasBlob(canvas, "image/jpeg", CANONICAL_PHOTO_JPEG_QUALITY); // Canvas output contains pixels, not source EXIF/GPS/device metadata.
+    // The server removes metadata that the browser's JPEG encoder may add.
+    const blob = await canvasBlob(canvas, "image/jpeg", CANONICAL_PHOTO_JPEG_QUALITY);
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     const sha256 = [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");

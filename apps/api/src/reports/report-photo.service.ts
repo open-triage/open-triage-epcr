@@ -4,12 +4,14 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { DeleteReportPhotoNoteResponse, ReportPhotoNote, ReportPhotoNoteMutationResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
+import { retryMediaTransaction } from "./report-media-transaction.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import { reportTextNotes } from "./report-note.persistence.js";
 import { inspectNoteMutation, recordMediaAccess, recordNoteMutation, type ReportNoteAction } from "./report-note-collaboration.js";
 import {
   inspectCanonicalJpeg,
+  stripPhotoMetadata,
   ReportPhotoValidationError,
   validateCreateReportPhotoNoteCommand,
   validateDeleteReportPhotoNoteCommand,
@@ -33,10 +35,15 @@ export class ReportPhotoService {
 
   async create(accessToken: string, reportId: string, input: unknown, csrfToken?: string): Promise<ReportPhotoNoteMutationResponse> {
     const command = this.validated(() => validateCreateReportPhotoNoteCommand(input));
-    const bytes = Buffer.from(command.canonicalBase64, "base64");
+    const uploaded = Buffer.from(command.canonicalBase64, "base64");
+    if (createHash("sha256").update(uploaded).digest("hex") !== command.sha256) {
+      throw new UnprocessableEntityException("Canonical photo hash verification failed");
+    }
+    // Canvas encoders may add EXIF themselves. Normalize on the server so both
+    // new captures and already queued uploads can succeed without retaining it.
+    const bytes = this.validated(() => stripPhotoMetadata(uploaded));
     const dimensions = this.validated(() => inspectCanonicalJpeg(bytes));
     const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== command.sha256) throw new UnprocessableEntityException("Canonical photo hash verification failed");
     if (dimensions.width !== command.width || dimensions.height !== command.height) {
       throw new UnprocessableEntityException("Canonical photo dimensions do not match the JPEG bytes");
     }
@@ -142,7 +149,7 @@ export class ReportPhotoService {
   ): Promise<T> {
     const requestDigest = commandSha256(command);
     try {
-      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      return await retryMediaTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [commandId]);
@@ -178,7 +185,7 @@ export class ReportPhotoService {
           values ($1, $2, $3, $4, 200, $5::jsonb)`,
         [commandId, reportId, commandType, requestDigest, JSON.stringify(response)]);
         return response;
-      });
+      }));
     } catch (error) {
       if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
       if (typeof error === "object" && error !== null && "code" in error &&

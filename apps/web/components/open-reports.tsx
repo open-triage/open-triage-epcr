@@ -13,6 +13,7 @@ import {
   reopenOpenCall as reopenOpenReport,
 } from "../app/assigned-calls";
 import { browserRequestConfiguration } from "../app/browser-api";
+import { sameJsonValue } from "../app/json-values";
 import { RecoveryReauthenticationGate } from "../app/recovery-reauthentication-gate";
 import { saveDraftReport } from "../app/draft-report";
 import { clearShellState, purgeCompletedReportCaches } from "../app/local-persistence";
@@ -21,7 +22,6 @@ import {
   cacheOpenCallSummary as cacheOpenReportSummary,
   cacheReopenedReport,
   cachedOpenCalls as cachedOpenReportSummaries,
-  cachedOpenReports,
   cachedReopenResponse,
   markDraftChangeAttempted,
   nextDraftChange,
@@ -32,6 +32,7 @@ import {
   restoreRecoveredReport,
 } from "../app/offline-reports";
 import { TransientNotice } from "./transient-notice";
+import { LoadingStatus } from "./loading-status";
 import {
   flushProtectedReport,
   prepareProtectedReport,
@@ -72,39 +73,45 @@ export function OpenReports({
   const [notice, setNotice] = useState<string | null>(null);
   const reportsRef = useRef<OpenReportSummary[]>([]);
   const syncingCachedReports = useRef(false);
+  const refreshing = useRef(false);
   const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
+  const showReports = useCallback((next: OpenReportSummary[]) => {
+    if (sameJsonValue(reportsRef.current, next)) return;
+    reportsRef.current = next;
+    setReports(next);
+  }, []);
 
   const syncCachedReports = useCallback(async () => {
     if (activeReportId || syncingCachedReports.current) return;
     syncingCachedReports.current = true;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
-      for (const cached of cachedOpenReports(window.localStorage, session.user.id)) {
+      for (const cached of cachedOpenReportSummaries(window.localStorage, session.user.id)) {
         while (true) {
-          const queued = nextDraftChange(window.localStorage, cached.report.id);
+          const queued = nextDraftChange(window.localStorage, cached.reportId);
           if (!queued) break;
-          markDraftChangeAttempted(window.localStorage, cached.report.id, queued.command.commandId);
+          markDraftChangeAttempted(window.localStorage, cached.reportId, queued.command.commandId);
           try {
-            const saved = await saveDraftReport(csrfToken, cached.report.id, queued.command);
+            const saved = await saveDraftReport(csrfToken, cached.reportId, queued.command);
             if (saved.status === "signed") {
-              acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
-              if (!nextDraftChange(window.localStorage, cached.report.id)) {
-                clearShellState(window.localStorage, cached.report.id);
-                removeSignedOfflineReport(window.localStorage, cached.report.id);
-                reportsRef.current = reportsRef.current.filter((report) => report.reportId !== cached.report.id);
+              acceptDraftChange(window.localStorage, cached.reportId, queued.command.commandId, saved);
+              if (!nextDraftChange(window.localStorage, cached.reportId)) {
+                clearShellState(window.localStorage, cached.reportId);
+                removeSignedOfflineReport(window.localStorage, cached.reportId);
+                reportsRef.current = reportsRef.current.filter((report) => report.reportId !== cached.reportId);
                 setReports(reportsRef.current);
                 break;
               }
               continue;
             }
-            acceptDraftChange(window.localStorage, cached.report.id, queued.command.commandId, saved);
+            acceptDraftChange(window.localStorage, cached.reportId, queued.command.commandId, saved);
           } catch (syncError) {
             if (syncError instanceof Error && syncError.message === "session") onSessionEnded?.();
             if (syncError instanceof Error && syncError.message === "purged") {
-              clearShellState(window.localStorage, cached.report.id);
-              removeSignedOfflineReport(window.localStorage, cached.report.id);
+              clearShellState(window.localStorage, cached.reportId);
+              removeSignedOfflineReport(window.localStorage, cached.reportId);
             }
             break;
           }
@@ -116,6 +123,8 @@ export function OpenReports({
   }, [activeReportId, csrfToken, onSessionEnded, session.user.id]);
 
   const refresh = useCallback(async () => {
+    if (refreshing.current) return;
+    refreshing.current = true;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       const response = await fetchOpenReports();
@@ -123,12 +132,14 @@ export function OpenReports({
       const completedIds = new Set(completedReportIds);
       const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
       for (const reportId of completedReportIds) {
-        if (cachedOpenReports(window.localStorage, session.user.id).some((cached) => cached.report.id === reportId)) continue;
         if (!recoveryReauthentication.current.shouldAttempt(reportId)) continue;
+        if (cachedOpenReportSummaries(window.localStorage, session.user.id).some((cached) => cached.reportId === reportId)) continue;
         try {
-          const recovered = await recoverProtectedReport(csrfToken, reportId);
-          if (recovered) {
-            restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered);
+          const recovered = await recoverProtectedReport(csrfToken, reportId, {
+            onNoRetainedWork: () => recoveryReauthentication.current.checked(reportId),
+          });
+          if (recovered && restoreRecoveredReport(window.localStorage, session.user.id, reportId, recovered)) {
+            recoveryReauthentication.current.checked(reportId);
           }
         } catch (recoveryError) {
           if (!(recoveryError instanceof RecoveryReauthenticationRequiredError)) throw recoveryError;
@@ -148,8 +159,7 @@ export function OpenReports({
       const visible = (browserRequestConfiguration().mode === "server"
         ? cachedOpenReportSummaries(window.localStorage, session.user.id)
         : response.openCalls).filter((report) => !completedIds.has(report.reportId));
-      reportsRef.current = visible;
-      setReports(visible);
+      showReports(visible);
       setLoaded(true);
       setError(null);
       await syncCachedReports();
@@ -157,8 +167,7 @@ export function OpenReports({
       const syncedVisible = (browserRequestConfiguration().mode === "server"
         ? cachedOpenReportSummaries(window.localStorage, session.user.id)
         : response.openCalls).filter((report) => !completedIds.has(report.reportId));
-      reportsRef.current = syncedVisible;
-      setReports(syncedVisible);
+      showReports(syncedVisible);
       if (!activeReportId && removed.length > 0) setNotice(removed.length === 1
         ? `Call ${removed[0]!.callNumber} was completed on the stationary interface.`
         : `${removed.length} calls were completed on the stationary interface.`);
@@ -170,11 +179,13 @@ export function OpenReports({
         return;
       }
       const cached = cachedOpenReportSummaries(window.localStorage, session.user.id);
-      setReports(cached);
+      showReports(cached);
       setLoaded(true);
       setError(cached.length ? null : refreshError instanceof Error ? refreshError.message : "Open reports could not be refreshed.");
+    } finally {
+      refreshing.current = false;
     }
-  }, [activeReportId, csrfToken, onCompleted, onSessionEnded, session, syncCachedReports]);
+  }, [activeReportId, csrfToken, onCompleted, onSessionEnded, session, showReports, syncCachedReports]);
 
   const reopen = useCallback(async (report: OpenReportSummary) => {
     setReopeningId(report.reportId);
@@ -270,7 +281,7 @@ export function OpenReports({
       </div>
       <TransientNotice message={notice} onDismiss={() => setNotice(null)} />
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <p className="assignment-empty">Loading open reports…</p>}
+      {!loaded && !error && <LoadingStatus className="assignment-empty">Loading open reports…</LoadingStatus>}
       {loaded && reports.length === 0 && <p className="assignment-empty">You have no open reports.</p>}
       {reports.length > 0 && (
         <ul className="assigned-call-list">
@@ -287,7 +298,7 @@ export function OpenReports({
               <dl>
                 <div><dt>Priority</dt><dd>{report.dispatchPriority?.display ?? "Not provided"}</dd></div>
                 <div><dt>Last saved</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt)}</time></dd></div>
-                <div><dt>Validation errors</dt><dd>{report.validationErrorCount}</dd></div>
+                <div><dt>Saved checks</dt><dd>{report.validationErrorCount} errors · review before signing</dd></div>
               </dl>
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>
                 {reopeningId === report.reportId ? "Reopening…" : "Reopen report"}

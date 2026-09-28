@@ -1,0 +1,17 @@
+.session-loading {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+  background: var(--paper);
+}
+
+.authenticated-shell .encounter-header {
+  scroll-margin-top: calc(var(--session-bar-height, 98px) + 8px);
+}
+
+.authenticated-shell.mobile-shell .quick-actions {
+  top: var(--session-bar-height, 98px);
+}

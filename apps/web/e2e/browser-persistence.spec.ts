@@ -207,6 +207,78 @@ async function installAudioRecorder(page: Page): Promise<void> {
   });
 }
 
+test("idle refreshes reuse protected ciphertext and do not repeat completed-report recovery grants", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  const completedId = "finished-without-local-ciphertext";
+  const expiredGrantId = "finished-with-expired-grant";
+  let receipts = 0;
+  let recoveryChecks = 0;
+  let expiredGrantChecks = 0;
+  let activePolls = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/protected-ciphertext-receipt")) receipts += 1;
+  });
+  await page.route(`**/api/calls/${assignedCall.id}/open`, (route) => route.fulfill({ json: {
+    ...openedAssignment, report: { ...openedAssignment.report, revision: 50 },
+  } }));
+  await page.route("**/api/reports/open", (route) => route.fulfill({ json: {
+    openCalls: [{ reportId, callNumber: assignedCall.callNumber,
+      lastSavedAt: "2026-09-17T10:00:00.000Z", syncStatus: "saved", validationErrorCount: 0,
+      revision: 50, formVersionId: openedAssignment.report.formVersionId,
+      catalogReleaseId: openedAssignment.report.catalogReleaseId, demoMutable: false }],
+    completedReportIds: [completedId, expiredGrantId], refreshedAt: new Date().toISOString(),
+  } }));
+  await page.route(`**/api/reports/${completedId}/recovery-grants`, (route) => {
+    recoveryChecks += 1;
+    return route.fulfill({ json: {
+      schemaVersion: 1, envelopeVersion: 1, recoveryHandle: "absent-completed-report",
+      grant: "one-use-recovery-grant", expiresAt: "2099-09-18T12:00:00.000Z", reportStatus: "signed",
+    } });
+  });
+  await page.route(`**/api/reports/${expiredGrantId}/recovery-grants`, (route) => {
+    expiredGrantChecks += 1;
+    return route.fulfill({ json: {
+      schemaVersion: 1, envelopeVersion: 1, recoveryHandle: "absent-after-grant-retry",
+      grant: "short-lived-grant", reportStatus: "signed",
+      expiresAt: expiredGrantChecks === 1 ? "2000-01-01T00:00:00.000Z" : "2099-09-18T12:00:00.000Z",
+    } });
+  });
+  // Even a server/proxy returning an identical body rather than 304 should
+  // leave the rendered form and protected snapshot alone after reconciliation.
+  await page.route(`**/api/reports/${reportId}/active`, (route) => {
+    activePolls += 1;
+    return route.fulfill({ json: {
+      reportId, reportRevision: 50, dispatchRevision: 0,
+      document: openedAssignment.report.document, dispatchConflicts: [], dispatchCancellation: null,
+      mediaPolicy: { settingsRevision: 1, reportMediaAllowanceBytes: 10_485_760, imageMediaLimitBytes: 1_048_576 },
+    } });
+  });
+  const refresh = async () => {
+    await Promise.all([
+      page.waitForResponse("**/api/reports/open"),
+      page.waitForResponse(`**/api/reports/${reportId}/active`),
+      page.evaluate(() => document.dispatchEvent(new Event("visibilitychange"))),
+    ]);
+    // Let IndexedDB writes and their receipt/checkpoint requests drain.
+    await page.waitForTimeout(350);
+  };
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
+  await refresh();
+  const original = (await encryptedRecords(page))[0]!;
+  const initialReceipts = receipts;
+  expect(initialReceipts).toBeGreaterThan(0);
+  for (let poll = 0; poll < 3; poll += 1) await refresh();
+  expect(receipts).toBe(initialReceipts);
+  expect((await encryptedRecords(page))[0]!.ciphertextRevision).toBe(original.ciphertextRevision);
+  expect(recoveryChecks).toBe(1);
+  expect(expiredGrantChecks).toBe(2);
+  expect(activePolls).toBeGreaterThanOrEqual(4);
+});
+
 test("denied persistence falls back to encrypted best-effort IndexedDB", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page, false);
@@ -215,13 +287,14 @@ test("denied persistence falls back to encrypted best-effort IndexedDB", async (
   await expect(page.locator(".safety-notice")).toContainText("Best-effort offline storage");
   await expect.poll(async () => (await encryptedRecords(page)).length).toBe(1);
 
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  const before = Number((await encryptedRecords(page))[0]?.ciphertextRevision);
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Add clinical note" }).click();
-  await page.getByLabel("Note summary").fill("Best-effort encrypted offline note");
-  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("BEST-EFFORT-OFFLINE");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
-  await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(0);
+  await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(before);
 });
 
 test("a second browser recovers its own offline copy without replacing the first", async ({ page, browser }) => {
@@ -272,7 +345,7 @@ test("a second browser recovers its own offline copy without replacing the first
   }
 });
 
-test("switching to Stationary preserves a queued draft save", async ({ page }) => {
+test("switching presentations preserves a queued draft save", async ({ page }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);
   let draftSaves = 0;
@@ -281,12 +354,12 @@ test("switching to Stationary preserves a queued draft save", async ({ page }) =
   });
   await page.goto("/");
   await page.getByRole("button", { name: "Open call", exact: true }).click();
-  await page.getByRole("button", { name: "Add clinical note" }).click();
-  await page.getByLabel("Note summary").fill("Save during presentation switch");
-  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("PRESENTATION-SWITCH");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Saving");
   await page.getByRole("group", { name: "Documentation presentation" })
-    .getByRole("button", { name: "Stationary" }).click();
+    .getByRole("button", { name: "Mobile" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 10_000 });
   expect(draftSaves).toBeGreaterThan(0);
 });
@@ -319,32 +392,33 @@ test("one online-opened report remains editable through connection loss using on
 
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await page.getByRole("button", { name: "Add clinical note" }).click();
-  await page.getByLabel("Note summary").fill("Encrypted field care while disconnected");
-  await page.getByRole("button", { name: "Add to timeline" }).click();
+  await page.getByRole("button", { name: "Stationary", exact: true }).click();
+  await page.getByRole("textbox", { name: "First Name", exact: true }).fill("ENCRYPTED-OFFLINE-RECOVERY");
+  await page.getByRole("textbox", { name: "First Name", exact: true }).press("Tab");
   await expect(page.locator(".sync-status")).toHaveText("Pending sync");
   await expect.poll(async () => Number((await encryptedRecords(page))[0]?.ciphertextRevision)).toBeGreaterThan(Number(before.ciphertextRevision));
   const after = (await encryptedRecords(page))[0]!;
   expect(Buffer.from(after.ciphertext as number[]).equals(Buffer.from(before.ciphertext as number[]))).toBe(false);
-  expect(JSON.stringify(after)).not.toContain("Encrypted field care while disconnected");
+  expect(JSON.stringify(after)).not.toContain("ENCRYPTED-OFFLINE-RECOVERY");
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
-  await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("ENCRYPTED-OFFLINE-RECOVERY");
 
   await page.getByRole("button", { name: "Save & close" }).click();
   await context.setOffline(false);
   controls.restart();
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("main", { name: "Reconnecting securely" })).toBeVisible();
+  await expect(page.getByRole("main", { name: "Opening OpenTriage" })).toBeVisible();
+  await expect(page.getByText("Reconnect to continue.", { exact: true })).toHaveCount(0);
   await expect(page.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Open reports" })).toBeVisible();
   await page.getByRole("button", { name: "Reopen report" }).click();
   await expect(page.getByText("Confirm your password to recover protected work from this browser.")).toBeVisible();
   await page.getByLabel("Current password").fill("current-password");
   await page.getByRole("button", { name: "Confirm and recover" }).click();
-  await expect(page.getByText("Encrypted field care while disconnected", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "First Name", exact: true })).toHaveValue("ENCRYPTED-OFFLINE-RECOVERY");
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
 });
 
@@ -394,6 +468,121 @@ test("an offline audio note survives close and resumes one verified upload after
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(page.getByRole("img", { name: "Audio note Ready" })).toBeVisible({ timeout: 10_000 });
   expect(uploads).toBe(1);
+});
+
+async function captureMedia(page: Page, kind: "photo" | "audio") {
+  await page.getByRole("button", { name: `Add ${kind} note` }).click();
+  const dialog = page.getByRole("dialog", { name: kind === "photo" ? "Photo note" : "Audio note" });
+  if (kind === "photo") {
+    await expect.poll(() => dialog.locator("video").evaluate((video: HTMLVideoElement) => video.videoWidth)).toBeGreaterThan(0);
+    await dialog.getByRole("button", { name: "Take photo", exact: true }).click();
+    await dialog.getByRole("button", { name: "Use photo", exact: true }).click();
+  } else {
+    await dialog.getByRole("button", { name: "Hold to record" }).dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
+    const recording = dialog.getByRole("button", { name: "Recording — release to stop" });
+    await expect(recording).toBeVisible();
+    await page.waitForTimeout(350);
+    await recording.dispatchEvent("pointerup", { button: 0, pointerId: 1 });
+    await dialog.getByRole("button", { name: "Use recording" }).click();
+  }
+}
+
+async function installPhotoCamera(page: Page) {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640; canvas.height = 480;
+      canvas.getContext("2d")!.fillRect(0, 0, 640, 480);
+      return canvas.captureStream(5);
+    };
+    navigator.mediaDevices.enumerateDevices = async () => [];
+  });
+}
+
+for (const kind of ["photo", "audio"] as const) {
+  test(`a rejected ${kind} upload can be deleted without uploading it again`, async ({ page }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await installRoutes(page);
+    await (kind === "photo" ? installPhotoCamera(page) : installAudioRecorder(page));
+    const resource = kind === "photo" ? "photos" : "audio";
+    let uploads = 0;
+    let deletes = 0;
+    await page.route(`**/api/reports/${reportId}/${resource}`, (route) => {
+      uploads += 1;
+      return route.fulfill({ status: 422, json: { message: "Rejected media" } });
+    });
+    await page.route(`**/api/reports/${reportId}/${resource}/*`, (route) => {
+      expect(route.request().method()).toBe("DELETE");
+      deletes += 1;
+      const command = route.request().postDataJSON();
+      return route.fulfill({ json: { deleted: true, reportId, revision: command.expectedRevision + 1 } });
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open call", exact: true }).click();
+    await expect(page.locator(".sync-status")).toHaveText("Saved");
+    await captureMedia(page, kind);
+    await page.getByRole("button", { name: /^Checklist/ }).click();
+    const readiness = page.getByRole("region", { name: "Note readiness" });
+    await expect(readiness).toContainText(`${kind === "photo" ? "Photo" : "Audio"} note is failed`);
+    await readiness.getByRole("button").click();
+    await page.getByRole("dialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await expect(readiness.getByRole("button")).toHaveCount(0);
+    expect(uploads).toBe(1);
+    expect(deletes).toBe(1);
+  });
+}
+
+test("a queued photo retries with its original command and caches the verified server bytes", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await installPhotoCamera(page);
+  let uploads = 0;
+  let originalCommand: unknown;
+  let canonical: Buffer;
+  await page.route(`**/api/reports/${reportId}/photos`, (route) => {
+    const command = route.request().postDataJSON();
+    uploads += 1;
+    if (uploads === 1) {
+      originalCommand = command;
+      return route.fulfill({ status: 422, json: { message: "Encoder metadata rejected" } });
+    }
+    expect(command).toEqual(originalCommand);
+    return route.fulfill({ json: { reportId, revision: command.expectedRevision + 1, note: {
+      id: command.noteId, reportId, type: "photo", caption: command.caption, capturedAt: command.capturedAt,
+      capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes, author: session.user,
+      serverReceivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), persistenceState: "ready",
+      contentType: "image/jpeg", byteSize: canonical.length, sha256: createHash("sha256").update(canonical).digest("hex"),
+      width: 640, height: 480,
+    } } });
+  });
+  await page.route(`**/api/reports/${reportId}/photos/*/image`, (route) => route.fulfill({ contentType: "image/jpeg", body: canonical }));
+  await page.goto("/");
+  canonical = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640; canvas.height = 480;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#275d38"; context.fillRect(0, 0, 640, 480);
+    return canvas.toDataURL("image/jpeg").split(",")[1]!;
+  }), "base64");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await captureMedia(page, "photo");
+  await page.getByRole("button", { name: /^Checklist/ }).click();
+  const readiness = page.getByRole("region", { name: "Note readiness" });
+  await expect(readiness).toContainText("Photo note is failed");
+  await readiness.getByRole("button").click();
+  await page.getByRole("button", { name: "Retry upload" }).click();
+  await expect(readiness.getByRole("button")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Timeline/ }).click();
+  await page.getByRole("button", { name: /^Open photo note/ }).click();
+  const image = page.getByRole("dialog").locator("img");
+  await expect(image).toBeVisible();
+  const displayed = await image.evaluate(async (element: HTMLImageElement) =>
+    [...new Uint8Array(await (await fetch(element.src)).arrayBuffer())]);
+  expect(Buffer.from(displayed)).toEqual(canonical);
+  expect(uploads).toBe(2);
 });
 
 test("logout locks pending ciphertext, reveals nothing to another user, and lets only the original user recover it", async ({ page, context }) => {

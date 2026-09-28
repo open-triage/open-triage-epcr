@@ -93,6 +93,58 @@ export function validateDeleteReportPhotoNoteCommand(value: unknown): { commandI
   return candidate as { commandId: string; expectedRevision: number };
 }
 
+/** Remove encoder-added metadata without re-encoding pixels, including between progressive scans. */
+export function stripPhotoMetadata(bytes: Buffer): Buffer {
+  const invalid = () => new ReportPhotoValidationError(["canonical JPEG has invalid framing"]);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw invalid();
+  const parts = [bytes.subarray(0, 2)];
+  let offset = 2;
+  let inScan = false;
+  while (offset < bytes.length) {
+    if (inScan) {
+      const start = offset;
+      while (offset < bytes.length) {
+        const markerStart = bytes.indexOf(0xff, offset);
+        if (markerStart < 0) throw invalid();
+        offset = markerStart + 1;
+        while (bytes[offset] === 0xff) offset += 1;
+        const marker = bytes[offset];
+        if (marker === 0x00 || (marker !== undefined && marker >= 0xd0 && marker <= 0xd7)) {
+          offset += 1; // Escaped sample bytes and restart markers belong to the scan.
+          continue;
+        }
+        parts.push(bytes.subarray(start, markerStart));
+        offset = markerStart;
+        inScan = false;
+        break;
+      }
+    }
+    const start = offset;
+    if (bytes[offset++] !== 0xff) throw invalid();
+    while (bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset++];
+    if (marker === undefined || marker === 0x00 || marker === 0xd8) throw invalid();
+    if (marker === 0xd9) {
+      if (offset !== bytes.length) throw invalid();
+      parts.push(bytes.subarray(start, offset));
+      return Buffer.concat(parts);
+    }
+    if (marker === 0x01) {
+      parts.push(bytes.subarray(start, offset));
+      continue;
+    }
+    if ((marker >= 0xd0 && marker <= 0xd7) || offset + 2 > bytes.length) throw invalid();
+    const length = bytes.readUInt16BE(offset);
+    if (length < 2 || offset + length > bytes.length) throw invalid();
+    const metadata = marker === 0xe1 || (marker >= 0xe3 && marker <= 0xed) || marker === 0xef || marker === 0xfe;
+    // Keep JFIF, ICC profiles and Adobe color transforms needed for faithful rendering.
+    if (!metadata) parts.push(bytes.subarray(start, offset + length));
+    offset += length;
+    inScan = marker === 0xda;
+  }
+  throw invalid();
+}
+
 /** Reads JPEG framing without decoding pixels and rejects metadata-bearing segments. */
 export function inspectCanonicalJpeg(bytes: Buffer): { width: number; height: number } {
   if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) {

@@ -34,7 +34,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
 
   return <section className={`content-panel encounter-timeline${className ? ` ${className}` : ""}`} aria-labelledby={headingId}>
     <div className="section-heading timeline-heading">
-      <div><p className="eyebrow">Newest first</p><h1 id={headingId}>Timeline</h1></div>
+      <div><p className="eyebrow">Newest first · Local time</p><h1 id={headingId}>Timeline</h1></div>
       <span aria-live="polite">{visibleEvents.length} {visibleEvents.length === 1 ? "event" : "events"}</span>
     </div>
     <div className="timeline-filters" role="group" aria-labelledby={filterLabelId}>

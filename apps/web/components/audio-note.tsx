@@ -316,19 +316,13 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     try {
       if (note.persistenceState !== "ready") {
         const entry = protectedAudioEntries(reportId).find(({ note: candidate }) => candidate.id === note.id);
-        if (entry?.attempted) {
-          const created = await createReportAudioNote(csrfToken, reportId, entry.command);
-          const deleted = await deleteReportAudioNote(csrfToken, reportId, note.id, {
-            commandId: crypto.randomUUID(), expectedRevision: created.revision,
-          });
+        if (entry && !entry.attempted) {
           await removeProtectedAudio(reportId, note.id);
-          onDeleted(note.id, deleted.revision);
+          onDeleted(note.id, revision);
           return;
         }
-        await removeProtectedAudio(reportId, note.id);
-        onDeleted(note.id, revision);
-        return;
       }
+      // Delete even when the attempted upload was rejected; never require it to succeed first.
       const response = await deleteReportAudioNote(csrfToken, reportId, note.id, { commandId: crypto.randomUUID(), expectedRevision: revision });
       await removeProtectedAudio(reportId, note.id);
       stopActiveAudio(); onDeleted(note.id, response.revision);

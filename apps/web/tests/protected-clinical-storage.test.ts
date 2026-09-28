@@ -117,6 +117,51 @@ test("completion hold snapshots prior writes, blocks later writes, and resumes o
   assert.deepEqual(writes, [1, 2, 4], "all changes made while held collapse to one latest write");
 });
 
+test("unchanged protected snapshots do not schedule ciphertext receipts while pending or after flush", async () => {
+  const first = deferred();
+  const writes: Array<{ revision: number }> = [];
+  const queue = new LatestProtectedWriteQueue<{ revision: number }>(async (payload) => {
+    writes.push(payload);
+    await first.promise;
+  }, (previous, next) => JSON.stringify(previous) === JSON.stringify(next));
+  queue.request({ revision: 1 });
+  queue.request({ revision: 1 });
+  first.resolve();
+  await queue.flush();
+  queue.request({ revision: 1 });
+  await queue.flush();
+  assert.deepEqual(writes, [{ revision: 1 }]);
+
+  queue.request({ revision: 2 });
+  await queue.flush();
+  assert.deepEqual(writes, [{ revision: 1 }, { revision: 2 }]);
+});
+
+test("deduplication retains changes made during a signing hold and retries failed unchanged writes", async () => {
+  let fail = true;
+  const writes: number[] = [];
+  const queue = new LatestProtectedWriteQueue<number>(async (payload) => {
+    writes.push(payload);
+    if (fail) throw new Error("storage unavailable");
+  }, Object.is);
+  queue.request(1);
+  await assert.rejects(queue.flush(), /storage unavailable/);
+  await new Promise((resolve) => setImmediate(resolve));
+  fail = false;
+  queue.request(1);
+  await queue.flush();
+  assert.deepEqual(writes, [1, 1]);
+  const release = await queue.holdAfterFlush();
+  queue.request(1);
+  queue.request(2);
+  queue.request(2);
+  await queue.flush();
+  assert.deepEqual(writes, [1, 1]);
+  release();
+  await queue.flush();
+  assert.deepEqual(writes, [1, 1, 2]);
+});
+
 test("schema, opaque recovery handle, revision, and authentication tag are all authenticated", async () => {
   const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
   const encrypted = await encryptProtectedPayload(key, "opaque-handle", 4, { clinical: "sensitive" });

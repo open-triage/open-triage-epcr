@@ -67,6 +67,10 @@ function idPart(value: string | undefined): string {
 /** Older published NEMSIS imports lost the names inside sch:value-of tags. */
 export function displayValidationRuleMessage(message: string, primaryElementId: string,
   referencedElementIds: ReadonlyArray<string>): string {
+  const required = /^(.+?) requires at least (\d+) documented occurrence\(s\)\.?$/.exec(message.trim());
+  if (required) return Number(required[2]) === 1
+    ? `Record ${required[1]}.`
+    : `Record at least ${required[2]} entries for ${required[1]}.`;
   const repaired = repairNemsisImportedMessage(message, primaryElementId, referencedElementIds);
   if (repaired !== message) return repaired;
   const missingComparisonNames = /^should be (.+) when is (.+)$/i.exec(message.trim());
@@ -217,7 +221,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     if (!authoredPolicy && relevant && presentation?.mode !== "read-only") for (const parent of validationParents) {
       const count = instances.filter((instance) => (instance.parentInstanceId ?? undefined) === parent?.instanceId).length;
       if (count < minimum) findings.push(finding(
-        "group.minimum", `${catalogGroup.name} requires at least ${minimum} occurrence(s); found ${count}.`,
+        "group.minimum", `Add ${minimum - count} ${catalogGroup.name} ${minimum - count === 1 ? "entry" : "entries"}.`,
         { groupId: catalogGroup.id, ...(parent ? { parentGroupInstanceId: parent.instanceId } : {}) }, catalogGroup.name,
       ));
       if (catalogGroup.occurrence.max !== "unbounded" && count > catalogGroup.occurrence.max) findings.push(finding(
@@ -243,7 +247,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
     for (const instance of elementInstances) {
       const values = instance.elements.find(({ id }) => id === element.id)?.values ?? [];
       if (!authoredPolicy && editable && values.length < minimum) findings.push(finding(
-        "field.minimum", `${element.name} requires at least ${minimum} value(s); found ${values.length}.`,
+        "field.minimum", minimum === 1 ? `Record ${element.name}.` : `Record at least ${minimum} values for ${element.name}.`,
         { groupId, groupInstanceId: instance.instanceId, fieldId: element.id }, element.name, requirednessSeverity,
       ));
       if (!authoredPolicy && maximum !== "unbounded" && values.length > maximum) findings.push(finding(
