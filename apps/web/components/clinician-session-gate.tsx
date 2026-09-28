@@ -26,6 +26,7 @@ import {
 import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
+import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
 import { browserRequestConfiguration } from "../app/browser-api";
 import { ClinicalDemoBanner } from "./clinical-demo-banner";
@@ -345,6 +346,7 @@ export function ClinicianSessionGate({ children }: {
   }
 
   return (
+    <AgencyTimeZoneContext.Provider value={installation.settings.timeZone ?? null}>
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header ref={sessionBar} className="session-bar">
@@ -441,5 +443,6 @@ export function ClinicianSessionGate({ children }: {
       {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={installation.settings.language} />}
     </div>
     </RegionalFormatContext.Provider>
+    </AgencyTimeZoneContext.Provider>
   );
 }

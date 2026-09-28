@@ -1,5 +1,6 @@
 "use client";
 
+import { clinicalInstantParts, clinicalWallTimeCandidates, useAgencyTimeZone } from "../app/agency-time-zone";
 import { useRegionalFormat } from "../app/regional-format";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import React, { useEffect, useRef, useState } from "react";
@@ -16,7 +17,8 @@ type Props = {
   readonly initialValue?: string;
   readonly initialDate?: string;
   readonly onDateChange?: (value: string) => void;
-  readonly onDateTimeChange?: (date: string, time: string) => void;
+  readonly onDateTimeChange?: (date: string, time: string, selected?: string) => void;
+  readonly selectedInstant?: string;
   readonly describedBy?: string;
   readonly invalid?: boolean;
   readonly initialFocus?: boolean;
@@ -24,12 +26,15 @@ type Props = {
   readonly hideLabel?: boolean;
 };
 
-export function TimePicker({ language = "en", label, value, onChange, date = "", initialValue, initialDate, onDateChange, onDateTimeChange, describedBy, invalid, initialFocus, className, hideLabel = false }: Props) {
+export function TimePicker({ language = "en", label, value, onChange, date = "", initialValue, initialDate, onDateChange, onDateTimeChange, selectedInstant, describedBy, invalid, initialFocus, className, hideLabel = false }: Props) {
   const region = useRegionalFormat();
+  const zone = useAgencyTimeZone();
   const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
+  const [error, setError] = useState<string | null>(null);
+  const [occurrence, setOccurrence] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => parseClinicalTime(value || initialValue || ""));
-  const [draftDate, setDraftDate] = useState(date || initialDate || localClinicalDate());
+  const [draftDate, setDraftDate] = useState(date || initialDate || localClinicalDate(new Date(), zone));
   const popover = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,7 +45,9 @@ export function TimePicker({ language = "en", label, value, onChange, date = "",
 
   function showPicker() {
     setDraft(parseClinicalTime(value || initialValue || ""));
-    setDraftDate(date || initialDate || localClinicalDate());
+    setDraftDate(date || initialDate || localClinicalDate(new Date(), zone));
+    setError(null);
+    setOccurrence(null);
     setOpen(true);
   }
 
@@ -94,11 +101,27 @@ export function TimePicker({ language = "en", label, value, onChange, date = "",
             <TimeWheel language={language} label={t("time.minute")} value={draft.minutes} limit={60} onChange={(delta) => change("minutes", delta)} />
           </div>
           <output className="time-picker-output" aria-live="polite">{formatClinicalDate(draftDate, region)} · {formatClinicalTime(draft.hours, draft.minutes)}</output>
+          {error && <p role="alert" className="stationary-validation-message error">{error}</p>}
+          {(() => {
+            const candidates = clinicalWallTimeCandidates(draftDate, formatClinicalTime(draft.hours, draft.minutes), zone);
+            if (candidates.length < 2) return null;
+            return <fieldset><legend>{t("time.overlap")}</legend>
+              {candidates.map((candidate, index) => <label key={candidate}>
+                <input type="radio" name="time-occurrence" checked={(occurrence ?? (selectedInstant && candidates.includes(new Date(selectedInstant).toISOString()) ? new Date(selectedInstant).toISOString() : "")) === candidate}
+                  onChange={() => setOccurrence(candidate)} />
+                {index === 0 ? t("time.firstOccurrence") : t("time.secondOccurrence")} ({clinicalInstantParts(candidate, zone)?.offset})
+              </label>)}
+            </fieldset>;
+          })()}
           <div className="time-picker-actions">
             <button type="button" onClick={() => setOpen(false)}>{t("time.cancel")}</button>
             <button type="button" onClick={() => {
               const time = formatClinicalTime(draft.hours, draft.minutes);
-              if (onDateTimeChange) onDateTimeChange(draftDate, time);
+              const candidates = clinicalWallTimeCandidates(draftDate, time, zone);
+              if (!candidates.length) { setError(t("time.gap")); return; }
+              const selected = occurrence ?? (selectedInstant && candidates.includes(new Date(selectedInstant).toISOString()) ? new Date(selectedInstant).toISOString() : null);
+              if (candidates.length > 1 && !selected) { setError(t("time.overlap")); return; }
+              if (onDateTimeChange) onDateTimeChange(draftDate, time, selected ?? undefined);
               else { onDateChange?.(draftDate); onChange(time); }
               setOpen(false);
             }}>{t("time.use")}</button>

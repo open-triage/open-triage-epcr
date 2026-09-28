@@ -76,14 +76,15 @@ export type NativeAudioNoteTimelineItem = {
   readonly note: ReportAudioNote;
 };
 
-function noteTimelineTime(capturedAt: string): { date: string; time: string } {
-  const local = localStationaryDateTimeParts(capturedAt);
+function noteTimelineTime(capturedAt: string, zone: string | null): { date: string; time: string } {
+  const local = localStationaryDateTimeParts(capturedAt, zone);
   return local ? { date: local.date, time: local.time } : { date: "", time: "--:--" };
 }
 
 export function completeReportTimeline<T extends { readonly id: string; readonly date?: string; readonly time: string; readonly dateTime?: string }>(
   structuredEvents: ReadonlyArray<T>,
   notes: ReadonlyArray<ReportNote>,
+  zone: string | null = null,
 ): ReadonlyArray<(T & { readonly sortTime: string }) | NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem> {
   const structured = structuredEvents.map((event) => ({
     ...event,
@@ -92,7 +93,7 @@ export function completeReportTimeline<T extends { readonly id: string; readonly
   const nativeNotes = notes.map((note): NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem => ({
     id: note.id,
     kind: note.type === "text" ? "text-note" : note.type === "photo" ? "photo-note" : "audio-note",
-    ...noteTimelineTime(note.capturedAt),
+    ...noteTimelineTime(note.capturedAt, zone),
     sortTime: note.capturedAt,
     note,
   } as NativeTextNoteTimelineItem | NativePhotoNoteTimelineItem | NativeAudioNoteTimelineItem));

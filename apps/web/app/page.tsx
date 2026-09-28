@@ -7,6 +7,7 @@ import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
+import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
 import type { QuickActionId } from "./encounter-definition";
@@ -82,7 +83,8 @@ function mergeProtectedMedia(notes: ReadonlyArray<ReportNote>, reportId: string)
     .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt) || right.id.localeCompare(left.id));
 }
 
-function localClinicalTime(): string {
+function localClinicalTime(zone: string | null = null): string {
+  if (zone) return clinicalInstantParts(new Date(), zone)?.time ?? "";
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 }
@@ -104,8 +106,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
   const region = useRegionalFormat();
+  const zone = useAgencyTimeZone();
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const t = (key: string, parameters?: Record<string, string | number>, count?: number) => resolveMessage(language, key, parameters, count);
+  useEffect(() => { dispatch({ type: "time-zone-loaded", timeZone: zone }); }, [zone]);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
   const [editingFinding, setEditingFinding] = useState<SigningFinding | null>(null);
@@ -149,13 +153,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const encounter = shell.encounter;
   const incident = useMemo(() => incidentSummary(encounter.document), [encounter.document]);
   const incidentEvents = useMemo(
-    () => documentTimeline(encounter.document),
-    [encounter.document],
+    () => documentTimeline(encounter.document, zone),
+    [encounter.document, zone],
   );
-  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition), [encounter.document]);
+  const clinicalEvents = useMemo(() => encounterEvents(encounter.document, bundledEncounterDefinition, zone), [encounter.document, zone]);
   const timelineEvents = useMemo(() => completeReportTimeline(
-    [...incidentEvents, ...clinicalEvents], reportNotes,
-  ), [incidentEvents, clinicalEvents, reportNotes]);
+    [...incidentEvents, ...clinicalEvents], reportNotes, zone,
+  ), [incidentEvents, clinicalEvents, reportNotes, zone]);
   const noteDefinition = bundledEncounterDefinition.events.note;
   const catalogText = (elementId: string, kind: "label" | "description") => {
     const field = report?.clinicalForm?.catalogFields[elementId];
@@ -511,7 +515,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     if (!("eventType" in finding)) return;
     if (finding.id === MISSING_VITALS_FINDING_ID) {
       dispatch({ type: "view-selected", view: "timeline" });
-      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+      dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
       return;
     }
     dispatch({ type: "review-finding-selected", id: finding.id });
@@ -593,20 +597,20 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
     setOpenNullField(null);
-    dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+    dispatch({ type: "vitals-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
   }
 
   function startProcedure(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
     setProcedureSearch("");
-    dispatch({ type: "procedure-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+    dispatch({ type: "procedure-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
   }
 
   function startMedication(event: React.MouseEvent<HTMLButtonElement>) {
     rememberTrigger(event.currentTarget);
     setEditingFinding(null);
-    dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(), time: localClinicalTime() });
+    dispatch({ type: "medication-started", id: crypto.randomUUID(), date: localClinicalDate(new Date(), zone), time: localClinicalTime(zone) });
   }
 
   const quickActionHandlers: Record<QuickActionId, (event: React.MouseEvent<HTMLButtonElement>) => void> = {
@@ -948,7 +952,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               </div>
             </> : <>
               <p className="note-metadata">
-                {t("mobile.captured", { date: formatClinicalDate(textNoteDraft.capturedAt, region) })}
+                {t(zone ? "mobile.capturedAgency" : "mobile.captured", { date: formatClinicalDate(textNoteDraft.capturedAt, region, undefined, zone) })}
                 {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
                 {!textNoteDraft.isNew ? ` · ${t("mobile.ready")}` : ""}
               </p>
@@ -994,7 +998,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
               <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
             </div>
-            <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
+            <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} selectedInstant={shell.vitalDraft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "vitals", date, time, dateTime })} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {

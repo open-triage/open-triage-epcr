@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
+import { useAgencyTimeZone } from "../app/agency-time-zone";
 import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,8 +13,8 @@ import {
   openAssignedCall
 } from "../app/assigned-calls";
 
-function dispatchTime(value: string, region: ReturnType<typeof useRegionalFormat>): string {
-  return formatClinicalDate(value, region);
+function dispatchTime(value: string, region: ReturnType<typeof useRegionalFormat>, zone: string | null): string {
+  return formatClinicalDate(value, region, undefined, zone);
 }
 export function AssignedCalls({
   session,
@@ -31,6 +32,7 @@ export function AssignedCalls({
   readonly focusAssignmentId?: string | null;
 }) {
   const region = useRegionalFormat();
+  const zone = useAgencyTimeZone();
   const [calls, setCalls] = useState<AssignedCall[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +135,7 @@ export function AssignedCalls({
               <dl>
                 <div><dt>{t("calls.unit")}</dt><dd>{call.unit.callSign}</dd></div>
                 <div><dt>{t("calls.priority")}</dt><dd>{call.dispatchPriority?.display ?? t("calls.notProvided")}</dd></div>
-                <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region)}</time></dd></div>
+                <div><dt>{t("calls.unitNotified")}</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, region, zone)}</time></dd></div>
               </dl>
               <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
                 {openingId === call.id ? t("calls.opening") : t("calls.open")}

@@ -68,7 +68,7 @@ export function assignmentSummary(document: EncounterDocument) {
 }
 
 /** Present operational instants in the browser's local time without changing their stored offsets. */
-export function documentTimeline(document: EncounterDocument): ReadonlyArray<EncounterEvent> {
+export function documentTimeline(document: EncounterDocument, zone: string | null = null): ReadonlyArray<EncounterEvent> {
   const entries = document.groups.flatMap((group) => group.instances.flatMap((instance) => instance.elements.flatMap((element) => {
     if (!OPERATIONAL_TIME_IDS.has(element.id)) return [];
     const catalogElement = getNemsisDataElement(element.id);
@@ -76,7 +76,7 @@ export function documentTimeline(document: EncounterDocument): ReadonlyArray<Enc
     return element.values.flatMap((value) => {
       if (value.kind !== "scalar" || typeof value.value !== "string") return [];
       if (Number.isNaN(Date.parse(value.value))) return [];
-      const presented = localStationaryDateTimeParts(value.value);
+      const presented = localStationaryDateTimeParts(value.value, zone);
       if (!presented) return [];
       return [{
         id: `document-${value.occurrenceId}`,

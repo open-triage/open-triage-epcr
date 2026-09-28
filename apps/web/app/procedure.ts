@@ -26,6 +26,7 @@ export type ProcedureDraft = {
   readonly id: string;
   readonly date: string;
   readonly time: string;
+  readonly dateTime?: string;
   readonly procedureCode: string;
   readonly procedureLabel: string;
   readonly attempts: string;

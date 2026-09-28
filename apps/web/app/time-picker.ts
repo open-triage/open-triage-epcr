@@ -1,3 +1,5 @@
+import { clinicalInstantParts } from "./agency-time-zone";
+
 export function parseClinicalTime(value: string): { hours: number; minutes: number } {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
   if (match) return { hours: Number(match[1]), minutes: Number(match[2]) };
@@ -20,7 +22,8 @@ export function formatClinicalTime(hours: number, minutes: number): string {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-export function localClinicalDate(date = new Date()): string {
+export function localClinicalDate(date = new Date(), zone: string | null = null): string {
+  if (zone) return clinicalInstantParts(date, zone)?.date ?? "";
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
