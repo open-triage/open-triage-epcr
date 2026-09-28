@@ -16,6 +16,7 @@ implemented behavior.
 | [Admin controls](admin-controls.md) | Broad product direction | Parent scope for administration capabilities |
 | [Admin controls MVP](admin-controls-mvp.md) | Reduced delivery scope | Scoped by GitHub issue #252; see the [validation runbook](../runbooks/admin-controls-mvp-representative-validation.md) |
 | [Users and roles](users-roles.md) | Feature specification | Extracts the Users/Roles vertical slice and role-based Clinical Demo behavior from Admin Controls |
+| [Localization](localization.md) | Feature specification | Defines agency-wide language and regional settings, versioned definition translations, and the first Swedish translation pass; parent issue [#559](https://github.com/open-triage/open-triage-epcr/issues/559) |
 | [User feedback](user-feedback.md) | Feature specification | Defines safe bug reporting, feature requests, diagnostics, retention, and human-approved AI review |
 
 When a PRD is replaced, keep it here as design history and add a prominent
