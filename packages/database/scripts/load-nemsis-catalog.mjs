@@ -25,7 +25,11 @@ const [catalogText, mappingText] = await Promise.all([
 ]);
 const catalog = JSON.parse(catalogText);
 const mapping = JSON.parse(mappingText);
-const { elementLocalization, codeListLocalization, specialChoiceLocalization, seedSha256 } = await readCatalogLocalizationSeed(localizationPath, selectedCatalog.key, catalog);
+const { elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization,
+  coverage, seedSha256 } = await readCatalogLocalizationSeed(localizationPath, selectedCatalog.key, catalog);
+const missing = Object.entries(coverage.missing).flatMap(([kind, ids]) => ids.map((id) => `${kind}:${id}`));
+if (missing.length) throw new Error(`Swedish catalog seed is incomplete: ${missing.join(", ")}`);
+console.log(`Swedish catalog coverage: ${JSON.stringify(coverage.supplied)}; ${coverage.reviewPending.length} candidates require clinical review.`);
 const catalogSha256 = catalogArtifactSha256(catalogText);
 const releaseSha256 = createHash("sha256").update(`${catalogSha256}:${seedSha256}`).digest("hex");
 
@@ -84,7 +88,7 @@ try {
        set artifact_sha256 = excluded.artifact_sha256,
            provenance = excluded.provenance
      returning id`,
-    [catalogStandard, catalog.release, catalog.dataset, catalog.schemaVersion, releaseSha256, JSON.stringify({ ...catalog.provenance, catalogSourceSha256: catalogSha256, elementLocalization, codeListLocalization, specialChoiceLocalization, localizationSeedSha256: seedSha256 })]
+    [catalogStandard, catalog.release, catalog.dataset, catalog.schemaVersion, releaseSha256, JSON.stringify({ ...catalog.provenance, catalogSourceSha256: catalogSha256, elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization, localizationSeedSha256: seedSha256 })]
   );
   const releaseId = releaseResult.rows[0].id;
 

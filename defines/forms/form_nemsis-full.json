@@ -3876,6 +3876,1460 @@
           }
         ]
       }
+    ],
+    "locales": [
+      {
+        "locale": "sv",
+        "translations": {
+          "sections": {
+            "DemographicGroup": {
+              "title": "DemographicGroup"
+            },
+            "eCustomConfigurationSection": {
+              "title": "ECustomConfiguration"
+            },
+            "eRecordSection": {
+              "title": "ERecord"
+            },
+            "eResponseSection": {
+              "title": "EResponse"
+            },
+            "eDispatchSection": {
+              "title": "EDispatch"
+            },
+            "eCrewSection": {
+              "title": "ECrew"
+            },
+            "eTimesSection": {
+              "title": "ETimes"
+            },
+            "ePatientSection": {
+              "title": "EPatient"
+            },
+            "ePaymentSection": {
+              "title": "EPayment"
+            },
+            "eSceneSection": {
+              "title": "EScene"
+            },
+            "eSituationSection": {
+              "title": "ESituation"
+            },
+            "eInjurySection": {
+              "title": "EInjury"
+            },
+            "eArrestSection": {
+              "title": "EArrest"
+            },
+            "eHistorySection": {
+              "title": "EHistory"
+            },
+            "eNarrativeSection": {
+              "title": "ENarrative"
+            },
+            "eVitalsSection": {
+              "title": "EVitals"
+            },
+            "eLabsSection": {
+              "title": "ELabs"
+            },
+            "eExamSection": {
+              "title": "EExam"
+            },
+            "eProtocolsSection": {
+              "title": "EProtocols"
+            },
+            "eMedicationsSection": {
+              "title": "EMedications"
+            },
+            "eProceduresSection": {
+              "title": "EProcedures"
+            },
+            "eAirwaysSection": {
+              "title": "EAirway"
+            },
+            "eDevicesSection": {
+              "title": "EDevice"
+            },
+            "eDispositionSection": {
+              "title": "EDisposition"
+            },
+            "eOutcomeSection": {
+              "title": "EOutcome"
+            },
+            "eCustomResultsSection": {
+              "title": "ECustomResults"
+            },
+            "eOtherSection": {
+              "title": "EOther"
+            }
+          },
+          "fields": {
+            "dAgency.01": {
+              "label": "Ambulansorganisation unik delstat ID"
+            },
+            "dAgency.02": {
+              "label": "Ambulansorganisation nummer"
+            },
+            "dAgency.04": {
+              "label": "Ambulansorganisation delstat"
+            },
+            "eCustomConfiguration.01": {
+              "label": "Anpassad data element rubrik"
+            },
+            "eCustomConfiguration.02": {
+              "label": "Anpassad definition"
+            },
+            "eCustomConfiguration.03": {
+              "label": "Anpassad data typ"
+            },
+            "eCustomConfiguration.04": {
+              "label": "Anpassad data element Recurrence"
+            },
+            "eCustomConfiguration.05": {
+              "label": "Anpassad data element Usage"
+            },
+            "eCustomConfiguration.06": {
+              "label": "Anpassad data element möjlig värden"
+            },
+            "eCustomConfiguration.07": {
+              "label": "Anpassad data element möjlig NOT värden (NV)"
+            },
+            "eCustomConfiguration.08": {
+              "label": "Anpassad data element möjlig Pertinent negativ värden (PN)"
+            },
+            "eCustomConfiguration.09": {
+              "label": "Anpassad data element Grouping ID"
+            },
+            "eRecord.01": {
+              "label": "Patientjournal nummer"
+            },
+            "eRecord.02": {
+              "label": "Programvara Creator"
+            },
+            "eRecord.03": {
+              "label": "Programvara namn"
+            },
+            "eRecord.04": {
+              "label": "Programvara Version"
+            },
+            "eResponse.01": {
+              "label": "Ambulansorganisation nummer"
+            },
+            "eResponse.02": {
+              "label": "Ambulansorganisation namn"
+            },
+            "eResponse.03": {
+              "label": "Händelse nummer"
+            },
+            "eResponse.04": {
+              "label": "Ambulanssjukvård respons nummer"
+            },
+            "eResponse.05": {
+              "label": "Typ av tjänst begärd"
+            },
+            "eResponse.06": {
+              "label": "Standby syfte"
+            },
+            "eResponse.07": {
+              "label": "Enhet transport och utrustning Capability"
+            },
+            "eResponse.08": {
+              "label": "Typ av utlarmning fördröjning"
+            },
+            "eResponse.09": {
+              "label": "Typ av respons fördröjning"
+            },
+            "eResponse.10": {
+              "label": "Typ av skadeplats fördröjning"
+            },
+            "eResponse.11": {
+              "label": "Typ av transport fördröjning"
+            },
+            "eResponse.12": {
+              "label": "Typ av Turn-Around fördröjning"
+            },
+            "eResponse.13": {
+              "label": "Ambulanssjukvård fordon (enhet) nummer"
+            },
+            "eResponse.14": {
+              "label": "Ambulanssjukvård enhet samtal Sign"
+            },
+            "eResponse.16": {
+              "label": "Fordon utlarmning plats"
+            },
+            "eResponse.17": {
+              "label": "Fordon utlarmning GPS plats"
+            },
+            "eResponse.18": {
+              "label": "Fordon utlarmning plats amerikanska National Grid-koordinater"
+            },
+            "eResponse.19": {
+              "label": "Beginning vägmätare mätarställning av utryckande fordon"
+            },
+            "eResponse.20": {
+              "label": "On-Scene vägmätare mätarställning av utryckande fordon"
+            },
+            "eResponse.21": {
+              "label": "Patient destination vägmätare mätarställning av utryckande fordon"
+            },
+            "eResponse.22": {
+              "label": "Ending vägmätare mätarställning av utryckande fordon"
+            },
+            "eResponse.23": {
+              "label": "Respons läge till skadeplats"
+            },
+            "eResponse.24": {
+              "label": "Ytterligare respons läge Descriptors"
+            },
+            "eDispatch.01": {
+              "label": "Utlarmning orsak"
+            },
+            "eDispatch.02": {
+              "label": "EMD utförd"
+            },
+            "eDispatch.03": {
+              "label": "EMD Determinant kod"
+            },
+            "eDispatch.04": {
+              "label": "Utlarmning Center namn eller ID"
+            },
+            "eDispatch.05": {
+              "label": "Utlarmning Priority (patientens vårdbehov)"
+            },
+            "eDispatch.06": {
+              "label": "Enhet Dispatched CAD journal ID"
+            },
+            "eCrew.01": {
+              "label": "Besättningsmedlem ID"
+            },
+            "eCrew.02": {
+              "label": "Besättningsmedlem nivå"
+            },
+            "eCrew.03": {
+              "label": "Besättningsmedlem respons roll"
+            },
+            "eTimes.01": {
+              "label": "PSAP samtal datum/tid"
+            },
+            "eTimes.02": {
+              "label": "Utlarmning aviserad datum/tid"
+            },
+            "eTimes.03": {
+              "label": "Enhet aviserad av utlarmning datum/tid"
+            },
+            "eTimes.04": {
+              "label": "Utlarmning Acknowledged datum/tid"
+            },
+            "eTimes.05": {
+              "label": "Enhet En administreringsväg datum/tid"
+            },
+            "eTimes.06": {
+              "label": "Enhet anlände på skadeplats datum/tid"
+            },
+            "eTimes.07": {
+              "label": "Anlände vid patient datum/tid"
+            },
+            "eTimes.08": {
+              "label": "Överlämning av ambulanssjukvård patient vård datum/tid"
+            },
+            "eTimes.09": {
+              "label": "Enhet vänster skadeplats datum/tid"
+            },
+            "eTimes.10": {
+              "label": "Ankomst vid destination Landing område datum/tid"
+            },
+            "eTimes.11": {
+              "label": "Patient anlände vid destination datum/tid"
+            },
+            "eTimes.12": {
+              "label": "Destination patient överlämning av vård datum/tid"
+            },
+            "eTimes.13": {
+              "label": "Enhet rygg i tjänst datum/tid"
+            },
+            "eTimes.14": {
+              "label": "Enhet Canceled datum/tid"
+            },
+            "eTimes.15": {
+              "label": "Enhet rygg vid hem plats datum/tid"
+            },
+            "eTimes.16": {
+              "label": "Ambulanssjukvård samtal Completed datum/tid"
+            },
+            "eTimes.17": {
+              "label": "Enhet anlände vid Staging område datum/tid"
+            },
+            "ePatient.01": {
+              "label": "Ambulanssjukvård patient ID"
+            },
+            "ePatient.02": {
+              "label": "Efternamn"
+            },
+            "ePatient.03": {
+              "label": "Förnamn"
+            },
+            "ePatient.04": {
+              "label": "Mellannamn/initial"
+            },
+            "ePatient.05": {
+              "label": "Patientens hem adress"
+            },
+            "ePatient.06": {
+              "label": "Patientens hem stad"
+            },
+            "ePatient.07": {
+              "label": "Patientens hem län"
+            },
+            "ePatient.08": {
+              "label": "Patientens hem delstat"
+            },
+            "ePatient.09": {
+              "label": "Patientens hem amerikanskt postnummer (ZIP)"
+            },
+            "ePatient.10": {
+              "label": "Patientens land av Residence"
+            },
+            "ePatient.11": {
+              "label": "Patient hem Census Tract"
+            },
+            "ePatient.12": {
+              "label": "Amerikanskt socialförsäkringsnummer"
+            },
+            "ePatient.13": {
+              "label": "Gender (DEPRECATED)"
+            },
+            "ePatient.14": {
+              "label": "Race"
+            },
+            "ePatient.15": {
+              "label": "Ålder"
+            },
+            "ePatient.16": {
+              "label": "Ålder Units"
+            },
+            "ePatient.17": {
+              "label": "Datum av födelse"
+            },
+            "ePatient.18": {
+              "label": "Patientens telefon nummer"
+            },
+            "ePatient.19": {
+              "label": "Patientens e-post adress"
+            },
+            "ePatient.20": {
+              "label": "Delstat Issuing körkort"
+            },
+            "ePatient.21": {
+              "label": "Körkort nummer"
+            },
+            "ePatient.22": {
+              "label": "Alternate hem Residence"
+            },
+            "ePatient.23": {
+              "label": "Namn Suffix"
+            },
+            "ePatient.24": {
+              "label": "Patientens Preferred Language(s)"
+            },
+            "ePatient.25": {
+              "label": "Sex"
+            },
+            "ePayment.01": {
+              "label": "Primär metod av betalning"
+            },
+            "ePayment.02": {
+              "label": "Läkarintyg för amerikansk ersättning"
+            },
+            "ePayment.03": {
+              "label": "Datum läkarintyg för amerikansk ersättning undertecknad"
+            },
+            "ePayment.04": {
+              "label": "Orsak för läkarintyg för amerikansk ersättning"
+            },
+            "ePayment.05": {
+              "label": "Hälso- och sjukvård vårdgivare typ undertecknande läkarintyg för amerikansk ersättning"
+            },
+            "ePayment.06": {
+              "label": "Efternamn av person undertecknande läkarintyg för amerikansk ersättning"
+            },
+            "ePayment.07": {
+              "label": "Förnamn av person undertecknande läkarintyg för amerikansk ersättning"
+            },
+            "ePayment.08": {
+              "label": "Patient Resides i tjänst område"
+            },
+            "ePayment.09": {
+              "label": "Försäkringsbolag ID"
+            },
+            "ePayment.10": {
+              "label": "Försäkringsbolag namn"
+            },
+            "ePayment.11": {
+              "label": "Försäkringsbolag Billing Priority"
+            },
+            "ePayment.12": {
+              "label": "Försäkringsbolag adress"
+            },
+            "ePayment.13": {
+              "label": "Försäkringsbolag stad"
+            },
+            "ePayment.14": {
+              "label": "Försäkringsbolag delstat"
+            },
+            "ePayment.15": {
+              "label": "Försäkringsbolag amerikanskt postnummer (ZIP)"
+            },
+            "ePayment.16": {
+              "label": "Försäkringsbolag land"
+            },
+            "ePayment.17": {
+              "label": "Försäkringsgrupp ID"
+            },
+            "ePayment.18": {
+              "label": "Försäkring försäkringsavtal ID nummer"
+            },
+            "ePayment.19": {
+              "label": "Efternamn av försäkrad"
+            },
+            "ePayment.20": {
+              "label": "Förnamn av försäkrad"
+            },
+            "ePayment.21": {
+              "label": "Mellannamn/initial av försäkrad"
+            },
+            "ePayment.22": {
+              "label": "Relationship till försäkrad"
+            },
+            "ePayment.23": {
+              "label": "Närmaste anhörig/vårdnadshavare efternamn"
+            },
+            "ePayment.24": {
+              "label": "Närmaste anhörig/ vårdnadshavare förnamn"
+            },
+            "ePayment.25": {
+              "label": "Närmaste anhörig/ vårdnadshavare mellannamn/initial"
+            },
+            "ePayment.26": {
+              "label": "Närmaste anhörig/ vårdnadshavare gata adress"
+            },
+            "ePayment.27": {
+              "label": "Närmaste anhörig/ vårdnadshavare stad"
+            },
+            "ePayment.28": {
+              "label": "Närmaste anhörig/ vårdnadshavare delstat"
+            },
+            "ePayment.29": {
+              "label": "Närmaste anhörig/ vårdnadshavare amerikanskt postnummer (ZIP)"
+            },
+            "ePayment.30": {
+              "label": "Närmaste anhörig/ vårdnadshavare land"
+            },
+            "ePayment.31": {
+              "label": "Närmaste anhörig/ vårdnadshavare telefon nummer"
+            },
+            "ePayment.32": {
+              "label": "Närmaste anhörig/ vårdnadshavare Relationship"
+            },
+            "ePayment.33": {
+              "label": "Patientens arbetsgivare"
+            },
+            "ePayment.34": {
+              "label": "Patientens arbetsgivarens adress"
+            },
+            "ePayment.35": {
+              "label": "Patientens arbetsgivarens stad"
+            },
+            "ePayment.36": {
+              "label": "Patientens arbetsgivarens delstat"
+            },
+            "ePayment.37": {
+              "label": "Patientens arbetsgivarens amerikanskt postnummer (ZIP)"
+            },
+            "ePayment.38": {
+              "label": "Patientens arbetsgivarens land"
+            },
+            "ePayment.39": {
+              "label": "Patientens arbetsgivarens primär telefon nummer"
+            },
+            "ePayment.40": {
+              "label": "Respons Urgency"
+            },
+            "ePayment.41": {
+              "label": "Patient transport bedömning"
+            },
+            "ePayment.42": {
+              "label": "Specialty vård transport vård vårdgivare"
+            },
+            "ePayment.44": {
+              "label": "Ambulans transport orsak kod"
+            },
+            "ePayment.45": {
+              "label": "Round Trip syfte Description"
+            },
+            "ePayment.46": {
+              "label": "Stretcher syfte Description"
+            },
+            "ePayment.47": {
+              "label": "Ambulans tillstånd indikator"
+            },
+            "ePayment.48": {
+              "label": "Körsträcka till närmaste sjukhus vårdinrättning"
+            },
+            "ePayment.49": {
+              "label": "ALS bedömning utförd och Warranted"
+            },
+            "ePayment.50": {
+              "label": "Amerikansk CMS-tjänstenivå"
+            },
+            "ePayment.51": {
+              "label": "Ambulanssjukvård tillstånd kod"
+            },
+            "ePayment.52": {
+              "label": "CMS Transportation indikator"
+            },
+            "ePayment.53": {
+              "label": "Transport godkännande kod"
+            },
+            "ePayment.54": {
+              "label": "Före godkännande kod betalare"
+            },
+            "ePayment.55": {
+              "label": "Förbrukningsmaterial artikel använd namn"
+            },
+            "ePayment.56": {
+              "label": "Nummer av förbrukningsmaterial artikel(s) använd"
+            },
+            "ePayment.57": {
+              "label": "Betalare typ"
+            },
+            "ePayment.58": {
+              "label": "Försäkringsgrupp namn"
+            },
+            "ePayment.59": {
+              "label": "Försäkringsbolag telefon nummer"
+            },
+            "ePayment.60": {
+              "label": "Datum av födelse av försäkrad"
+            },
+            "eScene.01": {
+              "label": "Första ambulanssjukvård enhet på skadeplats"
+            },
+            "eScene.02": {
+              "label": "Annat ambulanssjukvård eller allmän säkerhet Agencies vid skadeplats"
+            },
+            "eScene.03": {
+              "label": "Annat ambulanssjukvård eller allmän säkerhet organisation ID nummer"
+            },
+            "eScene.04": {
+              "label": "Typ av Annat tjänst vid skadeplats"
+            },
+            "eScene.05": {
+              "label": "Datum/tid inledande Responder anlände på skadeplats"
+            },
+            "eScene.06": {
+              "label": "Nummer av patienter vid skadeplats"
+            },
+            "eScene.07": {
+              "label": "Mass Casualty händelse"
+            },
+            "eScene.08": {
+              "label": "Triage Classification för MCI patient"
+            },
+            "eScene.09": {
+              "label": "Typ av skadeplats"
+            },
+            "eScene.10": {
+              "label": "Händelse vårdinrättning kod"
+            },
+            "eScene.11": {
+              "label": "Skadeplats GPS plats"
+            },
+            "eScene.12": {
+              "label": "Skadeplats amerikanska National Grid-koordinater"
+            },
+            "eScene.13": {
+              "label": "Händelse vårdinrättning eller plats namn"
+            },
+            "eScene.14": {
+              "label": "Mile Post eller Major Roadway"
+            },
+            "eScene.15": {
+              "label": "Händelse gata adress"
+            },
+            "eScene.16": {
+              "label": "Händelse Apartment, Suite, eller Room"
+            },
+            "eScene.17": {
+              "label": "Händelse stad"
+            },
+            "eScene.18": {
+              "label": "Händelse delstat"
+            },
+            "eScene.19": {
+              "label": "Händelse amerikanskt postnummer (ZIP)"
+            },
+            "eScene.20": {
+              "label": "Skadeplats Cross gata eller Directions"
+            },
+            "eScene.21": {
+              "label": "Händelse län"
+            },
+            "eScene.22": {
+              "label": "Händelse land"
+            },
+            "eScene.23": {
+              "label": "Händelse Census Tract"
+            },
+            "eScene.24": {
+              "label": "Första Annat ambulanssjukvård eller allmän säkerhet organisation vid skadeplats till Provide patient vård"
+            },
+            "eScene.25": {
+              "label": "Överlämnad patient/vård till/från organisation"
+            },
+            "eSituation.01": {
+              "label": "Datum/tid av symtom debut"
+            },
+            "eSituation.02": {
+              "label": "Möjlig skada"
+            },
+            "eSituation.03": {
+              "label": "Besvär typ"
+            },
+            "eSituation.04": {
+              "label": "Besvär"
+            },
+            "eSituation.05": {
+              "label": "Duration av besvär"
+            },
+            "eSituation.06": {
+              "label": "Tid Units av Duration av besvär"
+            },
+            "eSituation.07": {
+              "label": "Huvudbesvär Anatomic plats"
+            },
+            "eSituation.08": {
+              "label": "Huvudbesvär Organ System"
+            },
+            "eSituation.09": {
+              "label": "Primär symtom"
+            },
+            "eSituation.10": {
+              "label": "Annat Associated Symtom"
+            },
+            "eSituation.11": {
+              "label": "Provider's primär Klinisk bedömning"
+            },
+            "eSituation.12": {
+              "label": "Provider's sekundär Impressions"
+            },
+            "eSituation.13": {
+              "label": "Inledande patientens vårdbehov"
+            },
+            "eSituation.14": {
+              "label": "Work-Related Illness/skada"
+            },
+            "eSituation.15": {
+              "label": "Patientens Occupational Industry"
+            },
+            "eSituation.16": {
+              "label": "Patientens Occupation"
+            },
+            "eSituation.17": {
+              "label": "Patientaktivitet"
+            },
+            "eSituation.18": {
+              "label": "Datum/tid senaste Known Well"
+            },
+            "eSituation.19": {
+              "label": "Justification för överlämning eller Encounter"
+            },
+            "eSituation.20": {
+              "label": "Orsak för Interfacility överlämning/medicinsk transport"
+            },
+            "eInjury.01": {
+              "label": "Skadeorsak"
+            },
+            "eInjury.02": {
+              "label": "Mekanism av skada"
+            },
+            "eInjury.03": {
+              "label": "Trauma Triage Criteria (High risk för Serious skada)"
+            },
+            "eInjury.04": {
+              "label": "Trauma Triage Criteria (Moderate risk för Serious skada)"
+            },
+            "eInjury.05": {
+              "label": "Main område av fordon Impacted av Collision"
+            },
+            "eInjury.06": {
+              "label": "Plats av patient i fordon"
+            },
+            "eInjury.07": {
+              "label": "Användning av Occupant säkerhet utrustning"
+            },
+            "eInjury.08": {
+              "label": "Airbag Deployment"
+            },
+            "eInjury.09": {
+              "label": "Height av Fall (fot)"
+            },
+            "eInjury.10": {
+              "label": "OSHA personlig skyddsutrustning använd"
+            },
+            "eInjury.11": {
+              "label": "ACN System/Company Providing ACN data"
+            },
+            "eInjury.12": {
+              "label": "ACN händelse ID"
+            },
+            "eInjury.13": {
+              "label": "ACN samtal rygg telefon nummer"
+            },
+            "eInjury.14": {
+              "label": "Datum/tid av ACN händelse"
+            },
+            "eInjury.15": {
+              "label": "ACN händelse plats"
+            },
+            "eInjury.16": {
+              "label": "ACN händelse fordon kropp typ"
+            },
+            "eInjury.17": {
+              "label": "ACN händelse fordon Manufacturer"
+            },
+            "eInjury.18": {
+              "label": "ACN händelse fordon Make"
+            },
+            "eInjury.19": {
+              "label": "ACN händelse fordon Model"
+            },
+            "eInjury.20": {
+              "label": "ACN händelse fordon Model år"
+            },
+            "eInjury.21": {
+              "label": "ACN händelse flera Impacts"
+            },
+            "eInjury.22": {
+              "label": "ACN händelse Delta Velocity"
+            },
+            "eInjury.23": {
+              "label": "ACN High Probability av skada"
+            },
+            "eInjury.24": {
+              "label": "ACN händelse PDOF"
+            },
+            "eInjury.25": {
+              "label": "ACN händelse Rollover"
+            },
+            "eInjury.26": {
+              "label": "ACN fordon Seat plats"
+            },
+            "eInjury.27": {
+              "label": "Seat Occupied"
+            },
+            "eInjury.28": {
+              "label": "ACN händelse Seatbelt användning"
+            },
+            "eInjury.29": {
+              "label": "ACN händelse Airbag Deployed"
+            },
+            "eArrest.01": {
+              "label": "Hjärtstopp"
+            },
+            "eArrest.02": {
+              "label": "Hjärtstopp etiologi"
+            },
+            "eArrest.03": {
+              "label": "Återupplivning försökte av ambulanssjukvård"
+            },
+            "eArrest.04": {
+              "label": "Arrest Witnessed av"
+            },
+            "eArrest.07": {
+              "label": "AED användning före till ambulanssjukvård ankomst"
+            },
+            "eArrest.09": {
+              "label": "Typ av CPR given"
+            },
+            "eArrest.10": {
+              "label": "Therapeutic Hypothermia av ambulanssjukvård"
+            },
+            "eArrest.11": {
+              "label": "Första Monitored Arrest rytm av patient"
+            },
+            "eArrest.12": {
+              "label": "Any Return av Spontaneous Circulation"
+            },
+            "eArrest.13": {
+              "label": "Neurologisk Outcome vid sjukhus utskrivning"
+            },
+            "eArrest.14": {
+              "label": "Datum/tid av hjärtstopp"
+            },
+            "eArrest.15": {
+              "label": "Datum/tid återupplivning avbruten"
+            },
+            "eArrest.16": {
+              "label": "Orsak CPR/återupplivning avbruten"
+            },
+            "eArrest.17": {
+              "label": "Hjärt- rytm på ankomst vid destination"
+            },
+            "eArrest.18": {
+              "label": "Slut av ambulanssjukvård hjärtstopp händelse"
+            },
+            "eArrest.19": {
+              "label": "Datum/tid av inledande CPR"
+            },
+            "eArrest.20": {
+              "label": "Vem första Initiated CPR"
+            },
+            "eArrest.21": {
+              "label": "Vem första Applied AED"
+            },
+            "eArrest.22": {
+              "label": "Vem första Defibrillated patient"
+            },
+            "eHistory.01": {
+              "label": "Barriers till patient vård"
+            },
+            "eHistory.02": {
+              "label": "Efternamn av patientens behandlare"
+            },
+            "eHistory.03": {
+              "label": "Förnamn av patientens behandlare"
+            },
+            "eHistory.04": {
+              "label": "Middle namn/inledande av patientens behandlare"
+            },
+            "eHistory.05": {
+              "label": "Advance Directives"
+            },
+            "eHistory.06": {
+              "label": "Läkemedel Allergies"
+            },
+            "eHistory.07": {
+              "label": "Miljö- och födoämnesallergier"
+            },
+            "eHistory.08": {
+              "label": "Medicinsk och kirurgisk anamnes"
+            },
+            "eHistory.09": {
+              "label": "Medicinsk anamnes inhämtad från"
+            },
+            "eHistory.10": {
+              "label": "Patientens typ av Immunization"
+            },
+            "eHistory.11": {
+              "label": "Immunization år"
+            },
+            "eHistory.12": {
+              "label": "Aktuell läkemedel"
+            },
+            "eHistory.13": {
+              "label": "Aktuell medicinering dos"
+            },
+            "eHistory.14": {
+              "label": "Aktuell medicinering dosering enhet"
+            },
+            "eHistory.15": {
+              "label": "Aktuell medicinering administrering administreringsväg"
+            },
+            "eHistory.16": {
+              "label": "Presence av akut information Form"
+            },
+            "eHistory.17": {
+              "label": "Alcohol/Drug användning Indicators"
+            },
+            "eHistory.18": {
+              "label": "Pregnancy"
+            },
+            "eHistory.19": {
+              "label": "Senaste Oral Intake"
+            },
+            "eHistory.20": {
+              "label": "Aktuell medicinering frekvens"
+            },
+            "eNarrative.01": {
+              "label": "Patientjournal fritextberättelse",
+              "helpText": "Fritextberättelse av patientjournal (PCR)."
+            },
+            "eVitals.01": {
+              "label": "Datum/tid vitala tecken tagna"
+            },
+            "eVitals.02": {
+              "label": "Inhämtad före denna enhets vårdinsats"
+            },
+            "eVitals.03": {
+              "label": "Hjärt- rytm / Electrocardiography (ECG)"
+            },
+            "eVitals.04": {
+              "label": "ECG typ"
+            },
+            "eVitals.05": {
+              "label": "Metod av ECG tolkning"
+            },
+            "eVitals.06": {
+              "label": "SBP (systoliskt blodtryck)",
+              "helpText": "Patientens systoliskt blodtryck."
+            },
+            "eVitals.07": {
+              "label": "DBP (diastoliskt blodtryck)"
+            },
+            "eVitals.08": {
+              "label": "Metod av blodtryck Measurement"
+            },
+            "eVitals.09": {
+              "label": "Medelartärtryck"
+            },
+            "eVitals.10": {
+              "label": "Hjärtfrekvens"
+            },
+            "eVitals.11": {
+              "label": "Metod av Hjärtfrekvens Measurement"
+            },
+            "eVitals.12": {
+              "label": "Pulsoximetri"
+            },
+            "eVitals.13": {
+              "label": "Puls rytm"
+            },
+            "eVitals.14": {
+              "label": "Andningsfrekvens"
+            },
+            "eVitals.15": {
+              "label": "Andnings- Effort"
+            },
+            "eVitals.16": {
+              "label": "Slut Tidal kol dioxid (ETCO2)"
+            },
+            "eVitals.17": {
+              "label": "Kol Monoxide (CO)"
+            },
+            "eVitals.18": {
+              "label": "Blodglukosnivå"
+            },
+            "eVitals.19": {
+              "label": "Glasgow Coma Scale-öga"
+            },
+            "eVitals.20": {
+              "label": "Glasgow Coma Scale-Verbal"
+            },
+            "eVitals.21": {
+              "label": "Glasgow Coma Scale-Motor"
+            },
+            "eVitals.22": {
+              "label": "Glasgow Coma Scale-Qualifier"
+            },
+            "eVitals.23": {
+              "label": "Totalt Glasgow Coma Scale"
+            },
+            "eVitals.24": {
+              "label": "Temperatur"
+            },
+            "eVitals.25": {
+              "label": "Temperatur metod"
+            },
+            "eVitals.26": {
+              "label": "Nivå av Responsiveness (AVPU)"
+            },
+            "eVitals.27": {
+              "label": "Smärta skala poäng"
+            },
+            "eVitals.28": {
+              "label": "Smärta skala typ"
+            },
+            "eVitals.29": {
+              "label": "Stroke skala resultat"
+            },
+            "eVitals.30": {
+              "label": "Stroke skala typ"
+            },
+            "eVitals.31": {
+              "label": "Reperfusion Checklist"
+            },
+            "eVitals.32": {
+              "label": "APGAR"
+            },
+            "eVitals.33": {
+              "label": "Revised Trauma poäng"
+            },
+            "eVitals.34": {
+              "label": "Stroke skala poäng"
+            },
+            "eLabs.01": {
+              "label": "Datum/tid av laboratorium eller bilddiagnostik resultat"
+            },
+            "eLabs.02": {
+              "label": "Undersökning/resultat före denna enhets vårdinsats"
+            },
+            "eLabs.03": {
+              "label": "Laboratorium resultat typ"
+            },
+            "eLabs.04": {
+              "label": "Laboratorium resultat"
+            },
+            "eLabs.05": {
+              "label": "Bilddiagnostik undersökning typ"
+            },
+            "eLabs.06": {
+              "label": "Bilddiagnostik undersökning resultat"
+            },
+            "eLabs.07": {
+              "label": "Bilddiagnostik undersökning fil eller vågform grafik typ"
+            },
+            "eLabs.08": {
+              "label": "Bilddiagnostik undersökning fil eller vågform grafik"
+            },
+            "eExam.01": {
+              "label": "Uppskattad kropp vikt i Kilogram"
+            },
+            "eExam.02": {
+              "label": "Längd baserad band mått"
+            },
+            "eExam.03": {
+              "label": "Datum/tid av bedömning"
+            },
+            "eExam.04": {
+              "label": "Hud bedömning"
+            },
+            "eExam.05": {
+              "label": "Huvud bedömning"
+            },
+            "eExam.06": {
+              "label": "Ansikte bedömning"
+            },
+            "eExam.07": {
+              "label": "Hals bedömning"
+            },
+            "eExam.09": {
+              "label": "Hjärta bedömning"
+            },
+            "eExam.10": {
+              "label": "Buk- lokalisation för undersökningsfynd"
+            },
+            "eExam.11": {
+              "label": "Buk bedömning"
+            },
+            "eExam.12": {
+              "label": "Bäcken/Genitourinary bedömning"
+            },
+            "eExam.13": {
+              "label": "Rygg och ryggrad lokalisation för undersökningsfynd"
+            },
+            "eExam.14": {
+              "label": "Rygg och ryggrad bedömning"
+            },
+            "eExam.15": {
+              "label": "Extremitet lokalisation för undersökningsfynd"
+            },
+            "eExam.16": {
+              "label": "Extremiteter bedömning"
+            },
+            "eExam.17": {
+              "label": "Öga lokalisation för undersökningsfynd"
+            },
+            "eExam.18": {
+              "label": "Öga bedömning"
+            },
+            "eExam.19": {
+              "label": "Mental status bedömning"
+            },
+            "eExam.20": {
+              "label": "Neurologisk bedömning"
+            },
+            "eExam.21": {
+              "label": "Stroke/CVA Symtom Resolved"
+            },
+            "eExam.22": {
+              "label": "Lunga lokalisation för undersökningsfynd"
+            },
+            "eExam.23": {
+              "label": "Lunga bedömning"
+            },
+            "eExam.24": {
+              "label": "Bröstkorg lokalisation för undersökningsfynd"
+            },
+            "eExam.25": {
+              "label": "Bröstkorg bedömning"
+            },
+            "eProtocols.01": {
+              "label": "Protokoll använd"
+            },
+            "eProtocols.02": {
+              "label": "Protokoll ålder kategori"
+            },
+            "eMedications.01": {
+              "label": "Datum/tid läkemedel administrerad"
+            },
+            "eMedications.02": {
+              "label": "Läkemedel administrerad före denna enhets vårdinsats"
+            },
+            "eMedications.03": {
+              "label": "Läkemedel administrerad"
+            },
+            "eMedications.04": {
+              "label": "Läkemedel administrerad administreringsväg"
+            },
+            "eMedications.05": {
+              "label": "Läkemedel dosering"
+            },
+            "eMedications.06": {
+              "label": "Läkemedelsdosenheter"
+            },
+            "eMedications.07": {
+              "label": "Svar på läkemedel"
+            },
+            "eMedications.08": {
+              "label": "Läkemedel komplikation"
+            },
+            "eMedications.09": {
+              "label": "Läkemedel besättning (hälso- och sjukvård Professionals) ID"
+            },
+            "eMedications.10": {
+              "label": "Roll/typ av person Administering läkemedel"
+            },
+            "eMedications.11": {
+              "label": "Läkemedel godkännande"
+            },
+            "eMedications.12": {
+              "label": "Läkemedel Authorizing läkare"
+            },
+            "eMedications.13": {
+              "label": "Läkemedel administrerad av Another enhet"
+            },
+            "eProcedures.01": {
+              "label": "Datum/tid åtgärd utförd"
+            },
+            "eProcedures.02": {
+              "label": "Åtgärd utförd före denna enhets vårdinsats"
+            },
+            "eProcedures.03": {
+              "label": "Åtgärd"
+            },
+            "eProcedures.04": {
+              "label": "Size av åtgärd utrustning"
+            },
+            "eProcedures.05": {
+              "label": "Nummer av åtgärd försök"
+            },
+            "eProcedures.06": {
+              "label": "Åtgärden lyckades"
+            },
+            "eProcedures.07": {
+              "label": "Åtgärd komplikation"
+            },
+            "eProcedures.08": {
+              "label": "Respons till åtgärd"
+            },
+            "eProcedures.09": {
+              "label": "Åtgärd besättning Members ID"
+            },
+            "eProcedures.10": {
+              "label": "Roll/typ av person Performing åtgärd"
+            },
+            "eProcedures.11": {
+              "label": "Åtgärd godkännande"
+            },
+            "eProcedures.12": {
+              "label": "Åtgärd Authorizing läkare"
+            },
+            "eProcedures.13": {
+              "label": "Vascular Access plats"
+            },
+            "eProcedures.14": {
+              "label": "Airway placering Technique"
+            },
+            "eProcedures.15": {
+              "label": "Åtgärd utförd av Another enhet"
+            },
+            "eAirway.01": {
+              "label": "Indikationer för invasiv luftväg"
+            },
+            "eAirway.02": {
+              "label": "Datum/tid luftvägsutrustning placering Confirmation"
+            },
+            "eAirway.03": {
+              "label": "Luftvägsutrustning Being bekräftad"
+            },
+            "eAirway.04": {
+              "label": "Luftvägsutrustning placering bekräftad metod"
+            },
+            "eAirway.05": {
+              "label": "Tube Depth"
+            },
+            "eAirway.06": {
+              "label": "Typ av person Confirming luftvägsutrustning placering"
+            },
+            "eAirway.07": {
+              "label": "Besättningsmedlem ID"
+            },
+            "eAirway.08": {
+              "label": "Airway komplikationer Encountered"
+            },
+            "eAirway.09": {
+              "label": "Misstänkt orsaker för Failed luftvägshantering"
+            },
+            "eAirway.10": {
+              "label": "Datum/tid beslut till Manage patient med an invasiv luftväg"
+            },
+            "eAirway.11": {
+              "label": "Datum/tid invasiv luftväg placering försök Abandoned"
+            },
+            "eDevice.01": {
+              "label": "Medicinteknisk utrustning serienummer nummer"
+            },
+            "eDevice.02": {
+              "label": "Datum/tid av händelse (per medicinteknisk utrustning)"
+            },
+            "eDevice.03": {
+              "label": "Medicinteknisk utrustning händelse typ"
+            },
+            "eDevice.04": {
+              "label": "Medicinteknisk utrustning vågform grafik typ"
+            },
+            "eDevice.05": {
+              "label": "Medicinteknisk utrustning vågform grafik"
+            },
+            "eDevice.06": {
+              "label": "Medicinteknisk utrustning läge (Manual, AED, stimulering, CO2, O2, etc)"
+            },
+            "eDevice.07": {
+              "label": "Medicinteknisk utrustning ECG Lead"
+            },
+            "eDevice.08": {
+              "label": "Medicinteknisk utrustning ECG tolkning"
+            },
+            "eDevice.09": {
+              "label": "Typ av defibrillering"
+            },
+            "eDevice.10": {
+              "label": "Defibrillering eller stimulering Energy"
+            },
+            "eDevice.11": {
+              "label": "Totalt nummer av Shocks Delivered"
+            },
+            "eDevice.12": {
+              "label": "Stimulering frekvens"
+            },
+            "eDisposition.01": {
+              "label": "Destination/överlämnad till, namn"
+            },
+            "eDisposition.02": {
+              "label": "Destination/överlämnad till, kod"
+            },
+            "eDisposition.03": {
+              "label": "Destination gata adress"
+            },
+            "eDisposition.04": {
+              "label": "Destination stad"
+            },
+            "eDisposition.05": {
+              "label": "Destination delstat"
+            },
+            "eDisposition.06": {
+              "label": "Destination län"
+            },
+            "eDisposition.07": {
+              "label": "Destination amerikanskt postnummer (ZIP)"
+            },
+            "eDisposition.08": {
+              "label": "Destination land"
+            },
+            "eDisposition.09": {
+              "label": "Destination GPS plats"
+            },
+            "eDisposition.10": {
+              "label": "Destination plats amerikanska National Grid-koordinater"
+            },
+            "eDisposition.11": {
+              "label": "Nummer av patienter Transported i this ambulanssjukvård enhet"
+            },
+            "eDisposition.13": {
+              "label": "How patient Was Moved till ambulans"
+            },
+            "eDisposition.14": {
+              "label": "Position av patient During transport"
+            },
+            "eDisposition.15": {
+              "label": "How patient Was Moved från ambulans"
+            },
+            "eDisposition.16": {
+              "label": "Ambulanssjukvård transport metod"
+            },
+            "eDisposition.17": {
+              "label": "Transport läge från skadeplats"
+            },
+            "eDisposition.18": {
+              "label": "Ytterligare transport läge Descriptors"
+            },
+            "eDisposition.19": {
+              "label": "Acuity Upon ambulanssjukvård Release av patient"
+            },
+            "eDisposition.20": {
+              "label": "Orsak för Choosing destination"
+            },
+            "eDisposition.21": {
+              "label": "Typ av destination"
+            },
+            "eDisposition.22": {
+              "label": "Sjukhus In-Patient destination"
+            },
+            "eDisposition.23": {
+              "label": "Sjukhus Capability"
+            },
+            "eDisposition.24": {
+              "label": "Destination Team Pre-Arrival Alert eller Activation"
+            },
+            "eDisposition.25": {
+              "label": "Datum/tid av destination Prearrival Alert eller Activation"
+            },
+            "eDisposition.26": {
+              "label": "Utfall Instructions given"
+            },
+            "eDisposition.27": {
+              "label": "Enhet utfall"
+            },
+            "eDisposition.28": {
+              "label": "Patient Evaluation/vård"
+            },
+            "eDisposition.29": {
+              "label": "Besättning utfall"
+            },
+            "eDisposition.30": {
+              "label": "Transport utfall"
+            },
+            "eDisposition.31": {
+              "label": "Orsak för Refusal/Release"
+            },
+            "eDisposition.32": {
+              "label": "Nivå av vård given per protokoll"
+            },
+            "eOutcome.01": {
+              "label": "Akutmottagning utfall"
+            },
+            "eOutcome.02": {
+              "label": "Sjukhus utfall"
+            },
+            "eOutcome.03": {
+              "label": "Extern rapport ID/nummer typ"
+            },
+            "eOutcome.04": {
+              "label": "Extern rapport ID/nummer"
+            },
+            "eOutcome.05": {
+              "label": "Annat rapport Registry typ"
+            },
+            "eOutcome.09": {
+              "label": "Akutmottagning Åtgärder"
+            },
+            "eOutcome.10": {
+              "label": "Akutmottagning diagnos"
+            },
+            "eOutcome.11": {
+              "label": "Datum/tid av sjukhus inläggning"
+            },
+            "eOutcome.12": {
+              "label": "Sjukhus Åtgärder"
+            },
+            "eOutcome.13": {
+              "label": "Sjukhus diagnos"
+            },
+            "eOutcome.16": {
+              "label": "Datum/tid av sjukhus utskrivning"
+            },
+            "eOutcome.18": {
+              "label": "Datum/tid av akutmottagning inläggning"
+            },
+            "eOutcome.19": {
+              "label": "Datum/tid akutmottagning åtgärd utförd"
+            },
+            "eOutcome.20": {
+              "label": "Datum/tid sjukhus åtgärd utförd"
+            },
+            "eOutcome.21": {
+              "label": "Skada svårighetsgrad poäng"
+            },
+            "eCustomResults.01": {
+              "label": "Anpassad data element resultat"
+            },
+            "eCustomResults.02": {
+              "label": "Anpassad element ID Referenced"
+            },
+            "eCustomResults.03": {
+              "label": "CorrelationID av PatientCareReport element eller grupp"
+            },
+            "eOther.01": {
+              "label": "Granskning begärd"
+            },
+            "eOther.02": {
+              "label": "Möjlig System av vård/Specialty/Registry patient"
+            },
+            "eOther.03": {
+              "label": "Personal Protective utrustning använd"
+            },
+            "eOther.04": {
+              "label": "Ambulanssjukvård yrkesutövare (besättningsmedlem) ID"
+            },
+            "eOther.05": {
+              "label": "Misstänkt ambulanssjukvård arbete relaterad Exposure, skada, eller död"
+            },
+            "eOther.06": {
+              "label": "Typ av Work-Related skada, död eller misstänkt Exposure"
+            },
+            "eOther.07": {
+              "label": "Natural, misstänkt, Intentional, eller Unintentional Disaster"
+            },
+            "eOther.08": {
+              "label": "Besättningsmedlem Completing this rapport"
+            },
+            "eOther.09": {
+              "label": "Extern Electronic dokument typ"
+            },
+            "eOther.10": {
+              "label": "Fil bilaga typ"
+            },
+            "eOther.11": {
+              "label": "Fil bilaga bild"
+            },
+            "eOther.12": {
+              "label": "Typ av person undertecknande"
+            },
+            "eOther.13": {
+              "label": "Underskrift orsak"
+            },
+            "eOther.14": {
+              "label": "Typ av patient Representative"
+            },
+            "eOther.15": {
+              "label": "Underskrift status"
+            },
+            "eOther.16": {
+              "label": "Underskrift fil namn"
+            },
+            "eOther.17": {
+              "label": "Underskrift fil typ"
+            },
+            "eOther.18": {
+              "label": "Underskrift grafik"
+            },
+            "eOther.19": {
+              "label": "Datum/tid av underskrift"
+            },
+            "eOther.20": {
+              "label": "Underskrift efternamn"
+            },
+            "eOther.21": {
+              "label": "Underskrift förnamn"
+            },
+            "eOther.22": {
+              "label": "Fil bilaga namn"
+            }
+          }
+        },
+        "sourceReview": {}
+      }
     ]
   }
 }

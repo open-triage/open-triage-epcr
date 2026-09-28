@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
+import { readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
@@ -273,4 +274,35 @@ test("coded picker distinguishes the same code in different systems", () => {
   const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
   assert.match(html, /value="0">First/);
   assert.match(html, /value="1">Second/);
+});
+
+
+test("shipped Swedish choice seed appears in the clinical picker without changing coded values", async () => {
+  const seed = JSON.parse(await readFile(new URL("../../../defines/localization/sv/catalog_nemsis-3.5.1.json", import.meta.url), "utf8"));
+  const source = requireNemsisDataElement("eMedications.06");
+  assert.equal(source.valueSource.kind, "inline-enumerated");
+  if (source.valueSource.kind !== "inline-enumerated") return;
+  const translated = seed.domains.eMedications.choices.find((choice: { listId: string; code: string }) =>
+    choice.listId === "inline:eMedications.06" && choice.code === "3706021");
+  const original = source.valueSource.values.find(({ code }) => code === translated.code)!;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { lang: "sv" } } });
+  try {
+    const field = configuredStationaryCodedField(source, {
+      agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: false, supportsPertinentNegatives: false,
+      codeChoices: [{ code: original.code, codeSystem: "", label: original.label,
+        localization: { schemaVersion: 1, sv: { label: translated.label,
+          reviewedSource: { label: original.label } } } }],
+    });
+    assert.equal(field.options[0]?.label, "Milligram (mg)");
+    assert.equal(field.options[0]?.code, "3706021");
+    const selection = codedSelectionFromOption(field.options[0]!);
+    assert.equal(selection.code, "3706021");
+    const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
+    assert.match(html, /Milligram \(mg\)/);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "document", previous);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
 });

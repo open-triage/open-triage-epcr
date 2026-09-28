@@ -1,74 +1,134 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-/** Validate a readable seed against stable catalog identities before installing a new release. */
+const record = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const keysOnly = (value, allowed) => Object.keys(value).every((key) => allowed.includes(key));
+const string = (value) => typeof value === "string" && value.trim().length > 0;
+
+/** The seed is grouped by clinical domain; identities always remain the NEMSIS owner/code tuple. */
 export async function readCatalogLocalizationSeed(file, catalogKey, catalog) {
   const source = await readFile(file, "utf8");
   const seed = JSON.parse(source);
-  if (seed.schemaVersion !== 1 || seed.catalogKey !== catalogKey ||
-      !seed.elements || typeof seed.elements !== "object" || Array.isArray(seed.elements) ||
-      Object.keys(seed).some((key) => !["schemaVersion", "catalogKey", "elements", "choices", "lists", "specialChoices"].includes(key)))
+  if (!record(seed) || seed.schemaVersion !== 2 || seed.catalogKey !== catalogKey ||
+      !record(seed.domains) || !keysOnly(seed, ["schemaVersion", "catalogKey", "domains"]))
     throw new Error("Invalid catalog localization seed header");
-  const elements = new Map(catalog.elements.map((element) => [element.id, element]));
-  const elementLocalization = {};
-  for (const [elementId, translation] of Object.entries(seed.elements)) {
-    if (!elements.has(elementId) || !translation || typeof translation !== "object" || Array.isArray(translation) ||
-        Object.keys(translation).some((key) => !["label", "description"].includes(key)) ||
-        Object.values(translation).some((value) => typeof value !== "string"))
-      throw new Error(`Invalid catalog localization seed reference ${elementId}`);
-    const english = elements.get(elementId);
-    elementLocalization[elementId] = { schemaVersion: 1, sv: {
-      ...translation, reviewedSource: { label: english.name ?? "", description: english.definition ?? "" }
-    } };
-  }
-  const codeListLocalization = {};
+  const elements = new Map(catalog.elements.map((item) => [item.id, item]));
+  const groups = new Map(catalog.groups.map((item) => [item.id, item]));
   const sourceLists = new Map([
-    ...catalog.bundledLists.map((list) => [list.id, { name: list.name, values: list.values }]),
-    ...catalog.elements.filter((element) => element.valueSource.kind === "inline-enumerated")
-      .map((element) => [`inline:${element.id}`, { name: element.name, values: element.valueSource.values }]),
+    ...catalog.bundledLists.map((item) => [item.id, item]),
+    ...catalog.elements.filter((item) => item.valueSource.kind === "inline-enumerated")
+      .map((item) => [`inline:${item.id}`, { name: item.name, values: item.valueSource.values }]),
   ]);
-  if (seed.lists !== undefined && (!Array.isArray(seed.lists) || seed.lists.some((item) =>
-    !item || typeof item.listId !== "string" || typeof item.name !== "string")))
-    throw new Error("Invalid catalog list localization seed");
-  if (seed.choices !== undefined && (!Array.isArray(seed.choices) || seed.choices.some((item) =>
-    !item || typeof item.listId !== "string" || typeof item.codeSystem !== "string" ||
-    typeof item.code !== "string" || typeof item.label !== "string")))
-    throw new Error("Invalid catalog choice localization seed");
-  for (const entry of seed.lists ?? []) {
-    const source = sourceLists.get(entry.listId);
-    if (!source || codeListLocalization[entry.listId]?.localization)
-      throw new Error(`Unknown or duplicate list localization ${entry.listId}`);
-    codeListLocalization[entry.listId] = { ...codeListLocalization[entry.listId],
-      localization: { schemaVersion: 1, sv: { name: entry.name, reviewedSource: { name: source.name } } } };
+  const elementLocalization = {}, groupLocalization = {}, codeListLocalization = {}, specialChoiceLocalization = {};
+  const seen = { elements: new Set(), groups: new Set(), lists: new Set(), choices: new Set(), specialChoices: new Set() };
+  const reviewPending = [];
+  const mark = (kind, id, entry) => { if (entry.reviewPending) reviewPending.push({ kind, id, reason: entry.reviewPending }); };
+  const localizedText = (entry, fields, id) => {
+    if (!record(entry) || !keysOnly(entry, [...fields, "reviewPending"]) ||
+        fields.some((field) => !string(entry[field])) ||
+        (entry.reviewPending !== undefined && !string(entry.reviewPending)))
+      throw new Error(`Malformed catalog localization text ${id}`);
+  };
+  const unique = (kind, id) => {
+    if (seen[kind].has(id)) throw new Error(`Duplicate catalog localization ${kind} ${id}`);
+    seen[kind].add(id);
+  };
+  for (const [domain, content] of Object.entries(seed.domains)) {
+    if (!record(content) || !keysOnly(content, ["elements", "groups", "lists", "choices", "specialChoices"]) ||
+        !record(content.elements) || !record(content.groups) || !Array.isArray(content.lists) ||
+        !Array.isArray(content.choices) || !Array.isArray(content.specialChoices))
+      throw new Error(`Malformed catalog localization domain ${domain}`);
+    for (const [id, entry] of Object.entries(content.elements)) {
+      const original = elements.get(id);
+      if (!original || original.section !== domain) throw new Error(`Invalid catalog localization seed reference ${id}`);
+      unique("elements", id);
+      localizedText(entry, ["label", "description"], id);
+      elementLocalization[id] = { schemaVersion: 1, sv: { label: entry.label, description: entry.description,
+        reviewedSource: { label: original.name ?? "", description: original.definition ?? "" } } };
+      mark("element", id, entry);
+    }
+    for (const [id, entry] of Object.entries(content.groups)) {
+      const original = groups.get(id);
+      if (!original || !(id.startsWith(domain) || domain === "shared"))
+        throw new Error(`Unknown catalog group localization ${id}`);
+      unique("groups", id);
+      localizedText(entry, ["name"], id);
+      groupLocalization[id] = { schemaVersion: 1, sv: { name: entry.name,
+        reviewedSource: { name: original.name } } };
+      mark("group", id, entry);
+    }
+    for (const entry of content.lists) {
+      if (!record(entry) || !string(entry.listId)) throw new Error(`Malformed catalog list localization in ${domain}`);
+      const original = sourceLists.get(entry.listId);
+      if (!original) throw new Error(`Unknown catalog list localization ${entry.listId}`);
+      unique("lists", entry.listId);
+      localizedText(Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "listId")), ["name"], entry.listId);
+      codeListLocalization[entry.listId] = { ...codeListLocalization[entry.listId], localization: { schemaVersion: 1,
+        sv: { name: entry.name, reviewedSource: { name: original.name } } } };
+      mark("list", entry.listId, entry);
+    }
+    for (const entry of content.choices) {
+      if (!record(entry) || !string(entry.listId) || typeof entry.codeSystem !== "string" ||
+          !string(entry.code)) throw new Error(`Malformed catalog choice identity in ${domain}`);
+      const id = `${entry.listId}/${entry.codeSystem}/${entry.code}`;
+      const original = sourceLists.get(entry.listId)?.values.find((value) =>
+        value.code === entry.code && (value.codeSystem ?? "") === entry.codeSystem);
+      if (!original) throw new Error(`Unknown catalog choice localization ${id}`);
+      unique("choices", id);
+      localizedText(Object.fromEntries(Object.entries(entry).filter(([key]) =>
+        !["listId", "codeSystem", "code"].includes(key))), ["label"], id);
+      codeListLocalization[entry.listId] = { ...codeListLocalization[entry.listId], values: {
+        ...codeListLocalization[entry.listId]?.values,
+        [entry.codeSystem]: { ...codeListLocalization[entry.listId]?.values?.[entry.codeSystem],
+          [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
+            reviewedSource: { label: original.label } } } },
+      } };
+      mark("choice", id, entry);
+    }
+    for (const entry of content.specialChoices) {
+      if (!record(entry) || !string(entry.elementId) || !["not-value", "pertinent-negative"].includes(entry.kind) ||
+          !string(entry.code)) throw new Error(`Malformed special choice identity in ${domain}`);
+      const id = `${entry.elementId}/${entry.kind}/${entry.code}`;
+      const element = elements.get(entry.elementId);
+      if (!element || element.section !== domain) throw new Error(`Unknown special choice element ${id}`);
+      const sourceValue = (entry.kind === "not-value" ? element.permittedNotValues :
+        element.permittedPertinentNegatives).find((value) => value.code === entry.code);
+      if (!sourceValue) throw new Error(`Unknown special choice localization ${id}`);
+      unique("specialChoices", id);
+      localizedText(Object.fromEntries(Object.entries(entry).filter(([key]) =>
+        !["elementId", "kind", "code"].includes(key))), ["label"], id);
+      specialChoiceLocalization[entry.elementId] = { ...specialChoiceLocalization[entry.elementId],
+        [entry.kind]: { ...specialChoiceLocalization[entry.elementId]?.[entry.kind],
+          [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
+            reviewedSource: { label: sourceValue.label } } } } };
+      mark("specialChoice", id, entry);
+    }
   }
-  for (const entry of seed.choices ?? []) {
-    const source = sourceLists.get(entry.listId);
-    const sourceValue = source?.values.find((value) => value.code === entry.code &&
-      (value.codeSystem ?? "") === entry.codeSystem);
-    if (!sourceValue || codeListLocalization[entry.listId]?.values?.[entry.codeSystem]?.[entry.code])
-      throw new Error(`Unknown or duplicate choice localization ${entry.listId}/${entry.codeSystem}/${entry.code}`);
-    codeListLocalization[entry.listId] = { ...codeListLocalization[entry.listId], values: {
-      ...codeListLocalization[entry.listId]?.values,
-      [entry.codeSystem]: { ...codeListLocalization[entry.listId]?.values?.[entry.codeSystem],
-        [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
-          reviewedSource: { label: sourceValue.label } } } },
-    } };
-  }
-  const specialChoiceLocalization = {};
-  const seenSpecial = new Set();
-  for (const entry of seed.specialChoices ?? []) {
-    const element = elements.get(entry.elementId);
-    const source = entry.kind === "not-value" ? element?.permittedNotValues
-      : entry.kind === "pertinent-negative" ? element?.permittedPertinentNegatives : undefined;
-    const sourceValue = source?.find((value) => value.code === entry.code);
-    const key = `${entry.kind}\u0000${entry.code}`;
-    if (!sourceValue || typeof entry.label !== "string" || seenSpecial.has(`${entry.elementId}\u0000${key}`))
-      throw new Error(`Unknown or duplicate special choice localization ${entry.elementId}/${key}`);
-    seenSpecial.add(`${entry.elementId}\u0000${key}`);
-    specialChoiceLocalization[entry.elementId] = { ...specialChoiceLocalization[entry.elementId],
-      [entry.kind]: { ...specialChoiceLocalization[entry.elementId]?.[entry.kind],
-        [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
-          reviewedSource: { label: sourceValue.label } } } } };
-  }
-  return { elementLocalization, codeListLocalization, specialChoiceLocalization, seedSha256: createHash("sha256").update(source).digest("hex") };
+  const expected = {
+    elements: catalog.elements.map((item) => item.id),
+    groups: catalog.groups.map((item) => item.id),
+    lists: [...sourceLists.keys()],
+    choices: [...sourceLists].flatMap(([id, list]) => list.values.map((value) => `${id}/${value.codeSystem ?? ""}/${value.code}`)),
+    specialChoices: catalog.elements.flatMap((item) => [
+      ...item.permittedNotValues.map((value) => `${item.id}/not-value/${value.code}`),
+      ...item.permittedPertinentNegatives.map((value) => `${item.id}/pertinent-negative/${value.code}`),
+    ]),
+  };
+  const missing = Object.fromEntries(Object.entries(expected).map(([kind, ids]) =>
+    [kind, ids.filter((id) => !seen[kind].has(id))]));
+  const unitListIds = ["inline:eHistory.14", "inline:eMedications.06", "inline:ePatient.16", "inline:eSituation.06"];
+  const unitChoiceIds = expected.choices.filter((id) => unitListIds.some((listId) => id.startsWith(`${listId}/`)));
+  const coverage = { expected: Object.fromEntries(Object.entries(expected).map(([kind, ids]) => [kind, ids.length])),
+    supplied: Object.fromEntries(Object.entries(seen).map(([kind, ids]) => [kind, ids.size])),
+    text: { descriptions: { expected: catalog.elements.length,
+      supplied: Object.keys(elementLocalization).length },
+      unitChoices: { expected: unitChoiceIds.length,
+        supplied: unitChoiceIds.filter((id) => seen.choices.has(id)).length },
+      inlineChoices: { expected: catalog.statistics.inlineEnumerationValues,
+        supplied: [...seen.choices].filter((id) => id.startsWith("inline:")).length },
+      bundledChoices: { expected: catalog.statistics.bundledListValues,
+        supplied: [...seen.choices].filter((id) => !id.startsWith("inline:")).length } },
+    missing, reviewPending };
+  return { elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization,
+    coverage, seedSha256: createHash("sha256").update(source).digest("hex") };
 }
