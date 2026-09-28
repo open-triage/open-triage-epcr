@@ -272,5 +272,6 @@
   "mobile.documentingCall": "Dokumenterar uppdrag {call} i dess fastställda formulär",
   "mobile.documentingOpened": "Dokumenterar öppnat uppdrag",
   "mobile.callSigned": "Uppdrag {call} signerades och togs bort från aktiva uppdrag.",
-  "mobile.reportSigned": "Rapporten signerades och togs bort från aktiva uppdrag."
+  "mobile.reportSigned": "Rapporten signerades och togs bort från aktiva uppdrag.",
+  "mobile.reviewSignHeading": "Granska och signera"
 }

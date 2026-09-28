@@ -1110,7 +1110,7 @@ function ReviewPanel({ language, findings, errors, warnings, noteBlockers, group
   return (
     <section className="content-panel review-panel" aria-labelledby="review-heading">
       <div className="section-heading">
-        <div><p className="eyebrow">{resolveMessage(language, "mobile.reviewChecks")}</p><h1 id="review-heading">{resolveMessage(language, "mobile.reviewSign")}</h1></div>
+        <div><p className="eyebrow">{resolveMessage(language, "mobile.reviewChecks")}</p><h1 id="review-heading">{resolveMessage(language, "mobile.reviewSignHeading")}</h1></div>
         <span>{resolveMessage(language, "mobile.errorsWarnings", { errors: resolveMessage(language, "mobile.errorCount", { count: errors.length }, errors.length), warnings: resolveMessage(language, "mobile.warningCount", { count: warnings.length }, warnings.length) })}</span>
       </div>
       <p className="review-intro">{errors.length || warnings.length

@@ -193,7 +193,7 @@
   "mobile.savedStatus": "Saved",
   "mobile.savingStatus": "Saving",
   "mobile.pendingStatus": "Pending sync",
-  "mobile.reviewSign": "Review and sign",
+  "mobile.reviewSign": "Review & sign",
   "mobile.returnRecord": "Return to record",
   "mobile.noteDeleteConfirm": "Delete this text note from the draft report? This action cannot be undone.",
   "mobile.confirmDeletion": "Confirm deletion",
@@ -273,5 +273,6 @@
   "mobile.documentingCall": "Documenting call {call} in its pinned form",
   "mobile.documentingOpened": "Documenting opened call",
   "mobile.callSigned": "Call {call} was signed and removed from active calls.",
-  "mobile.reportSigned": "The report was signed and removed from active calls."
+  "mobile.reportSigned": "The report was signed and removed from active calls.",
+  "mobile.reviewSignHeading": "Review and sign"
 }
