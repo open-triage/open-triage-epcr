@@ -1,5 +1,6 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
+  language: "en" | "sv";
   signIn: {
     brandText: string;
     helperText: string;
@@ -37,6 +38,11 @@ function exactKeys(value: Record<string, unknown>, path: string, expected: reado
   }
 }
 
+function languageAt(value: unknown): "en" | "sv" {
+  if (value !== "en" && value !== "sv") throw new TypeError("language must be en or sv");
+  return value;
+}
+
 function booleanAt(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") throw new TypeError(`${path} must be a boolean`);
   return value;
@@ -65,7 +71,7 @@ function stringAt(value: unknown, path: string, maximumLength: number): string {
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "language", "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
   const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
@@ -79,6 +85,7 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
+    language: languageAt(root.language),
     signIn: {
       brandText: stringAt(signIn.brandText, "signIn.brandText", 100),
       helperText: stringAt(signIn.helperText, "signIn.helperText", 300),

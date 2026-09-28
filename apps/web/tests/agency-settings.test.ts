@@ -21,14 +21,14 @@ test("Agency Settings uses an explicit revisioned save with CSRF proof", async (
     assert.equal(init?.method, "PUT");
     assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
     assert.deepEqual(JSON.parse(String(init?.body)), {
-      expectedRevision: 4,
+      expectedRevision: 4, language: "sv",
       reportMediaAllowanceBytes: 80 * 1024 * 1024,
       imageMediaLimitBytes: 10 * 1024 * 1024,
       appearance,
       demographics,
     });
     return Response.json({
-      organizationId: "organization-id", reportMediaAllowanceBytes: 80 * 1024 * 1024,
+      organizationId: "organization-id", language: "sv", reportMediaAllowanceBytes: 80 * 1024 * 1024,
       imageMediaLimitBytes: 10 * 1024 * 1024,
       appearance, demographics: { ...demographics, versionId: "version-id", version: 2,
         catalogReleaseId: "catalog-id", effectiveFrom: "2026-09-24T10:00:00.000Z" },
@@ -38,11 +38,12 @@ test("Agency Settings uses an explicit revisioned save with CSRF proof", async (
     });
   };
   const result = await updateAgencyMediaSettings("csrf-proof", {
-    expectedRevision: 4, reportMediaAllowanceBytes: 80 * 1024 * 1024,
+    expectedRevision: 4, language: "sv", reportMediaAllowanceBytes: 80 * 1024 * 1024,
     imageMediaLimitBytes: 10 * 1024 * 1024,
     appearance, demographics,
   });
   assert.equal(result.revision, 5);
+  assert.equal(result.language, "sv");
   assert.equal(result.storageGrowthWarning, true);
 });
 

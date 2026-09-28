@@ -1,7 +1,7 @@
 "use client";
 
 import type { AdminContext, AdminPanelKey, ClinicianSession } from "@open-triage/contracts";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { loadAdminContext } from "../app/admin-context";
 import { CatalogAuthoring } from "./catalog-authoring";
 import { StationaryFormAuthoring } from "./stationary-form-authoring";
@@ -9,6 +9,7 @@ import { ValidationAuthoring } from "./validation-authoring";
 import { RolesPanel, UsersPanel } from "./admin-directory";
 import { AgencySettingsPanel } from "./agency-settings";
 import { LoadingStatus } from "./loading-status";
+import { resolveMessage, type AgencyLanguage } from "../app/localization";
 
 type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
@@ -29,15 +30,21 @@ function formattedBytes(bytes: number): string {
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
 }
 
-export function AdminShell({ session }: {
+export function AdminShell({ session, language = "en" }: {
   readonly session: ClinicianSession;
+  readonly language?: AgencyLanguage;
 }) {
-  return <AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} />;
+  return <AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} language={language} />;
 }
 
-function AuthorizedAdminShell({ session }: {
+function AuthorizedAdminShell({ session, language }: {
   readonly session: ClinicianSession;
+  readonly language: AgencyLanguage;
 }) {
+  const t = useCallback((key: string) => resolveMessage(language, key), [language]);
+  const panelKeys: Record<AdminPanel, string> = { Dashboard: "navigation.dashboard", Users: "navigation.users", Roles: "navigation.roles",
+    "Element catalog": "navigation.catalog", "Stationary form": "navigation.form", "Validation rules": "navigation.validation",
+    "Agency Settings": "navigation.settings" };
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
@@ -49,7 +56,7 @@ function AuthorizedAdminShell({ session }: {
     const unavailableOffline = () => {
       if (!navigator.onLine) {
         setContext(null);
-        setError("Admin mode is online-only. Reconnect to continue.");
+        setError(t("navigation.adminOffline"));
         return true;
       }
       return false;
@@ -66,7 +73,8 @@ function AuthorizedAdminShell({ session }: {
       }).catch((reason: unknown) => {
         if (current) {
           setContext(null);
-          setError(reason instanceof Error ? reason.message : "Administration configuration is unavailable.");
+          setError(language === "sv" ? t("navigation.adminUnavailable") :
+            reason instanceof Error ? reason.message : t("navigation.adminUnavailable"));
         }
       });
     };
@@ -78,7 +86,7 @@ function AuthorizedAdminShell({ session }: {
       window.removeEventListener("offline", wentOffline);
       window.removeEventListener("online", reloadContext);
     };
-  }, [session]);
+  }, [session, language, t]);
 
   const organization = context?.organization ?? session.organization;
   const panels = context ? panelDefinition.filter(([key]) => context.panels.includes(key)).map(([, panel]) => panel) : [];
@@ -86,22 +94,22 @@ function AuthorizedAdminShell({ session }: {
 
   return <main className="admin-shell" aria-labelledby="admin-heading">
     <header className="admin-heading">
-      <h1 id="admin-heading">Administration</h1>
+      <h1 id="admin-heading">{t("navigation.administration")}</h1>
       <p>{organization.name}</p>
     </header>
 
     <div className="admin-workspace">
-      <nav className="admin-tabs" aria-label="Administration panels">
+      <nav className="admin-tabs" aria-label={t("navigation.adminPanels")}>
         {panels.map((panel) => <button type="button" key={panel}
           className={panel === activePanel ? "active" : ""} aria-current={panel === activePanel ? "page" : undefined}
           onClick={() => {
             setVisitedPanels((current) => [...new Set([...current, ...(activePanel ? [activePanel] : []), panel])]);
             setActivePanel(panel);
-          }}>{panel}</button>)}
+          }}>{t(panelKeys[panel])}</button>)}
       </nav>
       <div className="admin-panel" aria-live="polite">
     {error && <p className="admin-error" role="alert">{error}</p>}
-    {!context && !error && <LoadingStatus className="admin-loading">Loading active configuration…</LoadingStatus>}
+    {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
         <h2 id="active-configuration-heading">Active configuration</h2>
@@ -168,7 +176,7 @@ function AuthorizedAdminShell({ session }: {
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
     </section></div>}
 
-    {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel
+    {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel language={language}
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}
       canWrite={context.capabilities.includes("settings:write")} /></div>}
 

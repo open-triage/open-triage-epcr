@@ -6,6 +6,7 @@ import {
   type PublicInstallationConfiguration,
 } from "@open-triage/contracts";
 import production from "@open-triage/contracts/config/installation.production.json";
+import { applyDocumentLanguage } from "./localization";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit } from "./browser-api";
 
 export function selectedInstallationSettings(): InstallationSettings {
@@ -18,7 +19,8 @@ export function applyAgencyColors(appearance: AgencyAppearance, document: Docume
   document.documentElement.style.setProperty("--agency-pwa-background", appearance.pwaBackgroundColor);
 }
 
-export function applyAgencyAppearance(appearance: AgencyAppearance, document: Document): void {
+export function applyAgencyAppearance(appearance: AgencyAppearance, document: Document, language: "en" | "sv" = "en"): void {
+  applyDocumentLanguage(language, document);
   applyAgencyColors(appearance, document);
   document.title = appearance.pwaName;
   let theme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');

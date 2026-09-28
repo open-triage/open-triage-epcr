@@ -15,6 +15,7 @@ test("the sole installation policy is the production security and retention base
   const validate = new Ajv2020({ strict: true }).compile(schema);
   assert.equal(validate(production), true, JSON.stringify(validate.errors));
   assert.deepEqual(parseInstallationSettings(production), production);
+  assert.equal(production.language, "en");
   assert.deepEqual(selectedInstallationSettings(), production);
   assert.equal(production.authentication.minimumPasswordLength, 12);
   assert.equal(production.authentication.temporaryPasswordHours, 72);

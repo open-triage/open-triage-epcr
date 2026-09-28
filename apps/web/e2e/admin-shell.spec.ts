@@ -13,7 +13,7 @@ const dashboard = {
   databaseConnections: 5, maxDatabaseConnections: 100, generatedAt: "2026-09-08T14:00:00.000Z",
 };
 const agencySettings = {
-  organizationId: "organization-id", reportMediaAllowanceBytes: 50 * 1024 * 1024,
+  organizationId: "organization-id", language: "en", reportMediaAllowanceBytes: 50 * 1024 * 1024,
   defaultReportMediaAllowanceBytes: 50 * 1024 * 1024, storageGrowthWarning: false, revision: 4,
   updatedAt: "2026-09-24T10:00:00.000Z",
   appearance: {
@@ -157,7 +157,7 @@ test("Demo can inspect Agency Settings without write controls", async ({ page })
   await expect(page.getByRole("button", { name: "Agency Settings" })).toBeVisible();
   await page.getByRole("button", { name: "Agency Settings" }).click();
   await expect(page.getByRole("heading", { name: "Agency Settings" })).toBeVisible();
-  await expect(page.locator(".agency-settings fieldset")).toHaveCount(3);
+  await expect(page.locator(".agency-settings fieldset")).toHaveCount(4);
   for (const fieldset of await page.locator(".agency-settings fieldset").all()) await expect(fieldset).toHaveAttribute("disabled", "");
   await expect(page.getByText(/changing them requires settings:write authority/i)).toBeVisible();
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);

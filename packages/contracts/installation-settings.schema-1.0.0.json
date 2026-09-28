@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion",
+    "language",
     "signIn",
     "clinicalRetention",
     "authentication",
@@ -14,6 +15,7 @@
   ],
   "properties": {
     "schemaVersion": { "const": "1.0.0" },
+    "language": { "enum": ["en", "sv"] },
     "signIn": {
       "type": "object",
       "additionalProperties": false,

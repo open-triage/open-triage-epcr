@@ -1,9 +1,10 @@
 "use client";
 
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
-import React, { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useCallback, useEffect, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { applyAgencyColors } from "../app/installation-settings";
+import { resolveMessage, type AgencyLanguage } from "../app/localization";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -13,7 +14,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision,
+  return { expectedRevision: settings.revision, language: settings.language,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -24,10 +25,13 @@ function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsComma
     } };
 }
 
-export function AgencySettingsPanel({ csrfToken, canWrite }: {
+export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   readonly csrfToken: string;
   readonly canWrite: boolean;
+  readonly language?: AgencyLanguage;
 }) {
+  const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
+    resolveMessage(language, key, parameters), [language]);
   const [settings, setSettings] = useState<AgencyMediaSettings | null>(null);
   const [draft, setDraft] = useState<UpdateAgencyMediaSettingsCommand | null>(null);
   const [allowanceMib, setAllowanceMib] = useState("50");
@@ -45,10 +49,10 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
       setAllowanceMib(String(loaded.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(loaded.imageMediaLimitBytes / MEBIBYTE));
     }).catch((reason: unknown) => {
-      if (current) setError(reason instanceof Error ? reason.message : "Agency Settings could not be loaded.");
+      if (current) setError(language === "sv" ? t("settings.loadFailed") : reason instanceof Error ? reason.message : t("settings.loadFailed"));
     });
     return () => { current = false; };
-  }, []);
+  }, [language, t]);
 
   useEffect(() => {
     if (draft) applyAgencyColors(draft.appearance, document);
@@ -79,12 +83,12 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
   function chooseLogo(file: File | undefined) {
     if (!file) return;
     if (file.type !== "image/png" || file.size > 128 * 1024) {
-      setError("Logo must be a PNG no larger than 128 KiB.");
+      setError(t("settings.logoInvalid"));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => changeAppearance("logoPngDataUrl", typeof reader.result === "string" ? reader.result : null);
-    reader.onerror = () => setError("The logo could not be read.");
+    reader.onerror = () => setError(t("settings.logoReadFailed"));
     reader.readAsDataURL(file);
   }
 
@@ -99,19 +103,30 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
       setSettings(updated); setDraft(editable(updated));
       setAllowanceMib(String(updated.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(updated.imageMediaLimitBytes / MEBIBYTE));
-      setNotice("Agency Settings saved. Appearance is active on refresh; new reports use demographic version " +
-        `${updated.demographics.version}.`);
+      setNotice(t("settings.saved", { version: updated.demographics.version }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Agency Settings could not be saved.");
+      setError(reason instanceof Error && /revision is stale/i.test(reason.message) ? t("settings.stale") :
+        language === "sv" ? t("settings.saveFailed") : reason instanceof Error ? reason.message : t("settings.saveFailed"));
     } finally { setBusy(false); }
   }
 
   return <section className="admin-configuration agency-settings" aria-labelledby="agency-settings-heading">
-    <div className="section-heading"><h2 id="agency-settings-heading">Agency Settings</h2></div>
+    <div className="section-heading"><h2 id="agency-settings-heading">{t("navigation.settings")}</h2></div>
     {error && <p className="admin-error" role="alert">{error}</p>}
     {notice && <p className="agency-settings-notice" role="status">{notice}</p>}
-    {!draft && !error && <p role="status">Loading Agency Settings…</p>}
+    {!draft && !error && <p role="status">{t("settings.loading")}</p>}
     {draft && <form onSubmit={save}>
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.language")}</legend>
+        <label htmlFor="agency-language"><strong>{t("settings.agencyLanguage")}</strong>
+          <span>{t("settings.languageHelp")}</span></label>
+        <select id="agency-language" value={draft.language} onChange={(event) =>
+          setDraft((current) => current ? { ...current, language: event.target.value as AgencyLanguage } : current)}>
+          <option value="en">{t("settings.english")}</option>
+          <option value="sv">{t("settings.swedish")}</option>
+        </select>
+      </fieldset>
+
       <fieldset disabled={!canWrite || busy}>
         <legend>Report media</legend>
         <label htmlFor="image-media-limit"><strong>Per-image limit</strong>
@@ -186,10 +201,10 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
         <small>Current demographic version {settings?.demographics.version}; code system {draft.demographics.stateCodeSystem ?? "not recorded"}.</small>
       </fieldset>
 
-      <small>Agency Settings revision {settings?.revision}.</small>
-      {!canWrite && <p>You can view these settings, but changing them requires settings:write authority.</p>}
+      <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>
+      {!canWrite && <p>{t("settings.readOnly")}</p>}
       {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !complete || unchanged}>{busy ? "Saving…" : "Save"}</button></div>}
+        disabled={busy || !validAllowance || !validImageLimit || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
     </form>}
   </section>;
 }

@@ -281,6 +281,7 @@ export interface ReportMediaPolicy {
 
 export interface AgencyMediaSettings {
   organizationId: string;
+  language: "en" | "sv";
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -295,6 +296,7 @@ export interface AgencyMediaSettings {
 
 export interface UpdateAgencyMediaSettingsCommand {
   expectedRevision: number;
+  language: "en" | "sv";
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
