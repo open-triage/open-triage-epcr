@@ -107,7 +107,7 @@ export type ShellAction =
   | { readonly type: "review-warning-acknowledged"; readonly id: string; readonly acknowledged: boolean }
   | { readonly type: "procedure-started"; readonly id: string; readonly date?: string; readonly time: string }
   | { readonly type: "procedure-opened"; readonly id: string }
-  | { readonly type: "procedure-selected"; readonly code: string }
+  | { readonly type: "procedure-selected"; readonly code: string; readonly label?: string }
   | { readonly type: "procedure-draft-changed"; readonly field: "date" | "time" | "attempts" | "success" | "outcome"; readonly value: string }
   | { readonly type: "procedure-complication-toggled"; readonly code: string }
   | { readonly type: "procedure-warning-acknowledged"; readonly acknowledged: boolean }
@@ -483,7 +483,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         procedureDraft: {
           ...state.procedureDraft,
           procedureCode: selected?.code ?? "",
-          procedureLabel: selected?.label ?? "",
+          procedureLabel: selected ? action.label ?? selected.label : "",
         },
       } : state;
     }

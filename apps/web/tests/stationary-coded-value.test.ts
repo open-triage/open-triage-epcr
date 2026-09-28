@@ -242,3 +242,22 @@ test("a report reopens locally with an agency code from its pinned catalog", () 
   assert.equal(restored.state.encounter.document.groups.find(({ id }) => id === "ePatientSection")!
     .instances[0]!.elements.find(({ id }) => id === "ePatient.14")!.values[0]?.kind, "coded");
 });
+
+test("Swedish choice and absence text preserve the selected clinical codes", () => {
+  const previous = globalThis.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { lang: "sv" } } });
+  try {
+    const field = configuredStationaryCodedField("eProcedures.06", {
+      agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [{ code: "9923003", codeSystem: "", label: "Yes",
+        localization: { schemaVersion: 1, sv: { label: "Ja" } } }],
+      exceptionalChoices: [{ key: "not-value:7701003", localization: { schemaVersion: 1,
+        sv: { label: "Ej registrerat" } } }],
+    });
+    assert.equal(field.options[0]?.label, "Ja");
+    assert.equal(codedSelectionFromOption(field.options[0]!).code, "9923003");
+    assert.equal(field.exceptionalChoices.find(({ key }) => key === "not-value:7701003")?.label, "Ej registrerat");
+    assert.equal(exceptionalSelection(field, "not-value:7701003")?.code, "7701003");
+  } finally { Object.defineProperty(globalThis, "document", { configurable: true, value: previous }); }
+});

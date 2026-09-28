@@ -6,6 +6,7 @@ type FieldRow = {
   name: string;
   description: string | null;
   localization: ClinicalFormConfiguration["catalogFields"][string]["localization"] | null;
+  exceptional_choices?: ClinicalFormConfiguration["catalogFields"][string]["exceptionalChoices"];
   agency_required: boolean | null;
   agency_required_severity: "warning" | "error" | null;
   min_occurs: number;
@@ -20,6 +21,8 @@ type ChoiceRow = {
   code: string;
   code_system: string;
   label: string;
+  source_label?: string;
+  localization: ClinicalFormConfiguration["catalogFields"][string]["codeChoices"] extends Array<infer T> ? T extends { localization?: infer L } ? L : never : never;
   terminology_version: Date | string | null;
 };
 
@@ -71,15 +74,21 @@ export async function catalogFieldsConfiguration(
   const fields = elementIds.length ? await manager.query<FieldRow[]>(`
     select e.element_id, e.name, e.description,
            cr.provenance->'elementLocalization'->e.element_id as localization,
+           (select coalesce(jsonb_agg(jsonb_build_object('key', o.source_kind || ':' || o.code,
+             'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->(o.source_kind || chr(0) || o.code))), '[]'::jsonb)
+             from catalog.element_option o where o.release_id=e.release_id and o.element_id=e.element_id
+             and o.source_kind in ('not-value', 'pertinent-negative')) as exceptional_choices,
            e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
            e.supports_not_values, e.supports_pertinent_negatives
     from catalog.element_definition e join catalog.release cr on cr.id=e.release_id
     where e.release_id = $1 and e.element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
-    select * from (select vse.element_id, option.code, option.code_system, option.display as label,
+    select * from (select vse.element_id, option.code, option.code_system, option.display as label, option.source_display as source_label,
+           cr.provenance->'codeListLocalization'->value_set.value_set_id->'values'->(option.code_system || chr(0) || option.code) as localization,
            value_set.published_at as terminology_version
     from catalog.value_set_element vse
+    join catalog.release cr on cr.id=vse.release_id
     join catalog.value_set value_set on value_set.release_id = vse.release_id
       and value_set.value_set_id = vse.value_set_id
     join catalog.value_set_option option on option.release_id = vse.release_id
@@ -89,9 +98,11 @@ export async function catalogFieldsConfiguration(
       and configured.code_system = option.code_system and configured.code = option.code
     where vse.release_id = $1 and vse.element_id = any($2::text[]) and coalesce(configured.enabled, true)
     union all
-    select option.element_id, option.code, option.code_system, option.display as label,
+    select option.element_id, option.code, option.code_system, option.display as label, option.display as source_label,
+           cr.provenance->'codeListLocalization'->('inline:' || option.element_id)->'values'->(option.code_system || chr(0) || option.code) as localization,
            null::text as terminology_version
     from catalog.element_option option
+    join catalog.release cr on cr.id=option.release_id
     left join catalog.element_option_configuration configured
       on configured.release_id=option.release_id and configured.element_id=option.element_id
       and configured.source_kind=option.source_kind and configured.code_system=option.code_system
@@ -104,6 +115,8 @@ export async function catalogFieldsConfiguration(
   for (const choice of choices) {
     const current = choicesByElement.get(choice.element_id) ?? [];
     current.push({ code: choice.code, codeSystem: choice.code_system, label: choice.label,
+      ...(choice.source_label && choice.source_label !== choice.label ? { sourceLabel: choice.source_label } : {}),
+      ...(choice.localization ? { localization: choice.localization } : {}),
       ...(choice.terminology_version ? { terminologyVersion: new Date(choice.terminology_version).toISOString() } : {}) });
     choicesByElement.set(choice.element_id, current);
   }
@@ -111,6 +124,7 @@ export async function catalogFieldsConfiguration(
       name: field.name,
       description: field.description ?? "",
       ...(field.localization ? { localization: field.localization } : {}),
+      ...(field.exceptional_choices ? { exceptionalChoices: field.exceptional_choices } : {}),
       agencyRequired: field.agency_required === true,
       requirednessSeverity: field.agency_required_severity,
       minOccurs: Number(field.min_occurs),

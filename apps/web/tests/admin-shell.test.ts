@@ -429,7 +429,7 @@ test("Catalog authority requires the complete read-write-publish prerequisite ch
 test("read-only code-list inspection exposes definitions without mutable controls", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
     { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
-  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 9);
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 10);
   assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
 });
 

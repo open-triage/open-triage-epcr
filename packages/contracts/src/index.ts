@@ -648,6 +648,8 @@ export interface CatalogDraftElement {
     label?: string; description?: string;
     reviewedSource?: { label?: string; description?: string };
   } };
+  specialChoices?: Array<{ kind: "not-value" | "pertinent-negative"; code: string; label: string;
+    localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } } }>;
   identityId: string;
   baseDatatype: string;
   storageSemantics: {
@@ -675,6 +677,7 @@ export interface CatalogDraftCodeValue {
   sourceLabel: string;
   category: string | null;
   enabled: boolean;
+  localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } };
 }
 
 export interface CatalogDraftCodeList {
@@ -682,6 +685,7 @@ export interface CatalogDraftCodeList {
   name: string;
   classification: "defined" | "suggested" | "agency" | "inline";
   elementIds: string[];
+  localization?: { schemaVersion: 1; sv?: { name?: string; reviewedSource?: { name: string } } };
   values: CatalogDraftCodeValue[];
   defaultValue: { code: string; codeSystem: string } | null;
 }
@@ -881,10 +885,13 @@ export interface ClinicalFormConfiguration {
     nillable: boolean;
     supportsNotValues: boolean;
     supportsPertinentNegatives: boolean;
+    exceptionalChoices?: Array<{ key: string; localization?: CatalogDraftCodeValue["localization"] }>;
     codeChoices?: Array<{
       code: string;
       codeSystem: string;
       label: string;
+      sourceLabel?: string;
+      localization?: CatalogDraftCodeValue["localization"];
       terminologyVersion?: string;
     }>;
   }>;

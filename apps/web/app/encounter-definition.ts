@@ -58,11 +58,12 @@ export type ProcedureEventDefinition = {
     readonly success: string; readonly outcome: string; readonly complications: string; readonly select: string;
     readonly cancel: string; readonly add: string; readonly save: string; readonly warningPill: string;
   };
-  readonly terminology: { readonly catalog: NemsisReference; readonly codeSystem: string };
+  readonly terminology: { readonly catalog: NemsisReference; readonly codeSystem: string;
+    readonly choices?: ReadonlyArray<{ readonly code: string; readonly label: string; readonly sourceLabel: string; readonly category: string }> };
   readonly required: Record<ProcedureField, boolean>;
   readonly references: Record<ProcedureField, NemsisReference>;
   readonly attempts: { readonly defaultValue: number; readonly min: number; readonly max: number };
-  readonly successOptions: ReadonlyArray<{ readonly value: "yes" | "no"; readonly label: string }>;
+  readonly successOptions: ReadonlyArray<{ readonly value: "yes" | "no"; readonly code: string; readonly label: string }>;
   readonly outcomeOptions: ReadonlyArray<{ readonly value: "improved" | "unchanged" | "worse" | "not-applicable"; readonly code: string; readonly label: string }>;
   readonly complicationOptions: ReadonlyArray<{ readonly code: string; readonly label: string }>;
   readonly validationMessages: Record<"procedureRequired" | "labelMismatch" | "invalidTime" | "invalidAttempts" | "successRequired" | "complicationsRequired" | "outcomeRequired", string>;
@@ -90,7 +91,9 @@ export type MedicationEventDefinition = {
     readonly warnWhenMissing?: boolean;
   }>;
   readonly doseUnits: ReadonlyArray<string>;
+  readonly doseUnitLabels?: Readonly<Record<string, string>>;
   readonly routes: ReadonlyArray<string>;
+  readonly routeLabels?: Readonly<Record<string, string>>;
   readonly labels: {
     readonly category: string;
     readonly newEyebrow: string;

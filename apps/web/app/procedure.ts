@@ -51,16 +51,16 @@ export const PROCEDURES: ReadonlyArray<ProcedureOption> = resolveNemsisElementVa
   category: "category" in value ? value.category ?? "" : "",
 }));
 
-const normalized = PROCEDURES.map((procedure, index) => ({
-  procedure,
-  index,
-  haystack: `${procedure.label} ${procedure.sourceLabel} ${procedure.category} ${procedure.code}`.toLocaleLowerCase(),
-}));
+function normalizedProcedures(options: ReadonlyArray<ProcedureOption>) {
+  return options.map((procedure, index) => ({ procedure, index,
+    haystack: `${procedure.label} ${procedure.sourceLabel} ${procedure.category} ${procedure.code}`.toLocaleLowerCase(),
+  }));
+}
 
 export function searchProcedures(query: string, limit = 30, definition: ProcedureEventDefinition = standardEncounterDefinition.events.procedure): ReadonlyArray<ProcedureOption> {
   if (definition.terminology.catalog !== "eProcedures.03") throw new Error(`Unsupported procedure catalog: ${definition.terminology.catalog}`);
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return normalized
+  return normalizedProcedures(definition.terminology.choices ?? PROCEDURES)
     .filter(({ haystack }) => terms.every((term) => haystack.includes(term)))
     .sort((a, b) => {
       if (!terms.length) return a.index - b.index;
@@ -80,12 +80,10 @@ export function validateProcedure(draft: ProcedureDraft, definition: ProcedureEv
   const warnings: string[] = [];
   const attempts = Number(draft.attempts);
 
-  const selectedProcedure = PROCEDURES.find((procedure) => procedure.code === draft.procedureCode);
+  const selectedProcedure = (definition.terminology.choices ?? PROCEDURES).find((procedure) => procedure.code === draft.procedureCode);
   const message = (field: keyof ProcedureEventDefinition["references"], text: string) => `${definition.references[field]}${definition.required[field] ? " (Required)" : ""}: ${text}`;
   if (!selectedProcedure && definition.required.procedure) {
     errors.push(message("procedure", definition.validationMessages.procedureRequired));
-  } else if (selectedProcedure && selectedProcedure.label !== draft.procedureLabel) {
-    errors.push(message("procedure", definition.validationMessages.labelMismatch));
   }
   if (definition.required.time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) {
     errors.push(message("time", definition.validationMessages.invalidTime));

@@ -167,10 +167,8 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
   }
   if (event.procedure) {
     const procedure = event.procedure;
-    const successLabel = definition.events.procedure.successOptions.find(({ value }) => value === procedure.success)?.label ?? procedure.success;
-    const outcomeLabel = definition.events.procedure.outcomeOptions.find(({ value }) => value === procedure.outcome)?.label ?? procedure.outcome;
-    const success = choice("eProcedures.06", successLabel);
-    const outcome = choice("eProcedures.08", outcomeLabel);
+    const success = definition.events.procedure.successOptions.find(({ value }) => value === procedure.success);
+    const outcome = definition.events.procedure.outcomeOptions.find(({ value }) => value === procedure.outcome);
     return [{ groupId: "eProcedures.ProcedureGroup", instance: owned(event.id, observedAt, [
       { id: "eProcedures.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: observedAt }] },
       { id: "eProcedures.03", values: [{ kind: "coded", occurrenceId: `${event.id}:procedure`, code: procedure.code, system: "SNOMED-CT", display: procedure.label, attributes: { warningAcknowledged: procedure.warningAcknowledged } }] },

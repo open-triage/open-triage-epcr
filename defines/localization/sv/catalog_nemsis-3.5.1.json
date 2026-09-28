@@ -6,5 +6,51 @@
       "label": "Hjärtfrekvens",
       "description": "Patientens hjärtfrekvens i slag per minut."
     }
-  }
+  },
+  "lists": [
+    {
+      "listId": "inline:eMedications.06",
+      "name": "Dosenheter"
+    }
+  ],
+  "choices": [
+    {
+      "listId": "inline:eProcedures.06",
+      "codeSystem": "",
+      "code": "9923003",
+      "label": "Ja"
+    },
+    {
+      "listId": "inline:eProcedures.06",
+      "codeSystem": "",
+      "code": "9923001",
+      "label": "Nej"
+    },
+    {
+      "listId": "inline:eProcedures.08",
+      "codeSystem": "",
+      "code": "9916001",
+      "label": "Förbättrad"
+    },
+    {
+      "listId": "inline:eMedications.06",
+      "codeSystem": "",
+      "code": "3706021",
+      "label": "Milligram (mg)"
+    }
+  ],
+  "specialChoices": [
+    {
+      "elementId": "eVitals.10",
+      "kind": "not-value",
+      "code": "7701003",
+      "label": "Ej registrerat"
+    },
+    {
+      "elementId": "eProcedures.06",
+      "kind": "not-value",
+      "code": "7701001",
+      "label": "Ej tillämpligt"
+    }
+  ]
 }
