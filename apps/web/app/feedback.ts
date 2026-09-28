@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import { resolveMessage, type AgencyLanguage } from "./localization";
 import type { CreateFeedbackCommand, CreateFeedbackResponse, FeedbackSubmissionType } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestInit } from "./browser-api";
@@ -24,10 +25,6 @@ export async function submitFeedback(csrfToken: string, command: CreateFeedbackC
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify(command)
   }));
-  if (!response.ok) throw new Error(response.status === 401
-    ? resolveMessage(language, "noteUi.feedbackSession")
-    : response.status === 429
-      ? resolveMessage(language, "noteUi.feedbackRate")
-    : resolveMessage(language, "noteUi.feedbackFailure"));
+  if (!response.ok) throw await platformRequestError(response, language);
   return response.json() as Promise<CreateFeedbackResponse>;
 }

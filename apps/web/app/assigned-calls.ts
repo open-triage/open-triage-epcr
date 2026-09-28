@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import type {
   AssignedCall,
   AssignedCallsResponse,
@@ -22,9 +23,7 @@ export async function fetchSyntheticCallGenerationContext(): Promise<SyntheticCa
   const url = apiRequestUrl("/api/calls/synthetic-generation");
   if (!url) throw new Error("Synthetic call generation requires a live connection.");
   const response = await fetch(url, browserRequestInit());
-  if (!response.ok) throw new Error(response.status === 401
-    ? "Clinical Demo authorization is no longer available."
-    : "Synthetic call generation is unavailable.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<SyntheticCallGenerationContext>;
 }
 
@@ -41,12 +40,7 @@ export async function generateSyntheticCall(csrfToken: string, unitId: string): 
   } catch {
     throw new Error("Synthetic call generation requires a live connection.");
   }
-  if (!response.ok) {
-    if (response.status === 401) throw new Error("Clinical Demo authorization is no longer available.");
-    if (response.status === 404) throw new Error("The selected unit is no longer eligible.");
-    if (response.status === 409) throw new Error("Call generation conflicted with the current assignments. Refresh and try again.");
-    throw new Error("The synthetic call could not be generated.");
-  }
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<GenerateSyntheticCallResponse>;
 }
 
@@ -63,7 +57,7 @@ export async function resolveDispatchConflict(
     headers: { "x-csrf-token": csrfToken, "content-type": "application/json" },
     body: JSON.stringify({ commandId: crypto.randomUUID(), disposition })
   }));
-  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The dispatch difference could not be resolved.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<DispatchConflict>;
 }
 
@@ -75,7 +69,7 @@ export function assignedCallsUrl(): string {
 
 export async function fetchAssignedCalls(): Promise<AssignedCallsResponse> {
   const response = await fetch(assignedCallsUrl(), browserRequestInit());
-  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Assigned calls could not be refreshed.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<AssignedCallsResponse>;
 }
 
@@ -98,11 +92,7 @@ export async function openAssignedCall(csrfToken: string, assignmentId: string):
   } catch {
     throw new Error("The call could not be opened. Check your connection and try again.");
   }
-  if (!response.ok) {
-    if (response.status === 401) throw new Error("Your shift session has ended.");
-    if (response.status === 409) throw new Error("This call can no longer be opened.");
-    throw new Error("The call could not be opened. Check your connection and try again.");
-  }
+  if (!response.ok) throw await platformRequestError(response);
   const opened = await response.json() as OpenAssignmentResponse;
   if (opened.assignmentId !== assignmentId) throw new Error("The static demo fixture does not match the selected assignment.");
   return opened;
@@ -116,7 +106,7 @@ export function openCallsUrl(): string {
 
 export async function fetchOpenCalls(): Promise<OpenCallsResponse> {
   const response = await fetch(openCallsUrl(), browserRequestInit());
-  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "Open calls could not be refreshed.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<OpenCallsResponse>;
 }
 
@@ -134,11 +124,7 @@ export async function reopenOpenCall(csrfToken: string, reportId: string): Promi
   } catch {
     throw new Error("The report could not be reopened. Check your connection and try again.");
   }
-  if (!response.ok) {
-    if (response.status === 401) throw new Error("Your shift session has ended.");
-    if (response.status === 404 || response.status === 409) throw new Error("This report is no longer available to reopen.");
-    throw new Error("The report could not be reopened. Check your connection and try again.");
-  }
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<ReopenOpenCallResponse>;
 }
 
