@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminText, useAdminCapabilityText, useAdminError, useAdminText } from "../app/admin-localization";
+
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import { createAdminRole, deactivateAdminRole, loadAdminRoleCapabilities, loadAdminRoleHistory, loadAdminRoles,
@@ -16,11 +18,12 @@ const temporaryPasswordHours = selectedInstallationSettings().authentication.tem
 function RoleBadges({ roles, effective = true, owner = false }: {
   readonly roles: AdminRoleSummary[]; readonly effective?: boolean; readonly owner?: boolean;
 }) {
-  if (!roles.length && !owner) return <span className="admin-muted">No roles</span>;
-  return <ul className="admin-role-badges" aria-label="Assigned roles">
-    {owner && <li className="admin-owner-role">Owner</li>}
+  const t = useAdminText();
+  if (!roles.length && !owner) return <span className="admin-muted"><AdminText english="No roles" /></span>;
+  return <ul className="admin-role-badges" aria-label={t("Assigned roles")}>
+    {owner && <li className="admin-owner-role"><AdminText english="Owner" /></li>}
     {roles.map((role) => <li key={role.id}>{role.displayName}{!role.active
-      ? " (deactivated)" : !effective ? " (retained, ineffective while disabled)" : ""}</li>)}
+      ? t(" (deactivated)") : !effective ? t(" (retained, ineffective while disabled)") : ""}</li>)}
   </ul>;
 }
 
@@ -36,6 +39,8 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   readonly currentUserId?: string;
   readonly csrfToken?: string;
 }) {
+  const t = useAdminText();
+  const adminError = useAdminError();
   const [items, setItems] = useState<AdminUserSummary[]>([]);
   const [roleOptions, setRoleOptions] = useState<AdminAssignableRoleSummary[]>([]);
   const [query, setQuery] = useState<AdminUserQuery>({ state: "active" });
@@ -64,7 +69,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setItems((current) => append ? [...current, ...page.items] : page.items);
       setNextCursor(page.nextCursor);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Users could not be loaded.");
+      setError(adminError(reason, "Users could not be loaded."));
     } finally {
       setLoading(false);
     }
@@ -74,10 +79,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     loadAdminUsers({ state: "active" }).then((page) => {
       setItems(page.items);
       setNextCursor(page.nextCursor);
-    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Users could not be loaded."))
+    }).catch((reason: unknown) => setError(adminError(reason, "Users could not be loaded.")))
       .finally(() => setLoading(false));
     loadAdminUserRoleOptions().then((result) => setRoleOptions(result.items)).catch(() => setRoleOptions([]));
-  }, []);
+  }, [adminError]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -113,7 +118,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`${created.displayName} was created. Their temporary password expires ${new Date(created.temporaryPasswordExpiresAt).toLocaleString()}.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The user could not be created.");
+      setError(adminError(reason, "The user could not be created."));
     } finally {
       setCreating(false);
     }
@@ -125,7 +130,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     try {
       setUserSessions((await loadAdminUserSessions(userId)).items);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Sessions could not be loaded.");
+      setError(adminError(reason, "Sessions could not be loaded."));
     } finally {
       setSecurityLoading(false);
     }
@@ -158,10 +163,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
         window.location.reload();
         return;
       }
-      setNotice("The selected session was revoked.");
+      setNotice(t("The selected session was revoked."));
       await refreshSessions(editing.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The session could not be revoked.");
+      setError(adminError(reason, "The session could not be revoked."));
     } finally {
       setSecurityLoading(false);
     }
@@ -187,7 +192,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`${editing.displayName}'s temporary credential expires ${new Date(reset.temporaryPasswordExpiresAt).toLocaleString()}. ${reset.sessionsRevoked} session${reset.sessionsRevoked === 1 ? " was" : "s were"} revoked. Account status was not changed.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The credential could not be reset.");
+      setError(adminError(reason, "The credential could not be reset."));
     } finally {
       setResetting(false);
     }
@@ -219,7 +224,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           : `${updated.displayName} was updated.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The user could not be updated.");
+      setError(adminError(reason, "The user could not be updated."));
     } finally {
       setSaving(false);
     }
@@ -247,134 +252,134 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`Roles updated for ${updated.displayName}. Added: ${updated.addedRoles.map((role) => role.displayName).join(", ") || "none"}; removed: ${updated.removedRoles.map((role) => role.displayName).join(", ") || "none"}.${updated.active ? "" : " Roles remain ineffective until reactivation."}`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The role set could not be updated.");
+      setError(adminError(reason, "The role set could not be updated."));
     } finally {
       setSaving(false);
     }
   }
 
   return <section className="admin-configuration admin-directory" aria-labelledby="users-heading">
-    <div className="section-heading"><h2 id="users-heading">Users</h2>{canCreate && <button type="button"
+    <div className="section-heading"><h2 id="users-heading"><AdminText english="Users" /></h2>{canCreate && <button type="button"
       aria-expanded={createOpen} aria-controls="create-user-form" onClick={() => setCreateOpen((open) => !open)}>
-      {createOpen ? "Cancel creation" : "Create user"}</button>}</div>
+      {createOpen ? t("Cancel creation") : t("Create user")}</button>}</div>
     {canCreate && createOpen && <form id="create-user-form" className="admin-user-create" onSubmit={createUser}>
-      <fieldset disabled={creating}><legend>New local user</legend>
-        <label>Display name<input name="displayName" maxLength={200} required autoComplete="off" /></label>
-        <label>Username<input name="username" minLength={3} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}"
+      <fieldset disabled={creating}><legend><AdminText english="New local user" /></legend>
+        <label><AdminText english="Display name" /><input name="displayName" maxLength={200} required autoComplete="off" /></label>
+        <label><AdminText english="Username" /><input name="username" minLength={3} maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}"
           required autoComplete="off" /></label>
-        <label>Temporary password<input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
+        <label><AdminText english="Temporary password" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
           required autoComplete="new-password" /></label>
-        <p className="admin-muted">Temporary access expires after {temporaryPasswordHours} hours (system setting).</p>
-        <fieldset className="admin-role-selection"><legend>Initial roles</legend>
+        <p className="admin-muted">{t("Temporary access expires after {hours} hours (system setting).", { hours: temporaryPasswordHours })}</p>
+        <fieldset className="admin-role-selection"><legend><AdminText english="Initial roles" /></legend>
           {roleOptions.filter((role) => role.active).map((role) => <label key={role.id}>
             <input name="roleIds" type="checkbox" value={role.id}
               disabled={!role.assignmentMutable} />{role.displayName}
-            {role.assignmentRestricted ? " (owner only)" : ""}
+            {role.assignmentRestricted ? t(" (owner only)") : ""}
           </label>)}
-          {!roleOptions.some((role) => role.active) && <p>No assignable roles are available.</p>}
+          {!roleOptions.some((role) => role.active) && <p><AdminText english="No assignable roles are available." /></p>}
         </fieldset>
-        <label className="admin-user-note">Note (optional)<textarea name="note" maxLength={1000} /></label>
-        <button type="submit">{creating ? "Creating…" : "Create user"}</button>
+        <label className="admin-user-note"><AdminText english="Note (optional)" /><textarea name="note" maxLength={1000} /></label>
+        <button type="submit">{creating ? t("Creating…") : t("Create user")}</button>
       </fieldset>
     </form>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     {editing && <section key={editing.id} className="admin-user-management"
       aria-labelledby={`manage-user-${editing.id}`}>
-      <div className="section-heading"><h3 id={`manage-user-${editing.id}`}>Manage {editing.displayName}</h3>
-        <button type="button" onClick={() => setEditing(null)}>Close</button></div>
+      <div className="section-heading"><h3 id={`manage-user-${editing.id}`}>{t("Manage {name}", { name: editing.displayName })}</h3>
+        <button type="button" onClick={() => setEditing(null)}><AdminText english="Close" /></button></div>
     {canManage && editing.id !== currentUserId && <form className="admin-user-create admin-user-management-form" onSubmit={saveUser}>
-      <fieldset disabled={saving}><legend>Identity and access</legend>
-        <label>Display name<input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
-        <label>Username<input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
+      <fieldset disabled={saving}><legend><AdminText english="Identity and access" /></legend>
+        <label><AdminText english="Display name" /><input name="displayName" defaultValue={editing.displayName} maxLength={200} required autoComplete="off" /></label>
+        <label><AdminText english="Username" /><input name="username" defaultValue={editing.username} minLength={3} maxLength={128}
           pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,127}" required autoComplete="off" /></label>
-        <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend>Complete retained role set</legend>
+        <fieldset className="admin-role-selection" disabled={!canAssignRoles || saving}><legend><AdminText english="Complete retained role set" /></legend>
           {roleOptions.map((role) => <label key={role.id}>
             <input type="checkbox" value={role.id}
               disabled={!role.assignmentMutable || (!role.active && !selectedRoleIds.includes(role.id))}
               checked={selectedRoleIds.includes(role.id)} onChange={(event) => setSelectedRoleIds((current) =>
                 event.target.checked ? [...current, role.id] : current.filter((id) => id !== role.id))} />
-            {role.displayName}{!role.active ? " (deactivated)" : role.assignmentRestricted ? " (owner only)" : ""}
+            {role.displayName}{!role.active ? t(" (deactivated)") : role.assignmentRestricted ? t(" (owner only)") : ""}
           </label>)}
-          {!editing.active && <p>These roles are retained but ineffective while the user is disabled.</p>}
-          <label>Role change note (optional)<textarea value={roleNote} maxLength={1000}
+          {!editing.active && <p><AdminText english="These roles are retained but ineffective while the user is disabled." /></p>}
+          <label><AdminText english="Role change note (optional)" /><textarea value={roleNote} maxLength={1000}
             onChange={(event) => setRoleNote(event.target.value)} /></label>
-          {protectedRoleSetChanged && <label>Current password for protected role change
+          {protectedRoleSetChanged && <label><AdminText english="Current password for protected role change" />
             <input type="password" value={reauthenticationPassword} maxLength={1024}
               autoComplete="current-password" onChange={(event) => setReauthenticationPassword(event.target.value)} />
           </label>}
           <button type="button" onClick={() => void saveRoles()}
-            disabled={protectedRoleSetChanged && !reauthenticationPassword}>{saving ? "Saving…" : "Replace role set"}</button>
+            disabled={protectedRoleSetChanged && !reauthenticationPassword}>{saving ? t("Saving…") : t("Replace role set")}</button>
         </fieldset>
-        <label>Status<select name="active" value={desiredActive ? "true" : "false"}
+        <label><AdminText english="Status" /><select name="active" value={desiredActive ? "true" : "false"}
           onChange={(event) => setDesiredActive(event.target.value === "true")}>
-          <option value="true">Active</option><option value="false">Disabled</option>
+          <option value="true"><AdminText english="Active" /></option><option value="false"><AdminText english="Disabled" /></option>
         </select></label>
-        {editing.active && !desiredActive && <p>Disabling immediately revokes every active session. Retained roles become ineffective.</p>}
+        {editing.active && !desiredActive && <p><AdminText english="Disabling immediately revokes every active session. Retained roles become ineffective." /></p>}
         {!editing.active && desiredActive && <div className="admin-reactivation-review" role="status">
-          <strong>Roles restored on reactivation</strong>
+          <strong><AdminText english="Roles restored on reactivation" /></strong>
           <RoleBadges roles={roleOptions.filter((role) => selectedRoleIds.includes(role.id))} />
-          <p>A fresh login will be required. The existing credential will not be reset.</p>
+          <p><AdminText english="A fresh login will be required. The existing credential will not be reset." /></p>
         </div>}
-        <label className="admin-user-note">Note (optional)<textarea name="note" maxLength={1000} /></label>
-        <div><button type="submit">{saving ? "Saving…" : !editing.active && desiredActive ? "Reactivate user" : "Save user"}</button>{" "}
-          <button type="button" onClick={() => setEditing(null)}>Cancel</button></div>
+        <label className="admin-user-note"><AdminText english="Note (optional)" /><textarea name="note" maxLength={1000} /></label>
+        <div><button type="submit">{saving ? t("Saving…") : !editing.active && desiredActive ? t("Reactivate user") : t("Save user")}</button>{" "}
+          <button type="button" onClick={() => setEditing(null)}><AdminText english="Cancel" /></button></div>
       </fieldset>
     </form>}
     {(canViewSessions || canResetCredentials || editing.owner) && <div className="admin-user-security">
       {editing.owner && <OwnershipTransferPanel csrfToken={csrfToken} />}
-      {canViewSessions && <div><h4>Active sessions</h4>
-        <p className="admin-muted">Device labels are coarse. Source IP and geolocation are not shown.</p>
-        {securityLoading && !userSessions.length && <p role="status">Loading sessions…</p>}
-        {!securityLoading && !userSessions.length && <p>No active sessions.</p>}
+      {canViewSessions && <div><h4><AdminText english="Active sessions" /></h4>
+        <p className="admin-muted"><AdminText english="Device labels are coarse. Source IP and geolocation are not shown." /></p>
+        {securityLoading && !userSessions.length && <p role="status"><AdminText english="Loading sessions…" /></p>}
+        {!securityLoading && !userSessions.length && <p><AdminText english="No active sessions." /></p>}
         {userSessions.length > 0 && <ul className="admin-session-list">{userSessions.map((session) => <li key={session.id}>
-          <div><strong>{session.deviceLabel}</strong>{session.current && <span> Current session</span>}</div>
-          <dl><div><dt>Started</dt><dd><time dateTime={session.startedAt}>{new Date(session.startedAt).toLocaleString()}</time></dd></div>
-            <div><dt>Last activity</dt><dd><time dateTime={session.lastActivityAt}>{new Date(session.lastActivityAt).toLocaleString()}</time></dd></div>
-            <div><dt>Expires</dt><dd><time dateTime={session.expiresAt}>{new Date(session.expiresAt).toLocaleString()}</time></dd></div></dl>
+          <div><strong>{session.deviceLabel}</strong>{session.current && <span> <AdminText english="Current session" /></span>}</div>
+          <dl><div><dt><AdminText english="Started" /></dt><dd><time dateTime={session.startedAt}>{new Date(session.startedAt).toLocaleString()}</time></dd></div>
+            <div><dt><AdminText english="Last activity" /></dt><dd><time dateTime={session.lastActivityAt}>{new Date(session.lastActivityAt).toLocaleString()}</time></dd></div>
+            <div><dt><AdminText english="Expires" /></dt><dd><time dateTime={session.expiresAt}>{new Date(session.expiresAt).toLocaleString()}</time></dd></div></dl>
           {canRevokeSessions && <button type="button" disabled={securityLoading} onClick={() => void revokeSession(session)}>
-            {session.current ? "Revoke and sign out" : "Revoke session"}</button>}
+            {session.current ? t("Revoke and sign out") : t("Revoke session")}</button>}
         </li>)}</ul>}
       </div>}
       {canResetCredentials && editing.id !== currentUserId && <form className="admin-credential-reset" onSubmit={resetCredential}>
-        <fieldset disabled={resetting}><legend>Reset credential</legend>
-          <p>This does not reactivate the account. Every existing session is revoked transactionally.</p>
-          <label>Temporary password<input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
+        <fieldset disabled={resetting}><legend><AdminText english="Reset credential" /></legend>
+          <p><AdminText english="This does not reactivate the account. Every existing session is revoked transactionally." /></p>
+          <label><AdminText english="Temporary password" /><input name="temporaryPassword" type="password" minLength={12} maxLength={1024}
             required autoComplete="new-password" /></label>
-          <p className="admin-muted">Temporary access expires after {temporaryPasswordHours} hours (system setting).</p>
-          <label>Note (optional)<textarea name="note" maxLength={1000} /></label>
-          <button type="submit">{resetting ? "Resetting…" : "Reset credential and revoke sessions"}</button>
+          <p className="admin-muted">{t("Temporary access expires after {hours} hours (system setting).", { hours: temporaryPasswordHours })}</p>
+          <label><AdminText english="Note (optional)" /><textarea name="note" maxLength={1000} /></label>
+          <button type="submit">{resetting ? t("Resetting…") : t("Reset credential and revoke sessions")}</button>
         </fieldset>
       </form>}
     </div>}
     </section>}
-    <form className="admin-directory-filters" role="search" aria-label="Find users" onSubmit={submit}>
-      <label>Search<input type="search" name="search" maxLength={100} placeholder="Display name or username" /></label>
-      <label>Status<select name="state" defaultValue="active">
-        <option value="active">Active</option><option value="disabled">Disabled</option><option value="all">All</option>
+    <form className="admin-directory-filters" role="search" aria-label={t("Find users")} onSubmit={submit}>
+      <label><AdminText english="Search" /><input type="search" name="search" maxLength={100} placeholder={t("Display name or username")} /></label>
+      <label><AdminText english="Status" /><select name="state" defaultValue="active">
+        <option value="active"><AdminText english="Active" /></option><option value="disabled"><AdminText english="Disabled" /></option><option value="all"><AdminText english="All" /></option>
       </select></label>
-      <label>Role<select name="roleId" defaultValue="">
-        <option value="">All roles</option>
-        {roleOptions.map((role) => <option key={role.id} value={role.id}>{role.displayName}{!role.active ? " (deactivated)" : ""}</option>)}
+      <label><AdminText english="Role" /><select name="roleId" defaultValue="">
+        <option value=""><AdminText english="All roles" /></option>
+        {roleOptions.map((role) => <option key={role.id} value={role.id}>{role.displayName}{!role.active ? t(" (deactivated)") : ""}</option>)}
       </select></label>
-      <button type="submit" disabled={loading}>Apply filters</button>
+      <button type="submit" disabled={loading}><AdminText english="Apply filters" /></button>
     </form>
     {error && <p className="admin-error" role="alert">{error}</p>}
-    {loading && !items.length && <p role="status">Loading users…</p>}
-    {!loading && !error && !items.length && <p role="status">No users match these filters.</p>}
+    {loading && !items.length && <p role="status"><AdminText english="Loading users…" /></p>}
+    {!loading && !error && !items.length && <p role="status"><AdminText english="No users match these filters." /></p>}
     {items.length > 0 && <div className="admin-table-scroll"><table>
-      <caption className="sr-only">Users matching the selected filters</caption>
-      <thead><tr><th scope="col">Display name</th><th scope="col">Username</th><th scope="col">Status</th><th scope="col">Roles</th>
-        {hasActions && <th scope="col">Actions</th>}</tr></thead>
+      <caption className="sr-only"><AdminText english="Users matching the selected filters" /></caption>
+      <thead><tr><th scope="col"><AdminText english="Display name" /></th><th scope="col"><AdminText english="Username" /></th><th scope="col"><AdminText english="Status" /></th><th scope="col"><AdminText english="Roles" /></th>
+        {hasActions && <th scope="col"><AdminText english="Actions" /></th>}</tr></thead>
       <tbody>{items.map((user) => <tr key={user.id}>
         <th scope="row">{user.displayName}</th><td><code>{user.username}</code></td>
-        <td>{user.active ? "Active" : "Disabled"}</td><td><RoleBadges roles={user.roles} effective={user.active}
+        <td>{user.active ? t("Active") : t("Disabled")}</td><td><RoleBadges roles={user.roles} effective={user.active}
           owner={user.owner} /></td>
-        {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? "Current account"
-          : <button type="button" onClick={() => beginEdit(user)}>Manage</button>}</td>}
+        {hasActions && <td>{user.id === currentUserId && !canViewSessions && !user.owner ? t("Current account")
+          : <button type="button" onClick={() => beginEdit(user)}><AdminText english="Manage" /></button>}</td>}
       </tr>)}</tbody>
     </table></div>}
     {nextCursor && <button type="button" disabled={loading} onClick={() => void load({ ...query, cursor: nextCursor }, true)}>
-      {loading ? "Loading…" : "Load more users"}
+      {loading ? t("Loading…") : t("Load more users")}
     </button>}
   </section>;
 }
@@ -416,34 +421,36 @@ export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHis
   readonly onDeactivate: (role: AdminRole) => void;
   readonly onReactivate: (role: AdminRole) => void;
 }) {
+  const t = useAdminText();
+  const capabilityText = useAdminCapabilityText();
   const rows = capabilityRows(roles, capabilityOptions);
   return <div className="admin-role-matrix-scroll">
     <table className="admin-role-matrix">
-      <caption>Capabilities assigned to each role</caption>
-      <thead><tr><th scope="col">Capability</th>{roles.map((role) => <th scope="col" key={role.id}>
-        <span className="admin-role-column-heading" title={`${role.active ? "Active" : "Deactivated"} · ${role.protected ? "Protected" : "Custom"} · Version ${role.version} · ${role.assigneeCount} assignee${role.assigneeCount === 1 ? "" : "s"}${role.description ? ` · ${role.description}` : ""}`}>
-          <strong>{role.displayName}</strong><span className="sr-only">. {role.active ? "Active" : "Deactivated"}, {role.protected ? "protected" : "custom"}, version {role.version}, {role.assigneeCount} assignees{role.description ? `. ${role.description}` : ""}</span>
+      <caption><AdminText english="Capabilities assigned to each role" /></caption>
+      <thead><tr><th scope="col"><AdminText english="Capability" /></th>{roles.map((role) => <th scope="col" key={role.id}>
+        <span className="admin-role-column-heading" title={`${role.active ? t("Active") : t("Deactivated")} · ${role.protected ? t("Protected") : t("Custom")} · Version ${role.version} · ${role.assigneeCount} assignee${role.assigneeCount === 1 ? "" : "s"}${role.description ? ` · ${role.description}` : ""}`}>
+          <strong>{role.displayName}</strong><span className="sr-only">. {role.active ? t("Active") : t("Deactivated")}, {role.protected ? t("protected") : t("custom")}, {t("version {version}, {count} assignees", { version: role.version, count: role.assigneeCount })}{role.description ? `. ${role.description}` : ""}</span>
         </span>
       </th>)}</tr></thead>
       <tbody>{rows.map((capability) => <tr key={capability.key}>
-        <th scope="row" title={capability.description}><code>{capability.key}</code><span className="sr-only">. {capability.description}</span></th>
+        <th scope="row" title={capabilityText(capability.key, capability.description)}><code>{capability.key}</code><span className="sr-only">. {capabilityText(capability.key, capability.description)}</span></th>
         {roles.map((role) => {
           const included = role.capabilities.some(({ key }) => key === capability.key);
           return <td key={role.id} className={included ? "capability-included" : "capability-not-included"}>
             <span className="admin-capability-mark" aria-hidden="true">{included ? "✓" : "—"}</span>
-            <span className="sr-only">{included ? "Included" : "Not included"}</span>
+            <span className="sr-only">{included ? t("Included") : t("Not included")}</span>
           </td>;
         })}
       </tr>)}</tbody>
-      <tfoot><tr><th scope="row">Role actions</th>{roles.map((role) => <td key={role.id}>
+      <tfoot><tr><th scope="row"><AdminText english="Role actions" /></th>{roles.map((role) => <td key={role.id}>
         <div className="admin-role-matrix-actions">
-          <button type="button" onClick={() => onHistory(role.id)}>History</button>
+          <button type="button" onClick={() => onHistory(role.id)}><AdminText english="History" /></button>
           {canWrite && !role.protected && role.active && <>
-            <button type="button" onClick={() => onEdit(role)}>Edit</button>
-            <button type="button" onClick={() => onDeactivate(role)}>Deactivate</button>
+            <button type="button" onClick={() => onEdit(role)}><AdminText english="Edit" /></button>
+            <button type="button" onClick={() => onDeactivate(role)}><AdminText english="Deactivate" /></button>
           </>}
           {canWrite && !role.protected && !role.active && <button type="button" onClick={() => onReactivate(role)}>
-            Reactivate
+            <AdminText english="Reactivate" />
           </button>}
         </div>
       </td>)}</tr></tfoot>
@@ -454,6 +461,9 @@ export function RoleCapabilityMatrix({ roles, capabilityOptions, canWrite, onHis
 export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [] }: {
   readonly csrfToken?: string; readonly capabilities?: string[];
 }) {
+  const t = useAdminText();
+  const capabilityText = useAdminCapabilityText();
+  const adminError = useAdminError();
   const [items, setItems] = useState<AdminRole[]>([]);
   const [capabilityOptions, setCapabilityOptions] = useState<AdminCapabilityOption[]>([]);
   const [selectedState, setSelectedState] = useState<StateFilter>("active");
@@ -480,17 +490,17 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     setLoading(true);
     setError(null);
     loadAdminRoles(state).then((result) => setItems(result.items)).catch((reason: unknown) =>
-      setError(reason instanceof Error ? reason.message : "Roles could not be loaded."))
+      setError(adminError(reason, "Roles could not be loaded.")))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     loadAdminRoles("active").then((result) => setItems(result.items))
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Roles could not be loaded."))
+      .catch((reason: unknown) => setError(adminError(reason, "Roles could not be loaded.")))
       .finally(() => setLoading(false));
     loadAdminRoleCapabilities().then((result) => setCapabilityOptions(result.items))
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Capabilities could not be loaded."));
-  }, []);
+      .catch((reason: unknown) => setError(adminError(reason, "Capabilities could not be loaded.")));
+  }, [adminError]);
 
   function begin(role: AdminRole | null) {
     closeInteractions();
@@ -528,7 +538,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
           .sort((left, right) => left.displayName.localeCompare(right.displayName)));
       setEditorRole(undefined);
     } catch (reason) {
-      setError(`${reason instanceof Error ? reason.message : "The role could not be saved."} Reload the role list before retrying if another administrator changed it.`);
+      setError(`${adminError(reason, "The role could not be saved.")} Reload the role list before retrying if another administrator changed it.`);
     } finally {
       setSaving(false);
     }
@@ -545,7 +555,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       setRetiringRole(null);
       setRetirementNote("");
     } catch (reason) {
-      setError(`${reason instanceof Error ? reason.message : "The role could not be deactivated."} Reload the role list before retrying if another administrator changed it.`);
+      setError(`${adminError(reason, "The role could not be deactivated.")} Reload the role list before retrying if another administrator changed it.`);
     } finally {
       setSaving(false);
     }
@@ -559,78 +569,77 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       const loadedHistory = await loadAdminRoleHistory(roleId);
       if (revision === interactionRevision.current) setHistory(loadedHistory);
     }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Role history could not be loaded."); }
+    catch (reason) { setError(adminError(reason, "Role history could not be loaded.")); }
   }
 
   const findings = roleDraftFindings(draft, capabilityOptions);
 
   return <section className="admin-configuration admin-directory" aria-labelledby="roles-heading">
-    <div className="section-heading"><h2 id="roles-heading">Roles</h2>
-      {canWrite && editorRole === undefined && <button type="button" onClick={() => begin(null)}>Create custom role</button>}
+    <div className="section-heading"><h2 id="roles-heading"><AdminText english="Roles" /></h2>
+      {canWrite && editorRole === undefined && <button type="button" onClick={() => begin(null)}><AdminText english="Create custom role" /></button>}
     </div>
-    <label className="admin-role-state">Status<select value={selectedState} onChange={(event) => {
+    <label className="admin-role-state"><AdminText english="Status" /><select value={selectedState} onChange={(event) => {
       const next = event.target.value as StateFilter;
       closeInteractions();
       setSelectedState(next);
       load(next);
-    }}><option value="active">Active</option><option value="disabled">Deactivated</option><option value="all">All</option></select></label>
+    }}><option value="active"><AdminText english="Active" /></option><option value="disabled"><AdminText english="Deactivated" /></option><option value="all"><AdminText english="All" /></option></select></label>
     {error && <p className="admin-error" role="alert">{error}</p>}
-    {loading && !items.length && <p role="status">Loading roles…</p>}
-    {!loading && !error && !items.length && <p role="status">No roles match this filter.</p>}
+    {loading && !items.length && <p role="status"><AdminText english="Loading roles…" /></p>}
+    {!loading && !error && !items.length && <p role="status"><AdminText english="No roles match this filter." /></p>}
     {editorRole !== undefined && <form className="admin-role-editor" onSubmit={(event) => void save(event)}>
       <fieldset disabled={saving}><legend>{editorRole
-        ? `${editorRole.active ? "Edit" : "Reactivate"} ${editorRole.displayName}` : "Create custom role"}</legend>
+        ? `${editorRole.active ? t("Edit") : t("Reactivate")} ${editorRole.displayName}` : t("Create custom role")}</legend>
         <p className="admin-muted">{editorRole && !editorRole.active
-          ? "Reactivation creates a new immutable version and restores no former assignments."
-          : "Saving activates a new immutable version immediately for every current assignee."}</p>
-        <label>Role name<input value={draft.displayName} maxLength={100} required onChange={(event) =>
+          ? t("Reactivation creates a new immutable version and restores no former assignments.")
+          : t("Saving activates a new immutable version immediately for every current assignee.")}</p>
+        <label><AdminText english="Role name" /><input value={draft.displayName} maxLength={100} required onChange={(event) =>
           setDraft((current) => ({ ...current, displayName: event.target.value }))} /></label>
-        <label>Description <small>(optional)</small><textarea value={draft.description} maxLength={500} onChange={(event) =>
+        <label><AdminText english="Description" /> <small><AdminText english="(optional)" /></small><textarea value={draft.description} maxLength={500} onChange={(event) =>
           setDraft((current) => ({ ...current, description: event.target.value }))} /></label>
-        <fieldset className="admin-capability-options"><legend>Capabilities</legend>
+        <fieldset className="admin-capability-options"><legend><AdminText english="Capabilities" /></legend>
           {capabilityOptions.map((option) => <label key={option.key}>
             <input type="checkbox" checked={draft.capabilityKeys.includes(option.key)} disabled={!option.mutable}
               onChange={(event) => toggle(option, event.target.checked)} />
-            <span><code>{option.key}</code> — {option.description}
-              {option.prerequisites.length > 0 && <small>Requires {option.prerequisites.join(", ")}</small>}
-              {!option.mutable && <small>You cannot change this capability because it is not granted to you.</small>}</span>
+            <span><code>{option.key}</code> — {capabilityText(option.key, option.description)}
+              {option.prerequisites.length > 0 && <small>{t("Requires {keys}", { keys: option.prerequisites.join(", ") })}</small>}
+              {!option.mutable && <small><AdminText english="You cannot change this capability because it is not granted to you." /></small>}</span>
           </label>)}
         </fieldset>
-        <label>Change note <small>(optional, recorded in the audit event)</small><textarea value={draft.note} maxLength={500}
+        <label><AdminText english="Change note" /> <small><AdminText english="(optional, recorded in the audit event)" /></small><textarea value={draft.note} maxLength={500}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} /></label>
-        {findings.length > 0 && <div className="validation-box error-box" role="alert"><strong>Resolve before saving</strong>
+        {findings.length > 0 && <div className="validation-box error-box" role="alert"><strong><AdminText english="Resolve before saving" /></strong>
           <ul>{findings.map((finding) => <li key={finding}>{finding}</li>)}</ul></div>}
-        <div className="admin-role-editor-actions"><button type="submit" disabled={saving || findings.length > 0}>{saving ? "Saving…"
-          : editorRole && !editorRole.active ? "Create version and reactivate" : "Save and activate"}</button>
-          <button type="button" onClick={() => setEditorRole(undefined)}>Cancel</button></div>
+        <div className="admin-role-editor-actions"><button type="submit" disabled={saving || findings.length > 0}>{saving ? t("Saving…")
+          : editorRole && !editorRole.active ? t("Create version and reactivate") : t("Save and activate")}</button>
+          <button type="button" onClick={() => setEditorRole(undefined)}><AdminText english="Cancel" /></button></div>
       </fieldset>
     </form>}
     {retiringRole && <form className="admin-role-editor" onSubmit={(event) => { event.preventDefault(); void deactivate(); }}>
-      <fieldset disabled={saving}><legend>Deactivate {retiringRole.displayName}</legend>
-        <p>This immediately ends {retiringRole.assigneeCount} current assignment{retiringRole.assigneeCount === 1 ? "" : "s"}.
-          Reactivation will not restore them.</p>
-        <label>Retirement note <small>(optional, recorded in history)</small><textarea maxLength={500}
+      <fieldset disabled={saving}><legend>{t("Deactivate {name}", { name: retiringRole.displayName })}</legend>
+        <p>{t("This immediately ends {count} current assignments. Reactivation will not restore them.", { count: retiringRole.assigneeCount })}</p>
+        <label><AdminText english="Retirement note" /> <small><AdminText english="(optional, recorded in history)" /></small><textarea maxLength={500}
           value={retirementNote} onChange={(event) => setRetirementNote(event.target.value)} /></label>
-        <div className="admin-role-editor-actions"><button type="submit">{saving ? "Deactivating…" : "Confirm deactivation"}</button>
-          <button type="button" onClick={() => setRetiringRole(null)}>Cancel</button></div>
+        <div className="admin-role-editor-actions"><button type="submit">{saving ? t("Deactivating…") : t("Confirm deactivation")}</button>
+          <button type="button" onClick={() => setRetiringRole(null)}><AdminText english="Cancel" /></button></div>
       </fieldset>
     </form>}
     {history && <section className="admin-role-editor" aria-labelledby="role-history-heading">
-      <div className="section-heading"><h3 id="role-history-heading">Role history</h3>
-        <button type="button" onClick={() => setHistory(null)}>Close history</button></div>
-      <p className="admin-muted">Stable role ID: <code>{history.roleId}</code>. Personnel names and credentials are not included.</p>
-      <h4>Immutable versions</h4><ol>{history.versions.map((version) => <li key={version.id}>
-        <strong>Version {version.version}: {version.displayName}</strong> — {version.capabilityKeys.join(", ")}
-        {version.note && <small> Note: {version.note}</small>}
+      <div className="section-heading"><h3 id="role-history-heading"><AdminText english="Role history" /></h3>
+        <button type="button" onClick={() => setHistory(null)}><AdminText english="Close history" /></button></div>
+      <p className="admin-muted"><AdminText english="Stable role ID:" /> <code>{history.roleId}</code>. <AdminText english="Personnel names and credentials are not included." /></p>
+      <h4><AdminText english="Immutable versions" /></h4><ol>{history.versions.map((version) => <li key={version.id}>
+        <strong>{t("Version {version}: {name}", { version: version.version, name: version.displayName })}</strong> — {version.capabilityKeys.join(", ")}
+        {version.note && <small> {t("Note: {note}", { note: version.note })}</small>}
       </li>)}</ol>
-      <h4>Assignment intervals</h4>{history.assignments.length ? <ul>{history.assignments.map((assignment) =>
+      <h4><AdminText english="Assignment intervals" /></h4>{history.assignments.length ? <ul>{history.assignments.map((assignment) =>
         <li key={assignment.id}><code>{assignment.userId}</code>: <time dateTime={assignment.assignedAt}>
           {new Date(assignment.assignedAt).toLocaleString()}</time> – {assignment.endedAt
-          ? <time dateTime={assignment.endedAt}>{new Date(assignment.endedAt).toLocaleString()}</time> : "current"}</li>)}</ul>
-        : <p className="admin-muted">No assignment history.</p>}
-      <h4>Lifecycle events</h4><ol>{history.events.map((event) => <li key={event.id}>
-        <code>{event.action}</code> at <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
-        {event.note && <small> Note: {event.note}</small>}
+          ? <time dateTime={assignment.endedAt}>{new Date(assignment.endedAt).toLocaleString()}</time> : t("current")}</li>)}</ul>
+        : <p className="admin-muted"><AdminText english="No assignment history." /></p>}
+      <h4><AdminText english="Lifecycle events" /></h4><ol>{history.events.map((event) => <li key={event.id}>
+        <code>{event.action}</code> <AdminText english="at" /> <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
+        {event.note && <small> {t("Note: {note}", { note: event.note })}</small>}
       </li>)}</ol>
     </section>}
     {items.length > 0 && <RoleCapabilityMatrix roles={items} capabilityOptions={capabilityOptions} canWrite={canWrite}
