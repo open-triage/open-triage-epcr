@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminText, useAdminText } from "../app/admin-localization";
+
 import type { EncounterDocument, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useMemo, useState } from "react";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
@@ -32,20 +34,21 @@ export function StationaryFormPreview({ draft, onReturn }: {
   readonly draft: StationaryFormDraft;
   readonly onReturn: () => void;
 }) {
+  const t = useAdminText();
   const [document, setDocument] = useState(createStationaryPreviewDocument);
   const [language, setLanguage] = useState<"en" | "sv">("en");
   const findings = useMemo(() => stationaryPreviewFindings(document, draft), [document, draft]);
   return <section className="stationary-form-preview" aria-labelledby="stationary-preview-heading">
     <header className="stationary-preview-heading">
       <div>
-        <p className="eyebrow">Synthetic preview</p>
-        <h3 id="stationary-preview-heading">Draft Stationary form</h3>
-        <p>Interactive fictional data only. Changes here are temporary and never create or update a clinical report.</p>
+        <p className="eyebrow"><AdminText english="Synthetic preview" /></p>
+        <h3 id="stationary-preview-heading"><AdminText english="Draft Stationary form" /></h3>
+        <p><AdminText english="Interactive fictional data only. Changes here are temporary and never create or update a clinical report." /></p>
       </div>
       <div className="form-actions">
-        <label htmlFor="form-preview-language">Preview language</label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en">English</option><option value="sv">Swedish</option></select>
-        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}>Reset synthetic data</button>
-        <button type="button" onClick={onReturn}>Return to form draft</button>
+        <label htmlFor="form-preview-language"><AdminText english="Preview language" /></label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en"><AdminText english="English" /></option><option value="sv"><AdminText english="Swedish" /></option></select>
+        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}><AdminText english="Reset synthetic data" /></button>
+        <button type="button" onClick={onReturn}><AdminText english="Return to form draft" /></button>
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
