@@ -32,7 +32,8 @@
     "scale:test:production": "node scripts/run-scale-tests.mjs --profile production --output artifacts/scale-test-production.json",
     "test": "node --test tests/*.test.mjs",
     "test:integration": "npm run build -w @open-triage/api && REQUIRE_DATABASE_INTEGRATION=1 node --test tests/postgres.integration.test.mjs",
-    "audit:localization": "node scripts/audit-catalog-localization.mjs"
+    "audit:localization": "node scripts/audit-catalog-localization.mjs",
+    "audit:form-localization": "node scripts/audit-form-validation-localization.mjs"
   },
   "dependencies": {
     "@open-triage/contracts": "0.1.0",

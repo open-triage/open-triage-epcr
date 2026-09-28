@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { applyFormValidationLocalization } from "./form-validation-localization.mjs";
 
 async function json(file) {
   return JSON.parse(await readFile(file, "utf8"));
@@ -40,6 +41,7 @@ export async function readInstallDefinitions(root) {
         || !form.name || !Array.isArray(form.definition?.sections) || !Array.isArray(validation.rules)) {
       throw new Error(`Invalid installation definition pair: ${file} and ${validationFile}`);
     }
+    await applyFormValidationLocalization(root, form, validation);
     pairs.push({ key, name: form.name, catalogKey: form.catalogKey,
       catalog: catalogs.get(form.catalogKey), form, validation });
   }

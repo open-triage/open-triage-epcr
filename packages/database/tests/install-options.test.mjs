@@ -47,7 +47,7 @@ test("Sweden offers a NEMSIS-compatible form and only rules supported by that fo
 });
 
 test("installation seeding publishes options without activation and runs after baseline seeding", () => {
-  assert.match(script, /status: "already-available"/);
+  assert.match(script, /"already-available" : "existing-version-preserved"/);
   assert.match(script, /status: "draft-in-progress"/);
   assert.match(script, /activated: false/);
   assert.doesNotMatch(script, /insert into app_identity\.active_configuration_bundle/);
