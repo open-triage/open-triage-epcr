@@ -5,6 +5,7 @@ import { MedicationDialog } from "../components/medication-dialog";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
+import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
 import { TimePicker } from "../components/time-picker";
 import { DialogValidationMessage } from "../components/dialog-validation-message";
 import type { QuickActionId } from "./encounter-definition";
@@ -109,6 +110,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
   readonly onSessionEnded: () => void;
   readonly onErrorStateChange: (hasErrors: boolean) => void;
 }) {
+  const region = useRegionalFormat();
   const [shell, dispatch] = useReducer(standardEncounterReducer, INITIAL_SHELL_STATE);
   const [procedureSearch, setProcedureSearch] = useState("");
   const [openNullField, setOpenNullField] = useState<VitalField | null>(null);
@@ -937,7 +939,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
               </div>
             </> : <>
               <p className="note-metadata">
-                Captured {new Date(textNoteDraft.capturedAt).toLocaleString()} (local time)
+                Captured {formatClinicalDate(textNoteDraft.capturedAt, region)} (local time)
                 {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
                 {!textNoteDraft.isNew ? " · Ready" : ""}
               </p>
@@ -958,7 +960,7 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
                   setTextNoteDraft((draft) => draft ? { ...draft, content: event.target.value } : null);
                 }}
               />
-              <small id="report-text-note-count">{textNoteValidation.characterCount.toLocaleString()} / {REPORT_TEXT_NOTE_MAX_CHARACTERS.toLocaleString()} characters</small>
+              <small id="report-text-note-count">{formatClinicalNumber(textNoteValidation.characterCount, region)} / {formatClinicalNumber(REPORT_TEXT_NOTE_MAX_CHARACTERS, region)} characters</small>
               <p id="report-text-note-error" className="finish-help" role={noteError || textNoteValidation.error ? "alert" : undefined}>
                 {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
               </p>

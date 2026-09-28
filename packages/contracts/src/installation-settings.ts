@@ -1,6 +1,7 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
   language: "en" | "sv";
+  regionalFormat?: "en-US" | "sv-SE" | null;
   signIn: {
     brandText: string;
     helperText: string;
@@ -43,6 +44,11 @@ function languageAt(value: unknown): "en" | "sv" {
   return value;
 }
 
+function regionalFormatAt(value: unknown): "en-US" | "sv-SE" | null {
+  if (value !== null && value !== "en-US" && value !== "sv-SE") throw new TypeError("regionalFormat must be en-US, sv-SE, or null");
+  return value;
+}
+
 function booleanAt(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") throw new TypeError(`${path} must be a boolean`);
   return value;
@@ -71,7 +77,7 @@ function stringAt(value: unknown, path: string, maximumLength: number): string {
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "language", "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "language", ...(root.regionalFormat === undefined ? [] : ["regionalFormat"]), "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
   const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
@@ -86,6 +92,7 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
   return {
     schemaVersion: "1.0.0",
     language: languageAt(root.language),
+    ...(root.regionalFormat === undefined ? {} : { regionalFormat: regionalFormatAt(root.regionalFormat) }),
     signIn: {
       brandText: stringAt(signIn.brandText, "signIn.brandText", 100),
       helperText: stringAt(signIn.helperText, "signIn.helperText", 300),

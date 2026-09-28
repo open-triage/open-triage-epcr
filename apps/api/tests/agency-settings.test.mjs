@@ -14,7 +14,7 @@ const appearance = { ...DEFAULT_AGENCY_APPEARANCE, brandText: "County EMS", pwaN
 const demographics = { agencyUniqueStateId: "STATE-1", agencyNumber: "AGENCY-1", stateCode: "36",
   stateDisplay: "New York", stateCodeSystem: "ANSI-STATE", stateTerminologyVersion: null };
 const settingsRow = (revision = 1, bytes = 50 * 1024 * 1024) => ({
-  organization_id: organizationId, language: "en", report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
+  organization_id: organizationId, language: "en", regional_format: null, report_media_allowance_bytes: bytes, image_media_limit_bytes: 10 * 1024 * 1024, revision,
   brand_text: appearance.brandText, helper_text: appearance.helperText, logo_png_data_url: null,
   accent_color: appearance.accentColor, accent_dark_color: appearance.accentDarkColor,
   browser_theme_color: appearance.browserThemeColor, pwa_background_color: appearance.pwaBackgroundColor,
@@ -37,6 +37,7 @@ test("Agency Settings validation accepts complete bounded settings and rejects u
     null,
     { ...command(), expectedRevision: 0 },
     { ...command(), language: "fr" },
+    { ...command(), regionalFormat: "fr-FR" },
     { ...command(), reportMediaAllowanceBytes: 1024 * 1024 + 1 },
     { ...command(), imageMediaLimitBytes: 51 * 1024 * 1024 },
     { ...command(), appearance: { ...appearance, accentColor: "#ffffff" } },
@@ -97,13 +98,14 @@ test("a settings save is revision-guarded, active immediately, and audits bounde
   assert.equal(mutation.parameters[0], organizationId);
   assert.equal(mutation.parameters[1], 3);
   assert.equal(mutation.parameters[2], 80 * 1024 * 1024);
-  assert.equal(mutation.parameters.at(-2), actorId);
-  assert.equal(mutation.parameters.at(-1), "en");
+  assert.equal(mutation.parameters.at(-3), actorId);
+  assert.equal(mutation.parameters.at(-2), "en");
+  assert.equal(mutation.parameters.at(-1), null);
   const audit = calls.find(({ sql }) => sql.includes("agency_settings_change_event"));
   assert.equal(audit.parameters[0], organizationId);
   assert.equal(audit.parameters[2], 3);
   assert.equal(audit.parameters[3], 4);
-  assert.deepEqual(audit.parameters.slice(-2), ["en", "en"]);
+  assert.deepEqual(audit.parameters.slice(-4), ["en", "en", null, null]);
   assert.doesNotMatch(JSON.stringify(audit), /logoPngDataUrl|patient|caption|content|token|secret/i);
 });
 
@@ -169,8 +171,8 @@ test("language-only changes use the same revision and audit transaction", async 
   const saved = await service.update("session", { ...command(2), language: "sv" });
   assert.equal(saved.language, "sv");
   assert.equal(saved.revision, 3);
-  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-1), "sv");
-  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-2), ["en", "sv"]);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-2), "sv");
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-4), ["en", "sv", null, null]);
 });
 
 
@@ -183,4 +185,33 @@ test("public installation configuration exposes only the agency language and app
   assert.equal(result.settings.signIn.brandText, appearance.brandText);
   assert.equal("organizationId" in result, false);
   assert.equal("revision" in result.settings, false);
+});
+
+test("regional format persists independently of language and can return to compatibility default", async () => {
+  const calls = [];
+  let current = settingsRow(2);
+  const manager = { query: async (sql, parameters = []) => {
+    calls.push({ sql, parameters });
+    if (sql.includes("on conflict")) return [];
+    if (sql.includes("for update")) return [current];
+    if (sql.includes("agency_demographic_version")) return [demographicRow()];
+    if (sql.includes("update app_identity.agency_settings")) {
+      current = { ...current, revision: current.revision + 1, regional_format: parameters.at(-1) };
+      return [current];
+    }
+    if (sql.includes("agency_settings_change_event")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new AgencySettingsService({ transaction: async (work) => work(manager) }, {
+    requireCapability: async () => ({ organization: { id: organizationId }, user: { id: actorId } }),
+  });
+  const saved = await service.update("session", { ...command(2), regionalFormat: "sv-SE" });
+  assert.equal(saved.language, "en");
+  assert.equal(saved.regionalFormat, "sv-SE");
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-1), "sv-SE");
+  assert.deepEqual(calls.find(({ sql }) => sql.includes("agency_settings_change_event")).parameters.slice(-2), [null, "sv-SE"]);
+  calls.length = 0;
+  const reset = await service.update("session", { ...command(3), regionalFormat: null });
+  assert.equal(reset.regionalFormat, null);
+  assert.equal(calls.find(({ sql }) => sql.includes("update app_identity.agency_settings")).parameters.at(-1), null);
 });

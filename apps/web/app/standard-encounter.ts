@@ -1,5 +1,6 @@
 import { describeProcedure, PROCEDURES, validateProcedure, type ProcedureDraft, type ProcedureRecord } from "./procedure";
 import { MEDICATIONS } from "./medication-catalog";
+import { canonicalDecimal } from "./regional-format";
 import { validateVitals } from "./vital-validation";
 import { standardEncounterDefinition } from "./encounter-form-profile";
 import { createBundledDefinitionProvider } from "./encounter-definition";
@@ -163,7 +164,7 @@ export function validateMedication(draft: MedicationDraft, definition: Encounter
   if ((field("time").required || draft.time) && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) error("time", medication.validationMessages.invalidTime);
   const catalogMedication = MEDICATIONS.find((item) => item.code === draft.medicationCode && item.codeType === draft.codeType && item.displayLabel === draft.label);
   if ((field("medication").required || draft.medicationCode) && !catalogMedication) error("medication", medication.validationMessages.invalidMedication);
-  if ((field("dose").required || draft.dose) && (!draft.dose || !Number.isFinite(Number(draft.dose)) || Number(draft.dose) <= 0)) error("dose", medication.validationMessages.invalidDose);
+  if ((field("dose").required || draft.dose) && (!draft.dose || canonicalDecimal(draft.dose) === null || Number(canonicalDecimal(draft.dose)) <= 0)) error("dose", medication.validationMessages.invalidDose);
   if ((field("unit").required || draft.unit) && !medication.doseUnits.includes(draft.unit)) error("unit", medication.validationMessages.invalidUnit);
   if ((field("route").required || draft.route) && !medication.routes.includes(draft.route)) error("route", medication.validationMessages.invalidRoute);
   if (!draft.response.trim() && field("response").warnWhenMissing) warning("response", medication.validationMessages.responseMissing);
@@ -559,7 +560,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
         medicationCode: draft.medicationCode,
         codeType: draft.codeType,
         label: draft.label || definition.events.medication.labels.medicationMissing,
-        dose: draft.dose.trim(),
+        dose: canonicalDecimal(draft.dose) ?? draft.dose.trim(),
         unit: draft.unit,
         route: draft.route,
         response: draft.response.trim(),

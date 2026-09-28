@@ -1,5 +1,6 @@
 import type { ReportAudioNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import { useId, useState } from "react";
+import { displayDecimal, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
 import { DEMO_FALLBACK_DATE } from "../app/demo-provenance";
 import { encounterEventDetail, encounterEventPresentation, type EncounterEvent } from "../app/standard-encounter";
 import type { EncounterDefinition } from "../app/encounter-definition";
@@ -27,6 +28,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
   readonly onOpenAudio: (note: ReportAudioNote, trigger: HTMLElement) => void;
   readonly onOpenEvent: (event: EncounterEvent, trigger: HTMLElement) => void;
 }) {
+  const region = useRegionalFormat();
   const [filter, setFilter] = useState<EncounterTimelineFilter>("all");
   const filterLabelId = useId();
   const visibleEvents = filterEncounterTimeline(events, filter);
@@ -35,7 +37,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
   return <section className={`content-panel encounter-timeline${className ? ` ${className}` : ""}`} aria-labelledby={headingId}>
     <div className="section-heading timeline-heading">
       <div><p className="eyebrow">Newest first · Local time</p><h1 id={headingId}>Timeline</h1></div>
-      <span aria-live="polite">{visibleEvents.length} {visibleEvents.length === 1 ? "event" : "events"}</span>
+      <span aria-live="polite">{formatClinicalNumber(visibleEvents.length, region)} {visibleEvents.length === 1 ? "event" : "events"}</span>
     </div>
     <div className="timeline-filters" role="group" aria-labelledby={filterLabelId}>
       <span className="visually-hidden" id={filterLabelId}>Filter timeline</span>
@@ -87,13 +89,14 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
         }
         const validationStatus = validationStatuses.get(event.id) ?? "clear";
         const presentation = encounterEventPresentation(event, definition);
+        const title = event.medication?.dose ? presentation.title.replace(event.medication.dose, displayDecimal(event.medication.dose, region)) : presentation.title;
         const eventDetail = encounterEventDetail(event, definition);
         return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
           <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
           <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={`Validation ${validationStatus}`} />
           {event.kind === "note" || event.kind === "procedure" || event.kind === "medication" || event.vitals ? (
-            <button aria-label={`Edit ${presentation.title} at ${event.time}. ${eventDetail}`} className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenEvent(event, clickEvent.currentTarget)}>
-              <span className="event-title">{presentation.title}</span><span className="event-detail">{eventDetail}</span>
+            <button aria-label={`Edit ${title} at ${event.time}. ${eventDetail}`} className="timeline-event-button" type="button" onClick={(clickEvent) => onOpenEvent(event, clickEvent.currentTarget)}>
+              <span className="event-title">{title}</span><span className="event-detail">{eventDetail}</span>
               <small>{presentation.reference} · Open entry</small>
               {event.procedure && validateProcedure({ id: event.id, date: event.date ?? DEMO_FALLBACK_DATE, time: event.time,
                 procedureCode: event.procedure.code, procedureLabel: event.procedure.label, attempts: String(event.procedure.attempts),

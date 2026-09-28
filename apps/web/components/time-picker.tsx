@@ -1,5 +1,7 @@
 "use client";
 
+import { useRegionalFormat } from "../app/regional-format";
+
 import React, { useEffect, useRef, useState } from "react";
 import { adjustClinicalDate, adjustClockPart, formatClinicalDate, formatClinicalTime, localClinicalDate, parseClinicalTime, repeatDelay } from "../app/time-picker";
 
@@ -22,6 +24,7 @@ type Props = {
 };
 
 export function TimePicker({ label, value, onChange, date = "", initialValue, initialDate, onDateChange, onDateTimeChange, describedBy, invalid, initialFocus, className, hideLabel = false }: Props) {
+  const region = useRegionalFormat();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => parseClinicalTime(value || initialValue || ""));
   const [draftDate, setDraftDate] = useState(date || initialDate || localClinicalDate());
@@ -52,7 +55,7 @@ export function TimePicker({ label, value, onChange, date = "", initialValue, in
       <button
         type="button"
         className="time-picker-trigger"
-        aria-label={typeof label === "string" ? value && date ? `${label}: ${formatClinicalDate(date)} at ${value}. Change` : `${label}: not recorded. Set date and time` : undefined}
+        aria-label={typeof label === "string" ? value && date ? `${label}: ${formatClinicalDate(date, region)} at ${value}. Change` : `${label}: not recorded. Set date and time` : undefined}
         aria-describedby={describedBy}
         aria-haspopup="dialog"
         data-invalid={invalid || undefined}
@@ -60,7 +63,7 @@ export function TimePicker({ label, value, onChange, date = "", initialValue, in
         onClick={showPicker}
       >
         <span aria-hidden="true">◷</span>
-        <strong>{value && date ? `${formatClinicalDate(date)} · ${value}` : "Not recorded"}</strong>
+        <strong>{value && date ? `${formatClinicalDate(date, region)} · ${value}` : "Not recorded"}</strong>
         <span>{value && date ? "Change" : "Set"}</span>
       </button>
       {open && (
@@ -88,7 +91,7 @@ export function TimePicker({ label, value, onChange, date = "", initialValue, in
             <span className="time-separator" aria-hidden="true">:</span>
             <TimeWheel label="Minute" value={draft.minutes} limit={60} onChange={(delta) => change("minutes", delta)} />
           </div>
-          <output className="time-picker-output" aria-live="polite">{formatClinicalDate(draftDate)} · {formatClinicalTime(draft.hours, draft.minutes)}</output>
+          <output className="time-picker-output" aria-live="polite">{formatClinicalDate(draftDate, region)} · {formatClinicalTime(draft.hours, draft.minutes)}</output>
           <div className="time-picker-actions">
             <button type="button" onClick={() => setOpen(false)}>Cancel</button>
             <button type="button" onClick={() => {
@@ -105,6 +108,7 @@ export function TimePicker({ label, value, onChange, date = "", initialValue, in
 }
 
 function DateWheel({ value, onChange }: { readonly value: string; readonly onChange: (delta: number) => void }) {
+  const region = useRegionalFormat();
   const drag = useAcceleratingDrag(onChange);
   return (
     <div className="time-wheel-group date-wheel-group">
@@ -115,7 +119,7 @@ function DateWheel({ value, onChange }: { readonly value: string; readonly onCha
         role="spinbutton"
         tabIndex={0}
         aria-label="Date"
-        aria-valuetext={value}
+        aria-valuetext={region ? formatClinicalDate(value, region) : value}
         onKeyDown={(event) => {
           if (event.key === "ArrowUp") { event.preventDefault(); onChange(1); }
           if (event.key === "ArrowDown") { event.preventDefault(); onChange(-1); }
@@ -123,9 +127,9 @@ function DateWheel({ value, onChange }: { readonly value: string; readonly onCha
         onWheel={(event) => { event.preventDefault(); onChange(event.deltaY < 0 ? 1 : -1); }}
         {...drag}
       >
-        <small>{formatClinicalDate(adjustClinicalDate(value, 1))}</small>
-        <strong>{formatClinicalDate(value)}</strong>
-        <small>{formatClinicalDate(adjustClinicalDate(value, -1))}</small>
+        <small>{formatClinicalDate(adjustClinicalDate(value, 1), region)}</small>
+        <strong>{formatClinicalDate(value, region)}</strong>
+        <small>{formatClinicalDate(adjustClinicalDate(value, -1), region)}</small>
       </div>
       <button type="button" aria-label="Previous date" onClick={() => onChange(-1)}>▼</button>
     </div>

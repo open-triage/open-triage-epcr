@@ -59,7 +59,7 @@ export function scalarControlPresentation(element: NemsisDataElement, label = el
   const constraints = element.datatype.constraints;
   const types = new Set(element.datatype.typeChain);
   const fractionDigits = numberConstraint(constraints.fractionDigits);
-  const inputType = family === "numeric" || family === "integer" ? "number"
+  const inputType = family === "numeric" ? "text" : family === "integer" ? "number"
     : family === "boolean" ? "checkbox" : family === "date" ? "date"
       : family === "uri" ? "url" : family === "binary" ? "file"
         : types.has("EmailAddress") ? "email" : types.has("PhoneNumber") ? "tel" : "text";

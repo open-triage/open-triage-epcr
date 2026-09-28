@@ -5,6 +5,7 @@ import type {
   OpenCall as OpenReportSummary,
   ReopenOpenCallResponse as ReopenOpenReportResponse,
 } from "@open-triage/contracts";
+import { formatClinicalDate, useRegionalFormat } from "../app/regional-format";
 import { reauthenticateClinicianSession, sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -40,15 +41,9 @@ import {
   RecoveryReauthenticationRequiredError,
 } from "../app/protected-clinical-storage";
 
-function savedTime(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(value));
+function savedTime(value: string, region: ReturnType<typeof useRegionalFormat>): string {
+  return formatClinicalDate(value, region);
 }
-
 export function OpenReports({
   session,
   activeReportId,
@@ -64,6 +59,7 @@ export function OpenReports({
   readonly onSessionEnded?: () => void;
   readonly refreshRequest?: number;
 }) {
+  const region = useRegionalFormat();
   const [reports, setReports] = useState<OpenReportSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [reopeningId, setReopeningId] = useState<string | null>(null);
@@ -297,7 +293,7 @@ export function OpenReports({
               </div>
               <dl>
                 <div><dt>Priority</dt><dd>{report.dispatchPriority?.display ?? "Not provided"}</dd></div>
-                <div><dt>Last saved</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt)}</time></dd></div>
+                <div><dt>Last saved</dt><dd><time dateTime={report.lastSavedAt}>{savedTime(report.lastSavedAt, region)}</time></dd></div>
                 <div><dt>Saved checks</dt><dd>{report.validationErrorCount} errors · review before signing</dd></div>
               </dl>
               <button type="button" onClick={() => void reopen(report)} disabled={reopeningId !== null}>

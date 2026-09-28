@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react
 import { MEDICATIONS, searchMedicationCatalog } from "../app/medication-catalog";
 import type { EncounterDefinition, MedicationFieldId } from "../app/encounter-definition";
 import { validateMedication, type MedicationDraft, type ReviewFinding, type ShellAction } from "../app/standard-encounter";
+import { displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { TimePicker } from "./time-picker";
 import { DialogValidationMessage } from "./dialog-validation-message";
 
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function MedicationDialog({ draft, dispatch, dialogRef, definition, finding }: Props) {
+  const region = useRegionalFormat();
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const medication = definition.events.medication;
@@ -50,7 +52,7 @@ export function MedicationDialog({ draft, dispatch, dialogRef, definition, findi
       case "time":
         return <div className="dialog-field" key={field.id}><TimePicker className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
       case "dose":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={draft.dose} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={displayDecimal(draft.dose, region)} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
       case "unit":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}><option value="">{medication.labels.select}</option>{medication.doseUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></label>{validation(field.id)}</div>;
       case "route":
