@@ -47,6 +47,10 @@ export interface ActiveDraftReport {
   readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
+  readonly validationVersionId?: string;
+  readonly formDefinitionSha256?: string;
+  readonly catalogArtifactSha256?: string;
+  readonly validationCompiledSha256?: string;
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
   readonly demoMutable?: boolean;
