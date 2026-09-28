@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminText, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { OwnershipTransferState } from "@open-triage/contracts";
 import React, { useEffect, useState, type FormEvent } from "react";
@@ -14,12 +14,13 @@ const statusText: Record<NonNullable<OwnershipTransferState["transfer"]>["status
 
 export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?: string }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const [state, setState] = useState<OwnershipTransferState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { loadOwnershipTransfer().then(setState).catch((reason: unknown) =>
-    setError(reason instanceof Error ? reason.message : t("Ownership status could not be loaded."))); }, []);
+    setError(adminError(reason, "Ownership status could not be loaded."))); }, [adminError]);
 
   async function initiate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +32,7 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
       setState(await initiateOwnershipTransfer(csrfToken, { nomineeUserId: String(data.get("nomineeUserId") ?? ""),
         note: String(data.get("note") ?? "") || undefined }));
       form.reset(); setNotice(t("The nomination was sent. Ownership remains unchanged until acceptance."));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t("Ownership transfer could not be initiated.")); }
+    } catch (reason) { setError(adminError(reason, "Ownership transfer could not be initiated.")); }
     finally { setBusy(false); }
   }
 
@@ -43,7 +44,7 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
       await reauthenticateClinicianSession(String(data.get("currentPassword") ?? ""), csrfToken);
       setState(await acceptOwnershipTransfer(csrfToken));
       setNotice(t("Ownership transferred. The former owner remains an Administrator."));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : t("Ownership transfer could not be accepted.")); }
+    } catch (reason) { setError(adminError(reason, "Ownership transfer could not be accepted.")); }
     finally { setBusy(false); }
   }
 
@@ -51,7 +52,7 @@ export function OwnershipTransferPanel({ csrfToken = "" }: { readonly csrfToken?
     if (!window.confirm(t("Cancel this pending ownership transfer?"))) return;
     setBusy(true); setError(null); setNotice(null);
     try { setState(await cancelOwnershipTransfer(csrfToken)); setNotice(t("The ownership transfer was cancelled.")); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t("Ownership transfer could not be cancelled.")); }
+    catch (reason) { setError(adminError(reason, "Ownership transfer could not be cancelled.")); }
     finally { setBusy(false); }
   }
 

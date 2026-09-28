@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminText, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState } from "react";
@@ -68,6 +68,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   readonly active?: boolean;
 }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const { canWrite, canPublish } = formAuthority(capabilities);
   const publicationAllowed = canPublish;
   const activationAllowed = canPublish && capabilities.includes("validation:publish");
@@ -96,26 +97,26 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   useEffect(() => {
     let current = true;
     loadStationaryFormDraft().then((loadedDraft) => { if (current) setDraft(loadedDraft); })
-      .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); })
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "Stationary form operation failed.")); })
       .finally(() => { if (current) setLoaded(true); });
     return () => { current = false; };
-  }, []);
+  }, [adminError]);
   useEffect(() => {
     if (!active) return;
     let current = true;
     loadStationaryFormVersions().then((items) => { if (current) {
       setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
-    } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
+    } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "Stationary form operation failed.")); });
     return () => { current = false; };
-  }, [active]);
+  }, [active, adminError]);
   useEffect(() => {
     if (!active) return;
     let current = true;
     loadValidationVersions().then((items) => { if (current) setValidationVersions(items); })
-      .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "Stationary form operation failed.")); });
     return () => { current = false; };
-  }, [active]);
+  }, [active, adminError]);
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
@@ -125,14 +126,14 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     const timeout = window.setTimeout(() => {
       searchFormCatalog(draftId, query).then((page) => { if (current) {
         setResults(page.items);
-      } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
+      } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "Stationary form operation failed.")); });
     }, 150);
     return () => { current = false; window.clearTimeout(timeout); };
-  }, [draftId, query]);
+  }, [draftId, query, adminError]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
-    try { await work(); } catch (reason) { setError(operationErrorMessage(reason)); } finally { setBusy(false); }
+    try { await work(); } catch (reason) { setError(adminError(reason, "Stationary form operation failed.")); } finally { setBusy(false); }
   }
   function change(next: FormDraftDefinition, announcement: string) {
     setDraft((current) => current ? { ...current, definition: next } : current);
@@ -143,7 +144,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     try {
       change(addFormElement(draft.definition, targetSection || draft.definition.sections[0]?.key || "", element),
         `Added ${element.elementId}.`);
-    } catch (reason) { setError(operationErrorMessage(reason)); }
+    } catch (reason) { setError(adminError(reason, "Stationary form operation failed.")); }
   }
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
   const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId;

@@ -72,10 +72,10 @@ export function ClinicalDemoBanner({
     setMessage(null);
     try {
       const result = await generateSyntheticCall(sessionRequestToken(session), targetUnitId);
-      setMessage(result.reused ? "Focused the existing unopened synthetic call." : "Synthetic call generated.");
+      setMessage(result.reused ? t("Focused the existing unopened synthetic call.") : t("Synthetic call generated."));
       onGenerated(result.assignment.id, result.reused);
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : t("The synthetic call could not be generated."));
+      setMessage(t("The synthetic call could not be generated."));
     } finally {
       setGenerating(false);
     }
@@ -94,32 +94,32 @@ export function ClinicalDemoBanner({
       setMessage(t("Synthetic draft deleted."));
       onDeleted();
     } catch (reason) {
-      setMessage(reason instanceof Error ? reason.message : t("The synthetic draft could not be deleted."));
+      setMessage(t("The synthetic draft could not be deleted."));
     } finally {
       setDeleting(false);
     }
   }
 
-  return <aside className="safety-notice clinical-demo-banner" role="note" aria-label="Clinical Demo tools">
+  return <aside className="safety-notice clinical-demo-banner" role="note" aria-label={t("Clinical Demo tools")}>
     <strong><AdminText english="Clinical Demo" /></strong>
     {protectedStatus.mode === "best-effort" && <span className="demo-storage-note"
-      aria-label={`Best-effort offline storage. ${protectedStatus.explanation ?? ""}`}
+      aria-label={`${t("Best-effort offline storage")}. ${protectedStatus.explanation ?? ""}`}
       title={protectedStatus.explanation ?? undefined}><AdminText english="Best-effort offline storage" /></span>}
     {canGenerate && context.eligibleUnits.length === 0 && <span><AdminText english="No eligible active unit is assigned." /></span>}
     {canGenerate && multipleUnits && <label className="clinical-demo-unit">
-      Unit
+      <AdminText english="Unit" />
       <select value={selectedUnitId} onChange={(event) => setSelectedUnitId(event.target.value)}>
         <option value=""><AdminText english="Select a unit" /></option>
         {context.eligibleUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.callSign} — {unit.name}</option>)}
       </select>
     </label>}
     {canGenerate && context.eligibleUnits.length > 0 && <button type="button" disabled={!targetUnitId || generating}
-      onClick={() => void generate()}>{generating ? "Generating…" : "Generate call"}</button>}
-    {canUseClinicalDemoDraftActions(activeReport) && <span className="demo-data-controls" role="group" aria-label="Demo record data">
+      onClick={() => void generate()}>{generating ? t("Generating…") : t("Generate call")}</button>}
+    {canUseClinicalDemoDraftActions(activeReport) && <span className="demo-data-controls" role="group" aria-label={t("Demo record data")}>
       <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_POPULATE_EVENT))}><AdminText english="Populate" /></button>
       <button type="button" onClick={() => window.dispatchEvent(new Event(DEMO_CLEAR_EVENT))}><AdminText english="Clear" /></button>
       <button className="delete-record-action" type="button" disabled={deleting}
-        onClick={() => void deleteRecord()}>{deleting ? "Deleting…" : "Delete"}</button>
+        onClick={() => void deleteRecord()}>{deleting ? t("Deleting…") : t("Delete")}</button>
     </span>}
     {message && <span role="status">{message}</span>}
   </aside>;

@@ -1,9 +1,9 @@
 "use client";
 
-import { AdminText, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
@@ -26,6 +26,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   readonly active?: boolean;
 }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const { canWrite, canPublish } = catalogAuthority(capabilities);
   const publicationAllowed = canPublish;
   const [draft, setDraft] = useState<CatalogDraft | CatalogDefinitionView | null>(null);
@@ -45,12 +46,13 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
+  const showError = useCallback((reason: unknown) => { setError(adminError(reason, "Catalog operation failed.")); }, [adminError]);
   useEffect(() => {
     const load = async () => canWrite
       ? await loadCatalogDraft() ?? await loadActiveCatalogDefinition()
       : loadActiveCatalogDefinition();
     load().then(setDraft).catch(showError).finally(() => setLoaded(true));
-  }, [canWrite]);
+  }, [canWrite, showError]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -60,14 +62,14 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
-  }, [active]);
+  }, [active, showError]);
   useEffect(() => {
     if (!loaded || !selectedVersionId || hasAuthoringDraft) return;
     let current = true;
     loadCatalogVersion(selectedVersionId).then((value) => { if (current) setDraft(value); })
       .catch((reason: unknown) => { if (current) showError(reason); });
     return () => { current = false; };
-  }, [loaded, selectedVersionId, hasAuthoringDraft]);
+  }, [loaded, selectedVersionId, hasAuthoringDraft, showError]);
   const issues = draft ? catalogTranslationIssues(draft.definition, language) : [];
   const visible = useMemo(() => draft?.definition.elements.filter((element) =>
     !draft.definition.hiddenElementIds?.includes(element.elementId) &&
@@ -80,7 +82,6 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
     }))) ?? [], [draft]);
   const selectedList = listOptions.find(({ key }) => key === selectedListKey)?.list ?? listOptions[0]?.list;
 
-  function showError(reason: unknown) { setError(reason instanceof Error ? reason.message : t("Catalog operation failed.")); }
   function edit(elementId: string, update: (element: CatalogDraftElement) => CatalogDraftElement) {
     setDraft((current) => current ? { ...current, definition: { ...current.definition,
       elements: current.definition.elements.map((element) => element.elementId === elementId ? update(element) : element) } } : current);

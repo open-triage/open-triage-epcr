@@ -104,7 +104,7 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
     <select id="form-section-navigation" value={selectedKey ?? ""} onChange={(event) => setExpandedSection(event.target.value || null)}>
       <option value=""><AdminText english="All sections collapsed" /></option>
       {definition.sections.map((section) => <option key={section.key} value={section.key}>
-        {formSectionLabel(section)} ({section.fields.length} elements)</option>)}
+        {formSectionLabel(section)} ({t("{count} elements", { count: section.fields.length })})</option>)}
     </select>
     {definition.sections.map((section, sectionIndex) => {
       const open = selectedKey === section.key;
@@ -112,7 +112,7 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
       <header className="form-section-header">
         <button type="button" className="form-section-toggle" aria-expanded={open}
           onClick={() => setExpandedSection(open ? null : section.key)}>
-          {formSectionLabel(section)} <small>{section.key}</small> <span>{section.fields.length} elements</span>
+          {formSectionLabel(section)} <small>{section.key}</small> <span>{t("{count} elements", { count: section.fields.length })}</span>
         </button>
         {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
           <button type="button" disabled={busy || sectionIndex === 0} aria-label={`Move ${section.key} up`}
@@ -199,10 +199,10 @@ export function FormLocalizedEditor({ definition, readOnly, onChange, language: 
         placeholder={language === "sv" && typeof source === "string" ? source : undefined}
         onChange={(event) => update(scope, key, property, event.target.value)} />
       {issues.filter((issue) => issue.id === key && issue.field === property).map((issue) =>
-        <small role="note" key={issue.kind}>{issue.message}</small>)}
+        <small role="note" key={issue.kind}>{t(issue.message)}</small>)}
       {language === "sv" && typeof source === "string" && source.trim() && <label>
         <input type="checkbox" disabled={readOnly || !translated?.trim()} checked={locale?.sourceReview?.[`${scope}.${key}.${property}`] === true}
-          onChange={(event) => review(scope, key, property, event.target.checked)} />Source reviewed
+          onChange={(event) => review(scope, key, property, event.target.checked)} /><AdminText english="Source reviewed" />
       </label>}
     </div>;
   }

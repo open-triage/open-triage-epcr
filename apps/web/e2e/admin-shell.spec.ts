@@ -774,3 +774,41 @@ test("owner edits and previews the unsaved form through Stationary without creat
   await expect(page.locator(".form-fields").getByText("ePatient.02", { exact: true })).toBeVisible();
   expect(clinicalMutations).toEqual([]);
 });
+
+test("Swedish agency administration keeps authored names and role permissions", async ({ page }) => {
+  test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires server-backed public configuration.");
+  await page.route("**/api/sessions/current", (route) => route.fulfill({ json: {
+    csrfToken: "synthetic-browser-session", user: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" },
+    startedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
+    capabilities: ["admin-dashboard:read", "users:read"]
+  } }));
+  await page.route("**/api/calls/assigned", assignedCalls);
+  await page.route("**/api/installation", (route) => route.fulfill({
+    json: { settings: { ...productionSettings, language: "sv" } }
+  }));
+  await page.route("**/api/admin/context", (route) => route.fulfill({ json: {
+    owner: { id: "owner-id", displayName: "Installation Owner" },
+    organization: { id: "organization-id", name: "Example EMS" },
+    panels: ["dashboard", "users"], capabilities: ["admin-dashboard:read", "users:read"],
+    activeConfiguration: { catalog: { id: "catalog-id", name: "Agency Catalog", version: "4" },
+      stationaryForm: { id: "form-id", formId: "form-id", name: "Agency Stationary", version: 3 } }, dashboard
+  } }));
+  await page.route("**/api/admin/users**", (route) => route.fulfill({ json: {
+    items: [{ id: "user-id", displayName: "Anna Medic", username: "anna.medic", active: true, owner: false,
+      roles: [{ id: "role-id", displayName: "Clinical Lead", active: true, protected: false }] }],
+    nextCursor: null, pageSize: 50
+  } }));
+  await page.route("**/api/admin/users/role-options", (route) => route.fulfill({ json: { items: [] } }));
+  await signInAsCombinedOwner(page, ["admin-dashboard:read", "users:read"]);
+  await page.getByRole("group", { name: "Dokumentationsvy" }).getByRole("button", { name: "Administration" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+  await expect(page.getByRole("heading", { name: "Aktiv konfiguration" })).toBeVisible();
+  await expect(page.getByText("Agency Catalog", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Administrationspaneler" })).toBeVisible();
+  await page.getByRole("button", { name: "Användare", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Användare" })).toBeVisible();
+  await expect(page.getByRole("search", { name: "Sök användare" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Anna Medic/ })).toContainText("Clinical Lead");
+  await expect(page.getByRole("button", { name: "Skapa användare" })).toHaveCount(0);
+});

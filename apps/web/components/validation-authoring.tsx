@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminText, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import { compileValidationRule, explainValidationRule, formatValidationSource, validationRuleText,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
@@ -39,7 +39,7 @@ export function ValidationReferenceAssistance({ catalog, elementId, onElementIdC
       onChange={(event) => onElementIdChange(event.target.value)}>
       <option value=""><AdminText english="Select an element" /></option>
       {elementId && !catalog.elements.some((element) => element.elementId === elementId) &&
-        <option value={elementId}>{elementId} (not in this catalog)</option>}
+        <option value={elementId}>{elementId} {t("(not in this catalog)")}</option>}
       {catalog.elements.map((element) =>
         <option key={element.elementId} value={element.elementId}>{element.elementId} — {element.label}</option>)}
     </select>
@@ -151,6 +151,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
   readonly active?: boolean;
 }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const canWrite = capabilities.includes("validation:write");
   const canPublish = capabilities.includes("validation:publish");
   const [draft, setDraft] = useState<ValidationDraft | null>(null);
@@ -190,38 +191,38 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         setHiddenElementIds(catalogDefinition?.definition.hiddenElementIds ?? []);
       }
     })
-      .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : t("Validation draft is unavailable.")); })
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "Validation draft is unavailable.")); })
       .finally(() => { if (current) setLoaded(true); });
     return () => { current = false; };
-  }, []);
+  }, [adminError]);
   useEffect(() => {
     if (!active) return;
     let current = true;
     loadValidationVersions().then((items) => { if (current) {
       setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
         : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
-    } }).catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : t("Validation versions are unavailable.")); });
+    } }).catch((reason: unknown) => { if (current) setError(adminError(reason, "Validation versions are unavailable.")); });
     return () => { current = false; };
-  }, [active]);
+  }, [active, adminError]);
   useEffect(() => {
     if (!active) return;
     let current = true;
     loadStationaryFormVersions().then((items) => { if (current) setFormVersions(items); })
-      .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : t("Form versions are unavailable.")); });
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "Form versions are unavailable.")); });
     return () => { current = false; };
-  }, [active]);
+  }, [active, adminError]);
 
   useEffect(() => {
     if (!draftRevision) return;
     let current = true;
     loadValidationRules({ ...filters, limit: "all" }).then((page) => { if (current) setLibrary(page); })
-      .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : t("Rule library is unavailable.")); });
+      .catch((reason: unknown) => { if (current) setError(adminError(reason, "Rule library is unavailable.")); });
     return () => { current = false; };
-  }, [draftRevision, filters]);
+  }, [draftRevision, filters, adminError]);
 
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
-    try { await work(); } catch (reason) { setError(reason instanceof Error ? reason.message : t("Validation operation failed.")); }
+    try { await work(); } catch (reason) { setError(adminError(reason, "Validation operation failed.")); }
     finally { setBusy(false); }
   }
   function change(update: (current: ValidationDraft) => ValidationDraft) {
@@ -331,7 +332,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       })}</tbody></table></div>
       <div className="form-actions">{canWrite && <button type="button" disabled={busy || dirty || !visibleCatalogElements[0]} onClick={() => action(async () => {
           const element = visibleCatalogElements[0]!;
-          const updated = await createValidationRule(csrfToken, draft, { name: t("New agency rule"), enabled: false,
+          const updated = await createValidationRule(csrfToken, draft, { name: "New agency rule", enabled: false,
             severity: "warning", executionTargets: ["live"], primaryTargetElementId: element.elementId,
             message: `Review ${element.label}`, source: `require present("${element.elementId}")`, sourceKind: "agency" });
           setDraft(updated); setSelectedRuleIndex(updated.rules.length - 1); setStatus(t("Agency rule created disabled; edit and restore it when ready."));
@@ -344,7 +345,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           onChange={(event) => setWordingLanguage(event.target.value as "en" | "sv")}>
           <option value="en"><AdminText english="English" /></option><option value="sv"><AdminText english="Swedish" /></option>
         </select></div>
-      <div className="validation-rule-row"><label htmlFor="validation-rule-name">Name ({wordingLanguage})</label>
+      <div className="validation-rule-row"><label htmlFor="validation-rule-name">{t("Name ({language})", { language: wordingLanguage })}</label>
       <input id="validation-rule-name" value={wordingLanguage === "en" ? selectedRule.name : selectedRule.localization?.sv?.name ?? ""}
         onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? updateValidationEnglish(rule, "name", event.target.value) :
           { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
@@ -366,7 +367,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
       <select id="validation-element-id" value={selectedRule.primaryTargetElementId}
         onChange={(event) => changeRule((rule) => ({ ...rule, primaryTargetElementId: event.target.value }))}>
         {!visibleCatalogElements.some(({ elementId }) => elementId === selectedRule.primaryTargetElementId) &&
-          <option value={selectedRule.primaryTargetElementId}>{selectedRule.primaryTargetElementId} (not in this catalog)</option>}
+          <option value={selectedRule.primaryTargetElementId}>{selectedRule.primaryTargetElementId} {t("(not in this catalog)")}</option>}
         {visibleCatalogElements.map((element) => <option key={element.elementId} value={element.elementId}>
           {element.elementId} — {element.label}</option>)}
       </select></div>
@@ -377,12 +378,12 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           onElementIdChange={setReferenceElementId} /></details>}
       {catalog?.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)?.intrinsicOccurrence && (() => {
         const element = catalog.elements.find(({ elementId }) => elementId === selectedRule.primaryTargetElementId)!;
-        return <div className="validation-rule-row"><span><AdminText english="Catalog limits" /></span><span>{element.intrinsicOccurrence!.min}–{element.intrinsicOccurrence!.max} occurrences
+        return <div className="validation-rule-row"><span><AdminText english="Catalog limits" /></span><span>{element.intrinsicOccurrence!.min}–{element.intrinsicOccurrence!.max} <AdminText english="occurrences" />
           {element.groupPath?.length ? ` in ${element.groupPath.at(-1)}` : ""} <span className="validation-help" tabIndex={0}
-            aria-label="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid."
-            title="Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.">ⓘ</span></span></div>;
+            aria-label={t("Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.")}
+            title={t("Catalog structure is read-only. Validation policies cannot make unsupported occurrences structurally valid.")}>ⓘ</span></span></div>;
       })()}
-      <div className="validation-rule-row"><label htmlFor="validation-message">Message ({wordingLanguage})</label>
+      <div className="validation-rule-row"><label htmlFor="validation-message">{t("Message ({language})", { language: wordingLanguage })}</label>
       <input id="validation-message" value={wordingLanguage === "en" ? selectedRule.message : selectedRule.localization?.sv?.message ?? ""}
         onChange={(event) => changeRule((rule) => wordingLanguage === "en" ? updateValidationEnglish(rule, "message", event.target.value) :
           { ...rule, localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
@@ -403,8 +404,8 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
             reviewedSource: { name: rule.name, message: rule.message } } } }))}>
           Mark English source reviewed</button></div>}
       <div className="validation-rule-row validation-source-row"><label htmlFor="validation-source"><AdminText english="Rule source" /> <span className="validation-help"
-        tabIndex={0} aria-label="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order."
-        title="Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.">ⓘ</span></label>
+        tabIndex={0} aria-label={t("Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.")}
+        title={t("Use optional for each and when clauses followed by require. Boolean functions may nest. Domain functions cover occurrence limits, collection predicates, membership, safe matching, cross-element and time comparison, absence facets, and occurrence order.")}>ⓘ</span></label>
       <textarea id="validation-source" spellCheck={false} rows={3} value={selectedRule.source}
         onChange={(event) => changeRule((rule) => ({ ...rule, source: event.target.value }))} /></div>
       <div className="form-actions validation-rule-actions">
@@ -417,7 +418,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
         setDraft(updated); setStatus(selectedRule.enabled ? t("Rule disabled and retained in history.") : t("Rule restored to execution."));
       })}>{selectedRule.enabled ? t("Disable rule") : t("Restore rule")}</button></div>
     </fieldset>}
-    {selectedRule?.provenance?.length ? <details><summary>NEMSIS provenance ({selectedRule.provenance.length})</summary>
+    {selectedRule?.provenance?.length ? <details><summary>{t("NEMSIS provenance ({count})", { count: selectedRule.provenance.length })}</summary>
       {selectedRule.provenance.map((source) => <dl key={`${source.sourceIdentity}:${source.sourceRelease}`}>
         <div><dt><AdminText english="Source identity" /></dt><dd>{source.sourceIdentity}</dd></div>
         <div><dt><AdminText english="Release" /></dt><dd>{source.sourceRelease}{source.sourceBuild ? ` (${source.sourceBuild})` : ""}</dd></div>

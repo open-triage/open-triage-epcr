@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminText, useAdminText } from "../app/admin-localization";
+import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
 import type { AdminAssignableRoleSummary, AdminCapabilityOption, AdminRole, AdminRoleHistory, AdminRoleSummary, AdminSessionSummary, AdminUserSummary, ProvisionAdminUserCommand, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, SaveAdminRoleCommand, UpdateAdminUserCommand } from "@open-triage/contracts";
 import React, { useEffect, useRef, useState, type FormEvent } from "react";
@@ -40,6 +40,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
   readonly csrfToken?: string;
 }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const [items, setItems] = useState<AdminUserSummary[]>([]);
   const [roleOptions, setRoleOptions] = useState<AdminAssignableRoleSummary[]>([]);
   const [query, setQuery] = useState<AdminUserQuery>({ state: "active" });
@@ -68,7 +69,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setItems((current) => append ? [...current, ...page.items] : page.items);
       setNextCursor(page.nextCursor);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("Users could not be loaded."));
+      setError(adminError(reason, "Users could not be loaded."));
     } finally {
       setLoading(false);
     }
@@ -78,10 +79,10 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     loadAdminUsers({ state: "active" }).then((page) => {
       setItems(page.items);
       setNextCursor(page.nextCursor);
-    }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : t("Users could not be loaded.")))
+    }).catch((reason: unknown) => setError(adminError(reason, "Users could not be loaded.")))
       .finally(() => setLoading(false));
     loadAdminUserRoleOptions().then((result) => setRoleOptions(result.items)).catch(() => setRoleOptions([]));
-  }, []);
+  }, [adminError]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,7 +118,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`${created.displayName} was created. Their temporary password expires ${new Date(created.temporaryPasswordExpiresAt).toLocaleString()}.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("The user could not be created."));
+      setError(adminError(reason, "The user could not be created."));
     } finally {
       setCreating(false);
     }
@@ -129,7 +130,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
     try {
       setUserSessions((await loadAdminUserSessions(userId)).items);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("Sessions could not be loaded."));
+      setError(adminError(reason, "Sessions could not be loaded."));
     } finally {
       setSecurityLoading(false);
     }
@@ -165,7 +166,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(t("The selected session was revoked."));
       await refreshSessions(editing.id);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("The session could not be revoked."));
+      setError(adminError(reason, "The session could not be revoked."));
     } finally {
       setSecurityLoading(false);
     }
@@ -191,7 +192,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`${editing.displayName}'s temporary credential expires ${new Date(reset.temporaryPasswordExpiresAt).toLocaleString()}. ${reset.sessionsRevoked} session${reset.sessionsRevoked === 1 ? " was" : "s were"} revoked. Account status was not changed.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("The credential could not be reset."));
+      setError(adminError(reason, "The credential could not be reset."));
     } finally {
       setResetting(false);
     }
@@ -223,7 +224,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
           : `${updated.displayName} was updated.`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("The user could not be updated."));
+      setError(adminError(reason, "The user could not be updated."));
     } finally {
       setSaving(false);
     }
@@ -251,7 +252,7 @@ export function UsersPanel({ canCreate = false, canManage = false, canAssignRole
       setNotice(`Roles updated for ${updated.displayName}. Added: ${updated.addedRoles.map((role) => role.displayName).join(", ") || "none"}; removed: ${updated.removedRoles.map((role) => role.displayName).join(", ") || "none"}.${updated.active ? "" : " Roles remain ineffective until reactivation."}`);
       await load(query);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("The role set could not be updated."));
+      setError(adminError(reason, "The role set could not be updated."));
     } finally {
       setSaving(false);
     }
@@ -460,6 +461,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
   readonly csrfToken?: string; readonly capabilities?: string[];
 }) {
   const t = useAdminText();
+  const adminError = useAdminError();
   const [items, setItems] = useState<AdminRole[]>([]);
   const [capabilityOptions, setCapabilityOptions] = useState<AdminCapabilityOption[]>([]);
   const [selectedState, setSelectedState] = useState<StateFilter>("active");
@@ -486,17 +488,17 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
     setLoading(true);
     setError(null);
     loadAdminRoles(state).then((result) => setItems(result.items)).catch((reason: unknown) =>
-      setError(reason instanceof Error ? reason.message : t("Roles could not be loaded.")))
+      setError(adminError(reason, "Roles could not be loaded.")))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     loadAdminRoles("active").then((result) => setItems(result.items))
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : t("Roles could not be loaded.")))
+      .catch((reason: unknown) => setError(adminError(reason, "Roles could not be loaded.")))
       .finally(() => setLoading(false));
     loadAdminRoleCapabilities().then((result) => setCapabilityOptions(result.items))
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : t("Capabilities could not be loaded.")));
-  }, []);
+      .catch((reason: unknown) => setError(adminError(reason, "Capabilities could not be loaded.")));
+  }, [adminError]);
 
   function begin(role: AdminRole | null) {
     closeInteractions();
@@ -534,7 +536,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
           .sort((left, right) => left.displayName.localeCompare(right.displayName)));
       setEditorRole(undefined);
     } catch (reason) {
-      setError(`${reason instanceof Error ? reason.message : t("The role could not be saved.")} Reload the role list before retrying if another administrator changed it.`);
+      setError(`${adminError(reason, "The role could not be saved.")} Reload the role list before retrying if another administrator changed it.`);
     } finally {
       setSaving(false);
     }
@@ -551,7 +553,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       setRetiringRole(null);
       setRetirementNote("");
     } catch (reason) {
-      setError(`${reason instanceof Error ? reason.message : t("The role could not be deactivated.")} Reload the role list before retrying if another administrator changed it.`);
+      setError(`${adminError(reason, "The role could not be deactivated.")} Reload the role list before retrying if another administrator changed it.`);
     } finally {
       setSaving(false);
     }
@@ -565,7 +567,7 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
       const loadedHistory = await loadAdminRoleHistory(roleId);
       if (revision === interactionRevision.current) setHistory(loadedHistory);
     }
-    catch (reason) { setError(reason instanceof Error ? reason.message : t("Role history could not be loaded.")); }
+    catch (reason) { setError(adminError(reason, "Role history could not be loaded.")); }
   }
 
   const findings = roleDraftFindings(draft, capabilityOptions);
