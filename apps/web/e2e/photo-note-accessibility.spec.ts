@@ -47,9 +47,9 @@ test("live camera and rotation preview remain accessible without exposing librar
   await expect(dialog.locator(".camera-control-row > button").nth(0)).toHaveAccessibleName("Rotate counterclockwise 90°");
   await expect(dialog.locator(".camera-control-row > button").nth(1)).toHaveAccessibleName("Cycle camera");
   await expect(dialog.locator(".camera-control-row > button").nth(2)).toHaveAccessibleName("Rotate clockwise 90°");
-  await expect(dialog.locator(".camera-capture-row > button")).toHaveCount(2);
+  await expect(dialog.locator(".camera-capture-row > button")).toHaveCount(1);
   await expect(dialog.getByRole("button", { name: "Take photo" })).toHaveCSS("background-color", "rgb(0, 120, 58)");
-  await expect(dialog.getByRole("button", { name: "Close" })).toHaveCSS("background-color", "rgb(180, 35, 24)");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await dialog.getByRole("button", { name: "Rotate clockwise 90°" }).click();
   await expect(dialog.getByLabel("Live camera preview")).toHaveAttribute("style", /rotate\(90deg\)/);
   const cameraFrameBounds = await dialog.locator(".camera-live-frame").boundingBox();
@@ -78,7 +78,7 @@ test("denied camera access gives recovery steps and leaves Text note available",
   const dialog = page.getByRole("dialog", { name: "Photo note" });
   await expect(dialog.getByRole("alert")).toContainText("Allow camera access for this site in browser settings");
   await expect(dialog.getByRole("alert")).toContainText("Text notes remain available");
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Text note" }).click();
   await expect(page.getByLabel("Note text")).toBeFocused();
 });

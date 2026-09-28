@@ -18,7 +18,7 @@ async function openAuthenticatedMobile(page: Page, language: "en" | "sv" = "en")
   await page.route("**/api/calls/assigned", (route) => route.fulfill({ json: { assignedCalls: [], canceledAssignmentIds: [], refreshedAt: new Date().toISOString() } }));
   await page.route("**/api/reports/open", (route) => route.fulfill({ json: { reports: [] } }));
   await page.goto("/");
-  await expect(page.getByRole("button", { name: language === "sv" ? "Skicka feedback" : "Send feedback" })).toBeVisible();
+  await expect(page.getByRole("button", { name: language === "sv" ? "Skicka återkoppling" : "Send feedback" })).toBeVisible();
 }
 
 test("feedback cancel restores focus and failure preserves the selected draft", async ({ page }) => {
@@ -29,7 +29,8 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
       method: "POST", headers: { authorization: "Bearer AUTH-SECRET", "x-patient": "PATIENT-123" }, body: "SENSITIVE BODY"
     });
   });
-  await page.getByRole("button", { name: "Refresh calls" }).click();
+  await page.getByRole("button", { name: "Choose language" }).click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
   const trigger = page.getByRole("button", { name: "Send feedback" });
   await trigger.click();
   let dialog = page.getByRole("dialog", { name: "Send feedback" });
@@ -64,7 +65,7 @@ test("feedback cancel restores focus and failure preserves the selected draft", 
   expect(bugSubmission.diagnostics.status).toBe("available");
   expect(bugSubmission.diagnostics.payload.structure.nodes).not.toContainEqual(expect.objectContaining({ kind: "dialog" }));
   expect(bugSubmission.diagnostics.payload.interactions).toEqual(expect.arrayContaining([
-    "feedback.opened", "feedback.type.bug.selected", "feedback.submit.attempted", "session.refresh.requested"
+    "feedback.opened", "feedback.type.bug.selected", "feedback.submit.attempted"
   ]));
   expect(bugSubmission.diagnostics.payload.requestFailures).toEqual(expect.arrayContaining([expect.objectContaining({
     method: "POST", endpointPattern: "/api/reports/{value}?patient={value}&token={value}", status: 503
@@ -91,7 +92,8 @@ test("feature feedback submits the type-specific prompt and announces its opaque
   await expect(notice).toHaveClass(/transient-notice/);
   expect(await notice.evaluate((element) => getComputedStyle(element).position)).toBe("fixed");
   await expect(trigger).toBeFocused();
-  await page.getByRole("button", { name: "Refresh calls" }).click();
+  await page.getByRole("button", { name: "Choose language" }).click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
   await expect(notice).toHaveCount(0);
   expect(submitted).toMatchObject({ type: "feature", description: "Filter calls by unit" });
   expect((submitted as { idempotencyKey: string }).idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
@@ -162,14 +164,14 @@ test("Swedish feedback retains authored text and accessible focus after an uploa
   await page.route("**/api/feedback/v1/submissions", (route) => route.fulfill({ status: 503, json: { message: "unavailable" } }));
   const trigger = page.locator(".feedback-trigger");
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "Skicka feedback" });
+  const dialog = page.getByRole("dialog", { name: "Skicka återkoppling" });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Fel" }).click();
+  await dialog.getByRole("button", { name: "Bugg" }).click();
   const description = dialog.getByRole("textbox");
   const content = "Åke föreslår en bättre uppdragslista";
   await description.fill(content);
   await expect(dialog.locator("small").filter({ hasText: "tecken" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Skicka feedback" }).click();
+  await dialog.getByRole("button", { name: "Skicka återkoppling" }).click();
   await expect(dialog.getByRole("alert")).toContainText("beskrivning finns kvar");
   await expect(description).toHaveValue(content);
   await page.keyboard.press("Escape");

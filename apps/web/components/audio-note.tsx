@@ -1,4 +1,5 @@
 "use client";
+import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
 import { PlatformRequestError } from "../app/platform-errors";
 
@@ -265,12 +266,6 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
     finishRecording(false);
   }
 
-  function discard() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setCapture(null); setMode("ready"); setError(null);
-    void removeProtectedAudioPreview(reportId);
-  }
-
   async function save() {
     if (saving || validation.error) return;
     setSaving(true); setError(null);
@@ -363,9 +358,9 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       else if (mode === "recording") { event.preventDefault(); event.stopPropagation(); holdingRef.current = false; finishRecording(true); }
     }}>
     <div className="note-dialog-heading"><div><p className="eyebrow">{note ? t("noteUi.audioState", { state: t(`noteUi.state.${note.persistenceState}`) }) : mode === "recording" ? t("noteUi.recording.spoken.observation") : mode === "preview" ? capture?.interrupted ? t("noteUi.interrupted.recording.choose.use.or.discard") : t("noteUi.review.recording") : t("noteUi.live.microphone")}</p>
-      <h2 id="audio-dialog-title">{t("noteUi.audio.note")}</h2></div>{note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>{t("noteUi.delete.audio")}</button>}</div>
+      <h2 id="audio-dialog-title">{t("noteUi.audio.note")}</h2></div>{note && !confirmingDelete && <DialogRemoveButton language={language} ref={deleteTrigger} onClick={() => setConfirmingDelete(true)} />}</div>
     {confirmingDelete ? <><p id="audio-delete-description">{t("noteUi.delete.this.recording.and.its.caption.from.the.draft.report.saved.bytes.cannot.be.rec")}</p>
-      <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>{t("noteUi.keep.audio")}</button>
+      <div className="note-dialog-actions"><DialogCancelButton language={language} ref={keepAfterDelete} data-dialog-initial-focus onClick={cancelDelete} />
         <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? t("noteUi.deleting") : t("noteUi.delete.audio")}</button></div></> : <>
       <p id="audio-purpose-description" className="audio-purpose">{t("noteUi.for.spoken.clinical.observations.only.this.is.not.a.diagnostic.sound.recorder.and.it.")}</p>
       {(mode === "ready" || mode === "recording") && <div className="audio-capture-stage">
@@ -390,16 +385,16 @@ export function AudioNoteDialog({ dialogRef, reportId, note, csrfToken, revision
       {mode === "viewer" && note && <div className="audio-preview"><AuthorizedAudioButton reportId={reportId} noteId={note.id} language={language} label={t("noteUi.play.complete.audio.note")} />
         <p className="note-metadata">{formatAudioDuration(note.durationMilliseconds)} · Captured {new Date(note.capturedAt).toLocaleString(undefined, zone ? { timeZone: zone } : undefined)} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
         {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>{t("noteUi.retry.upload")}</button>}</div>}
-      {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">{t("noteUi.caption")} <small>{t("noteUi.optional")}</small></label>
+      {(mode === "preview" || mode === "viewer") && <><label htmlFor="report-audio-caption">{t("noteUi.audioCaption")} <small>{t("noteUi.optional")}</small></label>
         <textarea id="report-audio-caption" rows={3} maxLength={REPORT_AUDIO_CAPTION_MAX_CHARACTERS} value={caption}
           aria-invalid={Boolean(validation.error || error)} aria-describedby="report-audio-caption-count report-audio-error"
           onChange={(event) => { const value = event.target.value; setCaption(value); setError(null);
             if (capture && protectedStorageActive(reportId)) updateProtectedAudioPreview(reportId, { caption: value }); }} />
         <small id="report-audio-caption-count">{t("noteUi.captionCount", { count: validation.characterCount.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: REPORT_AUDIO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small></>}
       <p id="report-audio-error" className="finish-help" role={validation.error || error ? "alert" : captureUnavailable ? "status" : undefined}>{validation.error ?? error ?? captureUnavailable}</p>
-      <div className="note-dialog-actions">{mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>{t("noteUi.discard")}</button> : <button type="button" disabled={saving || mode === "recording"} onClick={onClose}>{t("noteUi.close")}</button>}
+      <div className="note-dialog-actions"><DialogCancelButton language={language} disabled={saving || mode === "recording"} onClick={onClose} />
         {mode === "preview" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.processing") : capture?.interrupted ? t("noteUi.use.interrupted.recording") : t("noteUi.use.recording")}</button>}
-        {mode === "viewer" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : t("noteUi.save.caption")}</button>}</div>
+        {mode === "viewer" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : t("noteUi.saveAudioCaption")}</button>}</div>
     </>}
   </section></div>;
 }

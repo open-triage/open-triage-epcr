@@ -1,4 +1,5 @@
-import type { ReportAudioNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
+import { mobileDisplayDefinition, mobileDisplayEvent } from "../app/mobile-localization";
+import type { ClinicalFormConfiguration, ReportAudioNote, ReportPhotoNote, ReportTextNote } from "@open-triage/contracts";
 import React, { useId, useState } from "react";
 import { displayDecimal, formatClinicalNumber, useRegionalFormat } from "../app/regional-format";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
@@ -18,10 +19,11 @@ export function filterEncounterTimeline(events: ReadonlyArray<EncounterTimelineI
   return filter === "notes" ? events.filter(({ kind }) => kind === "text-note" || kind === "photo-note" || kind === "audio-note") : events;
 }
 
-export function EncounterTimeline({ events, validationStatuses, definition, headingId, language, className, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
+export function EncounterTimeline({ events, validationStatuses, definition: sourceDefinition, clinicalForm, headingId, language, className, onOpenTextNote, onOpenPhoto, onOpenAudio, onOpenEvent }: {
   readonly events: ReadonlyArray<EncounterTimelineItem>;
   readonly validationStatuses: ReadonlyMap<string, "warning" | "error">;
   readonly definition: EncounterDefinition;
+  readonly clinicalForm?: ClinicalFormConfiguration;
   readonly headingId: string;
   readonly language: AgencyLanguage;
   readonly className?: string;
@@ -31,6 +33,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
   readonly onOpenEvent: (event: EncounterEvent, trigger: HTMLElement) => void;
 }) {
   const region = useRegionalFormat();
+  const definition = mobileDisplayDefinition(sourceDefinition, language, clinicalForm);
   const [filter, setFilter] = useState<EncounterTimelineFilter>("all");
   const t = (key: string, parameters?: Record<string, string | number>, count?: number) => resolveMessage(language, key, parameters, count);
   const filterLabelId = useId();
@@ -75,7 +78,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
                 <span className="event-title">{t("mobile.audioNote")} · {duration}</span><span className="event-detail">{event.note.caption || t("mobile.noCaption")}</span>
                 <small>{event.note.author.displayName} · {audioState} · {t("mobile.openAudioShort")}</small>
               </button>
-              <AuthorizedAudioButton language={language} reportId={event.note.reportId} noteId={event.note.id} label={`Play audio note, ${duration}`} className="timeline-audio-action" />
+              <AuthorizedAudioButton language={language} reportId={event.note.reportId} noteId={event.note.id} label={t("mobile.playAudio", { duration })} className="timeline-audio-action" />
             </div>
           </li>;
         }
@@ -91,9 +94,10 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
           </li>;
         }
         const validationStatus = validationStatuses.get(event.id) ?? "clear";
-        const presentation = encounterEventPresentation(event, definition);
+        const displayedEvent = mobileDisplayEvent(event, language, clinicalForm);
+        const presentation = encounterEventPresentation(displayedEvent, definition);
         const title = event.medication?.dose ? presentation.title.replace(event.medication.dose, displayDecimal(event.medication.dose, region)) : presentation.title;
-        const eventDetail = encounterEventDetail(event, definition);
+        const eventDetail = encounterEventDetail(displayedEvent, definition);
         return <li key={event.id} className={event.kind === "note" || event.kind === "medication" || event.kind === "procedure" ? "editable-event" : undefined}>
           <time dateTime={event.dateTime ?? `${event.date ?? DEMO_FALLBACK_DATE}T${event.time}:00`}>{event.time}</time>
           <span className={`event-dot validation-${validationStatus}`} role="img" aria-label={t("mobile.validationStatus", { status: t(validationStatus === "clear" ? "mobile.validationClear" : validationStatus === "error" ? "mobile.validationError" : "mobile.validationWarning") })} />
@@ -107,7 +111,7 @@ export function EncounterTimeline({ events, validationStatuses, definition, head
                 warningAcknowledged: event.procedure.warningAcknowledged, isNew: false,
               }, procedureDefinition).warnings.length > 0 && !event.procedure.warningAcknowledged && <span className="warning-pill">{procedureDefinition.labels.warningPill}</span>}
             </button>
-          ) : <div><h2>{event.title}</h2><p>{event.detail}</p><small>{event.reference}</small></div>}
+          ) : <div><h2>{title}</h2><p>{eventDetail}</p><small>{event.reference}</small></div>}
         </li>;
       })}
     </ol>}

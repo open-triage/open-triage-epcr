@@ -1,9 +1,11 @@
 "use client";
 
+import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
+import { mobileDisplayDefinition } from "./mobile-localization";
+
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
-import { formFieldForElement, formFieldText } from "./form-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -164,12 +166,6 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const noteDefinition = bundledEncounterDefinition.events.note;
   const catalogText = (elementId: string, kind: "label" | "description") => {
     const field = report?.clinicalForm?.catalogFields[elementId];
-    const definition = report?.clinicalForm?.definition;
-    const authored = definition && formFieldForElement(definition, elementId);
-    if (kind === "label" && definition) {
-      const override = formFieldText(definition, authored, language, "label");
-      if (override) return override;
-    }
     return field ? resolveCatalogElementText(field, elementId, language, kind) : undefined;
   };
   const baseProcedure = bundledEncounterDefinition.events.procedure;
@@ -199,13 +195,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     routeLabels: medicationChoiceLabels("eMedications.04"),
     fields: bundledEncounterDefinition.events.medication.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
-  const vitalHelp = report?.clinicalForm?.definition && formFieldText(report.clinicalForm.definition,
-    formFieldForElement(report.clinicalForm.definition, "eVitals.06"), language, "helpText");
-  const vitalDefinition = { ...bundledEncounterDefinition.events.vitals,
-    labels: { ...bundledEncounterDefinition.events.vitals.labels,
-      absenceHelp: vitalHelp ?? bundledEncounterDefinition.events.vitals.labels.absenceHelp },
-    fields: bundledEncounterDefinition.events.vitals.fields.map((field) => ({ ...field,
-      label: catalogText(field.reference, "label") ?? field.label })) };
+  const vitalDefinition = mobileDisplayDefinition(bundledEncounterDefinition, language, report?.clinicalForm).events.vitals;
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
     procedure: procedureDefinition, medication: medicationDefinition, vitals: vitalDefinition } };
   const reviewFindings = useMemo(() => reviewEncounter(shell), [shell]);
@@ -853,6 +843,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             sectionFindings={stationarySectionFindings}
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
+            catalogGroups={report?.clinicalForm?.catalogGroups}
             validation={report?.clinicalForm?.validation}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
           />
@@ -863,6 +854,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         events={timelineEvents}
         validationStatuses={eventValidationStatuses}
         definition={displayDefinition}
+        clinicalForm={report?.clinicalForm}
         headingId="timeline-heading" language={language}
         onOpenTextNote={openTextNote}
         onOpenPhoto={openPhoto}
@@ -877,7 +869,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         timelineToggle.current?.focus();
       }}>
         <EncounterTimeline events={timelineEvents} validationStatuses={eventValidationStatuses} definition={displayDefinition}
-          headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
+          clinicalForm={report?.clinicalForm} headingId="stationary-timeline-heading" language={language} onOpenTextNote={openTextNote} onOpenPhoto={openPhoto} onOpenAudio={openAudio} onOpenEvent={openTimelineEvent} />
       </aside>}
       {presentationMode === "mobile" && shell.view === "checklist" && (
         <section className="content-panel checklist-panel" aria-labelledby="checklist-heading">
@@ -969,13 +961,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 <p className="eyebrow">{confirmingNoteDelete ? t("noteUi.confirm.deletion") : textNoteDraft.isNew ? t("noteUi.textNewEyebrow") : t("noteUi.textEditEyebrow")}</p>
                 <h2 id="note-dialog-title">{t("noteUi.textEditorTitle")}</h2>
               </div>
-              {!textNoteDraft.isNew && !confirmingNoteDelete && <button className="remove-entry-button" type="button"
-                disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{t("noteUi.textRemove")}</button>}
+              {!textNoteDraft.isNew && !confirmingNoteDelete && <DialogRemoveButton language={language} disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)} />}
             </div>
             {confirmingNoteDelete ? <>
               <p id="note-delete-description">{t("mobile.noteDeleteConfirm")}</p>
               <div className="note-dialog-actions">
-                <button data-dialog-initial-focus type="button" disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)}>{t("mobile.keepNote")}</button>
+                <DialogCancelButton language={language} data-dialog-initial-focus disabled={noteSaving} onClick={() => setConfirmingNoteDelete(false)} />
                 <button className="remove-entry-button" type="button" disabled={noteSaving} onClick={() => void confirmDeleteTextNote()}>
                   {noteSaving ? t("mobile.deleting") : t("mobile.deleteNote")}
                 </button>
@@ -1008,7 +999,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
               </p>
               <div className="note-dialog-actions">
-                <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{t("noteUi.cancel")}</button>
+                <DialogCancelButton language={language} disabled={noteSaving} onClick={closeActiveDialog} />
                 <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
                   {noteSaving ? t("settings.saving") : textNoteDraft.isNew ? t("mobile.saveTextNote") : t("noteUi.textSave")}
                 </button>
@@ -1026,19 +1017,23 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           <section ref={dialog} className="note-dialog vital-dialog" role="dialog" aria-modal="true" aria-labelledby="vital-dialog-title">
             <div className="note-dialog-heading">
               <div><p className="eyebrow">{shell.vitalDraft.isNew ? vitalDefinition.labels.newEyebrow : vitalDefinition.labels.editEyebrow}</p><h2 id="vital-dialog-title">{vitalDefinition.labels.editorTitle}</h2></div>
-              <button className="remove-entry-button" type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }}>{vitalDefinition.labels.remove}</button>
+              {!shell.vitalDraft.isNew && <DialogRemoveButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-removed" }); }} />}
             </div>
             <TimePicker language={language} className={vitalFindingActive && editingFinding && !editingVitalField ? `finding-frame ${editingFinding.severity}` : undefined} initialFocus label={vitalDefinition.labels.time} date={shell.vitalDraft.date} onDateChange={(value) => dispatch({ type: "vitals-date-changed", value })} value={shell.vitalDraft.time} selectedInstant={shell.vitalDraft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "vitals", date, time, dateTime })} onChange={(value) => dispatch({ type: "vitals-time-changed", value })} />
             <DialogValidationMessage finding={vitalFindingActive && !editingVitalField ? editingActionableFinding : undefined} />
             <div className="vital-grid">
               {vitalDefinition.fields.map((configuredField) => {
                 const field = configuredField.id;
+                const help = catalogText(configuredField.reference, "description");
+                const helpId = `vital-${field}-help`;
                 return (
                 <div className={`vital-field ${vitalFindingActive && editingVitalField === field ? `finding-frame ${editingFinding!.severity}` : ""}`.trim()} key={field}>
-                  <label htmlFor={`vital-${field}`}>{configuredField.label} <small>{configuredField.unit}</small></label>
-                  {catalogText(configuredField.reference, "description") && <p className="field-help">{catalogText(configuredField.reference, "description")}</p>}
+                  <label className="vital-field-label" htmlFor={`vital-${field}`} tabIndex={help ? 0 : undefined}>
+                    {configuredField.label} <small>{configuredField.unit}</small>
+                    {help && <small className="stationary-element-tooltip" id={helpId} role="tooltip">{configuredField.reference}: {help}</small>}
+                  </label>
                   <div className="vital-inputs">
-                    <input id={`vital-${field}`} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
+                    <input id={`vital-${field}`} aria-describedby={help ? helpId : undefined} inputMode="numeric" required={configuredField.required} placeholder={`${configuredField.boundaries.min}–${configuredField.boundaries.max}`} value={shell.vitalDraft!.values[field]} onChange={(event) => dispatch({ type: "vitals-value-changed", field, value: event.target.value })} />
                     <button
                       type="button"
                       className={`null-value-trigger ${shell.vitalDraft!.values.nullValues[field] ? "active" : ""}`}
@@ -1073,7 +1068,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
               );})}
             </div>
             <p className="null-help">{vitalDefinition.labels.absenceHelp}</p>
-            <div className="note-dialog-actions"><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }}>{vitalDefinition.labels.cancel}</button><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
+            <div className="note-dialog-actions"><DialogCancelButton language={language} onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-cancelled" }); }} /><button type="button" onClick={() => { setOpenNullField(null); dispatch({ type: "vitals-saved" }); }}>{shell.vitalDraft.isNew ? vitalDefinition.labels.add : vitalDefinition.labels.save}</button></div>
           </section>
         </div>
       )}

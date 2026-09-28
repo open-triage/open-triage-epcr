@@ -13,6 +13,7 @@ import {
   storeClinicianSession,
   sessionRequestToken
 } from "../app/clinician-session";
+import { LanguageSelector } from "./language-selector";
 import { AssignedCalls } from "./assigned-calls";
 import { OpenReports } from "./open-reports";
 import type { ActiveDraftReport } from "../app/draft-report";
@@ -25,7 +26,7 @@ import {
   type PresentationMode
 } from "../app/presentation-mode";
 import { applyAgencyAppearance, loadInstallationConfiguration } from "../app/installation-settings";
-import { resolveMessage, type AgencyLanguage } from "../app/localization";
+import { availableUiLanguages, resolveMessage, type AgencyLanguage } from "../app/localization";
 import { RegionalFormatContext } from "../app/regional-format";
 import { AgencyTimeZoneContext } from "../app/agency-time-zone";
 import { AdminShell } from "./admin-shell";
@@ -66,9 +67,11 @@ export function ClinicianSessionGate({ children }: {
   }) => ReactNode);
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
+  const [preferredLanguage, setPreferredLanguage] = useState<string | null>(null);
+  const language = preferredLanguage ?? installation?.settings.language ?? "en";
   const [startupState, setStartupState] = useState<"loading" | "ready" | "failed">("loading");
   const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
-    resolveMessage(installation?.settings.language ?? "en", key, parameters), [installation?.settings.language]);
+    resolveMessage(language, key, parameters), [language]);
   const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -98,8 +101,8 @@ export function ClinicianSessionGate({ children }: {
   }, []);
 
   useEffect(() => {
-    if (installation) applyAgencyAppearance(installation.appearance, document, installation.settings.language);
-  }, [installation]);
+    if (installation) applyAgencyAppearance(installation.appearance, document, language);
+  }, [installation, language]);
 
   useEffect(() => {
     if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -151,6 +154,10 @@ export function ClinicianSessionGate({ children }: {
         ]);
         if (!current) return;
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
+        try {
+          const savedLanguage = window.localStorage.getItem("open-triage:ui-language");
+          if (savedLanguage && availableUiLanguages.includes(savedLanguage)) setPreferredLanguage(savedLanguage);
+        } catch { /* Language selection remains available without persistent storage. */ }
         setInstallation(loaded);
         setSession(authenticated);
         setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
@@ -351,15 +358,13 @@ export function ClinicianSessionGate({ children }: {
     <RegionalFormatContext.Provider value={installation.settings.regionalFormat ?? null}>
     <div className={`authenticated-shell ${presentationMode}-shell`}>
       <header ref={sessionBar} className="session-bar">
+        <LanguageSelector language={language} onChange={(selected) => {
+          setPreferredLanguage(selected);
+          try { window.localStorage.setItem("open-triage:ui-language", selected); } catch { /* Keep the session preference. */ }
+        }} />
         {browserRequestConfiguration().mode === "server" &&
-          <FeedbackControl language={installation.settings.language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
+          <FeedbackControl language={language} csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}
-        {presentationMode !== "admin"
-          ? <button className="call-list-refresh" type="button" aria-label={t("navigation.refreshCalls")} onClick={() => {
-            recordFeedbackInteraction("session.refresh.requested");
-            setRefreshRequest((value) => value + 1);
-          }}>{t("navigation.refresh")}</button>
-          : <span className="call-list-refresh session-bar-spacer" aria-hidden="true" />}
         <span className="session-identity">{t("navigation.signedInAs", { name: session.user.displayName })}</span>
         <div className="presentation-selector" role="group" aria-label={t("navigation.presentation")}>
           {hasClinicalMode(session.capabilities) && <>
@@ -377,7 +382,7 @@ export function ClinicianSessionGate({ children }: {
           aria-labelledby={logoutHeadingId} onKeyDown={logoutDialogKeys}>
           <div className="note-dialog-heading"><div><p className="eyebrow">{t("login.pendingWork")}</p>
             <h2 id={logoutHeadingId}>{t("login.lockWork")}</h2></div></div>
-          <p role="note">{resolveMessage(installation.settings.language, "login.unsynchronized", {}, logoutWarning.pendingReportCount)}</p>
+          <p role="note">{resolveMessage(language, "login.unsynchronized", {}, logoutWarning.pendingReportCount)}</p>
           <p className="feedback-warning"><strong>{t("login.recoveryDeadline")}</strong> {logoutWarning.recoveryDeadline
             ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(logoutWarning.recoveryDeadline))
             : t("login.valueUnavailable")}. {t("login.recoveryHelp")}</p>
@@ -405,7 +410,7 @@ export function ClinicianSessionGate({ children }: {
         />}
       {presentationMode !== "admin" && <div hidden={activeReport !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
-        <AssignedCalls session={session} language={installation.settings.language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
+        <AssignedCalls session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
           suppressedCallNumbers={completedCallNumbers} onOpened={async (opened, call) => {
           setCompletionNotice(null);
           await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
@@ -414,7 +419,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} session={session} language={installation.settings.language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
+        <OpenReports key={openReportsRevision} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
         }} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);
@@ -431,7 +436,7 @@ export function ClinicianSessionGate({ children }: {
         data-report-id={activeReport?.id}
         data-form-version-id={activeReport?.formVersionId}
       />
-      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, language: installation.settings.language,
+      {activeReport && (typeof children === "function" ? children({ session, report: activeReport, sessionEnded, presentationMode, language,
         reportErrorStateChanged, closeReport: () => {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
@@ -441,7 +446,7 @@ export function ClinicianSessionGate({ children }: {
         setActiveReport(null);
         setOpenReportsRevision((value) => value + 1);
       } }) : children)}
-      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={installation.settings.language} />}
+      {presentationMode === "admin" && !activeReport && <AdminShell session={session} language={language} />}
     </div>
     </RegionalFormatContext.Provider>
     </AgencyTimeZoneContext.Provider>

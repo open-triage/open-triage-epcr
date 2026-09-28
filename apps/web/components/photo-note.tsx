@@ -1,4 +1,5 @@
 "use client";
+import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import React from "react";
 import { PlatformRequestError } from "../app/platform-errors";
 
@@ -290,11 +291,11 @@ export function PhotoNoteDialog({
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{note ? t("noteUi.photoState", { state: t(`noteUi.state.${note.persistenceState}`) }) : mode === "camera" ? t("noteUi.live.camera") : t("noteUi.review.captured.photo")}</p>
           <h2 id="photo-dialog-title">{t("noteUi.photo.note")}</h2></div>
-        {note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>{t("noteUi.delete.photo")}</button>}
+        {note && !confirmingDelete && <DialogRemoveButton language={language} ref={deleteTrigger} onClick={() => setConfirmingDelete(true)} />}
       </div>
       {confirmingDelete ? <>
         <p id="photo-delete-description">{t("noteUi.delete.this.photo.and.its.caption.from.the.draft.report.saved.bytes.cannot.be.recover")}</p>
-        <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>{t("noteUi.keep.photo")}</button>
+        <div className="note-dialog-actions"><DialogCancelButton language={language} ref={keepAfterDelete} data-dialog-initial-focus onClick={cancelDelete} />
           <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? t("noteUi.deleting") : t("noteUi.delete.photo")}</button></div>
       </> : <>
         {mode === "camera" && <div className="camera-stage">
@@ -315,7 +316,6 @@ export function PhotoNoteDialog({
             <div className="camera-capture-row">
               <button className="camera-capture-button" data-dialog-initial-focus type="button" disabled={Boolean(cameraError)}
                 onClick={() => void takePhoto()}><span className="photo-action-icon" aria-hidden="true" />{t("noteUi.take.photo")}</button>
-              <button className="camera-close-button" type="button" onClick={onClose}>{t("noteUi.close")}</button>
             </div>
           </div>
         </div>}
@@ -339,10 +339,11 @@ export function PhotoNoteDialog({
           <small id="report-photo-caption-count">{t("noteUi.captionCount", { count: validation.characterCount.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small>
           <p id="report-photo-error" className="finish-help" role={validation.error || cameraError ? "alert" : undefined}>{validation.error ?? cameraError}</p>
         </>}
-        {mode !== "camera" && <div className="note-dialog-actions">
-          {mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button> : <button type="button" disabled={saving} onClick={onClose}>{t("noteUi.close")}</button>}
-          <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>
-        </div>}
+        <div className="note-dialog-actions">
+          <DialogCancelButton language={language} disabled={saving} onClick={onClose} />
+          {mode === "preview" && <button type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button>}
+          {mode !== "camera" && <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>}
+        </div>
       </>}
     </section>
   </div>;

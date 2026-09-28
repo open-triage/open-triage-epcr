@@ -34,7 +34,7 @@ export function applyAgencyColors(appearance: AgencyAppearance, document: Docume
   document.documentElement.style.setProperty("--agency-pwa-background", appearance.pwaBackgroundColor);
 }
 
-export function applyAgencyAppearance(appearance: AgencyAppearance, document: Document, language: "en" | "sv" = "en"): void {
+export function applyAgencyAppearance(appearance: AgencyAppearance, document: Document, language: string = "en"): void {
   applyDocumentLanguage(language, document);
   applyAgencyColors(appearance, document);
   document.title = appearance.pwaName;

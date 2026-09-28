@@ -18,7 +18,7 @@ import { mutationRows } from "../database/mutation-result.js";
 
 type SettingsRow = {
   organization_id: string;
-  language: "en" | "sv";
+  language: string;
   regional_format: "en-US" | "sv-SE" | null;
   time_zone: string | null;
   report_media_allowance_bytes: string | number;

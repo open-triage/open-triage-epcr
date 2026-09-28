@@ -1,5 +1,6 @@
 "use client";
 
+import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
 import type { AgencyLanguage } from "../app/localization";
 import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { MEDICATIONS, searchMedicationCatalog } from "../app/medication-catalog";
@@ -68,11 +69,11 @@ export function MedicationDialog({ language, draft, dispatch, dialogRef, definit
     <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{draft.isNew ? medication.labels.newEyebrow : medication.labels.editEyebrow}</p><h2 id="medication-dialog-title">{medication.labels.editorTitle}</h2></div>
-        <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "medication-removed" })}>{medication.labels.remove}</button>
+        {!draft.isNew && <DialogRemoveButton language={language} onClick={() => dispatch({ type: "medication-removed" })} />}
       </div>
       {medication.fields.map(renderField)}
       <div className="note-dialog-actions">
-        <button type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>{medication.labels.cancel}</button>
+        <DialogCancelButton language={language} onClick={() => dispatch({ type: "medication-cancelled" })} />
         <button type="button" onClick={() => dispatch({ type: "medication-saved" })}>{draft.isNew ? medication.labels.add : medication.labels.save}</button>
       </div>
     </section>

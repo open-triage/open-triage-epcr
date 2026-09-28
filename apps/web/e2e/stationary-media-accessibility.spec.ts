@@ -90,8 +90,8 @@ test("Stationary media filtering, viewing, playback, editing, deletion, focus, a
   await dialog.getByRole("button", { name: "Save caption" }).click();
   await expect(sidebar.getByText("Updated medication label")).toBeVisible();
   await sidebar.getByRole("button", { name: /Open photo note.*Updated medication label/ }).click();
-  await dialog.getByRole("button", { name: "Delete photo" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Photo note" }).getByRole("button", { name: "Keep photo" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Photo note" }).getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.getByRole("alertdialog", { name: "Photo note" }).getByRole("button", { name: "Delete photo" }).click();
   await expect(sidebar.getByText("Updated medication label")).toHaveCount(0);
 
@@ -101,11 +101,11 @@ test("Stationary media filtering, viewing, playback, editing, deletion, focus, a
   await dialog.getByRole("button", { name: "Save caption" }).click();
   await expect(sidebar.getByText("Speech remains clear")).toBeVisible();
   await sidebar.getByRole("button", { name: /Open audio note.*Speech remains clear/ }).click();
-  await dialog.getByRole("button", { name: "Delete audio" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Audio note" }).getByRole("button", { name: "Keep audio" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Audio note" }).getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(dialog.getByRole("button", { name: "Delete audio" })).toBeFocused();
-  await dialog.getByRole("button", { name: "Delete audio" }).click();
+  await expect(dialog.getByRole("button", { name: "Remove" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Remove" }).click();
   await page.getByRole("alertdialog", { name: "Audio note" }).getByRole("button", { name: "Delete audio" }).click();
   await expect(sidebar.getByText("Speech remains clear")).toHaveCount(0);
 

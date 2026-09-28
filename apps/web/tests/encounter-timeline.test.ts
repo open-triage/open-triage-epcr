@@ -54,3 +54,19 @@ test("Swedish timeline keeps authored note text and canonical event identity", (
   assert.match(html, /Öppna ljudanteckning/);
   assert.deepEqual(filterEncounterTimeline(events, "notes").map(({ id }) => id), ["audio-1", "photo-1", "note-1"]);
 });
+
+test("Swedish timeline translates operational events and compact vital summaries", () => {
+  const vitals: EncounterTimelineItem = { id: "vitals-1", kind: "care", time: "12:05", sortTime: "2026-09-24T12:05:00.000Z",
+    title: "Vital signs", detail: "", reference: "eVitals.VitalGroup", vitals: {
+      systolic: "120", diastolic: "80", heartRate: "70", spo2: "98", respiratoryRate: "16", gcs: "15", pain: "2", nullValues: {} } };
+  const html = renderToStaticMarkup(createElement(EncounterTimeline, { events: [...events, vitals], validationStatuses: new Map(),
+    definition: standardEncounterDefinition, headingId: "sv-timeline", language: "sv",
+    onOpenTextNote() {}, onOpenPhoto() {}, onOpenAudio() {}, onOpenEvent() {} }));
+  assert.ok(!html.includes("Dispatch notified"));
+  assert.ok(!html.includes("Vital signs"));
+  assert.ok(!html.includes("Play audio note"));
+  assert.ok(html.includes("Vitalparametrar"));
+  assert.ok(html.includes("BT 120/80 · Puls 70"));
+  assert.ok(html.includes("AF 16"));
+  assert.ok(html.includes("Patient feels better."));
+});

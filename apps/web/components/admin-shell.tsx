@@ -114,28 +114,28 @@ function AuthorizedAdminShell({ session, language }: {
     {!context && !error && <LoadingStatus className="admin-loading">{t("navigation.loadingConfiguration")}</LoadingStatus>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
-        <h2 id="active-configuration-heading"><AdminText english="Active configuration" /></h2>
+        <h2 id="active-configuration-heading"><AdminText messageKey="admin.activeConfiguration" /></h2>
       </div>
       {context.activeConfiguration ? <dl>
-        <div><dt><AdminText english="Element catalog" /></dt><dd>{context.activeConfiguration.catalog.name}</dd></div>
-        <div><dt><AdminText english="Stationary form" /></dt><dd>{context.activeConfiguration.stationaryForm.name}, {adminT("version")} {context.activeConfiguration.stationaryForm.version}</dd></div>
-      </dl> : <p role="status"><AdminText english="No active Stationary configuration is assigned to an operational unit." /></p>}
-      <div className="section-heading"><h2><AdminText english="Operations" /></h2></div>
+        <div><dt><AdminText messageKey="admin.elementCatalog" /></dt><dd>{context.activeConfiguration.catalog.name}</dd></div>
+        <div><dt><AdminText messageKey="admin.stationaryForm" /></dt><dd>{context.activeConfiguration.stationaryForm.name}, {adminT("admin.version")} {context.activeConfiguration.stationaryForm.version}</dd></div>
+      </dl> : <p role="status"><AdminText messageKey="admin.noActiveStationaryConfiguration" /></p>}
+      <div className="section-heading"><h2><AdminText messageKey="admin.operations" /></h2></div>
       <dl className="admin-dashboard-metrics">
-        <div><dt><AdminText english="Available calls" /></dt><dd>{context.dashboard.availableCalls}</dd></div>
-        <div><dt><AdminText english="Ongoing reports" /></dt><dd>{context.dashboard.ongoingReports}</dd></div>
-        <div><dt><AdminText english="Signed reports" /></dt><dd>{context.dashboard.signedReports}</dd><small>{adminT("{count} in the last 24 hours", { count: context.dashboard.signedLast24Hours })}</small></div>
-        <div><dt><AdminText english="Reports with errors" /></dt><dd>{context.dashboard.reportsWithErrors}</dd></div>
-        <div><dt><AdminText english="Active users" /></dt><dd>{context.dashboard.activeUsers}</dd></div>
-        <div><dt><AdminText english="Active units" /></dt><dd>{context.dashboard.activeUnits}</dd></div>
+        <div><dt><AdminText messageKey="admin.availableCalls" /></dt><dd>{context.dashboard.availableCalls}</dd></div>
+        <div><dt><AdminText messageKey="admin.ongoingReports" /></dt><dd>{context.dashboard.ongoingReports}</dd></div>
+        <div><dt><AdminText messageKey="admin.signedReports" /></dt><dd>{context.dashboard.signedReports}</dd><small>{adminT("admin.countInThe", { count: context.dashboard.signedLast24Hours })}</small></div>
+        <div><dt><AdminText messageKey="admin.reportsWithErrors" /></dt><dd>{context.dashboard.reportsWithErrors}</dd></div>
+        <div><dt><AdminText messageKey="admin.activeUsers" /></dt><dd>{context.dashboard.activeUsers}</dd></div>
+        <div><dt><AdminText messageKey="admin.activeUnits" /></dt><dd>{context.dashboard.activeUnits}</dd></div>
       </dl>
-      <div className="section-heading"><h2><AdminText english="System" /></h2></div>
+      <div className="section-heading"><h2><AdminText messageKey="admin.system" /></h2></div>
       <dl className="admin-dashboard-metrics">
-        <div><dt>API</dt><dd><AdminText english="Operational" /></dd></div>
-        <div><dt><AdminText english="Database storage" /></dt><dd>{formattedBytes(context.dashboard.databaseSizeBytes)}</dd></div>
-        <div><dt><AdminText english="Database connections" /></dt><dd>{context.dashboard.databaseConnections} / {context.dashboard.maxDatabaseConnections}</dd>
-          <small>{adminT("{percent}% utilized", { percent: Math.round(context.dashboard.databaseConnections / Math.max(context.dashboard.maxDatabaseConnections, 1) * 100) })}</small></div>
-        <div><dt><AdminText english="Measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}>{new Date(context.dashboard.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></dd></div>
+        <div><dt>API</dt><dd><AdminText messageKey="admin.operational" /></dd></div>
+        <div><dt><AdminText messageKey="admin.databaseStorage" /></dt><dd>{formattedBytes(context.dashboard.databaseSizeBytes)}</dd></div>
+        <div><dt><AdminText messageKey="admin.databaseConnections" /></dt><dd>{context.dashboard.databaseConnections} / {context.dashboard.maxDatabaseConnections}</dd>
+          <small>{adminT("admin.percentUtilized", { percent: Math.round(context.dashboard.databaseConnections / Math.max(context.dashboard.maxDatabaseConnections, 1) * 100) })}</small></div>
+        <div><dt><AdminText messageKey="admin.measured" /></dt><dd><time dateTime={context.dashboard.generatedAt}>{new Date(context.dashboard.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></dd></div>
       </dl>
     </section>}
 
@@ -153,13 +153,13 @@ function AuthorizedAdminShell({ session, language }: {
       capabilities={context.capabilities} /></div>}
 
     {context && mounted("Element catalog") && <div hidden={activePanel !== "Element catalog"}><section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
-      <div className="section-heading"><h2 id="catalog-authoring-heading"><AdminText english="Element catalog" /></h2></div>
+      <div className="section-heading"><h2 id="catalog-authoring-heading"><AdminText messageKey="admin.elementCatalog" /></h2></div>
       <CatalogAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
         active={activePanel === "Element catalog"} onPublished={setFormCatalogReleaseId} />
     </section></div>}
 
     {context && mounted("Stationary form") && <div hidden={activePanel !== "Stationary form"}><section className="admin-configuration" aria-labelledby="form-authoring-heading">
-      <div className="section-heading"><h2 id="form-authoring-heading"><AdminText english="Stationary form" /></h2></div>
+      <div className="section-heading"><h2 id="form-authoring-heading"><AdminText messageKey="admin.stationaryForm" /></h2></div>
       <StationaryFormAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         active={activePanel === "Stationary form"}
         capabilities={context.capabilities}
@@ -170,7 +170,7 @@ function AuthorizedAdminShell({ session, language }: {
     </section></div>}
 
     {context && mounted("Validation rules") && <div hidden={activePanel !== "Validation rules"}><section className="admin-configuration" aria-labelledby="validation-authoring-heading">
-      <div className="section-heading"><h2 id="validation-authoring-heading"><AdminText english="Validation rules" /></h2></div>
+      <div className="section-heading"><h2 id="validation-authoring-heading"><AdminText messageKey="admin.validationRules" /></h2></div>
       <ValidationAuthoring language={language} csrfToken={session.csrfToken ?? session.accessToken ?? ""}
         active={activePanel === "Validation rules"}
         capabilities={context.capabilities} catalogReleaseId={context.activeConfiguration?.catalog.id || ""}

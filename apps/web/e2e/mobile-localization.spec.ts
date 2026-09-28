@@ -78,13 +78,13 @@ for (const language of ["en", "sv"] as const) {
     const photoDialog = page.getByRole("dialog", { name: language === "sv" ? "Fotoanteckning" : "Photo note" });
     await expect(photoDialog).toBeVisible();
     await expect(photoDialog.getByRole("button", { name: language === "sv" ? "Byt kamera" : "Cycle camera" })).toBeVisible();
-    await photoDialog.getByRole("button", { name: language === "sv" ? "Stäng" : "Close" }).click();
+    await photoDialog.getByRole("button", { name: language === "sv" ? "Avbryt" : "Cancel" }).click();
 
     await page.getByRole("button", { name: language === "sv" ? "Lägg till ljudanteckning" : "Add audio note" }).click();
     const audioDialog = page.getByRole("dialog", { name: language === "sv" ? "Ljudanteckning" : "Audio note" });
     await expect(audioDialog).toBeVisible();
     await expect(audioDialog.getByRole("button", { name: language === "sv" ? "Håll intryckt för att spela in" : "Hold to record" })).toBeVisible();
-    await audioDialog.getByRole("button", { name: language === "sv" ? "Stäng" : "Close" }).click();
+    await audioDialog.getByRole("button", { name: language === "sv" ? "Avbryt" : "Cancel" }).click();
     const violations = (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze()).violations
       .filter((violation) => violation.impact === "critical" || violation.impact === "serious");
     expect(violations, violations.map((violation) => `${violation.id}: ${violation.help}`).join("\n")).toEqual([]);

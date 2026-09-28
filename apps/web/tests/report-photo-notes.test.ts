@@ -46,14 +46,13 @@ test("photo dialog exposes named rotation, discard, capture, delete, and caption
   assert.match(component, /noteUi.retry.upload/);
 });
 
-test("live camera controls put icon rotation around camera cycling and capture with close on a second row", async () => {
+test("live camera controls retain capture controls and use the shared cancel action", async () => {
   const component = await readFile(path.join(webRoot, "components/photo-note.tsx"), "utf8");
   const styles = await readFile(path.join(webRoot, "app/styles.css"), "utf8");
   assert.match(component, /camera-control-row[\s\S]+noteUi.rotate.counterclockwise.90[\s\S]+noteUi.cycle.camera[\s\S]+noteUi.rotate.clockwise.90/);
-  assert.match(component, /camera-capture-row[\s\S]+camera-capture-button[\s\S]+noteUi.take.photo[\s\S]+camera-close-button[\s\S]+noteUi.close/);
+  assert.match(component, /camera-capture-row[\s\S]+camera-capture-button[\s\S]+noteUi.take.photo[\s\S]+note-dialog-actions[\s\S]+DialogCancelButton/);
   assert.match(styles, /\.camera-control-row\s*{[^}]*grid-template-columns:\s*56px minmax\(120px, 1fr\) 56px/);
   assert.match(styles, /\.camera-capture-row \.camera-capture-button\s*{[^}]*min-height:\s*64px[^}]*background:\s*var\(--green\)/);
-  assert.match(styles, /\.camera-capture-row \.camera-close-button\s*{[^}]*min-height:\s*64px[^}]*background:\s*#b42318/);
 });
 
 test("live and captured photos rotate inside square frames without overlapping controls", async () => {

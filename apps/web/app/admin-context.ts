@@ -36,6 +36,9 @@ export const saveCatalogDraft = (csrfToken: string, draft: CatalogDraft) => cata
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
 });
 export const validateCatalogDraft = (csrfToken: string, id: string) => catalogRequest<CatalogValidationResult>(`catalog-drafts/${id}/validate`, csrfToken, { method: "POST" });
+export const deleteCatalogDraft = (csrfToken: string, draft: CatalogDraft) => catalogRequest<void>(`catalog-drafts/${draft.id}`, csrfToken, {
+  method: "DELETE", body: JSON.stringify({ expectedRevision: draft.revision })
+}, { value: undefined });
 export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, displayName: string, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
   method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, displayName, changeNote })
 });

@@ -56,7 +56,7 @@ test("mobile checklist links failed media to retry and delete actions", async ({
   await readiness.getByRole("button").click();
   const dialog = page.getByRole("dialog", { name: "Photo note" });
   await expect(dialog.getByRole("button", { name: "Retry upload" })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Delete photo" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Remove" })).toBeVisible();
 });
 
 test("Stationary review separates note readiness and blocks signing", async ({ page }) => {

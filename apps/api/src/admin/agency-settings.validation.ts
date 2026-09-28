@@ -1,6 +1,7 @@
 import { UnprocessableEntityException } from "@nestjs/common";
 import {
   DEFAULT_AGENCY_APPEARANCE,
+  isSupportedUiLanguage,
   MAX_REPORT_MEDIA_ALLOWANCE_BYTES,
   MIN_REPORT_MEDIA_ALLOWANCE_BYTES,
   type AgencyAppearance,
@@ -151,8 +152,8 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
       "imageMediaLimitBytes must be a whole MiB between 1 MiB and the total report media allowance"
     );
   }
-  if (body.language !== "en" && body.language !== "sv") {
-    throw new UnprocessableEntityException("language must be en or sv");
+  if (!isSupportedUiLanguage(body.language)) {
+    throw new UnprocessableEntityException("language must match a bundled UI dictionary");
   }
   if (body.regionalFormat !== undefined && body.regionalFormat !== null && body.regionalFormat !== "en-US" && body.regionalFormat !== "sv-SE") {
     throw new UnprocessableEntityException("regionalFormat must be en-US, sv-SE, or null");

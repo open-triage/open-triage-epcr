@@ -1,6 +1,6 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
-  language: "en" | "sv";
+  language: string;
   regionalFormat?: "en-US" | "sv-SE" | null;
   timeZone?: string | null;
   signIn: {
@@ -40,8 +40,10 @@ function exactKeys(value: Record<string, unknown>, path: string, expected: reado
   }
 }
 
-function languageAt(value: unknown): "en" | "sv" {
-  if (value !== "en" && value !== "sv") throw new TypeError("language must be en or sv");
+function languageAt(value: unknown): string {
+  if (typeof value !== "string" || value.length > 35 || !/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(value)) {
+    throw new TypeError("language must be a valid language code");
+  }
   return value;
 }
 

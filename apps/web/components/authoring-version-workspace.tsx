@@ -22,26 +22,26 @@ export function AuthoringVersionWorkspace({ title, versions, selectedId, onSelec
 }) {
   const t = useAdminText();
   const selected = versions.find(({ id }) => id === selectedId);
-  return <section className="authoring-version-workspace" aria-label={`${t(title)} ${t("versions")}`}>
+  return <section className="authoring-version-workspace" aria-label={`${t(title)} ${t("admin.versions")}`}>
     <div className="authoring-version-row">
-      <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-source-version`}><AdminText english="Version" /></label>
+      <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-source-version`}><AdminText messageKey="admin.version2" /></label>
       <select id={`${title.replaceAll(" ", "-").toLowerCase()}-source-version`} value={selectedId}
         onChange={(event) => onSelect(event.target.value)} disabled={versions.length === 0}>
-        {versions.length === 0 && <option value=""><AdminText english="No published versions" /></option>}
+        {versions.length === 0 && <option value=""><AdminText messageKey="admin.noPublishedVersions" /></option>}
         {versions.map((version) => <option key={version.id} value={version.id}>
-          {version.displayName} · v{version.version}{version.status === "active" ? ` · ${t("Active")}` : ""}
+          {version.displayName} · v{version.version}{version.status === "active" ? ` · ${t("admin.active")}` : ""}
         </option>)}
       </select>
       {selected && <span className="authoring-version-state">{t(selected.status === "active" ? "Active" : "Published")}</span>}
     </div>
     {canWrite && !hasDraft && (selected || canCreateWithoutSource) && <div className="authoring-version-row">
-      <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-draft-name`}><AdminText english="New draft" /></label>
+      <label htmlFor={`${title.replaceAll(" ", "-").toLowerCase()}-draft-name`}><AdminText messageKey="admin.newDraft" /></label>
       <input id={`${title.replaceAll(" ", "-").toLowerCase()}-draft-name`} maxLength={120}
-        placeholder={t("{title} version name", { title: t(title) })} value={draftName} onChange={(event) => onDraftNameChange(event.target.value)} />
+        placeholder={t("admin.titleVersionName", { title: t(title) })} value={draftName} onChange={(event) => onDraftNameChange(event.target.value)} />
       <button type="button" disabled={busy || !draftName.trim()} onClick={onCreateDraft}>
         {t(selected ? "Create draft from selected" : "Create draft")}</button>
     </div>}
-    {hasDraft && <p role="status"><AdminText english="Draft in progress. Publish or discard it before starting another." /></p>}
+    {hasDraft && <p role="status"><AdminText messageKey="admin.draftInProgress" /></p>}
     {children}
   </section>;
 }

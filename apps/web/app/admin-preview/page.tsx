@@ -33,8 +33,8 @@ export default function AdminPreviewPage() {
 
 function PreviewContent({ draft, error }: { readonly draft: StationaryFormDraft | null; readonly error: string }) {
   const t = useAdminText();
-  if (error) return <main className="admin-preview-error"><h1><AdminText english="Preview unavailable" /></h1><p role="alert">{t(error)}</p></main>;
-  if (!draft) return <main className="admin-preview-error"><p role="status"><AdminText english="Loading Stationary form preview…" /></p></main>;
+  if (error) return <main className="admin-preview-error"><h1><AdminText messageKey="admin.previewUnavailable" /></h1><p role="alert">{t(error)}</p></main>;
+  if (!draft) return <main className="admin-preview-error"><p role="status"><AdminText messageKey="admin.loadingStationaryFormPreview" /></p></main>;
   return <main className="admin-preview-window">
     <StationaryFormPreview draft={draft} onReturn={() => window.close()} />
   </main>;

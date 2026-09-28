@@ -35,25 +35,6 @@ export function catalogTranslationIssues(definition: CatalogDraftDefinition, lan
   return issues;
 }
 
-export function formTranslationIssues(definition: FormDraftDefinition, language: TranslationLanguage = "sv"): TranslationIssue[] {
-  const issues: TranslationIssue[] = [];
-  const locale = definition.locales?.find((item) => item.locale === "sv");
-  for (const section of definition.sections) {
-    const title = section.presentation?.title;
-    check(issues, section.key, "title", title, locale?.translations.sections?.[section.key]?.title,
-      locale?.sourceReview?.[`sections.${section.key}.title`] === false ? "changed" : undefined, language);
-    for (const field of section.fields) {
-      const label = field.configuration?.label;
-      check(issues, field.key, "label", label, locale?.translations.fields?.[field.key]?.label,
-        locale?.sourceReview?.[`fields.${field.key}.label`] === false ? "changed" : undefined, language, false);
-      const help = field.configuration?.helpText;
-      check(issues, field.key, "helpText", help, locale?.translations.fields?.[field.key]?.helpText,
-        locale?.sourceReview?.[`fields.${field.key}.helpText`] === false ? "changed" : undefined, language, false);
-    }
-  }
-  return issues;
-}
-
 export function validationTranslationIssues(rules: ReadonlyArray<ValidationRuleSource>, language: TranslationLanguage = "sv"): TranslationIssue[] {
   const issues: TranslationIssue[] = [];
   for (const rule of rules) {

@@ -90,7 +90,8 @@ export function FeedbackControl({ csrfToken, online, mode, screen, language = "e
       setNotice(t("noteUi.feedbackReceived", { reference: result.referenceCode }));
       window.requestAnimationFrame(() => trigger.current?.focus());
     } catch (reason) {
-      setError(reason instanceof PlatformRequestError ? reason.message : resolveErrorMessage(language, reason instanceof Error ? reason.message : null, "noteUi.feedbackFailure"));
+      setError(reason instanceof PlatformRequestError && !reason.code.startsWith("legacy.http") ? reason.message :
+        resolveErrorMessage(language, reason instanceof PlatformRequestError ? null : reason instanceof Error ? reason.message : null, "noteUi.feedbackFailure"));
     } finally {
       setPending(false);
     }
