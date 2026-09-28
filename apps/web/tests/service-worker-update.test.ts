@@ -19,8 +19,10 @@ test("deployed clients immediately adopt a newly published application shell", a
 test("offline shell precaches linked language bundles from the installed page", async () => {
   const worker = await readFile(new URL("../service-worker/service-worker.ts", import.meta.url), "utf8");
   const dictionary = await readFile(new URL("../app/localization.ts", import.meta.url), "utf8");
-  assert.match(dictionary, /import english from "\.\.\/messages\/en\.json"/);
-  assert.match(dictionary, /import swedish from "\.\.\/messages\/sv\.json"/);
+  const manifest = await readFile(new URL("../app/message-dictionaries.generated.ts", import.meta.url), "utf8");
+  assert.match(dictionary, /import \{ MESSAGE_DICTIONARIES \} from "\.\/message-dictionaries\.generated"/);
+  assert.match(manifest, /from "\.\.\/messages\/en\.json"/);
+  assert.match(manifest, /from "\.\.\/messages\/sv\.json"/);
   assert.match(worker, /const linkedAssets = \[\.\.\.html\.matchAll/);
   assert.match(worker, /cache\.addAll\(\[\.\.\.new Set\(\[\.\.\.appShell\.slice\(1\), \.\.\.linkedAssets\]\)\]\)/);
 });

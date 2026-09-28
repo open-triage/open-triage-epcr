@@ -19,6 +19,10 @@ test("Sweden offers a NEMSIS-compatible form and only rules supported by that fo
   assert.ok([...catalogIds].some((id) => id.startsWith("ePayment.")));
   const fields = form.definition.sections.flatMap((section) => section.fields);
   const fieldIds = new Set(fields.map((field) => field.source?.elementId).filter(Boolean));
+  assert.equal(catalog.groups.find(({ id }) => id === "eResponseSection")?.name, "Response");
+  assert.ok(form.definition.sections.every((section) => !Object.hasOwn(section, "presentation")));
+  assert.ok(fields.every((field) => !Object.hasOwn(field, "configuration")));
+  assert.equal(Object.hasOwn(form.definition, "locales"), false);
   assert.equal(fields.length, 215);
   assert.equal(fieldIds.size, 215);
   assert.equal(validation.rules.length, 426);

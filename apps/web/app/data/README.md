@@ -1,12 +1,12 @@
 # NEMSIS source assets and UI profiles
 
-`../../../../defines/catalog/catalog_nemsis-3.5.1.json` is the complete, generated catalog of all 453
+`../../../../defines/catalog/catalog_nemsis-3.5.1.json` is the complete, canonical catalog of all 453
 standard elements reachable in the official NEMSIS 3.5.1 `EMSDataSet`. Its
 pinned XSD and machine-readable data-dictionary inputs, provenance, and
-regeneration instructions are documented in `nemsis-3.5.1-sources/README.md`.
+source-audit instructions are documented in `nemsis-3.5.1-sources/README.md`.
 The application imports this bundled JSON through `nemsis-data-model.ts`; it
 does not contact NEMSIS at runtime. The versioned
-`../../../../defines/catalog/schema_nemsis-3.5.1.json` file validates the generated catalog.
+`../../../../defines/catalog/schema_nemsis-3.5.1.json` file is the authored JSON Schema contract that validates the canonical catalog.
 
 Element structure, datatypes, constraints, cardinality, NV/PN semantics, inline
 enumerations, and official defined or suggested lists all live in this one
@@ -46,8 +46,8 @@ the loader and serializer.
 
 `standard-encounter-form.json` is the human-readable, complaint-neutral phone
 form profile. It selects fields by stable catalog identifiers and controls
-section visibility, quick actions, ordering, labels, help text, review groups,
-and summary order. The profile compiler rejects unsupported presentation
+section visibility, quick actions, ordering, review groups, and summary order.
+Element labels and descriptions always come from the pinned catalog. The profile compiler rejects unsupported presentation
 structures and semantic overrides; datatypes, cardinality, coded values, and
 NV/PN behavior always come from the catalog above.
 
@@ -57,6 +57,7 @@ NV/PN behavior always come from the catalog above.
 group exactly once for the full-record renderer. Its versioned JSON Schema and
 the compiler in `stationary-layout.ts` limit it to presentation metadata while
 checking stable identities, catalog ancestry, custom namespaces, read-only
-agency/configuration metadata, and complete coverage. Run
+agency/configuration metadata, and complete coverage. Standard labels and help text
+resolve from the canonical catalog and are not copied into this layout. Run
 `npm run generate:stationary-layout` after an intentional catalog update;
 `npm run check:stationary-layout` rejects stale committed output.

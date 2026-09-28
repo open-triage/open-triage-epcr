@@ -26,8 +26,8 @@ Supabase SQL migrations remain the single source of truth for schema changes;
 TypeORM's `synchronize` option is disabled.
 
 The clinical and analytical database design is documented in
-[`docs/database-architecture.md`](docs/database-architecture.md). After applying migrations,
-load the pinned NEMSIS catalog with `npm run load:catalog -w @open-triage/database`.
+[`docs/database-architecture.md`](docs/database-architecture.md). The migration command imports the canonical catalog and installation definitions from
+`defines/` after applying the schema migrations.
 
 To completely rebuild a local development database from the current contents of
 `defines/`, load the private values and run the guarded reset command:

@@ -1,6 +1,6 @@
 # Pinned NEMSIS 3.5.1 sources
 
-This directory contains the official source files used to generate
+This directory contains the official source files used to audit the canonical
 `../../../../../defines/catalog/catalog_nemsis-3.5.1.json`. They were retrieved from the versioned NEMSIS
 3.5.1 release and public-list directories on 2026-09-01 and are committed so
 generation, testing, and production builds never depend on network access.
@@ -23,18 +23,17 @@ line-ending conversion and noisy line-oriented diffs for those pinned inputs.
   constraints, and common NV/PN types provide their official codes and labels.
 - `lists/*.json` contains all six Defined Lists and all four Suggested Lists
   linked from the official Version 3 resources page at retrieval time. Their
-  entries are stored once in the generated catalog and referenced by every
+  entries are stored once in the canonical catalog and referenced by every
   applicable EMS element. These lists are explicitly marked non-exhaustive
   because their underlying ICD-10, RxNorm, and SNOMED CT universes are external.
 
-Run `npm run generate:nemsis-data-model` at the repository root to regenerate
-the catalog. Run `npm run check:nemsis-data-model` to fail if the committed
-catalog differs from deterministic generated output. Source URLs and SHA-256
-checksums for the dictionary, enumeration export, 28 XSD files, and ten JSON
-lists are embedded in the generated catalog's `provenance.sources` array.
+Run `npm run check:nemsis-data-model` at the repository root to compare the
+canonical catalog with the pinned upstream material. The audit is read-only and
+never rewrites `defines/`. Source URLs and SHA-256 checksums for the dictionary,
+enumeration export, 28 XSD files, and ten JSON lists are embedded in the canonical
+catalog's `provenance.sources` array.
 
 To update the release, replace these files from an official versioned NEMSIS
-release, update the release and retrieval constants in the generator, regenerate,
-and review the resulting source and catalog diff. Element records, values, and
-constraints are generated directly from the pinned inputs without manual
-transcription.
+release, update the release and retrieval constants in the audit script, then
+edit and review the canonical catalog directly. The audit requires complete
+agreement for imported element records, values, constraints, and provenance.
