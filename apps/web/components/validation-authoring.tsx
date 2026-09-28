@@ -376,6 +376,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
             changeRule((rule) => ({ ...rule, messageParameters: parameters })); setError("");
           } catch { setError("Named message parameters must be a JSON object."); } }} /></div>
       {wordingLanguage === "sv" && <div className="validation-rule-row"><span>Source review</span>
+        {!selectedRule.localization?.sv?.reviewedSource && <span role="note">Swedish wording needs source and terminology review.</span>}
         <button type="button" onClick={() => changeRule((rule) => ({ ...rule,
           localization: { schemaVersion: 1, ...rule.localization, sv: { ...rule.localization?.sv,
             reviewedSource: { name: rule.name, message: rule.message } } } }))}>

@@ -19,7 +19,7 @@ test("both installed profiles carry Swedish form wording and live/sign validatio
     assert.ok(profile.validation.rules.some((rule) => rule.executionTargets.includes("live")));
     assert.ok(profile.validation.rules.some((rule) => rule.executionTargets.includes("sign")));
     const count = profile.validation.rules.find((rule) => rule.sourceKind === "catalog");
-    assert.equal(count.localization.sv.reviewedSource.message, count.message);
+    assert.equal(count.localization.sv.reviewedSource?.message, undefined);
     assert.equal(count.source, profile.validation.rules.find((rule) => rule.id === count.id).source);
   }
   const sweden = definitions.pairs.find(({ key }) => key === "sweden");
@@ -36,7 +36,34 @@ test("stale identities, source wording, and undefined message parameters reject 
   await assert.rejects(applyFormValidationLocalization(root, form, validation), /Stale Swedish validation text/);
   const seed = JSON.parse(await readFile(path.join(root, "localization/sv/form-validation_sweden.json"), "utf8"));
   assert.ok(Object.values(seed.rules).some((rule) => rule.reviewPending));
-  assert.ok(Object.values(seed.rules).every((rule) => !rule.message.match(/\{([^{}]+)\}/g) ||
-    Object.keys(validation.rules.find((original) => original.name === rule.sourceName)?.messageParameters ?? {})
-      .every((key) => typeof key === "string")));
+  assert.ok(Object.values(seed.rules).some((rule) => rule.reviewPending?.includes("US-specifika")));
+  assert.ok(Object.values(seed.rules).filter((rule) => rule.reviewPending?.includes("US-specifika"))
+    .every((rule) => rule.message.includes(rule.sourceMessage)));
+
+});
+
+test("an installed count rule renders Swedish live and sign findings without changing identity or outcome", async () => {
+  const { compileValidationRule, evaluateValidationBundleSafely, validationRuleText } = await import("@open-triage/contracts");
+  const definitions = await readInstallDefinitions(root);
+  const document = JSON.parse(await readFile(new URL("../../../apps/web/app/data/synthetic-encounter-document.json", import.meta.url), "utf8"));
+  for (const profile of definitions.pairs) {
+    const rule = profile.validation.rules.find((candidate) => candidate.primaryTargetElementId === "eArrest.01"
+      && candidate.source === 'require minimum("eArrest.01", 1)');
+    assert.ok(rule, profile.key);
+    const compiled = compileValidationRule(rule, "00000000-0000-4000-8000-000000000000", new Set(["eArrest.01"])).compiled;
+    assert.ok(compiled, profile.key);
+    const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: compiled.validationVersionId,
+      catalogReleaseId: "catalog", rules: [compiled] };
+    for (const target of ["live", "sign"]) {
+      const english = evaluateValidationBundleSafely(bundle, document, target, { timestamp: "2026-09-28T00:00:00Z", language: "en" });
+      const swedish = evaluateValidationBundleSafely(bundle, document, target, { timestamp: "2026-09-28T00:00:00Z", language: "sv" });
+      assert.equal(english.failures.length, 0);
+      assert.equal(swedish.failures.length, 0);
+      assert.ok(english.findings.length > 0, profile.key);
+      assert.match(swedish.findings[0].message, /Dokumentera minst 1 förekomst/);
+      assert.deepEqual(english.findings.map(({ message, ...finding }) => finding),
+        swedish.findings.map(({ message, ...finding }) => finding));
+    }
+    assert.equal(validationRuleText({ ...rule, localization: undefined }, "sv", "message"), rule.message);
+  }
 });

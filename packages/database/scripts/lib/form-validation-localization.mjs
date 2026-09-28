@@ -45,7 +45,7 @@ export async function applyFormValidationLocalization(root, form, validation) {
         tokens(entry.message).some((token) => rule.messageParameters?.[token] === undefined))
       throw new Error(`Stale Swedish validation text ${form.key}/${id}`);
     rule.localization = { schemaVersion: 1, sv: { name: entry.name, message: entry.message,
-      reviewedSource: { name: rule.name, message: rule.message } } };
+      ...(!entry.reviewPending ? { reviewedSource: { name: rule.name, message: rule.message } } : {}) } };
   }
   const expectedSections = form.definition.sections.filter((section) => nonempty(section.presentation?.title));
   const expectedFields = form.definition.sections.flatMap((section) => section.fields)
