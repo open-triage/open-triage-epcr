@@ -14,7 +14,10 @@
               "kind": "nemsis",
               "elementId": "eResponse.03"
             },
-            "configuration": {}
+            "configuration": {
+              "label": "Response number",
+              "helpText": "Enter the dispatch response number."
+            }
           },
           {
             "key": "eResponse.04",
@@ -106,7 +109,7 @@
           }
         ],
         "presentation": {
-          "title": "eResponse"
+          "title": "Dispatch"
         }
       },
       {
@@ -1874,6 +1877,29 @@
         }
       }
     ],
-    "schemaVersion": 1
+    "schemaVersion": 1,
+    "locales": [
+      {
+        "locale": "sv",
+        "translations": {
+          "sections": {
+            "eResponseSection": {
+              "title": "Utlarmning"
+            }
+          },
+          "fields": {
+            "eResponse.03": {
+              "label": "Uppdragsnummer",
+              "helpText": "Ange uppdragets nummer från larmcentralen."
+            }
+          }
+        },
+        "sourceReview": {
+          "sections.eResponseSection.title": true,
+          "fields.eResponse.03.label": true,
+          "fields.eResponse.03.helpText": true
+        }
+      }
+    ]
   }
 }

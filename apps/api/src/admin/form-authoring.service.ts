@@ -316,7 +316,20 @@ export class FormAuthoringService {
       }
       return true;
     }) })).filter((section) => section.fields.length > 0);
-    return { definition: { ...definition, sections }, diagnostics };
+    const sectionKeys = new Set(sections.map(({ key }) => key));
+    const fieldKeys = new Set(sections.flatMap(({ fields }) => fields.map(({ key }) => key)));
+    const locales = definition.locales?.map((locale) => ({ ...locale,
+      translations: { ...locale.translations,
+        sections: Object.fromEntries(Object.entries(locale.translations.sections ?? {}).filter(([key]) => sectionKeys.has(key))),
+        fields: Object.fromEntries(Object.entries(locale.translations.fields ?? {}).filter(([key]) => fieldKeys.has(key))) },
+      sourceReview: Object.fromEntries(Object.entries(locale.sourceReview ?? {}).filter(([key]) => {
+        if (key.startsWith("sections.") && key.endsWith(".title"))
+          return sectionKeys.has(key.slice(9, -6));
+        if (key.startsWith("fields.") && (key.endsWith(".label") || key.endsWith(".helpText")))
+          return fieldKeys.has(key.slice(7, key.endsWith(".label") ? -6 : -9));
+        return false;
+      })) }));
+    return { definition: { ...definition, sections, ...(locales ? { locales } : {}) }, diagnostics };
   }
 
   private definition(input: unknown): FormDraftDefinition {

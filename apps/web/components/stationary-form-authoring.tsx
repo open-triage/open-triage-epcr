@@ -4,8 +4,9 @@ import type { AuthoringVersionOption, FormCatalogElement, FormDraftDefinition, P
 import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
-import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
+import { addFormElement, FormElementPicker, FormLocalizedEditor, FormSectionElements } from "./form-authoring";
 import { LoadingStatus } from "./loading-status";
+import { formTranslationWarnings, pruneFormTranslations } from "../app/form-localization";
 
 type FormSection = FormDraftDefinition["sections"][number];
 
@@ -41,7 +42,7 @@ export function moveFormSection(definition: FormDraftDefinition, from: number, t
 export function removeFormSection(definition: FormDraftDefinition, index: number): FormDraftDefinition {
   if (index < 0 || index >= definition.sections.length) return definition;
   if (definition.sections.length === 1) throw new Error("A Stationary form must contain at least one section.");
-  return { ...definition, sections: definition.sections.filter((_, sectionIndex) => sectionIndex !== index) };
+  return pruneFormTranslations({ ...definition, sections: definition.sections.filter((_, sectionIndex) => sectionIndex !== index) });
 }
 
 export function affectedFieldNames(section: FormSection): string[] {
@@ -233,6 +234,8 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     {canWrite && <fieldset className="form-picker-container" disabled={busy}><FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
       onQueryChange={(value) => { setQuery(value); setResults([]); }}
       onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
+    <FormLocalizedEditor definition={draft.definition} readOnly={!canWrite || busy} onChange={change} />
+    {formTranslationWarnings(draft.definition, "sv").length > 0 && <div className="form-findings" role="status"><strong>Translation review warnings</strong><ul>{formTranslationWarnings(draft.definition, "sv").map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
     <FormSectionElements definition={draft.definition} busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),

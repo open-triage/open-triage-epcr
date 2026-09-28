@@ -15,6 +15,8 @@ import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record"
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
+import { currentCatalogLanguage } from "../app/catalog-localization";
+import type { FormLanguage } from "../app/form-localization";
 
 function statusText(errors: number, warnings: number): string {
   return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}`;
@@ -22,7 +24,7 @@ function statusText(errors: number, warnings: number): string {
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, validation, onDocumentChange }: {
+  formDefinition, catalogFields = {}, validation, language = currentCatalogLanguage(), onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   /** Includes encounter-review findings for section counts without duplicating inline field messages. */
@@ -30,14 +32,15 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   readonly formDefinition?: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly validation?: ClinicalFormConfiguration["validation"];
+  readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultSections = useMemo(() => configuredStationarySections(), []);
   const previewSections = useMemo(() => {
     if (!formDefinition) return undefined;
-    const configured = configuredStationaryPreviewSections(formDefinition);
+    const configured = configuredStationaryPreviewSections(formDefinition, language);
     return configured.some((section) => section.blocks.length > 0) ? configured : undefined;
-  }, [formDefinition]);
+  }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {
@@ -144,9 +147,9 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
               { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
                 ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
                 : inlineGroups.get(block.group.id)!.fields }
-            ]} findings={findings} catalogFields={catalogFields} onDocumentChange={onDocumentChange} />
+            ]} findings={findings} catalogFields={catalogFields} formDefinition={formDefinition} language={language} onDocumentChange={onDocumentChange} />
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
-              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, ...(validation ? { validation } : {}) } : undefined} onDocumentChange={onDocumentChange} />)}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

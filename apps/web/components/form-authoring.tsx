@@ -3,6 +3,7 @@
 import type { FormCatalogElement, FormDraftDefinition, FormDraftField } from "@open-triage/contracts";
 import React, { useState } from "react";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
+import { pruneFormTranslations } from "../app/form-localization";
 
 export function formSectionLabel(section: FormDraftDefinition["sections"][number]): string {
   const title = section.presentation?.title;
@@ -33,8 +34,8 @@ export function addFormElement(definition: FormDraftDefinition, sectionKey: stri
 }
 
 export function removeFormElement(definition: FormDraftDefinition, sectionKey: string, fieldKey: string): FormDraftDefinition {
-  return { ...definition, sections: definition.sections.map((section) => section.key === sectionKey
-    ? { ...section, fields: section.fields.filter((field) => field.key !== fieldKey) } : section) };
+  return pruneFormTranslations({ ...definition, sections: definition.sections.map((section) => section.key === sectionKey
+    ? { ...section, fields: section.fields.filter((field) => field.key !== fieldKey) } : section) });
 }
 
 export function moveFormElement(definition: FormDraftDefinition, sectionKey: string, from: number, to: number): FormDraftDefinition {
@@ -137,4 +138,75 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
       </ol>}
     </section>; })}
   </div>;
+}
+
+/** Edits source text and Swedish presentation by stable section/field keys. */
+export function FormLocalizedEditor({ definition, readOnly, onChange }: {
+  readonly definition: FormDraftDefinition;
+  readonly readOnly: boolean;
+  readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
+}) {
+  const [language, setLanguage] = useState<"en" | "sv">("en");
+  const locale = definition.locales?.find(({ locale }) => locale === "sv");
+  function update(scope: "sections" | "fields", key: string, property: "title" | "label" | "helpText", value: string) {
+    let next: FormDraftDefinition;
+    if (language === "en") {
+      next = { ...definition, sections: definition.sections.map((section) => scope === "sections" && section.key === key
+        ? { ...section, presentation: { ...section.presentation, title: value } }
+        : { ...section, fields: section.fields.map((field) => scope === "fields" && field.key === key
+          ? { ...field, configuration: { ...field.configuration, [property]: value } } : field) }) };
+      if (locale) next = { ...next, locales: (next.locales ?? []).map((item) => item.locale === "sv"
+        ? { ...item, sourceReview: { ...item.sourceReview, [`${scope}.${key}.${property}`]: false } } : item) };
+    } else {
+      const translations = locale?.translations ?? {};
+      const entries = translations[scope] ?? {};
+      const nextEntry: Record<string, string> = { ...entries[key], [property]: value };
+      if (!value.trim()) delete nextEntry[property];
+      const nextEntries = { ...entries, [key]: nextEntry };
+      if (!Object.keys(nextEntry).length) delete nextEntries[key];
+      const reviewKey = `${scope}.${key}.${property}`;
+      const updated = { locale: "sv" as const, translations: { ...translations, [scope]: nextEntries },
+        sourceReview: { ...locale?.sourceReview, [reviewKey]: false } };
+      next = { ...definition, locales: [...(definition.locales ?? []).filter(({ locale }) => locale !== "sv"), updated] };
+    }
+    onChange(next, `Updated ${language === "en" ? "English" : "Swedish"} ${property} for ${key}.`);
+  }
+  function review(scope: "sections" | "fields", key: string, property: string, checked: boolean) {
+    const updated = { locale: "sv" as const, translations: locale?.translations ?? {},
+      sourceReview: { ...locale?.sourceReview, [`${scope}.${key}.${property}`]: checked } };
+    onChange({ ...definition, locales: [...(definition.locales ?? []).filter(({ locale }) => locale !== "sv"), updated] },
+      `Updated source review for ${key}.`);
+  }
+  function editor(scope: "sections" | "fields", key: string, property: "title" | "label" | "helpText", source: unknown) {
+    const translated = scope === "sections" ? locale?.translations.sections?.[key]?.title
+      : locale?.translations.fields?.[key]?.[property as "label" | "helpText"];
+    const value = language === "en" ? source : translated;
+    const id = `form-text-${scope}-${key}-${property}`.replaceAll(/[^A-Za-z0-9_-]/g, "-");
+    return <div key={id} className="form-localized-text">
+      <label htmlFor={id}>{property === "title" ? "Heading" : property === "label" ? "Label override" : "Help text"}</label>
+      <input id={id} disabled={readOnly} maxLength={500} value={typeof value === "string" ? value : ""}
+        placeholder={language === "sv" && typeof source === "string" ? source : undefined}
+        onChange={(event) => update(scope, key, property, event.target.value)} />
+      {language === "sv" && typeof source === "string" && source.trim() && <label>
+        <input type="checkbox" disabled={readOnly || !translated?.trim()} checked={locale?.sourceReview?.[`${scope}.${key}.${property}`] === true}
+          onChange={(event) => review(scope, key, property, event.target.checked)} />Source reviewed
+      </label>}
+    </div>;
+  }
+  return <section className="form-localized-editor" aria-label="Form wording">
+    <h3>Form wording</h3>
+    <label htmlFor="form-wording-language">Language</label>
+    <select id="form-wording-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}>
+      <option value="en">English source</option><option value="sv">Swedish translation</option>
+    </select>
+    {definition.sections.map((section) => <fieldset key={section.key}>
+      <legend>{section.key}</legend>
+      {editor("sections", section.key, "title", section.presentation?.title)}
+      {section.fields.map((field) => <div key={field.key} className="form-localized-field">
+        <h4>{field.key}</h4>
+        {editor("fields", field.key, "label", field.configuration?.label)}
+        {editor("fields", field.key, "helpText", field.configuration?.helpText)}
+      </div>)}
+    </fieldset>)}
+  </section>;
 }

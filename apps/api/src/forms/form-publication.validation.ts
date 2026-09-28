@@ -92,6 +92,9 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     else sectionKeys.add(section.key);
     if (section.presentation !== undefined && !isRecord(section.presentation)) {
       findings.push(`${path}.presentation must be an object`);
+    } else if (isRecord(section.presentation) && section.presentation.title !== undefined &&
+      (typeof section.presentation.title !== "string" || section.presentation.title.length > 500)) {
+      findings.push(`${path}.presentation.title must be text of at most 500 characters`);
     }
     if (!Array.isArray(section.fields)) findings.push(`${path}.fields must be an array`);
     else section.fields.forEach((field, fieldIndex) => {
@@ -134,6 +137,12 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
       }
       if (field.configuration !== undefined && !isRecord(field.configuration)) {
         findings.push(`${fieldPath}.configuration must be an object`);
+      } else if (isRecord(field.configuration)) {
+        for (const property of ["label", "helpText"] as const) {
+          const text = field.configuration[property];
+          if (text !== undefined && (typeof text !== "string" || text.length > 500))
+            findings.push(`${fieldPath}.configuration.${property} must be text of at most 500 characters`);
+        }
       }
       if (field.rules !== undefined && !Array.isArray(field.rules)) findings.push(`${fieldPath}.rules must be an array`);
       fields.push(field as unknown as CanonicalFormField);
@@ -152,12 +161,40 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     else {
       const locales = new Set<string>();
       value.locales.forEach((locale, index) => {
-        if (!isRecord(locale) || typeof locale.locale !== "string" || !locale.locale.trim()) {
-          findings.push(`locales[${index}].locale is required`);
+        if (!isRecord(locale) || locale.locale !== "sv") {
+          findings.push(`locales[${index}].locale must be sv`);
         } else if (locales.has(locale.locale)) findings.push(`locales[${index}].locale is duplicated`);
         else locales.add(locale.locale);
         if (!isRecord(locale) || !isRecord(locale.translations)) {
           findings.push(`locales[${index}].translations must be an object`);
+          return;
+        }
+        for (const scope of Object.keys(locale.translations)) {
+          if (scope !== "sections" && scope !== "fields") findings.push(`locales[${index}].translations.${scope} is unsupported`);
+        }
+        for (const [scope, identities, properties] of [
+          ["sections", sectionKeys, ["title"]], ["fields", fieldKeys, ["label", "helpText"]]
+        ] as const) {
+          const entries = locale.translations[scope];
+          if (entries === undefined) continue;
+          if (!isRecord(entries)) { findings.push(`locales[${index}].translations.${scope} must be an object`); continue; }
+          for (const [key, entry] of Object.entries(entries)) {
+            if (!identities.has(key)) findings.push(`locales[${index}].translations.${scope}.${key} references an unknown identity`);
+            if (!isRecord(entry)) { findings.push(`locales[${index}].translations.${scope}.${key} must be an object`); continue; }
+            for (const [property, text] of Object.entries(entry)) {
+              if (!(properties as readonly string[]).includes(property) || typeof text !== "string" || !text.trim() || text.length > 500)
+                findings.push(`locales[${index}].translations.${scope}.${key}.${property} must be non-empty supported text`);
+            }
+          }
+        }
+        if (locale.sourceReview !== undefined) {
+          if (!isRecord(locale.sourceReview)) findings.push(`locales[${index}].sourceReview must be an object`);
+          else for (const [path, reviewed] of Object.entries(locale.sourceReview)) {
+            const valid = (path.startsWith("sections.") && path.endsWith(".title") && sectionKeys.has(path.slice(9, -6)))
+              || (path.startsWith("fields.") && path.endsWith(".label") && fieldKeys.has(path.slice(7, -6)))
+              || (path.startsWith("fields.") && path.endsWith(".helpText") && fieldKeys.has(path.slice(7, -9)));
+            if (!valid || typeof reviewed !== "boolean") findings.push(`locales[${index}].sourceReview.${path} is invalid`);
+          }
         }
       });
     }

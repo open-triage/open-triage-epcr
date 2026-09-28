@@ -33,6 +33,7 @@ export function StationaryFormPreview({ draft, onReturn }: {
   readonly onReturn: () => void;
 }) {
   const [document, setDocument] = useState(createStationaryPreviewDocument);
+  const [language, setLanguage] = useState<"en" | "sv">("en");
   const findings = useMemo(() => stationaryPreviewFindings(document, draft), [document, draft]);
   return <section className="stationary-form-preview" aria-labelledby="stationary-preview-heading">
     <header className="stationary-preview-heading">
@@ -42,11 +43,12 @@ export function StationaryFormPreview({ draft, onReturn }: {
         <p>Interactive fictional data only. Changes here are temporary and never create or update a clinical report.</p>
       </div>
       <div className="form-actions">
+        <label htmlFor="form-preview-language">Preview language</label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en">English</option><option value="sv">Swedish</option></select>
         <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}>Reset synthetic data</button>
         <button type="button" onClick={onReturn}>Return to form draft</button>
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
-      catalogFields={draft.catalogFields} onDocumentChange={setDocument} />
+      catalogFields={draft.catalogFields} language={language} onDocumentChange={setDocument} />
   </section>;
 }
