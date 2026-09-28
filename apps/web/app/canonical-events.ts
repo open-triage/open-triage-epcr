@@ -120,10 +120,6 @@ function optionCode(elementId: string, label: string) {
     .find((item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
 }
 
-function choice(elementId: string, label: string) {
-  return optionCode(elementId, label) ?? (label ? { code: label, label } : null);
-}
-
 function scalarValue(elementId: string, value: string): string | number {
   const base = getNemsisDataElement(elementId)?.datatype.base;
   return base && ["integer", "decimal", "double", "float"].includes(base) ? Number(value) : value;

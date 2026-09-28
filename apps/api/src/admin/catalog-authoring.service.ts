@@ -229,16 +229,18 @@ export class CatalogAuthoringService {
           hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
           specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
-            .map((element) => [element.elementId, Object.fromEntries(element.specialChoices!
-              .filter((choice) => choice.localization?.sv)
-              .map((choice) => [`${choice.kind}\u0000${choice.code}`, choice.localization]))])),
+            .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
+              .map((kind) => [kind, Object.fromEntries(element.specialChoices!
+                .filter((choice) => choice.kind === kind && choice.localization?.sv)
+                .map((choice) => [choice.code, choice.localization]))]))])),
           elementLocalization: Object.fromEntries(draft.canonical_definition.elements
             .filter((element) => element.localization?.sv)
             .map((element) => [element.elementId, element.localization])),
           codeListLocalization: Object.fromEntries(draft.canonical_definition.codeLists.map((list) => [list.listId, {
             ...(list.localization ? { localization: list.localization } : {}),
-            values: Object.fromEntries(list.values.filter((value) => value.localization?.sv).map((value) =>
-              [`${value.codeSystem}\u0000${value.code}`, value.localization]))
+            values: Object.fromEntries([...new Set(list.values.map((value) => value.codeSystem))].map((system) =>
+              [system, Object.fromEntries(list.values.filter((value) => value.codeSystem === system && value.localization?.sv)
+                .map((value) => [value.code, value.localization]))]))
           }])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
@@ -330,7 +332,7 @@ export class CatalogAuthoringService {
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
     return manager.query(`select e.element_id, e.name, e.description, cr.provenance->'elementLocalization'->e.element_id as localization,
       (select coalesce(jsonb_agg(jsonb_build_object('kind', o.source_kind, 'code', o.code, 'label', o.display,
-        'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->(o.source_kind || chr(0) || o.code))
+        'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)
         order by o.source_kind, o.code), '[]'::jsonb) from catalog.element_option o
         where o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind in ('not-value', 'pertinent-negative')) as special_choices,
       e.element_identity_id, e.base_datatype, e.source_datatype,
@@ -354,7 +356,7 @@ export class CatalogAuthoringService {
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.source_display, 'category', o.category,
         'enabled', coalesce(c.enabled, true), 'localization',
-        cr.provenance->'codeListLocalization'->v.value_set_id->'values'->(o.code_system || chr(0) || o.code)) order by c.sort_order nulls last, o.code_system, o.code)
+        cr.provenance->'codeListLocalization'->v.value_set_id->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
@@ -371,7 +373,7 @@ export class CatalogAuthoringService {
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.display, 'category', null,
         'enabled', coalesce(c.enabled, true), 'localization',
-        cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'values'->(o.code_system || chr(0) || o.code)) order by c.sort_order nulls last, o.code_system, o.code)
+        cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
@@ -574,7 +576,7 @@ export class CatalogAuthoringService {
             !(unknownValue.category === null || typeof unknownValue.category === "string") ||
             typeof unknownValue.enabled !== "boolean") findings.push(`${list.listId} value ${code} is malformed`);
         const translation = (unknownValue as CatalogDraftCodeValue).localization?.sv;
-        if ((unknownValue as CatalogDraftCodeValue).localization !== undefined &&
+        if ((unknownValue as CatalogDraftCodeValue).localization != null &&
             ((unknownValue as CatalogDraftCodeValue).localization?.schemaVersion !== 1 ||
               (translation !== undefined && (typeof translation.label !== "string" ||
                 (translation.reviewedSource !== undefined && typeof translation.reviewedSource.label !== "string")))))

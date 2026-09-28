@@ -75,7 +75,7 @@ export async function catalogFieldsConfiguration(
     select e.element_id, e.name, e.description,
            cr.provenance->'elementLocalization'->e.element_id as localization,
            (select coalesce(jsonb_agg(jsonb_build_object('key', o.source_kind || ':' || o.code,
-             'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->(o.source_kind || chr(0) || o.code))), '[]'::jsonb)
+             'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)), '[]'::jsonb)
              from catalog.element_option o where o.release_id=e.release_id and o.element_id=e.element_id
              and o.source_kind in ('not-value', 'pertinent-negative')) as exceptional_choices,
            e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
@@ -85,7 +85,7 @@ export async function catalogFieldsConfiguration(
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
     select * from (select vse.element_id, option.code, option.code_system, option.display as label, option.source_display as source_label,
-           cr.provenance->'codeListLocalization'->value_set.value_set_id->'values'->(option.code_system || chr(0) || option.code) as localization,
+           cr.provenance->'codeListLocalization'->value_set.value_set_id->'values'->option.code_system->option.code as localization,
            value_set.published_at as terminology_version
     from catalog.value_set_element vse
     join catalog.release cr on cr.id=vse.release_id
@@ -99,7 +99,7 @@ export async function catalogFieldsConfiguration(
     where vse.release_id = $1 and vse.element_id = any($2::text[]) and coalesce(configured.enabled, true)
     union all
     select option.element_id, option.code, option.code_system, option.display as label, option.display as source_label,
-           cr.provenance->'codeListLocalization'->('inline:' || option.element_id)->'values'->(option.code_system || chr(0) || option.code) as localization,
+           cr.provenance->'codeListLocalization'->('inline:' || option.element_id)->'values'->option.code_system->option.code as localization,
            null::text as terminology_version
     from catalog.element_option option
     join catalog.release cr on cr.id=option.release_id

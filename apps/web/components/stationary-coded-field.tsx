@@ -30,12 +30,14 @@ function CodedPickerControl({ field, value, disabled, exceptionalChoices = field
 
   return <div className="stationary-coded-picker-row" data-occurrence-id={value?.occurrenceId}>
     <div className="stationary-coded-main-control">
-      <select aria-label={field.label} value={coded?.code ?? ""} disabled={disabled} onChange={(event) => {
-        const option = field.options.find(({ code }) => code === event.target.value);
+      <select aria-label={field.label} value={coded ? String(field.options.findIndex((option) =>
+        option.code === coded.code && (option.system ?? "") === (coded.system ?? ""))) : ""}
+        disabled={disabled} onChange={(event) => {
+        const option = field.options[Number(event.target.value)];
         onChange(option ? codedSelectionFromOption(option) : undefined);
       }}>
         <option value="">{coded ? "Delete" : exceptionalLabel ?? "Choose a value"}</option>
-        {field.options.map((option) => <option key={`${option.system ?? ""}:${option.code}`} value={option.code}>{option.label}</option>)}
+        {field.options.map((option, index) => <option key={`${option.system ?? ""}:${option.code}`} value={index}>{option.label}</option>)}
       </select>
     </div>
     {field.exceptionalChoices.length > 0 && <div className="stationary-exceptional-picker">

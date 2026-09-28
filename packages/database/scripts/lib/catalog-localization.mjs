@@ -45,13 +45,13 @@ export async function readCatalogLocalizationSeed(file, catalogKey, catalog) {
     const source = sourceLists.get(entry.listId);
     const sourceValue = source?.values.find((value) => value.code === entry.code &&
       (value.codeSystem ?? "") === entry.codeSystem);
-    const key = `${entry.codeSystem}\u0000${entry.code}`;
-    if (!sourceValue || codeListLocalization[entry.listId]?.values?.[key])
+    if (!sourceValue || codeListLocalization[entry.listId]?.values?.[entry.codeSystem]?.[entry.code])
       throw new Error(`Unknown or duplicate choice localization ${entry.listId}/${entry.codeSystem}/${entry.code}`);
     codeListLocalization[entry.listId] = { ...codeListLocalization[entry.listId], values: {
       ...codeListLocalization[entry.listId]?.values,
-      [key]: { schemaVersion: 1, sv: { label: entry.label,
-        reviewedSource: { label: sourceValue.label } } },
+      [entry.codeSystem]: { ...codeListLocalization[entry.listId]?.values?.[entry.codeSystem],
+        [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
+          reviewedSource: { label: sourceValue.label } } } },
     } };
   }
   const specialChoiceLocalization = {};
@@ -66,8 +66,9 @@ export async function readCatalogLocalizationSeed(file, catalogKey, catalog) {
       throw new Error(`Unknown or duplicate special choice localization ${entry.elementId}/${key}`);
     seenSpecial.add(`${entry.elementId}\u0000${key}`);
     specialChoiceLocalization[entry.elementId] = { ...specialChoiceLocalization[entry.elementId],
-      [key]: { schemaVersion: 1, sv: { label: entry.label,
-        reviewedSource: { label: sourceValue.label } } } };
+      [entry.kind]: { ...specialChoiceLocalization[entry.elementId]?.[entry.kind],
+        [entry.code]: { schemaVersion: 1, sv: { label: entry.label,
+          reviewedSource: { label: sourceValue.label } } } } };
   }
   return { elementLocalization, codeListLocalization, specialChoiceLocalization, seedSha256: createHash("sha256").update(source).digest("hex") };
 }

@@ -261,3 +261,16 @@ test("Swedish choice and absence text preserve the selected clinical codes", () 
     assert.equal(exceptionalSelection(field, "not-value:7701003")?.code, "7701003");
   } finally { Object.defineProperty(globalThis, "document", { configurable: true, value: previous }); }
 });
+
+test("coded picker distinguishes the same code in different systems", () => {
+  const base = stationaryCodedField("ePatient.25");
+  const field = { ...base, options: [
+    { code: "SHARED", system: "urn:first", label: "First", suggested: true },
+    { code: "SHARED", system: "urn:second", label: "Second", suggested: true },
+  ] };
+  assert.doesNotThrow(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:second" }));
+  assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:third" }), /exhaustive/);
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
+  assert.match(html, /value="0">First/);
+  assert.match(html, /value="1">Second/);
+});

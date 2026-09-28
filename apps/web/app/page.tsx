@@ -170,20 +170,20 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const procedureDefinition = { ...baseProcedure,
     terminology: { ...baseProcedure.terminology,
       ...(procedureCatalogChoices ? { choices: procedureCatalogChoices.map((choice) => ({ code: choice.code,
-        label: currentCatalogLanguage() === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
+        label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
         sourceLabel: choice.sourceLabel ?? choice.label, category: "" })) } : {}) },
     successOptions: baseProcedure.successOptions.map((option) => ({ ...option,
-      label: report?.clinicalForm?.catalogFields["eProcedures.06"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && currentCatalogLanguage() === "sv"
+      label: report?.clinicalForm?.catalogFields["eProcedures.06"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.06"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
     outcomeOptions: baseProcedure.outcomeOptions.map((option) => ({ ...option,
-      label: report?.clinicalForm?.catalogFields["eProcedures.08"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && currentCatalogLanguage() === "sv"
+      label: report?.clinicalForm?.catalogFields["eProcedures.08"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.08"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
     labels: { ...baseProcedure.labels,
     ...Object.fromEntries(Object.entries(baseProcedure.references).flatMap(([key, elementId]) => {
       const label = catalogText(elementId, "label");
       return label ? [[key, label]] : [];
     })) } };
-  const medicationChoiceLabels = (elementId: string) => currentCatalogLanguage() === "sv"
+  const medicationChoiceLabels = (elementId: string) => language === "sv"
     ? Object.fromEntries((report?.clinicalForm?.catalogFields[elementId]?.codeChoices ?? [])
       .filter((choice) => choice.localization?.sv?.label?.trim())
       .map((choice) => [choice.label, choice.localization!.sv!.label!])) : {};

@@ -29,9 +29,9 @@ test("installation seed rejects unknown element identities", async () => {
 test("seed choices bind list, code system, code and reject duplicate or unknown identities", async () => {
   const catalog = JSON.parse(await readFile(path.join(root, "defines/catalog/catalog_nemsis-3.5.1.json"), "utf8"));
   const installed = await readCatalogLocalizationSeed(path.join(root, "defines/localization/sv/catalog_nemsis-3.5.1.json"), "nemsis-3.5.1", catalog);
-  assert.equal(installed.codeListLocalization["inline:eProcedures.06"].values["\u00009923003"].sv.label, "Ja");
-  assert.equal(installed.codeListLocalization["inline:eMedications.06"].values["\u00003706021"].sv.reviewedSource.label, "Milligrams (mg)");
-  assert.equal(installed.specialChoiceLocalization["eVitals.10"]["not-value\u00007701003"].sv.label, "Ej registrerat");
+  assert.equal(installed.codeListLocalization["inline:eProcedures.06"].values[""]["9923003"].sv.label, "Ja");
+  assert.equal(installed.codeListLocalization["inline:eMedications.06"].values[""]["3706021"].sv.reviewedSource.label, "Milligrams (mg)");
+  assert.equal(installed.specialChoiceLocalization["eVitals.10"]["not-value"]["7701003"].sv.label, "Ej registrerat");
   const folder = await mkdtemp(path.join(os.tmpdir(), "catalog-choice-seed-"));
   try {
     const file = path.join(folder, "seed.json");
