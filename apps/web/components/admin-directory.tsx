@@ -624,10 +624,13 @@ export function RolesPanel({ csrfToken = "", capabilities: actorCapabilities = [
         {version.note && <small> Note: {version.note}</small>}
       </li>)}</ol>
       <h4>Assignment intervals</h4>{history.assignments.length ? <ul>{history.assignments.map((assignment) =>
-        <li key={assignment.id}><code>{assignment.userId}</code>: {assignment.assignedAt} – {assignment.endedAt ?? "current"}</li>)}</ul>
+        <li key={assignment.id}><code>{assignment.userId}</code>: <time dateTime={assignment.assignedAt}>
+          {new Date(assignment.assignedAt).toLocaleString()}</time> – {assignment.endedAt
+          ? <time dateTime={assignment.endedAt}>{new Date(assignment.endedAt).toLocaleString()}</time> : "current"}</li>)}</ul>
         : <p className="admin-muted">No assignment history.</p>}
       <h4>Lifecycle events</h4><ol>{history.events.map((event) => <li key={event.id}>
-        <code>{event.action}</code> at {event.occurredAt}{event.note && <small> Note: {event.note}</small>}
+        <code>{event.action}</code> at <time dateTime={event.occurredAt}>{new Date(event.occurredAt).toLocaleString()}</time>
+        {event.note && <small> Note: {event.note}</small>}
       </li>)}</ol>
     </section>}
     {items.length > 0 && <RoleCapabilityMatrix roles={items} capabilityOptions={capabilityOptions} canWrite={canWrite}

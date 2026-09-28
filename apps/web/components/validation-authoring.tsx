@@ -4,6 +4,7 @@ import { compileValidationRule, explainValidationRule, formatValidationSource,
   type AuthoringVersionOption, type CatalogDefinitionView, type PublishedValidationVersion, type ValidationCatalog,
   type ValidationDraft, type ValidationDraftResult, type ValidationRulePage } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
+import { LoadingStatus } from "./loading-status";
 import { activateValidationVersion, cloneValidationVersion, createValidationDraft, deleteValidationDraft, loadStationaryFormVersions,
   loadValidationDraft, loadValidationVersions, publishValidationDraft,
   createValidationRule, loadActiveCatalogDefinition, loadCatalogVersion, loadValidationRules, saveValidationDraft,
@@ -80,6 +81,35 @@ export function ValidationRuleFilterControls({ value, onChange, elements = [] }:
   </div>;
 }
 
+export function groupValidationDiagnostics(diagnostics: ValidationDraftResult["diagnostics"]) {
+  const groups = new Map<string, { code: string; severity: string; message: string; count: number; ruleIds: string[] }>();
+  for (const item of diagnostics) {
+    const key = JSON.stringify([item.severity, item.code, item.message]);
+    const group = groups.get(key) ?? { code: item.code, severity: item.severity, message: item.message, count: 0, ruleIds: [] };
+    group.count += 1;
+    if (item.ruleId && !group.ruleIds.includes(item.ruleId)) group.ruleIds.push(item.ruleId);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function DiagnosticDetails({ diagnostics }: { readonly diagnostics: ValidationDraftResult["diagnostics"] }) {
+  const [open, setOpen] = useState(false);
+  const [limit, setLimit] = useState(20);
+  const groups = useMemo(() => groupValidationDiagnostics(diagnostics), [diagnostics]);
+  return <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <summary>Show all {diagnostics.length} issues ({groups.length} distinct messages)</summary>
+    {open && <>
+      <ul>{groups.slice(0, limit).map((item, index) => <li key={index}>
+        {item.message}{item.count > 1 && <strong> · {item.count} occurrences</strong>}
+        {item.ruleIds.length > 0 && <details><summary>Affected rules ({item.ruleIds.length})</summary>
+          <p>{item.ruleIds.join(", ")}</p></details>}
+      </li>)}</ul>
+      {groups.length > limit && <button type="button" onClick={() => setLimit((current) => current + 20)}>Show more messages</button>}
+    </>}
+  </details>;
+}
+
 export function ValidationResultFeedback({ result, ruleCount }: {
   readonly result: ValidationDraftResult;
   readonly ruleCount: number;
@@ -88,8 +118,11 @@ export function ValidationResultFeedback({ result, ruleCount }: {
   if (result.valid) return <div className="validation-result" role="status">
     <strong>Validation passed.</strong> {ruleCount} rule{ruleCount === 1 ? "" : "s"} checked.
     {warnings.length > 0 && <span> {warnings.length} warning{warnings.length === 1 ? "" : "s"}.</span>}
-    {(result.explanation || warnings.length > 0) && <details><summary>View details</summary>
-      {warnings.length > 0 && <ul>{warnings.map((item, index) => <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>}
+    {warnings.length > 0 && <>
+      <p>Warnings do not block publication. Review the affected rules before publishing.</p>
+      <DiagnosticDetails diagnostics={warnings} />
+    </>}
+    {result.explanation && <details><summary>View details</summary>
       {result.explanation && <p className="validation-result-explanation">{result.explanation}</p>}
     </details>}
   </div>;
@@ -97,17 +130,16 @@ export function ValidationResultFeedback({ result, ruleCount }: {
     <strong>Validation found {result.diagnostics.length} issue{result.diagnostics.length === 1 ? "" : "s"}.</strong>
     <ul>{result.diagnostics.slice(0, 3).map((item, index) =>
       <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>
-    {result.diagnostics.length > 3 && <details><summary>Show all {result.diagnostics.length} issues</summary>
-      <ul>{result.diagnostics.map((item, index) => <li key={`${item.ruleId}:${item.code}:${index}`}>{item.message}</li>)}</ul>
-    </details>}
+    {result.diagnostics.length > 3 && <DiagnosticDetails diagnostics={result.diagnostics} />}
   </div>;
 }
 
-export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated }: {
+export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId, onActivated, active = true }: {
   readonly csrfToken: string;
   readonly capabilities: readonly string[];
   readonly catalogReleaseId: string;
   readonly onActivated?: () => void;
+  readonly active?: boolean;
 }) {
   const canWrite = capabilities.includes("validation:write");
   const canPublish = capabilities.includes("validation:publish");
@@ -151,18 +183,21 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
     return () => { current = false; };
   }, []);
   useEffect(() => {
+    if (!active) return;
     let current = true;
     loadValidationVersions().then((items) => { if (current) {
-      setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+      setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
+        : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Validation versions are unavailable."); });
     return () => { current = false; };
-  }, []);
+  }, [active]);
   useEffect(() => {
+    if (!active) return;
     let current = true;
     loadStationaryFormVersions().then((items) => { if (current) setFormVersions(items); })
       .catch((reason: unknown) => { if (current) setError(reason instanceof Error ? reason.message : "Form versions are unavailable."); });
     return () => { current = false; };
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     if (!draftRevision) return;
@@ -227,7 +262,7 @@ export function ValidationAuthoring({ csrfToken, capabilities, catalogReleaseId,
           setActivationNote(""); setStatus("Validation activated for new reports."); onActivated?.();
         })} /></>}
   </AuthoringVersionWorkspace>;
-  if (!loaded) return <p role="status">Loading Validation draft…</p>;
+  if (!loaded) return <LoadingStatus>Loading Validation draft…</LoadingStatus>;
   if (!draft) return <div className="form-empty">
     {versionWorkspace}
     {error && <p role="alert">{error}</p>}<p role="status">{status}</p>

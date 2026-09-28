@@ -4,6 +4,13 @@ import type { FormCatalogElement, FormDraftDefinition, FormDraftField } from "@o
 import React, { useState } from "react";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
 
+export function formSectionLabel(section: FormDraftDefinition["sections"][number]): string {
+  const title = section.presentation?.title;
+  if (typeof title === "string" && title.trim()) return title;
+  const words = section.key.replace(/^e(?=[A-Z])/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[-_.]+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function fieldIdentity(field: FormDraftField): string {
   return field.source.kind === "nemsis" ? `nemsis:${field.source.elementId}` : `custom:${field.source.elementDefinitionId}`;
 }
@@ -45,18 +52,22 @@ export function FormElementPicker({ definition, results, query, targetSection, o
   readonly targetSection: string; readonly onQueryChange: (value: string) => void;
   readonly onSectionChange: (value: string) => void; readonly onAdd: (element: FormCatalogElement) => void;
 }) {
+  const [resultLimit, setResultLimit] = useState(20);
   const placed = new Set(definition.sections.flatMap((section) => section.fields.map(fieldIdentity)));
   return <fieldset className="form-picker">
     <legend>Add an existing catalog element</legend>
     <label htmlFor="form-target-section">Section</label>
     <select id="form-target-section" value={targetSection || definition.sections[0]?.key || ""}
       onChange={(event) => onSectionChange(event.target.value)}>
-      {definition.sections.map((section) => <option key={section.key} value={section.key}>{section.key}</option>)}
+      {definition.sections.map((section) => <option key={section.key} value={section.key}>{formSectionLabel(section)}</option>)}
     </select>
     <label htmlFor="form-element-search">Find by identifier, name, or description</label>
-    <input id="form-element-search" type="search" value={query} onChange={(event) => onQueryChange(event.target.value)} />
-    <ul className="form-picker-results" aria-label="Catalog element search results">
-      {results.map((element) => {
+    <input id="form-element-search" type="search" value={query} onChange={(event) => {
+      setResultLimit(20); onQueryChange(event.target.value);
+    }} />
+    {!query.trim() && <p>Search the catalog to add an element.</p>}
+    {query.trim() && <ul className="form-picker-results" aria-label="Catalog element search results">
+      {results.slice(0, resultLimit).map((element) => {
         const duplicate = placed.has(`nemsis:${element.elementId}`);
         return <li key={element.elementId}>
           <div><strong>{element.elementId} — {element.name}</strong><small>{element.baseDatatype} · {element.groupPath.join(" / ")}</small></div>
@@ -64,7 +75,9 @@ export function FormElementPicker({ definition, results, query, targetSection, o
             onClick={() => onAdd(element)}>{duplicate ? "Already added" : "Add"}</button>
         </li>;
       })}
-    </ul>
+    </ul>}
+    {query.trim() && results.length > resultLimit && <button type="button"
+      onClick={() => setResultLimit((limit) => limit + 20)}>Show more elements ({results.length - resultLimit} remaining)</button>}
   </fieldset>;
 }
 
@@ -76,15 +89,23 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
   readonly onMoveSection?: (from: number, to: number) => void;
   readonly onRequestRemoveSection?: (index: number) => void;
 }) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [expandedSection, setExpandedSection] = useState<string | null>(definition.sections[0]?.key ?? null);
+  const selectedKey = definition.sections.some(({ key }) => key === expandedSection)
+    ? expandedSection : expandedSection === null ? null : definition.sections[0]?.key ?? null;
   return <div className="form-fields">
+    <label htmlFor="form-section-navigation">Go to section</label>
+    <select id="form-section-navigation" value={selectedKey ?? ""} onChange={(event) => setExpandedSection(event.target.value || null)}>
+      <option value="">All sections collapsed</option>
+      {definition.sections.map((section) => <option key={section.key} value={section.key}>
+        {formSectionLabel(section)} ({section.fields.length} elements)</option>)}
+    </select>
     {definition.sections.map((section, sectionIndex) => {
-      const open = !collapsed.has(section.key);
+      const open = selectedKey === section.key;
       return <section className="form-section" key={section.key}>
       <header className="form-section-header">
         <button type="button" className="form-section-toggle" aria-expanded={open}
-          onClick={() => setCollapsed((current) => { const next = new Set(current); next.has(section.key) ? next.delete(section.key) : next.add(section.key); return next; })}>
-          {section.key} <span>{section.fields.length} elements</span>
+          onClick={() => setExpandedSection(open ? null : section.key)}>
+          {formSectionLabel(section)} <small>{section.key}</small> <span>{section.fields.length} elements</span>
         </button>
         {onMoveSection && onRequestRemoveSection && <div className="form-section-actions" aria-label={`Actions for ${section.key}`}>
           <button type="button" disabled={busy || sectionIndex === 0} aria-label={`Move ${section.key} up`}
@@ -102,11 +123,11 @@ export function FormSectionElements({ definition, busy = false, readOnly = false
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? "Unknown catalog element"}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
-              <button type="button" disabled={index === 0} aria-label={`Move ${label} up`} onClick={() =>
+              <button type="button" disabled={busy || index === 0} aria-label={`Move ${label} up`} onClick={() =>
                 onChange(moveFormElement(definition, section.key, index, index - 1), `Moved ${label} up.`)}>Move up</button>
-              <button type="button" disabled={index === section.fields.length - 1} aria-label={`Move ${label} down`} onClick={() =>
+              <button type="button" disabled={busy || index === section.fields.length - 1} aria-label={`Move ${label} down`} onClick={() =>
                 onChange(moveFormElement(definition, section.key, index, index + 1), `Moved ${label} down.`)}>Move down</button>
-              <button type="button" aria-label={`Remove ${label}`} onClick={() => {
+              <button type="button" disabled={busy} aria-label={`Remove ${label}`} onClick={() => {
                 if (window.confirm(`Remove ${label} from ${section.key}?`))
                   onChange(removeFormElement(definition, section.key, field.key), `Removed ${label}.`);
               }}>Remove</button>

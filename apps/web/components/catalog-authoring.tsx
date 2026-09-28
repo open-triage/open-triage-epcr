@@ -2,6 +2,7 @@
 
 import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
 import React, { useEffect, useMemo, useState } from "react";
+import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, validateCatalogDraft } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 
@@ -13,10 +14,11 @@ export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   return { canRead, canWrite, canPublish: canWrite && capabilities.includes("catalog:publish") };
 }
 
-export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
+export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active = true }: {
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly onPublished?: (catalogReleaseId: string) => void;
+  readonly active?: boolean;
 }) {
   const { canWrite, canPublish } = catalogAuthority(capabilities);
   const publicationAllowed = canPublish;
@@ -25,6 +27,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState("");
+  const [elementPage, setElementPage] = useState(0);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -40,9 +43,15 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
     load().then(setDraft).catch(showError).finally(() => setLoaded(true));
   }, [canWrite]);
   useEffect(() => {
-    loadCatalogVersions().then((items) => { setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? ""); })
-      .catch(showError);
-  }, []);
+    if (!active) return;
+    let current = true;
+    loadCatalogVersions().then((items) => { if (current) {
+      setVersions(items);
+      setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
+        : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+    } }).catch((reason: unknown) => { if (current) showError(reason); });
+    return () => { current = false; };
+  }, [active]);
   useEffect(() => {
     if (!loaded || !selectedVersionId || hasAuthoringDraft) return;
     let current = true;
@@ -89,7 +98,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
       <p role="note">A published catalog becomes active when you activate a stationary form pinned to it.</p>
     </AuthoringVersionWorkspace>;
 
-  if (!loaded) return <p role="status">Loading catalog draft…</p>;
+  if (!loaded) return <LoadingStatus>Loading catalog draft…</LoadingStatus>;
   if (!draft) return <div className="catalog-empty">
     {versionWorkspace}
     {error && <p role="alert">{error}</p>}
@@ -98,6 +107,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
 
   const authoringDraft = "revision" in draft ? draft : null;
   const canEdit = canWrite && authoringDraft !== null;
+  const currentPage = Math.min(elementPage, Math.max(0, Math.ceil(visible.length / 25) - 1));
 
   return <div className="catalog-editor">
     {versionWorkspace}
@@ -107,7 +117,9 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
     <section className="catalog-element-editor" aria-labelledby="element-catalog-heading">
     <h3 id="element-catalog-heading">Element catalog</h3>
     <label htmlFor="catalog-search">Find by identifier or label</label>
-    <input id="catalog-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
+    <input id="catalog-search" type="search" value={query} onChange={(event) => {
+      setQuery(event.target.value); setElementPage(0);
+    }} />
     <div className="catalog-elements" aria-label={canEdit ? "Editable catalog elements" : "Catalog elements"}>
       <p className="catalog-table-warning" role="note">Requiredness and documented occurrence policy are managed in Validation. Intrinsic occurrence structure is shown here for reference.</p>
       <table>
@@ -115,7 +127,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
           <col className="catalog-type-column" />
           <col className="catalog-occurrence-column" /><col className="catalog-occurrence-column" /></colgroup>
         <thead><tr><th>Element</th><th>Label</th><th>Type and storage</th><th>Intrinsic minimum</th><th>Intrinsic maximum</th></tr></thead>
-        <tbody>{visible.map((element) => <tr key={element.elementId}>
+        <tbody>{visible.slice(currentPage * 25, (currentPage + 1) * 25).map((element) => <tr key={element.elementId}>
         <th scope="row">{element.elementId}</th>
         <td><label><span className="visually-hidden">Label for {element.elementId}</span><input disabled={!canEdit} value={element.label}
           onChange={(event) => edit(element.elementId, (value) => ({ ...value, label: event.target.value }))} /></label></td>
@@ -124,6 +136,12 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished }: {
         <td>{element.constraints.maxOccurs ?? "Unbounded"}</td>
       </tr>)}</tbody></table>
     </div>
+    {visible.length > 25 && <nav className="form-actions" aria-label="Catalog element pages">
+      <button type="button" disabled={currentPage === 0} onClick={() => setElementPage(currentPage - 1)}>Previous elements</button>
+      <span>Page {currentPage + 1} of {Math.ceil(visible.length / 25)} · {visible.length} elements</span>
+      <button type="button" disabled={(currentPage + 1) * 25 >= visible.length}
+        onClick={() => setElementPage(currentPage + 1)}>Next elements</button>
+    </nav>}
     </section>
     {draft.definition.codeLists.length > 0 && <section className="code-list-editor" aria-labelledby="code-list-heading">
       <h3 id="code-list-heading">Recommended and agency-maintained code lists</h3>

@@ -8,6 +8,7 @@ import { StationaryFormAuthoring } from "./stationary-form-authoring";
 import { ValidationAuthoring } from "./validation-authoring";
 import { RolesPanel, UsersPanel } from "./admin-directory";
 import { AgencySettingsPanel } from "./agency-settings";
+import { LoadingStatus } from "./loading-status";
 
 type AdminPanel = "Dashboard" | "Users" | "Roles" | "Element catalog" | "Stationary form" | "Validation rules" | "Agency Settings";
 const panelDefinition: ReadonlyArray<readonly [AdminPanelKey, AdminPanel]> = [
@@ -31,10 +32,17 @@ function formattedBytes(bytes: number): string {
 export function AdminShell({ session }: {
   readonly session: ClinicianSession;
 }) {
+  return <AuthorizedAdminShell key={`${session.organization.id}:${session.user.id}:${session.startedAt}`} session={session} />;
+}
+
+function AuthorizedAdminShell({ session }: {
+  readonly session: ClinicianSession;
+}) {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formCatalogReleaseId, setFormCatalogReleaseId] = useState("");
   const [activePanel, setActivePanel] = useState<AdminPanel | null>(null);
+  const [visitedPanels, setVisitedPanels] = useState<readonly AdminPanel[]>([]);
 
   useEffect(() => {
     let current = true;
@@ -47,28 +55,34 @@ export function AdminShell({ session }: {
       return false;
     };
     const wentOffline = () => { unavailableOffline(); };
-    window.addEventListener("offline", wentOffline);
-    if (unavailableOffline()) return () => {
-      current = false;
-      window.removeEventListener("offline", wentOffline);
-    };
-    loadAdminContext().then((loaded) => {
-      if (current) {
+    const reloadContext = () => {
+      if (unavailableOffline()) return;
+      loadAdminContext().then((loaded) => {
+        if (!current || !navigator.onLine) return;
+        setError(null);
         setContext(loaded);
         const authorized = panelDefinition.filter(([key]) => loaded.panels.includes(key)).map(([, panel]) => panel);
         setActivePanel((selected) => selected && authorized.includes(selected) ? selected : authorized[0] ?? null);
-      }
-    }).catch((reason: unknown) => {
-      if (current) setError(reason instanceof Error ? reason.message : "Administration configuration is unavailable.");
-    });
+      }).catch((reason: unknown) => {
+        if (current) {
+          setContext(null);
+          setError(reason instanceof Error ? reason.message : "Administration configuration is unavailable.");
+        }
+      });
+    };
+    window.addEventListener("offline", wentOffline);
+    window.addEventListener("online", reloadContext);
+    reloadContext();
     return () => {
       current = false;
       window.removeEventListener("offline", wentOffline);
+      window.removeEventListener("online", reloadContext);
     };
   }, [session]);
 
   const organization = context?.organization ?? session.organization;
   const panels = context ? panelDefinition.filter(([key]) => context.panels.includes(key)).map(([, panel]) => panel) : [];
+  const mounted = (panel: AdminPanel) => panels.includes(panel) && (panel === activePanel || visitedPanels.includes(panel));
 
   return <main className="admin-shell" aria-labelledby="admin-heading">
     <header className="admin-heading">
@@ -80,11 +94,14 @@ export function AdminShell({ session }: {
       <nav className="admin-tabs" aria-label="Administration panels">
         {panels.map((panel) => <button type="button" key={panel}
           className={panel === activePanel ? "active" : ""} aria-current={panel === activePanel ? "page" : undefined}
-          onClick={() => setActivePanel(panel)}>{panel}</button>)}
+          onClick={() => {
+            setVisitedPanels((current) => [...new Set([...current, ...(activePanel ? [activePanel] : []), panel])]);
+            setActivePanel(panel);
+          }}>{panel}</button>)}
       </nav>
       <div className="admin-panel" aria-live="polite">
     {error && <p className="admin-error" role="alert">{error}</p>}
-    {!context && !error && <p className="admin-loading" role="status">Loading active configuration…</p>}
+    {!context && !error && <LoadingStatus className="admin-loading">Loading active configuration…</LoadingStatus>}
     {context?.dashboard && activePanel === "Dashboard" && <section className="admin-configuration" aria-labelledby="active-configuration-heading">
       <div className="section-heading">
         <h2 id="active-configuration-heading">Active configuration</h2>
@@ -112,7 +129,7 @@ export function AdminShell({ session }: {
       </dl>
     </section>}
 
-    {context && activePanel === "Users" && <UsersPanel
+    {context && mounted("Users") && <div hidden={activePanel !== "Users"}><UsersPanel
       canCreate={context.capabilities?.includes("users:write") ?? false}
       canManage={context.capabilities?.includes("users:write") ?? false}
       canAssignRoles={context.capabilities?.includes("roles:assign") ?? false}
@@ -121,37 +138,39 @@ export function AdminShell({ session }: {
         context.capabilities.includes("sessions:revoke")) ?? false}
       canResetCredentials={(context.capabilities?.includes("users:read") && context.capabilities.includes("credentials:reset")) ?? false}
       currentUserId={session.user.id}
-      csrfToken={session.csrfToken ?? session.accessToken ?? ""} />}
-    {context && activePanel === "Roles" && <RolesPanel csrfToken={session.csrfToken ?? session.accessToken ?? ""}
-      capabilities={context.capabilities} />}
+      csrfToken={session.csrfToken ?? session.accessToken ?? ""} /></div>}
+    {context && mounted("Roles") && <div hidden={activePanel !== "Roles"}><RolesPanel csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+      capabilities={context.capabilities} /></div>}
 
-    {context && activePanel === "Element catalog" && <section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
+    {context && mounted("Element catalog") && <div hidden={activePanel !== "Element catalog"}><section className="admin-configuration" aria-labelledby="catalog-authoring-heading">
       <div className="section-heading"><h2 id="catalog-authoring-heading">Element catalog</h2></div>
       <CatalogAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""} capabilities={context.capabilities}
-        onPublished={setFormCatalogReleaseId} />
-    </section>}
+        active={activePanel === "Element catalog"} onPublished={setFormCatalogReleaseId} />
+    </section></div>}
 
-    {context && activePanel === "Stationary form" && <section className="admin-configuration" aria-labelledby="form-authoring-heading">
+    {context && mounted("Stationary form") && <div hidden={activePanel !== "Stationary form"}><section className="admin-configuration" aria-labelledby="form-authoring-heading">
       <div className="section-heading"><h2 id="form-authoring-heading">Stationary form</h2></div>
       <StationaryFormAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        active={activePanel === "Stationary form"}
         capabilities={context.capabilities}
         catalogReleaseId={formCatalogReleaseId || context.activeConfiguration?.catalog.id || ""}
         preferredCatalogReleaseId={formCatalogReleaseId}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
-    </section>}
+    </section></div>}
 
-    {context && activePanel === "Validation rules" && <section className="admin-configuration" aria-labelledby="validation-authoring-heading">
+    {context && mounted("Validation rules") && <div hidden={activePanel !== "Validation rules"}><section className="admin-configuration" aria-labelledby="validation-authoring-heading">
       <div className="section-heading"><h2 id="validation-authoring-heading">Validation rules</h2></div>
       <ValidationAuthoring csrfToken={session.csrfToken ?? session.accessToken ?? ""}
+        active={activePanel === "Validation rules"}
         capabilities={context.capabilities} catalogReleaseId={context.activeConfiguration?.catalog.id || ""}
         onActivated={() => { loadAdminContext().then(setContext).catch((reason: unknown) =>
           setError(reason instanceof Error ? reason.message : "The active configuration could not be refreshed.")); }} />
-    </section>}
+    </section></div>}
 
-    {context && activePanel === "Agency Settings" && <AgencySettingsPanel
+    {context && mounted("Agency Settings") && <div hidden={activePanel !== "Agency Settings"}><AgencySettingsPanel
       csrfToken={session.csrfToken ?? session.accessToken ?? ""}
-      canWrite={context.capabilities.includes("settings:write")} />}
+      canWrite={context.capabilities.includes("settings:write")} /></div>}
 
       </div>
     </div>

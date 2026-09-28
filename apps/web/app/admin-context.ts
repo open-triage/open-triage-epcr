@@ -88,7 +88,7 @@ export const saveValidationDraft = (csrfToken: string, draft: ValidationDraft) =
 export const deleteValidationDraft = (csrfToken: string, draft: ValidationDraft) =>
   catalogRequest<void>(`validation-drafts/${draft.id}`, csrfToken, {
     method: "DELETE", body: JSON.stringify({ expectedRevision: draft.revision })
-  });
+  }, { value: undefined });
 export const createValidationRule = (csrfToken: string, draft: ValidationDraft, rule: Omit<ValidationRuleSource, "id">) =>
   catalogRequest<ValidationDraft>(`validation-drafts/${draft.id}/rules`, csrfToken, {
     method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, ...rule })

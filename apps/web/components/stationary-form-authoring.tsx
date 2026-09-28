@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
+import { LoadingStatus } from "./loading-status";
 
 type FormSection = FormDraftDefinition["sections"][number];
 
@@ -54,12 +55,13 @@ export function formStructuralSummary(definition: FormDraftDefinition): string {
   return `${definition.sections.length} ${definition.sections.length === 1 ? "section" : "sections"} and ${fields} ${fields === 1 ? "element" : "elements"}`;
 }
 
-export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, preferredCatalogReleaseId, onActivated }: {
+export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleaseId, preferredCatalogReleaseId, onActivated, active = true }: {
   readonly csrfToken: string;
   readonly capabilities: ReadonlyArray<string>;
   readonly catalogReleaseId: string;
   readonly preferredCatalogReleaseId?: string;
   readonly onActivated?: (activation: StationaryFormActivation, published?: PublishedStationaryForm) => void;
+  readonly active?: boolean;
 }) {
   const { canWrite, canPublish } = formAuthority(capabilities);
   const publicationAllowed = canPublish;
@@ -94,23 +96,26 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     return () => { current = false; };
   }, []);
   useEffect(() => {
+    if (!active) return;
     let current = true;
     loadStationaryFormVersions().then((items) => { if (current) {
-      setVersions(items); setSelectedVersionId(items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
+      setVersions(items); setSelectedVersionId((selected) => items.some(({ id }) => id === selected) ? selected
+        : items.find(({ status }) => status === "active")?.id ?? items[0]?.id ?? "");
     } }).catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     return () => { current = false; };
-  }, []);
+  }, [active]);
   useEffect(() => {
+    if (!active) return;
     let current = true;
     loadValidationVersions().then((items) => { if (current) setValidationVersions(items); })
       .catch((reason: unknown) => { if (current) setError(operationErrorMessage(reason)); });
     return () => { current = false; };
-  }, []);
+  }, [active]);
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
   useEffect(() => {
-    if (!draftId) return;
+    if (!draftId || !query.trim()) return;
     let current = true;
     const timeout = window.setTimeout(() => {
       searchFormCatalog(draftId, query).then((page) => { if (current) {
@@ -168,7 +173,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
           onActivated?.(activation);
         })} /></>}
   </AuthoringVersionWorkspace>;
-  if (!loaded) return <p role="status">Loading Stationary form draft…</p>;
+  if (!loaded) return <LoadingStatus>Loading Stationary form draft…</LoadingStatus>;
   if (!draft) return <div className="form-empty">
     {versionWorkspace}
     {error && <p role="alert">{error}</p>}
@@ -200,6 +205,24 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
 
   return <div className="form-editor">
     {versionWorkspace}
+    <div className="form-actions form-editor-toolbar" role="group" aria-label="Form draft actions">
+      <span role="status">{busy ? "Working…" : dirty ? "Unsaved changes" : "All changes saved"}</span>
+      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+        if (openStationaryFormPreview(draft)) setStatus("Opened Stationary form preview in a new window.");
+        else setError("The preview window was blocked. Allow pop-ups and try again.");
+      }}>Preview Stationary form</button>
+      {canWrite && <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
+        const saved = await saveStationaryFormDraft(csrfToken, draft);
+        setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
+      })}>Save form draft</button>}
+      {canWrite && <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
+        if (!window.confirm(`Delete form draft revision ${draft.revision}? This cannot be undone.`)) return;
+        void action(async () => {
+          await deleteStationaryFormDraft(csrfToken, draft);
+          setDraft(null); setDirty(false); setStatus("Stationary form draft deleted.");
+        });
+      }}>Delete form draft</button>}
+    </div>
     <p>Draft revision {draft.revision}. {canWrite
       ? "Published forms remain immutable and existing reports keep their pinned form version."
       : "You have read-only access to this form definition."}</p>
@@ -207,9 +230,9 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <strong>Resolve cloned catalog references before saving:</strong>
       <ul>{draft.diagnostics.map((finding) => <li key={`${finding.code}:${finding.path}`}>{finding.message} ({finding.path})</li>)}</ul>
     </div>}
-    {canWrite && <FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
+    {canWrite && <fieldset className="form-picker-container" disabled={busy}><FormElementPicker definition={draft.definition} results={results} query={query} targetSection={targetSection}
       onQueryChange={(value) => { setQuery(value); setResults([]); }}
-      onSectionChange={setTargetSection} onAdd={add} />}
+      onSectionChange={setTargetSection} onAdd={add} /></fieldset>}
     <FormSectionElements definition={draft.definition} busy={busy} readOnly={!canWrite} onChange={change}
       {...(canWrite ? {
         onMoveSection: (from: number, to: number) => change(moveFormSection(draft.definition, from, to),
@@ -232,29 +255,12 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         setPendingRemoval(null); setStatus(section ? `Kept ${section.key}.` : "Removal canceled.");
       }}>Keep section</button></div>
     </div>}
-    <div className="form-actions">
-      <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
-        if (openStationaryFormPreview(draft)) setStatus("Opened Stationary form preview in a new window.");
-        else setError("The preview window was blocked. Allow pop-ups and try again.");
-      }}>Preview Stationary form</button>
-      {canWrite && <button type="button" disabled={busy || !dirty || pendingRemoval !== null} onClick={() => action(async () => {
-        const saved = await saveStationaryFormDraft(csrfToken, draft);
-        setDraft(saved); setDirty(false); setStatus(`Saved form draft revision ${saved.revision}.`);
-      })}>Save form draft</button>}
-      {canWrite && <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {
-        if (!window.confirm(`Delete form draft revision ${draft.revision}? This cannot be undone.`)) return;
-        void action(async () => {
-          await deleteStationaryFormDraft(csrfToken, draft);
-          setDraft(null); setDirty(false); setStatus("Stationary form draft deleted.");
-        });
-      }}>Delete form draft</button>}
-    </div>
     <section className="form-publication-review" aria-labelledby="form-publication-heading">
       <h3 id="form-publication-heading">Publication review</h3>
       <p>Structural summary: {formStructuralSummary(draft.definition)}.</p>
       <p>Publication creates an immutable form pinned to this catalog. It will not activate the form.</p>
       <label htmlFor="form-display-name">Form version display name</label>
-      <input id="form-display-name" disabled={!canWrite} maxLength={120} required value={draft.displayName ?? ""}
+      <input id="form-display-name" disabled={!canWrite || busy} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus("Unsaved changes"); }} />
       {publicationAllowed ? <>
         <AuthoringLifecycleAction title="Stationary form" kind="publish" note={publicationNote}
