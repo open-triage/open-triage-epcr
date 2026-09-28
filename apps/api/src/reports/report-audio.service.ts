@@ -4,6 +4,7 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import type { DeleteReportAudioNoteResponse, ReportAudioNote, ReportAudioNoteMutationResponse } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
 import { mutationRows } from "../database/mutation-result.js";
+import { retryMediaTransaction } from "./report-media-transaction.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { commandSha256 } from "./draft-report.validation.js";
 import { inspectNoteMutation, recordMediaAccess, recordNoteMutation, type ReportNoteAction } from "./report-note-collaboration.js";
@@ -123,7 +124,7 @@ export class ReportAudioService {
     apply: (manager: EntityManager, report: ReportRow, nextRevision: number, actorId: string) => Promise<T>): Promise<T> {
     const requestDigest = commandSha256(command);
     try {
-      return await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      return await retryMediaTransaction(() => this.dataSource.transaction("SERIALIZABLE", async (manager) => {
         await this.sessions.assertCsrf(accessToken, csrfToken, manager);
         const session = await this.sessions.requireCapability(accessToken, "clinical:document", manager);
         await manager.query("select pg_advisory_xact_lock(hashtext($1))", [commandId]);
@@ -158,7 +159,7 @@ export class ReportAudioService {
           (idempotency_key, report_id, command_type, request_sha256, response_status, response_body)
           values ($1, $2, $3, $4, 200, $5::jsonb)`, [commandId, reportId, commandType, requestDigest, JSON.stringify(response)]);
         return response;
-      });
+      }));
     } catch (error) {
       if (error instanceof ConflictException || error instanceof NotFoundException || error instanceof UnprocessableEntityException) throw error;
       if (typeof error === "object" && error !== null && "code" in error && ["23503", "23505", "23514", "40001", "40P01"].includes(String(error.code))) {

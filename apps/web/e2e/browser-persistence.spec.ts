@@ -470,6 +470,121 @@ test("an offline audio note survives close and resumes one verified upload after
   expect(uploads).toBe(1);
 });
 
+async function captureMedia(page: Page, kind: "photo" | "audio") {
+  await page.getByRole("button", { name: `Add ${kind} note` }).click();
+  const dialog = page.getByRole("dialog", { name: kind === "photo" ? "Photo note" : "Audio note" });
+  if (kind === "photo") {
+    await expect.poll(() => dialog.locator("video").evaluate((video: HTMLVideoElement) => video.videoWidth)).toBeGreaterThan(0);
+    await dialog.getByRole("button", { name: "Take photo", exact: true }).click();
+    await dialog.getByRole("button", { name: "Use photo", exact: true }).click();
+  } else {
+    await dialog.getByRole("button", { name: "Hold to record" }).dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
+    const recording = dialog.getByRole("button", { name: "Recording — release to stop" });
+    await expect(recording).toBeVisible();
+    await page.waitForTimeout(350);
+    await recording.dispatchEvent("pointerup", { button: 0, pointerId: 1 });
+    await dialog.getByRole("button", { name: "Use recording" }).click();
+  }
+}
+
+async function installPhotoCamera(page: Page) {
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640; canvas.height = 480;
+      canvas.getContext("2d")!.fillRect(0, 0, 640, 480);
+      return canvas.captureStream(5);
+    };
+    navigator.mediaDevices.enumerateDevices = async () => [];
+  });
+}
+
+for (const kind of ["photo", "audio"] as const) {
+  test(`a rejected ${kind} upload can be deleted without uploading it again`, async ({ page }) => {
+    test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+    await installRoutes(page);
+    await (kind === "photo" ? installPhotoCamera(page) : installAudioRecorder(page));
+    const resource = kind === "photo" ? "photos" : "audio";
+    let uploads = 0;
+    let deletes = 0;
+    await page.route(`**/api/reports/${reportId}/${resource}`, (route) => {
+      uploads += 1;
+      return route.fulfill({ status: 422, json: { message: "Rejected media" } });
+    });
+    await page.route(`**/api/reports/${reportId}/${resource}/*`, (route) => {
+      expect(route.request().method()).toBe("DELETE");
+      deletes += 1;
+      const command = route.request().postDataJSON();
+      return route.fulfill({ json: { deleted: true, reportId, revision: command.expectedRevision + 1 } });
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Open call", exact: true }).click();
+    await expect(page.locator(".sync-status")).toHaveText("Saved");
+    await captureMedia(page, kind);
+    await page.getByRole("button", { name: /^Checklist/ }).click();
+    const readiness = page.getByRole("region", { name: "Note readiness" });
+    await expect(readiness).toContainText(`${kind === "photo" ? "Photo" : "Audio"} note is failed`);
+    await readiness.getByRole("button").click();
+    await page.getByRole("dialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: `Delete ${kind}`, exact: true }).click();
+    await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await expect(readiness.getByRole("button")).toHaveCount(0);
+    expect(uploads).toBe(1);
+    expect(deletes).toBe(1);
+  });
+}
+
+test("a queued photo retries with its original command and caches the verified server bytes", async ({ page }) => {
+  test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
+  await installRoutes(page);
+  await installPhotoCamera(page);
+  let uploads = 0;
+  let originalCommand: unknown;
+  let canonical: Buffer;
+  await page.route(`**/api/reports/${reportId}/photos`, (route) => {
+    const command = route.request().postDataJSON();
+    uploads += 1;
+    if (uploads === 1) {
+      originalCommand = command;
+      return route.fulfill({ status: 422, json: { message: "Encoder metadata rejected" } });
+    }
+    expect(command).toEqual(originalCommand);
+    return route.fulfill({ json: { reportId, revision: command.expectedRevision + 1, note: {
+      id: command.noteId, reportId, type: "photo", caption: command.caption, capturedAt: command.capturedAt,
+      capturedUtcOffsetMinutes: command.capturedUtcOffsetMinutes, author: session.user,
+      serverReceivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), persistenceState: "ready",
+      contentType: "image/jpeg", byteSize: canonical.length, sha256: createHash("sha256").update(canonical).digest("hex"),
+      width: 640, height: 480,
+    } } });
+  });
+  await page.route(`**/api/reports/${reportId}/photos/*/image`, (route) => route.fulfill({ contentType: "image/jpeg", body: canonical }));
+  await page.goto("/");
+  canonical = Buffer.from(await page.evaluate(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640; canvas.height = 480;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#275d38"; context.fillRect(0, 0, 640, 480);
+    return canvas.toDataURL("image/jpeg").split(",")[1]!;
+  }), "base64");
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await expect(page.locator(".sync-status")).toHaveText("Saved");
+  await captureMedia(page, "photo");
+  await page.getByRole("button", { name: /^Checklist/ }).click();
+  const readiness = page.getByRole("region", { name: "Note readiness" });
+  await expect(readiness).toContainText("Photo note is failed");
+  await readiness.getByRole("button").click();
+  await page.getByRole("button", { name: "Retry upload" }).click();
+  await expect(readiness.getByRole("button")).toHaveCount(0);
+  await page.getByRole("button", { name: /^Timeline/ }).click();
+  await page.getByRole("button", { name: /^Open photo note/ }).click();
+  const image = page.getByRole("dialog").locator("img");
+  await expect(image).toBeVisible();
+  const displayed = await image.evaluate(async (element: HTMLImageElement) =>
+    [...new Uint8Array(await (await fetch(element.src)).arrayBuffer())]);
+  expect(Buffer.from(displayed)).toEqual(canonical);
+  expect(uploads).toBe(2);
+});
+
 test("logout locks pending ciphertext, reveals nothing to another user, and lets only the original user recover it", async ({ page, context }) => {
   test.skip(!serverBacked, "requires OPEN_TRIAGE_E2E_SERVER_MODE=true");
   await installRoutes(page);

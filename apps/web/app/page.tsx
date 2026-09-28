@@ -57,6 +57,7 @@ import { PhotoNoteDialog } from "../components/photo-note";
 import { AudioNoteDialog, stopActiveAudio } from "../components/audio-note";
 import { createReportPhotoNote, fetchReportPhoto } from "./report-photo-api";
 import { createReportAudioNote, fetchReportAudio } from "./report-audio-api";
+import { blobToBase64 } from "./report-audio-notes";
 
 type SigningFinding = ReviewFinding | StationaryValidationFinding;
 type TextNoteDraft = {
@@ -246,8 +247,9 @@ function EncounterWorkspace({ session, report, presentationMode, onSaveAndClose,
             if (verified.type !== "image/jpeg" || verified.size !== response.note.byteSize || digest !== response.note.sha256) {
               throw new Error("The server copy could not be verified.");
             }
+            const verifiedBase64 = await blobToBase64(verified);
             await updateProtectedPhoto(report.id, entry.note.id, (current) => ({ ...current,
-              note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
+              verifiedBase64, note: { ...response.note, persistenceState: "ready" }, failure: undefined }));
             setReportNotes((notes) => mergeProtectedMedia([response.note, ...notes.filter(({ id }) => id !== response.note.id)], report.id));
           } catch (error) {
             const message = error instanceof Error ? error.message : "The photo upload failed.";

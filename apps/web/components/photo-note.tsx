@@ -242,19 +242,14 @@ export function PhotoNoteDialog({
     try {
       if (note.persistenceState !== "ready") {
         const entry = protectedPhotoEntries(reportId).find(({ note: candidate }) => candidate.id === note.id);
-        if (entry?.attempted) {
-          const created = await createReportPhotoNote(csrfToken, reportId, entry.command);
-          const deleted = await deleteReportPhotoNote(csrfToken, reportId, note.id, {
-            commandId: crypto.randomUUID(), expectedRevision: created.revision,
-          });
+        if (entry && !entry.attempted) {
           await removeProtectedPhoto(reportId, note.id);
-          onDeleted(note.id, deleted.revision);
+          onDeleted(note.id, revision);
           return;
         }
-        await removeProtectedPhoto(reportId, note.id);
-        onDeleted(note.id, revision);
-        return;
       }
+      // An attempted upload may have failed or committed without a response.
+      // Delete its stable identity directly; the server tombstone prevents late revival.
       const response = await deleteReportPhotoNote(csrfToken, reportId, note.id, {
         commandId: crypto.randomUUID(), expectedRevision: revision,
       });

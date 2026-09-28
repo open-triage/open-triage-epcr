@@ -23,6 +23,7 @@ export interface ProtectedClinicalRecord {
 export interface ProtectedPhotoQueueEntry {
   readonly note: ReportPhotoNote;
   readonly command: CreateReportPhotoNoteCommand;
+  readonly verifiedBase64?: string;
   readonly attempted?: boolean;
   readonly serverRevision?: number;
   readonly failure?: string;
@@ -267,7 +268,7 @@ export function hasPendingProtectedMedia(reportId: string): boolean {
 export function protectedPhotoBlob(reportId: string, noteId: string): Blob | null {
   const entry = protectedPhotoEntries(reportId).find(({ note }) => note.id === noteId);
   if (!entry) return null;
-  const binary = atob(entry.command.canonicalBase64);
+  const binary = atob(entry.verifiedBase64 ?? entry.command.canonicalBase64);
   const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
   return new Blob([bytes], { type: "image/jpeg" });
 }
