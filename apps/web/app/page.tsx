@@ -375,7 +375,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     return statuses;
   }, [reviewFindings]);
   const unresolvedDispatchConflicts = dispatchConflicts.filter(({ disposition }) => disposition === null);
-  const noteBlockers = useMemo(() => noteReadinessBlockers(reportNotes), [reportNotes]);
+  const noteBlockers = useMemo(() => noteReadinessBlockers(reportNotes, language), [reportNotes, language]);
   const signingBlockers = stationarySigningBlockers({
     presentationMode, restored, online, syncStatus, errorCount: reviewErrors.length,
     warnings: reviewWarnings, unresolvedDispatchConflictCount: unresolvedDispatchConflicts.length,
@@ -386,7 +386,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const editingVitalField = editingFinding && "vitalField" in editingFinding.target ? editingFinding.target.vitalField : undefined;
   const vitalFindingActive = !!(editingFinding && "eventType" in editingFinding && editingFinding.eventType === "vitals" && vitalDraftValidation && [...Object.values(vitalDraftValidation.errors), ...Object.values(vitalDraftValidation.warnings)].includes(editingFinding.message));
   const activeDialog = audioDialog ? "audio" : photoDialog ? "photo" : textNoteDraft ? "note" : shell.medicationDraft ? "medication" : shell.procedureDraft ? "procedure" : shell.vitalDraft ? "vitals" : null;
-  const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content) : null;
+  const textNoteValidation = textNoteDraft ? validateReportTextNote(textNoteDraft.content, language) : null;
   const editingActionableFinding = editingFinding && editingFinding.severity !== "information"
     ? { severity: editingFinding.severity, message: editingFinding.message }
     : undefined;
@@ -938,27 +938,27 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         </>
       )}
 
-      {photoDialog && report && <PhotoNoteDialog dialogRef={dialog} reportId={report.id}
+      {photoDialog && report && <PhotoNoteDialog language={language} dialogRef={dialog} reportId={report.id}
         note={photoDialog === "new" ? null : photoDialog} csrfToken={sessionRequestToken(session)} revision={photoExpectedRevision}
         mediaPolicy={mediaPolicy ?? report.mediaPolicy ?? { settingsRevision: 1, reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES }}
         author={session.user}
         onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
         onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
-          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(photoDialog === "new" ? "Photo note ready." : "Photo caption ready."); }}
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(photoDialog === "new" ? t("noteUi.photoReady") : t("noteUi.photoCaptionReady")); }}
         onQueued={(saved) => { setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
-          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? "Photo upload failed." : "Photo saved on this device."); }}
-        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setPhotoDialog(null); setNoteStatusMessage("Photo note deleted."); }} />}
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setPhotoDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? t("noteUi.photoUploadFailed") : t("noteUi.photoSavedDevice")); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setPhotoDialog(null); setNoteStatusMessage(t("noteUi.photoDeleted")); }} />}
 
-      {audioDialog && report && <AudioNoteDialog dialogRef={dialog} reportId={report.id}
+      {audioDialog && report && <AudioNoteDialog language={language} dialogRef={dialog} reportId={report.id}
         note={audioDialog === "new" ? null : audioDialog} csrfToken={sessionRequestToken(session)} revision={audioExpectedRevision}
         mediaPolicy={mediaPolicy ?? report.mediaPolicy ?? { settingsRevision: 1, reportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES, imageMediaLimitBytes: DEFAULT_IMAGE_MEDIA_LIMIT_BYTES }}
         author={session.user}
         onClose={closeActiveDialog} onSessionEnded={onSessionEnded}
         onSaved={(saved, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
-          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(audioDialog === "new" ? "Audio note ready." : "Audio caption ready."); }}
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(audioDialog === "new" ? t("noteUi.audioReady") : t("noteUi.audioCaptionReady")); }}
         onQueued={(saved) => { setReportNotes((notes) => [saved, ...notes.filter(({ id }) => id !== saved.id)]
-          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? "Audio upload failed." : "Audio saved on this device."); }}
-        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setAudioDialog(null); setNoteStatusMessage("Audio note deleted."); }} />}
+          .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt) || b.id.localeCompare(a.id))); setAudioDialog(null); setNoteStatusMessage(saved.persistenceState === "failed" ? t("noteUi.audioUploadFailed") : t("noteUi.audioSavedDevice")); }}
+        onDeleted={(noteId, nextRevision) => { revisionRef.current = nextRevision; setReportNotes((notes) => notes.filter(({ id }) => id !== noteId)); setAudioDialog(null); setNoteStatusMessage(t("noteUi.audioDeleted")); }} />}
 
       {textNoteDraft && textNoteValidation && (
         <div className="dialog-backdrop" role="presentation">
@@ -966,11 +966,11 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             aria-labelledby="note-dialog-title" aria-describedby={confirmingNoteDelete ? "note-delete-description" : undefined}>
             <div className="note-dialog-heading">
               <div>
-                <p className="eyebrow">{confirmingNoteDelete ? "Confirm deletion" : textNoteDraft.isNew ? noteDefinition.labels.newEyebrow : noteDefinition.labels.editEyebrow}</p>
-                <h2 id="note-dialog-title">{noteDefinition.labels.editorTitle}</h2>
+                <p className="eyebrow">{confirmingNoteDelete ? t("noteUi.confirm.deletion") : textNoteDraft.isNew ? t("noteUi.textNewEyebrow") : t("noteUi.textEditEyebrow")}</p>
+                <h2 id="note-dialog-title">{t("noteUi.textEditorTitle")}</h2>
               </div>
               {!textNoteDraft.isNew && !confirmingNoteDelete && <button className="remove-entry-button" type="button"
-                disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{noteDefinition.labels.remove}</button>}
+                disabled={noteSaving} onClick={() => setConfirmingNoteDelete(true)}>{t("noteUi.textRemove")}</button>}
             </div>
             {confirmingNoteDelete ? <>
               <p id="note-delete-description">{t("mobile.noteDeleteConfirm")}</p>
@@ -986,13 +986,13 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 {textNoteDraft.author ? ` · ${textNoteDraft.author.displayName}` : ` · ${session.user.displayName}`}
                 {!textNoteDraft.isNew ? ` · ${t("mobile.ready")}` : ""}
               </p>
-              <label htmlFor="report-text-note">{noteDefinition.labels.summary}</label>
+              <label htmlFor="report-text-note">{t("noteUi.textSummary")}</label>
               <textarea
                 ref={noteSummary}
                 id="report-text-note"
                 data-dialog-initial-focus
                 rows={8}
-                placeholder={noteDefinition.labels.summaryPlaceholder}
+                placeholder={t("noteUi.textPlaceholder")}
                 required
                 maxLength={REPORT_TEXT_NOTE_MAX_CHARACTERS}
                 aria-invalid={Boolean(noteError || (textNoteDraft.content && textNoteValidation.error))}
@@ -1008,9 +1008,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
                 {noteError ?? (textNoteDraft.content ? textNoteValidation.error : null)}
               </p>
               <div className="note-dialog-actions">
-                <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{noteDefinition.labels.cancel}</button>
+                <button type="button" disabled={noteSaving} onClick={closeActiveDialog}>{t("noteUi.cancel")}</button>
                 <button type="button" disabled={noteSaving} onClick={() => void saveTextNote()}>
-                  {noteSaving ? t("settings.saving") : textNoteDraft.isNew ? t("mobile.saveTextNote") : noteDefinition.labels.save}
+                  {noteSaving ? t("settings.saving") : textNoteDraft.isNew ? t("mobile.saveTextNote") : t("noteUi.textSave")}
                 </button>
               </div>
             </>}

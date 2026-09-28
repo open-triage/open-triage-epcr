@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
+
 import { useAgencyTimeZone } from "../app/agency-time-zone";
 
 import type { CreateReportPhotoNoteCommand, ReportMediaPolicy, ReportPhotoNote } from "@open-triage/contracts";
@@ -31,9 +33,10 @@ import {
 } from "../app/protected-clinical-storage";
 import { browserMediaCapturePreflight, mediaCaptureErrorMessage } from "../app/media-capture-capability";
 
-export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
-  readonly reportId: string; readonly noteId: string; readonly alt: string; readonly className?: string;
+export function AuthorizedPhotoImage({ reportId, noteId, alt, className, language = "en" }: {
+  readonly reportId: string; readonly noteId: string; readonly alt: string; readonly className?: string; readonly language?: AgencyLanguage;
 }) {
+  const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -47,8 +50,8 @@ export function AuthorizedPhotoImage({ reportId, noteId, alt, className }: {
     }).catch(() => { if (active) setFailed(true); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [noteId, reportId]);
-  if (failed) return <span className="photo-unavailable" role="img" aria-label={`${alt} unavailable`}>Photo unavailable</span>;
-  if (!source) return <span className="photo-loading" role="status">Loading photo…</span>;
+  if (failed) return <span className="photo-unavailable" role="img" aria-label={t("noteUi.photoUnavailableNamed", { alt })}>{t("noteUi.photoUnavailableLabel")}</span>;
+  if (!source) return <span className="photo-loading" role="status">{t("noteUi.loading.photo")}</span>;
   // Canonical bytes are fetched with the authorized session and retained only in an object URL for this mount.
   // eslint-disable-next-line @next/next/no-img-element
   return <img className={className} src={source} alt={alt} />;
@@ -75,7 +78,7 @@ function blobBase64(blob: Blob): Promise<string> {
 }
 
 export function PhotoNoteDialog({
-  dialogRef, reportId, note, csrfToken, revision, mediaPolicy, author, onClose, onSaved, onQueued, onDeleted, onSessionEnded,
+  dialogRef, reportId, note, csrfToken, revision, mediaPolicy, author, language = "en", onClose, onSaved, onQueued, onDeleted, onSessionEnded,
 }: {
   readonly dialogRef: RefObject<HTMLElement | null>;
   readonly reportId: string;
@@ -84,6 +87,7 @@ export function PhotoNoteDialog({
   readonly revision: number;
   readonly mediaPolicy: ReportMediaPolicy;
   readonly author: ReportPhotoNote["author"];
+  readonly language?: AgencyLanguage;
   readonly onClose: () => void;
   readonly onSaved: (note: ReportPhotoNote, revision: number) => void;
   readonly onQueued: (note: ReportPhotoNote) => void;
@@ -91,6 +95,7 @@ export function PhotoNoteDialog({
   readonly onSessionEnded: () => void;
 }) {
   const zone = useAgencyTimeZone();
+  const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
@@ -104,7 +109,7 @@ export function PhotoNoteDialog({
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [mode, setMode] = useState<"camera" | "preview" | "viewer">(note ? "viewer" : "camera");
-  const validation = normalizePhotoCaption(caption);
+  const validation = normalizePhotoCaption(caption, language);
   const selectedDeviceId = deviceIds[deviceIndex];
   const previewUrl = capture?.previewUrl;
 
@@ -141,7 +146,7 @@ export function PhotoNoteDialog({
     let active = true;
     async function startCamera() {
       stream.current?.getTracks().forEach((track) => track.stop());
-      const unavailable = browserMediaCapturePreflight("camera");
+      const unavailable = browserMediaCapturePreflight("camera", undefined, language);
       if (unavailable) { setCameraError(unavailable); return; }
       try {
         const next = await navigator.mediaDevices.getUserMedia(cameraRequestConstraints(selectedDeviceId));
@@ -154,11 +159,11 @@ export function PhotoNoteDialog({
         setDeviceIds(ids);
         setDeviceIndex(Math.max(0, ids.indexOf(activeDeviceId ?? "")));
         setCameraError(null);
-      } catch (error) { setCameraError(mediaCaptureErrorMessage("camera", error)); }
+      } catch (error) { setCameraError(mediaCaptureErrorMessage("camera", error, language)); }
     }
     void startCamera();
     return () => { active = false; stream.current?.getTracks().forEach((track) => track.stop()); stream.current = null; };
-  }, [mode, selectedDeviceId]);
+  }, [mode, selectedDeviceId, language]);
 
   async function takePhoto() {
     if (!video.current) return;
@@ -171,7 +176,7 @@ export function PhotoNoteDialog({
         capturedAt, capturedUtcOffsetMinutes, quarterTurns: cameraQuarterTurns, caption });
       setCapture({ blob, previewUrl: URL.createObjectURL(blob), quarterTurns: cameraQuarterTurns, capturedAt, capturedUtcOffsetMinutes });
       setMode("preview");
-    } catch (error) { setCameraError(error instanceof Error ? error.message : "The frame could not be captured."); }
+    } catch (error) { setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.frame.could.not.be.captured")); }
   }
 
   function discard() {
@@ -206,7 +211,7 @@ export function PhotoNoteDialog({
         if (!capture) return;
         const canonical = await normalizeCapturedPhoto(capture.blob, capture.quarterTurns);
         if (canonical.blob.size > mediaPolicy.imageMediaLimitBytes) {
-          throw new Error(`This image is larger than the agency's ${Math.round(mediaPolicy.imageMediaLimitBytes / 1024 / 1024)} MB per-image limit.`);
+          throw new Error(t("noteUi.imageLimit", { limit: Math.round(mediaPolicy.imageMediaLimitBytes / 1024 / 1024) }));
         }
         const command: CreateReportPhotoNoteCommand = {
           commandId: crypto.randomUUID(), expectedRevision: revision, noteId: crypto.randomUUID(),
@@ -235,7 +240,7 @@ export function PhotoNoteDialog({
       }
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
-      else setCameraError(error instanceof Error ? error.message : "The photo could not be saved.");
+      else setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.saved"));
     } finally { setSaving(false); }
   }
 
@@ -260,7 +265,7 @@ export function PhotoNoteDialog({
       onDeleted(note.id, response.revision);
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
-      else setCameraError(error instanceof Error ? error.message : "The photo could not be deleted.");
+      else setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.deleted"));
       setConfirmingDelete(false);
     } finally { setSaving(false); }
   }
@@ -281,60 +286,60 @@ export function PhotoNoteDialog({
       aria-modal="true" aria-labelledby="photo-dialog-title" aria-describedby={confirmingDelete ? "photo-delete-description" : undefined}
       onKeyDownCapture={(event) => { if (confirmingDelete && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); cancelDelete(); } }}>
       <div className="note-dialog-heading">
-        <div><p className="eyebrow">{note ? `${note.persistenceState === "ready" ? "Ready" : note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)} photo note` : mode === "camera" ? "Live camera" : "Review captured photo"}</p>
-          <h2 id="photo-dialog-title">Photo note</h2></div>
-        {note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>Delete photo</button>}
+        <div><p className="eyebrow">{note ? t("noteUi.photoState", { state: t(`noteUi.state.${note.persistenceState}`) }) : mode === "camera" ? t("noteUi.live.camera") : t("noteUi.review.captured.photo")}</p>
+          <h2 id="photo-dialog-title">{t("noteUi.photo.note")}</h2></div>
+        {note && !confirmingDelete && <button ref={deleteTrigger} className="remove-entry-button" type="button" onClick={() => setConfirmingDelete(true)}>{t("noteUi.delete.photo")}</button>}
       </div>
       {confirmingDelete ? <>
-        <p id="photo-delete-description">Delete this photo and its caption from the draft report? Saved bytes cannot be recovered or replaced.</p>
-        <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>Keep photo</button>
-          <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? "Deleting…" : "Delete photo"}</button></div>
+        <p id="photo-delete-description">{t("noteUi.delete.this.photo.and.its.caption.from.the.draft.report.saved.bytes.cannot.be.recover")}</p>
+        <div className="note-dialog-actions"><button ref={keepAfterDelete} data-dialog-initial-focus type="button" onClick={cancelDelete}>{t("noteUi.keep.photo")}</button>
+          <button className="remove-entry-button" type="button" disabled={saving} onClick={() => void remove()}>{saving ? t("noteUi.deleting") : t("noteUi.delete.photo")}</button></div>
       </> : <>
         {mode === "camera" && <div className="camera-stage">
           <div className="camera-live-frame">
-            <video ref={video} autoPlay muted playsInline aria-label="Live camera preview"
+            <video ref={video} autoPlay muted playsInline aria-label={t("noteUi.live.camera.preview")}
               style={{ transform: `rotate(${cameraQuarterTurns * 90}deg)` }} />
           </div>
           {cameraError && <p className="finish-help" role="alert">{cameraError}</p>}
           <div className="camera-actions">
             <div className="camera-control-row">
-              <button className="camera-rotate-button" type="button" aria-label="Rotate counterclockwise 90°" title="Rotate counterclockwise"
+              <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.counterclockwise.90")} title={t("noteUi.rotate.counterclockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value - 1)}><RotateCameraIcon clockwise={false} /></button>
-              <button className="camera-cycle-button" type="button" aria-label="Cycle camera" disabled={deviceIds.length <= 1}
-                onClick={() => setDeviceIndex((index) => (index + 1) % deviceIds.length)}>Cycle camera</button>
-              <button className="camera-rotate-button" type="button" aria-label="Rotate clockwise 90°" title="Rotate clockwise"
+              <button className="camera-cycle-button" type="button" aria-label={t("noteUi.cycle.camera")} disabled={deviceIds.length <= 1}
+                onClick={() => setDeviceIndex((index) => (index + 1) % deviceIds.length)}>{t("noteUi.cycle.camera")}</button>
+              <button className="camera-rotate-button" type="button" aria-label={t("noteUi.rotate.clockwise.90")} title={t("noteUi.rotate.clockwise")}
                 onClick={() => setCameraQuarterTurns((value) => value + 1)}><RotateCameraIcon clockwise /></button>
             </div>
             <div className="camera-capture-row">
               <button className="camera-capture-button" data-dialog-initial-focus type="button" disabled={Boolean(cameraError)}
-                onClick={() => void takePhoto()}><span className="photo-action-icon" aria-hidden="true" />Take photo</button>
-              <button className="camera-close-button" type="button" onClick={onClose}>Close</button>
+                onClick={() => void takePhoto()}><span className="photo-action-icon" aria-hidden="true" />{t("noteUi.take.photo")}</button>
+              <button className="camera-close-button" type="button" onClick={onClose}>{t("noteUi.close")}</button>
             </div>
           </div>
         </div>}
         {mode === "preview" && capture && <>
           <div className="photo-preview-frame">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={capture.previewUrl} alt="Captured photo preview" style={{ transform: `rotate(${capture.quarterTurns * 90}deg)` }} />
+            <img src={capture.previewUrl} alt={t("noteUi.captured.photo.preview")} style={{ transform: `rotate(${capture.quarterTurns * 90}deg)` }} />
           </div>
         </>}
         {mode === "viewer" && note && <>
-          <AuthorizedPhotoImage reportId={reportId} noteId={note.id} alt={note.caption || "Clinical photo note"} className="photo-viewer-image" />
+          <AuthorizedPhotoImage reportId={reportId} noteId={note.id} language={language} alt={note.caption || t("noteUi.clinical.photo.note")} className="photo-viewer-image" />
           <p className="note-metadata">Captured {new Date(note.capturedAt).toLocaleString(undefined, zone ? { timeZone: zone } : undefined)} · {note.author.displayName} · {note.persistenceState === "saved-on-device" ? "Saved on this device" : note.persistenceState[0]!.toUpperCase() + note.persistenceState.slice(1)}</p>
-          {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>Retry upload</button>}
+          {note.persistenceState === "failed" && <button type="button" onClick={() => void retry()}>{t("noteUi.retry.upload")}</button>}
         </>}
         {mode !== "camera" && <>
-          <label htmlFor="report-photo-caption">Caption <small>(optional)</small></label>
+          <label htmlFor="report-photo-caption">{t("noteUi.caption")} <small>{t("noteUi.optional")}</small></label>
           <textarea id="report-photo-caption" rows={3} maxLength={REPORT_PHOTO_CAPTION_MAX_CHARACTERS}
             value={caption} aria-invalid={Boolean(validation.error || cameraError)} aria-describedby="report-photo-caption-count report-photo-error"
             onChange={(event) => { const value = event.target.value; setCaption(value); setCameraError(null);
               if (capture && protectedStorageActive(reportId)) updateProtectedPhotoPreview(reportId, { caption: value }); }} />
-          <small id="report-photo-caption-count">{validation.characterCount.toLocaleString()} / {REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters</small>
+          <small id="report-photo-caption-count">{t("noteUi.captionCount", { count: validation.characterCount.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small>
           <p id="report-photo-error" className="finish-help" role={validation.error || cameraError ? "alert" : undefined}>{validation.error ?? cameraError}</p>
         </>}
         {mode !== "camera" && <div className="note-dialog-actions">
-          {mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>Discard &amp; retake</button> : <button type="button" disabled={saving} onClick={onClose}>Close</button>}
-          <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? "Saving…" : note ? "Save caption" : "Use photo"}</button>
+          {mode === "preview" ? <button type="button" disabled={saving} onClick={discard}>{t("noteUi.discard.retake")}</button> : <button type="button" disabled={saving} onClick={onClose}>{t("noteUi.close")}</button>}
+          <button type="button" disabled={saving || Boolean(validation.error)} onClick={() => void save()}>{saving ? t("noteUi.saving") : note ? t("noteUi.save.caption") : t("noteUi.use.photo")}</button>
         </div>}
       </>}
     </section>
