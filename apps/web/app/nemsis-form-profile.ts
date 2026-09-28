@@ -1,5 +1,6 @@
 import { requireNemsisDataElement, resolveNemsisElementValues, type NemsisCodeValue } from "./nemsis-data-model";
 import type { NemsisReference, ProcedureField, VitalNullValue } from "./encounter-definition";
+import { procedureSuccessState, procedureOutcomeState, procedureNoneCode } from "./procedure-code-state";
 
 export function requiredByNemsis(reference: NemsisReference): boolean {
   return requireNemsisDataElement(reference).occurrence.min > 0;
@@ -42,14 +43,12 @@ export function procedureElementMetadata(references: Record<ProcedureField, Nems
   const attemptMin = attemptsElement.datatype.constraints.minInclusive;
   const attemptMax = attemptsElement.datatype.constraints.maxInclusive;
   if (typeof attemptMin !== "number" || typeof attemptMax !== "number") throw new Error(`${references.attempts} lacks numeric attempt boundaries`);
-  const successCodeToState = { "9923001": "no", "9923003": "yes" } as const;
-  const successOptions = elementValues(references.success).map(({ code, label }) => ({ value: successCodeToState[code as keyof typeof successCodeToState], label, code }));
+  const successOptions = elementValues(references.success).map(({ code, label }) => ({ value: procedureSuccessState(code), label, code }));
   if (successOptions.some(({ value }) => !value)) throw new Error("Unknown procedure success code");
-  const outcomeCodeToState = { "9916001": "improved", "9916003": "unchanged", "9916005": "worse" } as const;
-  const outcomeOptions = elementValues(references.outcome).map(({ code, label }) => ({ value: outcomeCodeToState[code as keyof typeof outcomeCodeToState], code, label }));
+  const outcomeOptions = elementValues(references.outcome).map(({ code, label }) => ({ value: procedureOutcomeState(code), code, label }));
   if (outcomeOptions.some(({ value }) => !value)) throw new Error("Unknown procedure outcome code");
   const complicationOptions = elementValues(references.complications);
-  const noneCode = "3907033";
+  const noneCode = procedureNoneCode;
   if (!noneCode) throw new Error(`${references.complications} has no None value`);
   const procedure = requireNemsisDataElement(references.procedure);
   const codeSystem = procedure.valueSource.kind === "external-code-system" ? procedure.valueSource.systems[0]?.label ?? "" : "";
