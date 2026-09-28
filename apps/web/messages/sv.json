@@ -540,5 +540,13 @@
   "platform.status.500": "försök igen senare.",
   "platform.status.503": "försök igen senare.",
   "platform.error.media.photoTooLarge": "Fotot överskrider myndighetens gräns på {imageLimitBytes} byte.",
-  "platform.error.media.allowanceExceeded": "Uppladdningen överskrider journalens återstående medieutrymme på {remainingBytes} byte."
+  "platform.error.media.allowanceExceeded": "Uppladdningen överskrider journalens återstående medieutrymme på {remainingBytes} byte.",
+  "platform.error.calls.commandConflict": "Uppdraget ändrades medan det öppnades. Uppdatera uppdragslistan och försök igen.",
+  "platform.error.admin.usernameReserved": "Användarnamnet används redan.",
+  "platform.error.admin.roleStale": "Rollen har ändrats. Uppdatera den innan du sparar.",
+  "platform.error.feedback.retryConflict": "Detta försök skiljer sig från den ursprungliga återkopplingen. Börja en ny inskickning.",
+  "platform.error.reports.alreadySigned": "Journalen är redan signerad.",
+  "platform.error.reports.deleteDenied": "Endast ett öppet genererat syntetiskt utkast kan tas bort.",
+  "platform.error.reports.unavailable": "Utkastet är inte längre tillgängligt för ditt konto.",
+  "platform.error.reports.revisionConflict": "Journalen ändrades från version {expectedRevision} till {currentRevision}. Uppdatera och försök igen."
 }

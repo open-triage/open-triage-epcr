@@ -41,6 +41,7 @@ test("named parameters, authorization, media conflict, and pinned findings are p
     [new UnauthorizedException("The username or password is incorrect"), "/api/sessions", "auth.invalidCredentials", 401],
     [new BadRequestException("Temporary password duration must match the configured 24 hours"), "/api/admin/users", "admin.temporaryPasswordDuration", 400],
     [new ConflictException({ message: "The photo exceeds the report's remaining media allowance", remainingBytes: 1024 }), "/api/reports/r/photos", "media.allowanceExceeded", 409],
+    [new ConflictException({ message: "Draft revision is stale", expectedRevision: 3, currentRevision: 4 }), "/api/reports/r/sign", "reports.revisionConflict", 409],
   ];
   for (const [exception, path, code, status] of cases) {
     const result = filtered(exception, path);
@@ -49,6 +50,7 @@ test("named parameters, authorization, media conflict, and pinned findings are p
   }
   assert.deepEqual(filtered(cases[1][0], cases[1][1]).body.params, { hours: 24 });
   assert.deepEqual(filtered(cases[2][0], cases[2][1]).body.params, { remainingBytes: 1024 });
+  assert.deepEqual(filtered(cases[3][0], cases[3][1]).body.params, { expectedRevision: 3, currentRevision: 4 });
   const findings = [{ ruleId: "pinned", message: "Patient name is required" }];
   const result = filtered(new UnprocessableEntityException({ message: "Validation failed", findings }), "/api/reports/r/sign");
   assert.deepEqual(result.body.findings, findings);

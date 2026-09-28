@@ -12,8 +12,16 @@ const knownMessages: Record<string, PlatformError> = {
   "A valid CSRF token is required": { code: "auth.csrfRequired", params: {} },
   "The requested capability is required": { code: "auth.capabilityRequired", params: {} },
   "The selected unit is no longer eligible": { code: "calls.unitUnavailable", params: {} },
+  "The selected unit is not eligible for synthetic calls": { code: "calls.unitUnavailable", params: {} },
+  "The assignment was canceled before it could be opened": { code: "calls.callUnavailable", params: {} },
+  "The call-opening command conflicts with existing clinical data": { code: "calls.commandConflict", params: {} },
+  "That username is already reserved": { code: "admin.usernameReserved", params: {} },
+  "Role version is stale": { code: "admin.roleStale", params: {} },
+  "This feedback retry does not match the original draft": { code: "feedback.retryConflict", params: {} },
+  "Report is already signed": { code: "reports.alreadySigned", params: {} },
+  "Only a clinician-owned synthetic draft can be deleted": { code: "reports.deleteDenied", params: {} },
+  "The draft is not available to this clinician": { code: "reports.unavailable", params: {} },
   "This call can no longer be opened": { code: "calls.callUnavailable", params: {} },
-  "You have sent feedback in the last minute. Please try again later.": { code: "feedback.rateLimited", params: {} },
 };
 
 function errorDomain(path: string): string {
@@ -33,6 +41,15 @@ export function identifyPlatformError(status: number, path: string, body: Record
     return { code: body.code, params };
   }
   const message = typeof body.message === "string" ? body.message : "";
+  if (message === "You have sent feedback in the last minute. Please try again later.") {
+    return { code: "feedback.rateLimited", params: typeof body.retryAfterSeconds === "number"
+      ? { seconds: body.retryAfterSeconds } : {} };
+  }
+  if (message === "Draft revision is stale" || message === "Draft revision is ahead of the server") {
+    return { code: "reports.revisionConflict", params: Object.fromEntries(
+      ["expectedRevision", "currentRevision"].filter((key) => typeof body[key] === "number")
+        .map((key) => [key, body[key] as number])) };
+  }
   if (knownMessages[message]) return knownMessages[message];
   const media = {
     "The photo exceeds the agency's per-image limit": "media.photoTooLarge",

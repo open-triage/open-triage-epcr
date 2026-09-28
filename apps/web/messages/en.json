@@ -542,5 +542,13 @@
   "platform.status.503": "try again later.",
   "platform.error.media.photoTooLarge": "The photo exceeds the agency limit of {imageLimitBytes} bytes.",
   "platform.error.media.allowanceExceeded": "This upload exceeds the report’s remaining media allowance of {remainingBytes} bytes.",
-  "platform.error.testOnly": "English fallback for {name}"
+  "platform.error.testOnly": "English fallback for {name}",
+  "platform.error.calls.commandConflict": "This call changed while opening. Refresh the call list and try again.",
+  "platform.error.admin.usernameReserved": "That username is already in use.",
+  "platform.error.admin.roleStale": "This role changed. Refresh it before saving.",
+  "platform.error.feedback.retryConflict": "This feedback retry differs from the original. Start a new submission.",
+  "platform.error.reports.alreadySigned": "This report is already signed.",
+  "platform.error.reports.deleteDenied": "Only an open generated synthetic draft can be deleted.",
+  "platform.error.reports.unavailable": "This draft is no longer available to your account.",
+  "platform.error.reports.revisionConflict": "This report changed from revision {expectedRevision} to {currentRevision}. Refresh and try again."
 }

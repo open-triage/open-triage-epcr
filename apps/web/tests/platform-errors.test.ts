@@ -13,6 +13,8 @@ test("agency language and English fallback use stable identity and named paramet
     "Det tillfälliga lösenordet måste gälla i 24 timmar.");
   assert.equal(platformErrorMessage({ code: "testOnly", params: { name: "Anna" } }, 400, "sv"),
     "English fallback for Anna");
+  assert.equal(platformErrorMessage({ code: "reports.revisionConflict", params: { expectedRevision: 3, currentRevision: 4 } }, 409, "sv"),
+    "Journalen ändrades från version 3 till 4. Uppdatera och försök igen.");
 });
 
 test("legacy and unknown responses expose stable identifiable fallbacks without source prose", async () => {
