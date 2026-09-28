@@ -195,6 +195,7 @@ test("authoritative signing evaluates the report's pinned required-element bundl
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (normalized.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     if (normalized.includes("from clinical.report r join forms.form_version")) return [{
       id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
       catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -236,6 +237,7 @@ test("signing blocks tampered artifacts and identifies a rule that fails at runt
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (normalized.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     if (normalized.includes("from clinical.report r join forms.form_version")) return [{
       id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
       catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"

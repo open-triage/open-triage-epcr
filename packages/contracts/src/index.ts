@@ -16,6 +16,7 @@ export {
   formatValidationSource,
   isNemsisDemographicElementId,
   repairNemsisImportedMessage,
+  validationRuleText,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
   type CompiledValidationRule,

@@ -191,7 +191,7 @@ function valueFindings(element: NemsisDataElement, groupInstanceId: string, valu
  * carry enough canonical identity to reopen the exact row and focus its field.
  */
 export function validateStationaryRecord(document: EncounterDocument, clinicalForm: ClinicalFormConfiguration | undefined,
-  evaluationTimestamp: string): ReadonlyArray<StationaryValidationFinding> {
+  evaluationTimestamp: string, language: "en" | "sv" = "en"): ReadonlyArray<StationaryValidationFinding> {
   const findings: StationaryValidationFinding[] = [];
   const authoredPolicy = clinicalForm?.validation !== undefined;
   const configuredFields = clinicalForm
@@ -270,7 +270,7 @@ export function validateStationaryRecord(document: EncounterDocument, clinicalFo
       return findings;
     }
     const evaluations = (["live", "sign"] as const).map((target) =>
-      evaluateValidationBundleSafely(clinicalForm.validation!.bundle, document, target, { timestamp: evaluationTimestamp }));
+      evaluateValidationBundleSafely(clinicalForm.validation!.bundle, document, target, { timestamp: evaluationTimestamp, language }));
     const authoredFindings = new Map(evaluations.flatMap(({ findings: evaluatedFindings }) => evaluatedFindings).map((authored) => [
       JSON.stringify([authored.validationVersionId, authored.ruleId, authored.primaryTarget, authored.inputFingerprint]), authored,
     ]));

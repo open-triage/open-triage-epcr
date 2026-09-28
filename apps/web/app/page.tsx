@@ -201,7 +201,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const validationEvaluationTimestamp = useMemo(() => validationTimestampFor(encounter.document, report?.clinicalForm),
     [encounter.document, report?.clinicalForm]);
   const stationaryFindings = useMemo(() => validateStationaryRecord(encounter.document, report?.clinicalForm,
-    validationEvaluationTimestamp), [encounter.document, report?.clinicalForm, validationEvaluationTimestamp]);
+    validationEvaluationTimestamp, language), [encounter.document, report?.clinicalForm, validationEvaluationTimestamp, language]);
   const configuredStationaryFindings: ReadonlyArray<SigningFinding> = useMemo(
     () => [...stationaryFindings.map((finding) => ({ ...finding,
       acknowledged: finding.severity === "warning" && shell.acknowledgedWarnings.includes(finding.id),

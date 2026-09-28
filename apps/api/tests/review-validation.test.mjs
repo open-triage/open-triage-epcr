@@ -52,6 +52,7 @@ function evaluatingManager({ storedSha256 = compiledSha256 } = {}) {
     if (sql.includes("from validation.version")) {
       return [{ id: versionId, compiled_bundle: bundle, compiled_sha256: storedSha256 }];
     }
+    if (sql.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     if (sql.includes("select r.id, r.created_at")) return [{ id: reportId,
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
@@ -115,6 +116,7 @@ test("review-only rules do not participate in authoritative signing", async () =
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
       catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" }];
     if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence")) return [];
+    if (sql.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const signing = new SignReportService({}, {});
