@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
 import { resolveCatalogElementText } from "./catalog-localization";
+import { formFieldForElement, formFieldText } from "./form-localization";
 import { ProcedureDialog } from "../components/procedure-dialog";
 import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
@@ -163,6 +164,12 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
   const noteDefinition = bundledEncounterDefinition.events.note;
   const catalogText = (elementId: string, kind: "label" | "description") => {
     const field = report?.clinicalForm?.catalogFields[elementId];
+    const definition = report?.clinicalForm?.definition;
+    const authored = definition && formFieldForElement(definition, elementId);
+    if (kind === "label" && definition) {
+      const override = formFieldText(definition, authored, language, "label");
+      if (override) return override;
+    }
     return field ? resolveCatalogElementText(field, elementId, language, kind) : undefined;
   };
   const baseProcedure = bundledEncounterDefinition.events.procedure;
@@ -192,7 +199,11 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
     routeLabels: medicationChoiceLabels("eMedications.04"),
     fields: bundledEncounterDefinition.events.medication.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
+  const vitalHelp = report?.clinicalForm?.definition && formFieldText(report.clinicalForm.definition,
+    formFieldForElement(report.clinicalForm.definition, "eVitals.06"), language, "helpText");
   const vitalDefinition = { ...bundledEncounterDefinition.events.vitals,
+    labels: { ...bundledEncounterDefinition.events.vitals.labels,
+      absenceHelp: vitalHelp ?? bundledEncounterDefinition.events.vitals.labels.absenceHelp },
     fields: bundledEncounterDefinition.events.vitals.fields.map((field) => ({ ...field,
       label: catalogText(field.reference, "label") ?? field.label })) };
   const displayDefinition = { ...bundledEncounterDefinition, events: { ...bundledEncounterDefinition.events,
