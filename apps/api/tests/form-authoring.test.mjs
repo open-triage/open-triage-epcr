@@ -288,3 +288,18 @@ test("form activation delegates a selected compatible Validation bundle", async 
     validationVersionId: "70000000-0000-4000-8000-000000000001",
     input: { formVersionId: draftId, catalogReleaseId: catalogId, changeNote: "Deploy complete bundle" } });
 });
+
+test("localized form wording validates stable scoped identities and review metadata", async () => {
+  const { validateCanonicalFormDefinition } = await import("../dist/forms/form-publication.validation.js");
+  const translated = { schemaVersion: 1, sections: [{ key: "patient", presentation: { title: "Patient" }, fields: [
+    { key: "ePatient.02", source: { kind: "nemsis", elementId: "ePatient.02" }, configuration: { label: "Name" } }
+  ] }], locales: [{ locale: "sv", translations: { sections: { patient: { title: "Patient" } },
+    fields: { "ePatient.02": { label: "Namn" } } }, sourceReview: { "fields.ePatient.02.label": true } }] };
+  assert.deepEqual(validateCanonicalFormDefinition(translated), translated);
+  const invalid = structuredClone(translated);
+  invalid.locales[0].translations.fields.orphan = { label: "Okänd" };
+  assert.throws(() => validateCanonicalFormDefinition(invalid), /unknown identity/);
+  invalid.locales[0].translations.fields = {};
+  invalid.locales[0].sourceReview["fields.orphan.label"] = true;
+  assert.throws(() => validateCanonicalFormDefinition(invalid), /sourceReview/);
+});

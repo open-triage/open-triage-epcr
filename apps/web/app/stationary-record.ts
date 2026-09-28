@@ -1,5 +1,6 @@
 import type { FormDraftDefinition } from "@open-triage/contracts";
 import { getNemsisGroup } from "./nemsis-data-model";
+import { formSectionTitle, type FormLanguage } from "./form-localization";
 import { COMPILED_STATIONARY_LAYOUT, type CompiledStationaryGroup, type StationaryElementPlacement } from "./stationary-layout";
 
 export type StationarySectionFinding = {
@@ -93,7 +94,7 @@ function presentationText(value: Record<string, unknown> | undefined, key: strin
 }
 
 /** Projects an unsaved form draft onto the same group contracts used by Stationary. */
-export function configuredStationaryPreviewSections(definition: FormDraftDefinition): ReadonlyArray<ConfiguredStationarySection> {
+export function configuredStationaryPreviewSections(definition: FormDraftDefinition, language: FormLanguage = "en"): ReadonlyArray<ConfiguredStationarySection> {
   return definition.sections.flatMap((section, sectionIndex) => {
     const fields = section.fields.filter((field) => {
       if (field.source.kind !== "nemsis") return true;
@@ -124,7 +125,7 @@ export function configuredStationaryPreviewSections(definition: FormDraftDefinit
     return [{
       id: `draft-${sectionIndex}-${section.key}`,
       hash: `stationary-preview-section-${sectionIndex}-${section.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`,
-      label: presentationText(section.presentation, "title") ?? section.key,
+      label: formSectionTitle(definition, section.key, language) ?? section.key,
       blocks,
       fields,
       groupIds,

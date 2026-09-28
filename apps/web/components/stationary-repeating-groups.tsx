@@ -1,8 +1,9 @@
 "use client";
 
-import { currentCatalogLanguage, resolveCatalogElementText } from "../app/catalog-localization";
+import { resolveCatalogElementText } from "../app/catalog-localization";
+import { formFieldForElement, formFieldText, type FormLanguage } from "../app/form-localization";
 import type { ClinicalFormConfiguration, EncounterDocument, EncounterGroupInstance, EncounterValue } from "@open-triage/contracts";
-import React, { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import {
   addRepeatingGroupOccurrence,
   configuredRepeatingGroupRoots,
@@ -51,6 +52,8 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
   });
 }
 
+const FormPresentationContext = createContext<{ definition?: ClinicalFormConfiguration["definition"]; language: FormLanguage }>({ language: "en" });
+
 function GroupField({ document, instance, placement, findings = [], initialFocus = false, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly instance: EncounterGroupInstance;
@@ -60,11 +63,15 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
+  const { definition, language } = useContext(FormPresentationContext);
+  const authored = formFieldForElement(definition, placement.id);
+  const labelOverride = definition && formFieldText(definition, authored, language, "label");
+  const helpOverride = definition && formFieldText(definition, authored, language, "helpText");
   const sourceElement = requireNemsisDataElement(placement.id);
   const pinned = catalogFields?.[placement.id];
   const catalogElement = pinned ? { ...sourceElement,
-    name: resolveCatalogElementText(pinned, placement.id, currentCatalogLanguage(), "label"),
-    definition: resolveCatalogElementText(pinned, placement.id, currentCatalogLanguage(), "description") } : sourceElement;
+    name: resolveCatalogElementText(pinned, placement.id, language, "label"),
+    definition: resolveCatalogElementText(pinned, placement.id, language, "description") } : sourceElement;
   const element = instance.elements.find(({ id }) => id === placement.id);
   const validationFindings = elementValidationFindings(findings, placement.groupId, instance.instanceId, placement.id);
   const validationSeverity = stationaryFindingSeverity(validationFindings);
@@ -73,9 +80,9 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
   </div>;
   if (catalogElement.valueSource.kind !== "scalar") {
     const field = configuredStationaryCodedField(catalogElement, catalogFields[placement.id]);
-    const translated = pinned && currentCatalogLanguage() === "sv";
-    const presentation = { ...field, label: translated ? catalogElement.name : placement.label ?? field.label,
-      help: translated ? catalogElement.definition : placement.help ?? field.help };
+    const translated = pinned && language === "sv";
+    const presentation = { ...field, label: labelOverride ?? (translated ? catalogElement.name : placement.label ?? field.label),
+      help: helpOverride ?? (translated ? catalogElement.definition : placement.help ?? field.help) };
     const values = element?.values ?? [];
     const repeatable = catalogElement.occurrence.max === "unbounded" || catalogElement.occurrence.max > 1;
     if (repeatable) return withValidation(<StationaryCodedOccurrencesField field={presentation} values={values} onChange={(value, selection) => onDocumentChange(editStationaryCodedValue(document, {
@@ -98,10 +105,10 @@ function GroupField({ document, instance, placement, findings = [], initialFocus
         }, selection))} />}
     </div>);
   }
-  const translated = pinned && currentCatalogLanguage() === "sv";
+  const translated = pinned && language === "sv";
   const presentation = scalarControlPresentation(catalogElement,
-    translated ? catalogElement.name : placement.label ?? catalogElement.name,
-    translated ? catalogElement.definition : placement.help ?? catalogElement.definition);
+    labelOverride ?? (translated ? catalogElement.name : placement.label ?? catalogElement.name),
+    helpOverride ?? (translated ? catalogElement.definition : placement.help ?? catalogElement.definition));
   if (presentation.repeatable) return withValidation(<StationaryScalarOccurrences document={document} groupInstanceId={instance.instanceId} presentation={presentation} onDocumentChange={onDocumentChange} />);
   const value = element?.values.find((candidate) => candidate.kind === "scalar");
   return withValidation(<SingleScalarGroupField document={document} instance={instance} placement={placement} presentation={presentation}
@@ -338,14 +345,15 @@ export function RepeatingGroupTable({ document, placement, parentInstanceId, fin
 }
 
 /** Renders every catalogue-configured repeating group through canonical instance identities. */
-export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], clinicalForm, onDocumentChange }: {
+export function StationaryRepeatingGroups({ document, groups: configuredGroups, findings = [], clinicalForm, language = "en", onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly groups?: ReadonlyArray<CompiledStationaryGroup>;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   readonly clinicalForm?: ClinicalFormConfiguration;
+  readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultGroups = useMemo(() => configuredRepeatingGroupRoots(), []);
   const groups = configuredGroups ?? defaultGroups;
-  return <div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div>;
+  return <FormPresentationContext.Provider value={{ definition: clinicalForm?.definition, language }}><div className="stationary-repeating-groups">{groups.map((group) => <RepeatingGroupTable key={group.id} document={document} placement={group} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}</div></FormPresentationContext.Provider>;
 }

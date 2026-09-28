@@ -861,7 +861,10 @@ export interface FormDraftField {
 export interface FormDraftDefinition {
   schemaVersion: 1;
   sections: Array<{ key: string; presentation?: Record<string, unknown>; fields: FormDraftField[] }>;
-  locales?: Array<{ locale: string; translations: Record<string, unknown> }>;
+  locales?: Array<{ locale: "sv"; translations: {
+    sections?: Record<string, { title?: string }>;
+    fields?: Record<string, { label?: string; helpText?: string }>;
+  }; sourceReview?: Record<string, boolean> }>;
 }
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
