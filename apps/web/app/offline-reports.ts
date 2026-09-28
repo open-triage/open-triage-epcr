@@ -1,6 +1,7 @@
 import type { ActiveReportResource, ClinicianSession, DispatchPriority, EncounterDocument, OpenCall, OpenAssignmentResponse, ReopenOpenCallResponse } from "@open-triage/contracts";
 import type { ActiveDraftReport, RetainedSignedDraftAttempt, SaveDraftReportCommand, SavedDraftReport } from "./draft-report";
 import { browserRequestConfiguration } from "./browser-api";
+import { sameJsonValue } from "./json-values";
 import { protectedStorageActive, removeProtectedReport, updateProtectedReport, type RecoveredProtectedPayload } from "./protected-clinical-storage";
 
 export const OFFLINE_REPORTS_STORAGE_KEY = "open-triage:offline-reports-v1";
@@ -43,10 +44,9 @@ type OpenedCallContext = {
 
 function read(storage: StoragePort): CachedOpenReport[] {
   if (typeof window !== "undefined") {
-    // Keep the in-memory adapter value-based like encrypted persistence. This
-    // prevents UI-owned document objects from aliasing the synchronization
-    // baseline and making a local edit appear already persisted.
-    return structuredClone(protectedRuntimeReports);
+    // Internal updates are immutable. Clone at the public read boundary so a
+    // list refresh does not copy every full document just to read summaries.
+    return protectedRuntimeReports;
   }
   try {
     const value: unknown = JSON.parse(storage.getItem(OFFLINE_REPORTS_STORAGE_KEY) ?? "[]");
@@ -64,21 +64,32 @@ function read(storage: StoragePort): CachedOpenReport[] {
 
 function write(storage: StoragePort, reports: ReadonlyArray<CachedOpenReport>): void {
   if (typeof window !== "undefined") {
-    protectedRuntimeReports = [...structuredClone(reports)];
+    const previous = new Map(protectedRuntimeReports.map((report) => [report.report.id, report]));
+    const changed: CachedOpenReport[] = [];
+    protectedRuntimeReports = reports.map((report) => {
+      const existing = previous.get(report.report.id);
+      if (existing && sameJsonValue(existing, report)) return existing;
+      const snapshot = structuredClone(report);
+      changed.push(snapshot);
+      return snapshot;
+    });
     if (browserRequestConfiguration().mode === "server") {
-      for (const report of reports) {
+      // A summary refresh must not encrypt every other open report again.
+      for (const report of changed) {
         if (protectedStorageActive(report.report.id)) updateProtectedReport(report.report.id, report);
       }
     }
     return;
   }
-  storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, JSON.stringify(reports));
+  const serialized = JSON.stringify(reports);
+  if (storage.getItem(OFFLINE_REPORTS_STORAGE_KEY) !== serialized) storage.setItem(OFFLINE_REPORTS_STORAGE_KEY, serialized);
 }
 
-function replace(storage: StoragePort, report: CachedOpenReport): CachedOpenReport {
-  const reports = read(storage).filter((candidate) => candidate.report.id !== report.report.id);
-  write(storage, [...reports, report]);
-  return report;
+function replace(storage: StoragePort, report: CachedOpenReport): void {
+  const reports = typeof window === "undefined" ? read(storage) : protectedRuntimeReports;
+  const index = reports.findIndex((candidate) => candidate.report.id === report.report.id);
+  if (index >= 0 && sameJsonValue(reports[index], report)) return;
+  write(storage, index < 0 ? [...reports, report] : reports.map((candidate, position) => position === index ? report : candidate));
 }
 
 export function cacheOpenedReport(
@@ -90,7 +101,7 @@ export function cacheOpenedReport(
 ): CachedOpenReport {
   const callNumber = typeof call === "string" ? call : call.callNumber;
   const existing = read(storage).find((candidate) => candidate.report.id === opened.report.id);
-  return replace(storage, {
+  const cached: CachedOpenReport = {
     report: {
       ...existing?.report,
       ...opened.report,
@@ -116,7 +127,9 @@ export function cacheOpenedReport(
     validationErrorCount: existing?.validationErrorCount ?? 0,
     localValidationErrorCount: existing?.localValidationErrorCount,
     queuedChanges: existing?.queuedChanges ?? [],
-  });
+  };
+  replace(storage, cached);
+  return structuredClone(cached);
 }
 
 export function restoreRecoveredReport(
@@ -151,9 +164,9 @@ export function cacheReopenedReport(
   }, now);
 }
 
-export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSession, call: OpenCall): CachedOpenReport {
+export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSession, call: OpenCall): void {
   const existing = read(storage).find((candidate) => candidate.report.id === call.reportId);
-  return replace(storage, {
+  replace(storage, {
     report: {
       ...existing?.report,
       id: call.reportId,
@@ -185,7 +198,7 @@ export function cacheOpenCallSummary(storage: StoragePort, session: ClinicianSes
 
 export function saveCachedValidationErrorCount(storage: StoragePort, reportId: string, count: number): void {
   const existing = read(storage).find((candidate) => candidate.report.id === reportId);
-  if (!existing) return;
+  if (!existing || (existing.validationErrorCount === count && existing.localValidationErrorCount === count)) return;
   replace(storage, { ...existing, validationErrorCount: count, localValidationErrorCount: count });
 }
 
@@ -196,12 +209,16 @@ export function cacheLocalReportDocument(storage: StoragePort, reportId: string,
   replace(storage, { ...existing, report: { ...existing.report, document } });
 }
 
-export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
+function ownedReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
   return read(storage)
     .filter((candidate) => candidate.ownerUserId === ownerUserId
       && candidate.report.documentingUserId === ownerUserId
       && candidate.workflowState === "open")
     .sort((left, right) => right.lastSavedAt.localeCompare(left.lastSavedAt));
+}
+
+export function cachedOpenReports(storage: StoragePort, ownerUserId: string): CachedOpenReport[] {
+  return structuredClone(ownedReports(storage, ownerUserId));
 }
 
 /**
@@ -257,7 +274,7 @@ export function removeSignedOfflineReport(storage: StoragePort, reportId: string
 export const removeOfflineReport = removeSignedOfflineReport;
 
 export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): OpenCall[] {
-  return cachedOpenReports(storage, ownerUserId).map((cached) => ({
+  return structuredClone(ownedReports(storage, ownerUserId).map((cached) => ({
     reportId: cached.report.id,
     callNumber: cached.callNumber,
     lastSavedAt: cached.lastSavedAt,
@@ -274,11 +291,11 @@ export function cachedOpenCalls(storage: StoragePort, ownerUserId: string): Open
     ...(cached.report.chiefComplaint !== undefined ? { chiefComplaint: cached.report.chiefComplaint } : {}),
     ...(cached.report.unitCallSign ? { unitCallSign: cached.report.unitCallSign } : {}),
     ...(cached.report.agencyTimeZone ? { agencyTimeZone: cached.report.agencyTimeZone } : {}),
-  }));
+  })));
 }
 
 export function cachedReopenResponse(storage: StoragePort, ownerUserId: string, reportId: string): ReopenOpenCallResponse | null {
-  const cached = cachedOpenReports(storage, ownerUserId).find((candidate) => candidate.report.id === reportId);
+  const cached = structuredClone(ownedReports(storage, ownerUserId).find((candidate) => candidate.report.id === reportId));
   if (!cached?.report.document) return null;
   return { callNumber: cached.callNumber, report: { ...cached.report, document: cached.report.document, dispatchConflicts: cached.report.dispatchConflicts ?? [], status: "draft" } };
 }
@@ -288,17 +305,27 @@ export function queueDraftChange(storage: StoragePort, reportId: string, command
   if (!cached) throw new Error(`Report ${reportId} is not cached for offline use`);
   const queued = [...cached.queuedChanges];
   const last = queued.at(-1);
-  if (last && !last.attempted) queued[queued.length - 1] = { command, attempted: false };
+  if (last && !last.attempted && last.command.demoAction === command.demoAction) {
+    // These are incremental deltas, not full snapshots. Preserve earlier edits
+    // (including tombstones), and never fold clinician edits into a demo action.
+    const merge = <T extends { id: string }>(previous: readonly T[], next: readonly T[]): T[] =>
+      [...new Map([...previous, ...next].map((value) => [value.id, value])).values()];
+    queued[queued.length - 1] = { command: { ...command,
+      commandId: last.command.commandId, expectedRevision: last.command.expectedRevision,
+      groups: merge(last.command.groups, command.groups),
+      occurrences: merge(last.command.occurrences, command.occurrences),
+    }, attempted: false };
+  }
   else queued.push({ command, attempted: false });
   replace(storage, { ...cached, syncStatus: "pending", queuedChanges: queued });
 }
 
 export function nextDraftChange(storage: StoragePort, reportId: string): QueuedDraftChange | null {
-  return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges[0] ?? null;
+  return structuredClone(read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges[0] ?? null);
 }
 
 export function queuedDraftChanges(storage: StoragePort, reportId: string): ReadonlyArray<QueuedDraftChange> {
-  return read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges ?? [];
+  return structuredClone(read(storage).find((candidate) => candidate.report.id === reportId)?.queuedChanges ?? []);
 }
 
 export function markDraftChangeAttempted(storage: StoragePort, reportId: string, commandId: string): void {
@@ -328,12 +355,13 @@ export function acceptDraftChange(
 
 export function rebaseQueuedDraftChanges(storage: StoragePort, reportId: string, serverRevision: number): void {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
-  const latest = cached?.queuedChanges.at(-1);
-  if (!cached || !latest || latest.attempted) return;
+  if (!cached?.queuedChanges.length) return;
   replace(storage, {
     ...cached,
     report: { ...cached.report, revision: serverRevision },
-    queuedChanges: [{ command: { ...latest.command, expectedRevision: serverRevision }, attempted: false }],
+    queuedChanges: cached.queuedChanges.map((queued, index) => queued.attempted ? queued : {
+      command: { ...queued.command, expectedRevision: serverRevision + index }, attempted: false,
+    }),
   });
 }
 
@@ -375,10 +403,11 @@ export function discardQueuedDraftChanges(
   });
 }
 
-export function expectedRevisionForNextChange(storage: StoragePort, reportId: string, fallbackRevision: number): number {
+export function expectedRevisionForNextChange(storage: StoragePort, reportId: string, fallbackRevision: number,
+  demoAction?: SaveDraftReportCommand["demoAction"]): number {
   const cached = read(storage).find((candidate) => candidate.report.id === reportId);
   const last = cached?.queuedChanges.at(-1);
-  if (last && !last.attempted) return last.command.expectedRevision;
+  if (last && !last.attempted && last.command.demoAction === demoAction) return last.command.expectedRevision;
   return (cached?.report.revision ?? fallbackRevision) + (cached?.queuedChanges.length ?? 0);
 }
 

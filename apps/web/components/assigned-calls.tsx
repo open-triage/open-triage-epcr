@@ -3,19 +3,19 @@
 import type { AssignedCall, ClinicianSession, OpenAssignmentResponse } from "@open-triage/contracts";
 import { sessionRequestToken } from "../app/clinician-session";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LoadingStatus } from "./loading-status";
 import {
   ASSIGNED_CALL_POLL_INTERVAL_MS,
   fetchAssignedCalls,
   openAssignedCall
 } from "../app/assigned-calls";
 
-function dispatchTime(value: string, timeZone?: string): string {
+function dispatchTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: timeZone ?? "America/New_York",
   }).format(new Date(value));
 }
 
@@ -58,13 +58,15 @@ export function AssignedCalls({
     setError(null);
     try {
       const opened = await openAssignedCall(csrfToken, call.id);
+      // Keep the selected card and its progress state until the protected
+      // workspace is ready; preparation may require additional round trips.
+      await onOpened?.(opened, call);
       const nextCalls = callsRef.current.filter((candidate) => candidate.id !== call.id);
       if (opened.replacementAssignment && !nextCalls.some((candidate) => candidate.id === opened.replacementAssignment!.id)) {
         nextCalls.unshift(opened.replacementAssignment);
       }
       callsRef.current = nextCalls;
       setCalls(nextCalls);
-      await onOpened?.(opened, call);
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : "The call could not be opened.");
@@ -117,7 +119,7 @@ export function AssignedCalls({
         </div>
       </div>
       {error && <p className="assignment-error" role="alert">{error}</p>}
-      {!loaded && !error && <p className="assignment-empty">Loading assigned calls…</p>}
+      {!loaded && !error && <LoadingStatus className="assignment-empty">Loading assigned calls…</LoadingStatus>}
       {loaded && calls.length === 0 && <p className="assignment-empty">No calls are currently assigned.</p>}
       {calls.length > 0 && (
         <ul className="assigned-call-list">
@@ -131,7 +133,7 @@ export function AssignedCalls({
               <dl>
                 <div><dt>Unit</dt><dd>{call.unit.callSign}</dd></div>
                 <div><dt>Priority</dt><dd>{call.dispatchPriority?.display ?? "Not provided"}</dd></div>
-                <div><dt>Unit notified</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt, call.agencyTimeZone)}</time></dd></div>
+                <div><dt>Unit notified</dt><dd><time dateTime={call.dispatchedAt}>{dispatchTime(call.dispatchedAt)}</time></dd></div>
               </dl>
               <button type="button" onClick={() => void open(call)} disabled={openingId !== null}>
                 {openingId === call.id ? "Opening…" : "Open call"}

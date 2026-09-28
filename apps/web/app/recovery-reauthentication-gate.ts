@@ -5,9 +5,15 @@
  */
 export class RecoveryReauthenticationGate {
   private readonly blockedReportIds = new Set<string>();
+  private readonly checkedReportIds = new Set<string>();
 
   shouldAttempt(reportId: string): boolean {
-    return !this.blockedReportIds.has(reportId);
+    return !this.blockedReportIds.has(reportId) && !this.checkedReportIds.has(reportId);
+  }
+
+  /** A completed report only needs one successful recovery check per session. */
+  checked(reportId: string): void {
+    this.checkedReportIds.add(reportId);
   }
 
   requireReauthentication(reportId: string): void {
@@ -16,5 +22,6 @@ export class RecoveryReauthenticationGate {
 
   reauthenticated(): void {
     this.blockedReportIds.clear();
+    this.checkedReportIds.clear();
   }
 }

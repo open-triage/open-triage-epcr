@@ -49,6 +49,15 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
+async function expectUnobscuredEncounterHeader(page: Page) {
+  await expect.poll(async () => {
+    const [header, toolbar] = await Promise.all([
+      page.locator(".encounter-header").boundingBox(), page.locator(".session-bar").boundingBox(),
+    ]);
+    return header && toolbar ? header.y - (toolbar.y + toolbar.height) : -1;
+  }).toBeGreaterThanOrEqual(0);
+}
+
 function fulfill(route: Route, assignedCalls: ReadonlyArray<AssignedCall> = [assignedCall], canceledAssignmentIds: string[] = []) {
   return route.fulfill({
     contentType: "application/json",
@@ -95,13 +104,12 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(card).toContainText(assignedCall.dispatchReason!);
   await expect(card).toContainText(assignedCall.dispatchPriority!.display);
   await expect(card).toContainText("Assigned", { ignoreCase: true });
-  const dispatchedAt = new Intl.DateTimeFormat("en-US", {
+  const dispatchedAt = await page.evaluate((value) => new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZone: assignedCall.agencyTimeZone,
-  }).format(new Date(assignedCall.dispatchedAt));
+  }).format(new Date(value)), assignedCall.dispatchedAt);
   await expect(card.getByText(dispatchedAt)).toBeVisible();
 
   canceled = true;
@@ -173,6 +181,7 @@ test("opening an assignment enters documentation and a retry resolves to the sam
   await expect(page.locator(".encounter-header")).toContainText(`Response ${generatedSummary.responseNumber}`);
   await expect(page.locator(".encounter-header")).toContainText(`Unit ${generatedSummary.callSign}`);
   await expect(page.locator(".encounter-header")).toContainText(generatedSummary.location);
+  await expectUnobscuredEncounterHeader(page);
   await expect(page.locator(".encounter-header")).not.toContainText(assignedCall.dispatchReason!);
   await expect(page.locator(".encounter-header")).not.toContainText(`${generatedSummary.incidentNumber} · ${generatedSummary.responseNumber}`);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
@@ -401,9 +410,18 @@ test("a no-op conflict recovery does not block a later edit from rebasing", asyn
   await expect(page.getByRole("button", { name: /Vital signs.*BP 118/ })).toBeVisible();
 });
 
-test("mobile vital signs remain saved when the rest of the synthetic form is populated", async ({ page }) => {
+for (const recoverFirstSave of [false, true]) test(`Populate before autosave preserves manual vital signs${recoverFirstSave ? " after conflict recovery" : " in separate ordered commands"}`, async ({ page }) => {
   test.skip(process.env.OPEN_TRIAGE_E2E_SERVER_MODE !== "true", "Requires the server-backed mock API configuration.");
   let revision = 0;
+  const testReportId = openedAssignment.report.id;
+  await page.route(`**/api/reports/${testReportId}/protected-key-envelope`, (route) => route.fulfill({ status: 201, json: {
+    schemaVersion: 1, recoveryHandle: route.request().postDataJSON().recoveryHandle,
+    recoveryDeadline: "2099-09-29T12:00:00Z", wrappingKeyVersion: 1,
+  } }));
+  await page.route(`**/api/reports/${testReportId}/protected-ciphertext-receipt`, (route) => route.fulfill({ json: {
+    schemaVersion: 1, recoveryDeadline: "2099-09-29T12:00:00Z",
+  } }));
+  await page.route(`**/api/reports/${testReportId}/protected-ciphertext-checkpoint`, (route) => route.fulfill({ json: route.request().postDataJSON() }));
   const commands: Array<{
     demoAction?: "populate" | "clear";
     groups?: ReadonlyArray<{ correlationId?: string }>;
@@ -439,10 +457,14 @@ test("mobile vital signs remain saved when the rest of the synthetic form is pop
       report: { ...openedAssignment.report, demoMutable: true },
     }),
   }));
-  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ status: 304 }));
+  await page.route(`**/api/reports/${openedAssignment.report.id}/active`, (route) => route.fulfill({ json: {
+    reportId: openedAssignment.report.id, reportRevision: revision, dispatchRevision: 0,
+    document: openedAssignment.report.document, dispatchConflicts: [], dispatchCancellation: null,
+  } }));
   await page.route(`**/api/reports/${openedAssignment.report.id}/draft-changes`, async (route) => {
     const command = route.request().postDataJSON() as typeof commands[number] & { expectedRevision: number };
     commands.push(command);
+    if (recoverFirstSave && commands.length === 1) return route.fulfill({ status: 409, json: { message: "Retry this stale draft" } });
     if (command.expectedRevision !== revision) {
       return route.fulfill({ status: 409, json: { message: "Draft revision is stale" } });
     }
@@ -462,17 +484,17 @@ test("mobile vital signs remain saved when the rest of the synthetic form is pop
   await signIn(page);
   await page.getByRole("button", { name: "Open call" }).click();
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
+  await page.clock.pauseAt(new Date());
   await page.getByRole("button", { name: "Add vital signs" }).click();
   const dialog = page.getByRole("dialog", { name: "Vital signs" });
   await dialog.getByRole("textbox", { name: /Systolic BP/ }).fill("100");
   await dialog.getByRole("textbox", { name: /Diastolic BP/ }).fill("50");
   await page.getByRole("button", { name: "Add vital set" }).click();
-  await expect.poll(() => commands.some((command) => command.occurrences?.some(({ elementId }) => elementId === "eVitals.06")))
-    .toBe(true);
-  await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
-
   await page.getByRole("button", { name: "Populate" }).click();
+  await page.clock.runFor(1_000);
   await expect.poll(() => commands.some(({ demoAction }) => demoAction === "populate")).toBe(true);
+  expect(commands.map(({ demoAction }) => demoAction)).toEqual(recoverFirstSave
+    ? [undefined, undefined, "populate"] : [undefined, "populate"]);
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 5_000 });
   const populate = commands.find(({ demoAction }) => demoAction === "populate")!;
   expect(populate.groups?.every(({ correlationId }) => correlationId?.startsWith("demo:stationary-populate-v1:"))).toBe(true);
@@ -603,7 +625,7 @@ test("open reports show workflow state newest first and reopen the existing pinn
   await expect(cards.nth(0)).toContainText(assignedCall.callNumber);
   await expect(cards.nth(0)).toContainText("Saved", { ignoreCase: true });
   await expect(cards.nth(0)).toContainText("Sep 3", { ignoreCase: true });
-  await expect(cards.nth(0)).toContainText("Validation errors2");
+  await expect(cards.nth(0)).toContainText("Saved checks2 errors · review before signing");
   await expect(cards.nth(1)).toContainText("SYN-20260903-000");
   await expect(cards.nth(0)).toHaveAttribute("data-validation-status", "error");
   await expect(cards.nth(1)).toHaveAttribute("data-validation-status", "clear");
@@ -629,6 +651,7 @@ test("open reports show workflow state newest first and reopen the existing pinn
   expect(toastBox!.x).toBeGreaterThanOrEqual(shellBox!.x);
   expect(toastBox!.x + toastBox!.width).toBeLessThanOrEqual(shellBox!.x + shellBox!.width);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
+  await expectUnobscuredEncounterHeader(page);
 });
 
 test("a stationary-completed report disappears from Open reports and only its cache is purged", async ({ page }) => {
@@ -727,6 +750,7 @@ test("an Android-sized browser closes and reopens an edited call offline, then s
   const cachedCard = page.getByRole("region", { name: "Open reports" }).locator(".open-report-card").filter({ hasText: assignedCall.callNumber });
   await expect(cachedCard).toContainText("Pending sync");
   await cachedCard.getByRole("button", { name: "Reopen report" }).click();
+  await expectUnobscuredEncounterHeader(page);
   await expect(page.getByText("Care documented beyond the dead zone", { exact: true })).toBeVisible();
   await expect(page.locator(".active-report-notice")).toHaveAttribute("data-form-version-id", openedAssignment.report.formVersionId);
   const cache = await page.evaluate(() => JSON.parse(localStorage.getItem("open-triage:offline-reports-v1")!)[0]);

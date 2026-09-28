@@ -31,6 +31,7 @@ import { shouldShowClinicalDemoBanner } from "../app/clinical-demo";
 import { FeedbackControl } from "./feedback-control";
 import { clearFeedbackTelemetry, installFeedbackRequestTracking, recordFeedbackInteraction } from "../app/feedback-telemetry";
 import { TransientNotice } from "./transient-notice";
+import { LoadingStatus } from "./loading-status";
 import {
   deleteLegacyClinicalStorage,
   flushProtectedReport,
@@ -60,8 +61,8 @@ export function ClinicianSessionGate({ children }: {
   }) => ReactNode);
 }) {
   const [installation, setInstallation] = useState<PublicInstallationConfiguration | null>(null);
-  const [ready, setReady] = useState(false);
-  const [restartReconnectPending, setRestartReconnectPending] = useState(false);
+  const [startupState, setStartupState] = useState<"loading" | "ready" | "failed">("loading");
+  const [startupFailure, setStartupFailure] = useState<string | null>(null);
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -80,6 +81,7 @@ export function ClinicianSessionGate({ children }: {
   const [lockingSession, setLockingSession] = useState(false);
   const logoutHeadingId = useId();
   const logoutDialog = useRef<HTMLElement>(null);
+  const sessionBar = useRef<HTMLElement>(null);
   const reportErrorStateChanged = useCallback((hasErrors: boolean) => {
     setReportWithErrorsId(hasErrors ? activeReport?.id ?? null : null);
   }, [activeReport?.id]);
@@ -95,6 +97,17 @@ export function ClinicianSessionGate({ children }: {
   useEffect(() => {
     if (logoutWarning) logoutDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [logoutWarning]);
+
+  useEffect(() => {
+    const bar = sessionBar.current;
+    const shell = bar?.parentElement;
+    if (!bar || !shell) return;
+    const measure = () => shell.style.setProperty("--session-bar-height", `${bar.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [session, presentationMode]);
 
   const lockAndEndLocalSession = useCallback(async (endedMessage: string) => {
     clearClinicianSession(window.localStorage);
@@ -119,31 +132,30 @@ export function ClinicianSessionGate({ children }: {
     deleteLegacyClinicalStorage(window.localStorage);
     const loadedSession = loadClinicianSession(window.localStorage);
     const serverRestart = !!loadedSession && browserRequestConfiguration().mode === "server";
-    if (serverRestart) queueMicrotask(() => {
-      if (current) setRestartReconnectPending(true);
-    });
-
     const load = async () => {
       if (inFlight || resolved) return;
       inFlight = true;
       try {
-        const loaded = await loadInstallationConfiguration();
-        const authenticated = serverRestart
-          ? await authenticateRestartedClinicianSession(loadedSession!)
-          : loadedSession;
+        // Both requests are independent. Keep protected content gated until
+        // authentication and configuration have both completed successfully.
+        const [loaded, authenticated] = await Promise.all([
+          loadInstallationConfiguration(),
+          serverRestart ? authenticateRestartedClinicianSession(loadedSession!) : loadedSession,
+        ]);
         if (!current) return;
         if (serverRestart && !authenticated) clearClinicianSession(window.localStorage);
         setInstallation(loaded);
         setSession(authenticated);
         setPresentationMode(loadPresentationMode(window.localStorage, authenticated?.capabilities));
-        setRestartReconnectPending(false);
+        setStartupFailure(null);
+        setStartupState("ready");
         resolved = true;
       } catch (reason: unknown) {
         if (!current) return;
-        if (!serverRestart) setMessage(reason instanceof Error ? reason.message : "Installation configuration is unavailable.");
+        setStartupFailure(reason instanceof Error ? reason.message : "The application could not be loaded.");
+        setStartupState("failed");
       } finally {
         inFlight = false;
-        if (current) setReady(true);
       }
     };
     void load();
@@ -263,8 +275,11 @@ export function ClinicianSessionGate({ children }: {
     void lockAndEndLocalSession("Your shift session ended. Sign in again to sync your saved work.");
   }, [lockAndEndLocalSession]);
 
-  if (!ready || restartReconnectPending) return <main className="session-loading" aria-label="Reconnecting securely">
-    <p>Reconnect to continue.</p>
+  if (startupState !== "ready") return <main className="session-loading" aria-label="Opening OpenTriage" aria-busy={startupState === "loading"}>
+    {startupState === "loading" ? <LoadingStatus>Opening OpenTriage…</LoadingStatus> : <div role="alert">
+      <p>{online ? "OpenTriage could not connect. Retrying automatically…" : "Reconnect to continue."}</p>
+      {online && startupFailure && <p>{startupFailure}</p>}
+    </div>}
   </main>;
   if (!installation) return <main className="login-shell"><p className="login-message" role="alert">{message ?? "Installation configuration is unavailable."}</p></main>;
   if (!session) {
@@ -324,7 +339,7 @@ export function ClinicianSessionGate({ children }: {
 
   return (
     <div className={`authenticated-shell ${presentationMode}-shell`}>
-      <header className="session-bar">
+      <header ref={sessionBar} className="session-bar">
         {browserRequestConfiguration().mode === "server" &&
           <FeedbackControl csrfToken={sessionRequestToken(session)} online={online} mode={presentationMode}
             screen={presentationMode === "admin" ? "admin" : activeReport ? "encounter" : "calls"} />}

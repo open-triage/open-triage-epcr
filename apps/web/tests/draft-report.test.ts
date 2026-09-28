@@ -12,6 +12,7 @@ import {
   deleteDraftReport,
   deleteReportTextNote,
   demoActionMutationDelta,
+  recoveryMutationBatches,
   DRAFT_CONFLICT_RECOVERY_LIMIT,
   DraftSaveRejectedError,
   encounterDocumentToDraftMutations,
@@ -26,6 +27,19 @@ import {
 import { INITIAL_SHELL_STATE, transitionShell } from "../app/standard-encounter";
 
 const reportId = "42000000-0000-4000-8000-000000000013";
+
+test("recovery sends missing manual parent groups before their populated demo values", () => {
+  const manual = { id: "manual-parent", groupId: "eVitals.VitalGroup", ordinal: 0 };
+  const vital = { id: "manual-pressure", groupInstanceId: manual.id, elementId: "eVitals.06", ordinal: 0,
+    value: { kind: "integer" as const, value: 100 } };
+  const populated = { id: "demo-pulse", groupInstanceId: manual.id, elementId: "eVitals.10", ordinal: 0,
+    value: { kind: "integer" as const, value: 70 }, provenanceKind: "demo" as const,
+    provenanceDetail: { generator: "stationary-populate-v1" }, sourceAttributes: { "x-open-triage-demo": "stationary-populate-v1" } };
+  assert.deepEqual(recoveryMutationBatches({ groups: [manual], occurrences: [vital, populated] }, { groups: [], occurrences: [] }), [
+    { groups: [manual], occurrences: [vital] },
+    { demoAction: "populate", groups: [], occurrences: [populated] },
+  ]);
+});
 
 test("only a brand-new server report queues an initial persistence snapshot", () => {
   assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, false), true);
