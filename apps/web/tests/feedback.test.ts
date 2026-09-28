@@ -18,7 +18,7 @@ test("feedback rate-limit responses explain the rolling minute while preserving 
   const originalFetch = globalThis.fetch;
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  globalThis.fetch = async () => new Response(null, { status: 429 });
+  globalThis.fetch = async () => Response.json({ code: "feedback.rateLimited", params: {} }, { status: 429 });
   try {
     await assert.rejects(submitFeedback("csrf-token", {
       idempotencyKey: "40000000-0000-4000-8000-000000000003",
@@ -39,7 +39,7 @@ test("Swedish feedback validation and errors keep the entered description availa
   const originalFetch = globalThis.fetch;
   const originalLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
   delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
-  globalThis.fetch = async () => new Response(null, { status: 429 });
+  globalThis.fetch = async () => Response.json({ code: "feedback.rateLimited", params: {} }, { status: 429 });
   const description = "Åke såg texten kvar";
   try {
     await assert.rejects(submitFeedback("csrf-token", {

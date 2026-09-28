@@ -1,4 +1,5 @@
 "use client";
+import { PlatformRequestError } from "../app/platform-errors";
 
 import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -217,7 +218,7 @@ export function ClinicianSessionGate({ children }: {
       storePresentationMode(window.localStorage, initialMode);
       setPresentationMode(initialMode);
     } catch (error) {
-      setMessage(error instanceof Error && error.message === "The username or password is incorrect."
+      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The username or password is incorrect."
         ? t("login.invalidCredentials") : t("login.unavailable"));
     } finally {
       setSubmitting(false);
@@ -243,7 +244,7 @@ export function ClinicianSessionGate({ children }: {
       storeClinicianSession(window.localStorage, changed);
       setSession(changed);
     } catch (error) {
-      setMessage(error instanceof Error && error.message === "The current password is incorrect."
+      setMessage(error instanceof PlatformRequestError ? error.message : error instanceof Error && error.message === "The current password is incorrect."
         ? t("login.passwordIncorrect") : t("login.passwordChangeFailed"));
     } finally {
       setSubmitting(false);

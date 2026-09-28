@@ -1,3 +1,4 @@
+import React from "react";
 import { resolveMessage, type AgencyLanguage } from "../app/localization";
 import type { ReviewFinding } from "../app/standard-encounter";
 

@@ -1,4 +1,6 @@
 "use client";
+import React from "react";
+import { PlatformRequestError } from "../app/platform-errors";
 
 import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 
@@ -240,7 +242,7 @@ export function PhotoNoteDialog({
       }
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
-      else setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.saved"));
+      else setCameraError(error instanceof PlatformRequestError ? error.message : resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.saved"));
     } finally { setSaving(false); }
   }
 
@@ -265,7 +267,7 @@ export function PhotoNoteDialog({
       onDeleted(note.id, response.revision);
     } catch (error) {
       if (error instanceof Error && error.message === "session") onSessionEnded();
-      else setCameraError(resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.deleted"));
+      else setCameraError(error instanceof PlatformRequestError ? error.message : resolveErrorMessage(language, error instanceof Error ? error.message : null, "noteUi.the.photo.could.not.be.deleted"));
       setConfirmingDelete(false);
     } finally { setSaving(false); }
   }

@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import type {
   CreateReportPhotoNoteCommand,
   DeleteReportPhotoNoteResponse,
@@ -23,12 +24,12 @@ async function mutate<T>(csrfToken: string, path: string, method: "POST" | "DELE
     throw new Error("The photo could not be saved. Check your connection and try again.");
   }
   if (response.status === 409) {
-    const detail = await response.json().catch(() => null) as { message?: string } | null;
-    if (detail?.message?.includes("allowance")) throw new Error(detail.message);
+    const detail = await response.clone().json().catch(() => null) as { code?: string } | null;
+    if (detail?.code === "media.allowanceExceeded" || detail?.code === "media.photoTooLarge") throw await platformRequestError(response);
     throw new DraftSaveRejectedError("server-conflict");
   }
   if (response.status === 422 || response.status === 413) throw new DraftSaveRejectedError("validation-rejected");
-  if (!response.ok) throw new Error(response.status === 401 ? "session" : "The photo could not be saved.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<T>;
 }
 
@@ -46,7 +47,7 @@ export function deleteReportPhotoNote(csrfToken: string, reportId: string, noteI
 
 export async function fetchReportPhoto(reportId: string, noteId: string): Promise<Blob> {
   const response = await fetch(browserRouteUrl(`/api/reports/${reportId}/photos/${noteId}/image`), browserRequestInit());
-  if (!response.ok) throw new Error(response.status === 401 ? "session" : "The photo could not be opened.");
+  if (!response.ok) throw await platformRequestError(response);
   if (response.headers.get("content-type") !== "image/jpeg") throw new Error("The photo response was not a canonical JPEG.");
   return response.blob();
 }

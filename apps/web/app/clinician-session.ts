@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import { SYNTHETIC_DEMO_FIXTURE, type ClinicianSession, type CreateClinicianSessionCommand,
   type ReauthenticationResult } from "@open-triage/contracts";
 import { DEMO_CLINICIAN_ID, DEMO_ORGANIZATION_ID } from "./demo-identity";
@@ -54,7 +55,7 @@ export async function createClinicianSession(command: CreateClinicianSessionComm
       headers: { "content-type": "application/json" },
       body: JSON.stringify(command)
     }));
-    if (!response.ok) throw new Error(response.status === 401 ? "The username or password is incorrect." : "Sign in is unavailable.");
+    if (!response.ok) throw await platformRequestError(response);
     return response.json() as Promise<ClinicianSession>;
   }
 
@@ -79,7 +80,7 @@ export async function authenticateRestartedClinicianSession(stored: ClinicianSes
   if (!url) return stored;
   const response = await fetch(url, browserRequestInit({ method: "GET", cache: "no-store" }));
   if (response.status === 401) return null;
-  if (!response.ok) throw new Error("Secure reconnection is unavailable.");
+  if (!response.ok) throw await platformRequestError(response);
   const authenticated = await response.json() as ClinicianSession;
   if (authenticated.user.id !== stored.user.id || authenticated.organization.id !== stored.organization.id) return null;
   return {
@@ -106,7 +107,7 @@ export async function changeClinicianPassword(currentPassword: string, newPasswo
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ currentPassword, newPassword, csrfToken })
   }));
-  if (!response.ok) throw new Error(response.status === 401 ? "The current password is incorrect." : "The password could not be changed.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<ClinicianSession>;
 }
 
@@ -119,7 +120,6 @@ export async function reauthenticateClinicianSession(currentPassword: string,
     headers: { "content-type": "application/json", "x-csrf-token": csrfToken },
     body: JSON.stringify({ currentPassword })
   }));
-  if (!response.ok) throw new Error(response.status === 401
-    ? "The current password is incorrect." : "Reauthentication failed.");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<ReauthenticationResult>;
 }

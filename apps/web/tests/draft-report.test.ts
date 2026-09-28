@@ -371,10 +371,10 @@ test("signing surfaces revision, validation, session, server, and network failur
   );
   try {
     for (const [status, message] of [
-      [409, /record changed/i],
-      [422, /server validation/i],
-      [401, /session has ended/i],
-      [503, /could not be signed/i],
+      [409, /legacy.http409/i],
+      [422, /legacy.http422/i],
+      [401, /legacy.http401/i],
+      [503, /legacy.http503/i],
     ] as const) {
       globalThis.fetch = (async () => new Response(null, { status })) as typeof fetch;
       await assert.rejects(sign(), message);

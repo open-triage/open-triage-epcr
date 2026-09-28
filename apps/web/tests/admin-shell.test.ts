@@ -188,8 +188,8 @@ test("validation deletion accepts empty 200 and 204 success and still surfaces c
     };
     await deleteValidationDraft("csrf-proof", draft);
   }
-  globalThis.fetch = async () => Response.json({ message: "Draft revision is stale" }, { status: 409 });
-  await assert.rejects(deleteValidationDraft("csrf-proof", draft), /Draft revision is stale/);
+  globalThis.fetch = async () => Response.json({ code: "admin.http409", params: {}, message: "Draft revision is stale" }, { status: 409 });
+  await assert.rejects(deleteValidationDraft("csrf-proof", draft), /information changed/);
 });
 
 test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
@@ -368,7 +368,7 @@ test("Admin context reports direct authorization failures without trusting clien
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response("Unauthorized", { status: 401 });
-  await assert.rejects(loadAdminContext(), /not authorized/);
+  await assert.rejects(loadAdminContext(), /legacy.http401/);
 });
 
 test("nullable admin draft endpoints accept an empty successful response", async (t) => {
