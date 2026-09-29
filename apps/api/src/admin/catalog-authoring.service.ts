@@ -447,7 +447,10 @@ export class CatalogAuthoringService {
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
       order by ced.namespace, ced.slug`, [sourceReleaseId]);
     return { schemaVersion: 1, sourceReleaseId,
-      customElements: customElements.map((row) => ({ ...row.definition, catalogReleaseId: undefined } as CatalogDraftCustomTextElement)),
+      ...(customElements.length ? { customElements: customElements.map((row) => {
+        const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomTextElement & { catalogReleaseId?: string };
+        return definition;
+      }) } : {}),
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
       elementId: row.element_id, label: row.name, description: row.description ?? "",
@@ -473,7 +476,8 @@ export class CatalogAuthoringService {
     const existingLists = Array.isArray(existing?.codeLists) ? new Map(existing.codeLists.map((list) => [list.listId, list])) : new Map();
     return { ...baseline,
       ...(existing.hiddenElementIds ? { hiddenElementIds: existing.hiddenElementIds } : {}),
-      customElements: Array.isArray(existing.customElements) ? existing.customElements : baseline.customElements,
+      ...(Array.isArray(existing.customElements) || baseline.customElements ?
+        { customElements: Array.isArray(existing.customElements) ? existing.customElements : baseline.customElements } : {}),
       elements: baseline.elements.map((element) => {
         const prior = existingElements.get(element.elementId) as CatalogDraftElement & { agencyRequired?: boolean } | undefined;
         if (!prior) return element;
@@ -658,14 +662,15 @@ export class CatalogAuthoringService {
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))`, [sourceReleaseId]);
     for (const [index, candidate] of (Array.isArray(custom) ? custom : []).entries()) {
       const item = candidate as CatalogDraftCustomTextElement;
-      findings.push(...customTextDefinitionFindings(item).map((message) => `customElements[${index}]: ${message}`));
-      if (!item || typeof item !== "object") continue;
+      const itemFindings = customTextDefinitionFindings(item);
+      findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
+      if (itemFindings.length) continue;
       const key = `${item.namespace}.${item.slug}`;
       if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
       customIds.add(item.id); customKeys.add(key);
       const old = inherited.find((row) => row.id === item.id);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
-        old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
+        old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
         old.definition.usage !== item.usage || old.definition.identifying !== item.identifying))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
     }

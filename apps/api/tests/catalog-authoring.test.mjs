@@ -20,12 +20,42 @@ const definition = { schemaVersion: 1, sourceReleaseId: "release-1", elements: [
 const session = { user: { id: "owner-1" }, organization: { id: "org-1" } };
 
 function serviceWith(manager, sessions = { requireCapability: async () => session }) {
-  return new CatalogAuthoringService({ transaction: async (_level, work) => work(manager), manager,
-    query: (...parameters) => manager.query(...parameters) }, sessions);
+  const wrapped = { ...manager, query: (sql, ...parameters) =>
+    sql.includes("from forms.custom_element_definition ced")
+      ? [] : manager.query(sql, ...parameters) };
+  return new CatalogAuthoringService({ transaction: async (_level, work) => work(wrapped), manager: wrapped,
+    query: (...parameters) => wrapped.query(...parameters) }, sessions);
 }
 
 test("catalog hashes are stable across object key ordering", () => {
   assert.equal(catalogDefinitionSha256({ b: 2, a: 1 }), catalogDefinitionSha256({ a: 1, b: 2 }));
+});
+
+test("custom text validation rejects duplicate identity and incompatible published reuse", async () => {
+  const custom = { id: "da77b0fc-a701-41b0-a387-18b07662ed71", namespace: "org.example.ems",
+    slug: "LocalNote", title: "Local note", definition: "A locally requested note.", datatype: "string",
+    recurrence: "single", usage: "Optional", constraints: { maxLength: 100 }, identifying: false };
+  let inherited = [];
+  let collisions = [];
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
+    if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
+    if (sql.includes("from catalog.element_identity")) return collisions;
+    throw new Error(`unexpected query: ${sql}`);
+  } };
+  const service = new CatalogAuthoringService({ manager, query: (...args) => manager.query(...args) },
+    { requireCapability: async () => session });
+  const candidate = { ...definition, customElements: [custom] };
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [custom, { ...custom, id: "5b5cde30-2057-4e6d-919e-e2cbf712d72b" }] })).findings.join(" "), /Duplicate custom identity/);
+  collisions = [{ id: custom.id, namespace: custom.namespace, canonical_key: `${custom.namespace}.${custom.slug}` }];
+  assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /already published/);
+  inherited = [{ id: custom.id, namespace: custom.namespace, slug: custom.slug, definition: custom }];
+  assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, identifying: true }] })).findings.join(" "), /cannot change its meaning/);
 });
 
 test("catalog version inspection only loads a version visible to the organization", async () => {
@@ -312,6 +342,7 @@ test("inline enumerations are exposed as element-selectable editable code lists"
       { code: "4003001", codeSystem: "", label: "Combitube", sourceLabel: "Combitube", category: null, enabled: true }
     ] };
   const manager = { query: async (sql) => {
+    if (sql.includes("from forms.custom_element_definition ced")) return [];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
     if (sql.includes("select 'inline:'")) return [inline];

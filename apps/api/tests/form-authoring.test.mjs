@@ -197,7 +197,7 @@ test("catalog search returns the full searchable clinical catalog and excludes d
   const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
   assert.equal(page.items.length, 41);
   assert.equal(page.nextOffset, null);
-  assert.deepEqual(calls[1].parameters, [catalogId, "patient"]);
+  assert.deepEqual(calls[1].parameters, [catalogId, "patient", session.organization.id]);
   assert.match(calls[1].sql, /element_id like 'e%\.%'/);
 });
 

@@ -11,8 +11,8 @@ export function customTextDefinitionFindings(value: unknown): string[] {
   if (typeof item.id !== "string" || !uuid.test(item.id)) findings.push("Custom identity must be a version-4 UUID");
   if (typeof item.namespace !== "string" || !namespace.test(item.namespace)) findings.push("Custom namespace must be namespaced and distinct from NEMSIS");
   if (typeof item.slug !== "string" || !slug.test(item.slug)) findings.push("Custom slug is invalid");
-  if (item.title?.trim().length === 0 || typeof item.title !== "string" || item.title.length > 100) findings.push("Custom title must contain 1–100 characters");
-  if (item.definition?.trim().length === 0 || typeof item.definition !== "string" || item.definition.length > 255) findings.push("Custom definition must contain 1–255 characters");
+  if (typeof item.title !== "string" || !item.title.trim() || item.title.length > 100) findings.push("Custom title must contain 1–100 characters");
+  if (typeof item.definition !== "string" || !item.definition.trim() || item.definition.length > 255) findings.push("Custom definition must contain 1–255 characters");
   if (item.datatype !== "string" || item.recurrence !== "single") findings.push("This catalog supports standalone single-value text definitions");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");

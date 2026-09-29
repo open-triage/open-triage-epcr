@@ -318,8 +318,22 @@ export class FormAuthoringService {
     const oldById = new Map(rows.map((row) => [row.element_id, row]));
     const newById = new Map(targets.map((row) => [row.element_id, row]));
     const diagnostics: FormCloneDiagnostic[] = [];
+    const customIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+      field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+    const availableCustom = customIds.length ? await manager.query<Array<{ id: string }>>(`
+      select ced.id from forms.custom_element_definition ced join catalog.release cr on cr.id=$1
+      where ced.id=any($2::uuid[]) and ced.retired_at is null
+        and (ced.definition->>'catalogReleaseId' is null or
+          ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb))))
+    `, [targetReleaseId, customIds]) : [];
+    const availableCustomIds = new Set(availableCustom.map(({ id }) => id));
     const sections = definition.sections.map((section, sectionIndex) => ({ ...section, fields: section.fields.filter((field, fieldIndex) => {
-      if (field.source.kind !== "nemsis") return true;
+      if (field.source.kind === "custom") {
+        if (availableCustomIds.has(field.source.elementDefinitionId)) return true;
+        diagnostics.push({ code: "missing-reference", path: `sections[${sectionIndex}].fields[${fieldIndex}].source.elementDefinitionId`,
+          message: `Custom element ${field.source.elementDefinitionId} is unavailable in the selected catalog` });
+        return false;
+      }
       if (!/^e[^.]+\./.test(field.source.elementId)) return false;
       const path = `sections[${sectionIndex}].fields[${fieldIndex}].source.elementId`;
       const before = oldById.get(field.source.elementId);

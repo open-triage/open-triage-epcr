@@ -1391,7 +1391,8 @@ export class DraftReportService {
         where ff.id = any($1::uuid[]) and ff.form_version_id = $2
       `, [formFieldIds, report.form_version_id]) : [];
     const fieldsById = new Map(fields.map((metadata) => [metadata.form_field_id!, metadata]));
-    const custom = await manager.query<ElementMetadata[]>(`
+    const customElementIds = elementIds.filter((id) => id.split(".").length > 2);
+    const custom = customElementIds.length ? await manager.query<ElementMetadata[]>(`
       select ced.namespace || '.' || ced.slug as element_id,ff.id as form_field_id,
              ced.id as element_identity_id,ced.base_datatype,null::integer as max_occurs,
              ff.analytical_repeatable,ced.identifying,
@@ -1401,7 +1402,7 @@ export class DraftReportService {
              ced.definition->'constraints' as text_constraints
       from forms.form_field ff join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
       where ff.form_version_id=$1 and ced.namespace || '.' || ced.slug=any($2::text[])
-    `, [report.form_version_id, elementIds]);
+    `, [report.form_version_id, customElementIds]) : [];
     const customByElement = new Map(custom.map((metadata) => [metadata.element_id!, metadata]));
     const result = new Map<string, ElementMetadata>();
     for (const occurrence of occurrences) {

@@ -1,7 +1,7 @@
 import { platformRequestError } from "./platform-errors";
 import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
-import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
+import { getNemsisDataElement, getNemsisGroup } from "./nemsis-data-model";
 import { DEMO_GROUP_CORRELATION_PREFIX, DEMO_PROVENANCE_VALUE, hasDemoProvenance } from "./demo-provenance";
 import {
   apiRequestUrl,
@@ -151,7 +151,7 @@ function draftValue(elementId: string, value: EncounterValue): DraftValue {
     ? { kind: "null", absenceCode: value.notValue.code, ...(value.notValue.display ? { display: value.notValue.display } : {}), ...metadata }
     : { kind: "absent", ...metadata };
   if (value.kind === "absent") return { kind: "absent", ...metadata };
-  const base = requireNemsisDataElement(elementId).datatype.base;
+  const base = getNemsisDataElement(elementId)?.datatype.base ?? "string";
   if (base === "integer") {
     const scalar = typeof value.value === "boolean" ? Number(value.value) : value.value;
     const numeric = Number(scalar);
