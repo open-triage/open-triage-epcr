@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ConflictException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
 import { FormAuthoringService, formCatalogAdoptionChoices } from "../dist/admin/form-authoring.service.js";
+import { materializeLegacyChoicePolicies } from "../dist/forms/field-choice-policy.js";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const catalogId = "20000000-0000-4000-8000-000000000001";
@@ -54,6 +55,23 @@ test("catalog adoption exposes new shared and custom choices without changing in
   });
   assert.deepEqual(sourceForm.sections[0].fields[0].choicePolicy, [b, a]);
   assert.deepEqual(sourceForm.sections[0].fields[1].choicePolicy, [a]);
+});
+
+test("legacy custom coded fields pin old choices before a catalog adds codes", () => {
+  const original = { schemaVersion: 1, sections: [{ key: "care", fields: [
+    { key: "custom", source: { kind: "custom", elementDefinitionId: "coded-id" }, allowedAbsenceStates: ["NV1"] }
+  ] }] };
+  const oldCustom = { id: "coded-id", datatype: "coded", codeSystem: "local",
+    choices: [{ code: "X" }], permittedNotValues: ["NV1"] };
+  const nextCustom = { ...oldCustom, choices: [{ code: "X" }, { code: "Y" }], permittedNotValues: ["NV1", "NV2"] };
+  const successor = materializeLegacyChoicePolicies(original, {}, { "coded-id": oldCustom });
+  assert.deepEqual(successor.sections[0].fields[0].choicePolicy, [
+    { kind: "code", code: "X", codeSystem: "local" }, { kind: "not-value", code: "NV1" }
+  ]);
+  assert.deepEqual(formCatalogAdoptionChoices(successor, {}, {},
+    new Map([["coded-id", oldCustom]]), new Map([["coded-id", nextCustom]])).custom,
+  [{ kind: "code", code: "Y", codeSystem: "local" }, { kind: "not-value", code: "NV2" }]);
+  assert.equal(original.sections[0].fields[0].choicePolicy, undefined);
 });
 
 test("cloning to a newer catalog keeps field order and disables new codes while retaining the source version", async () => {

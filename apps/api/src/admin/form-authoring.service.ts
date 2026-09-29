@@ -131,8 +131,13 @@ export class FormAuthoringService {
       const sourceElementIds = [...new Set(sourceDefinition.sections.flatMap((section) => section.fields.flatMap((field) =>
         field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
       const sourceCatalog = await catalogFieldsConfiguration(manager, source[0].catalog_release_id, sourceElementIds);
+      const hasCustom = sourceDefinition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"));
+      const sourceCustomSnapshot = hasCustom ? await releaseCustomDefinitions(manager, source[0].catalog_release_id) : null;
+      const sourceCustomPolicies = sourceCustomSnapshot === null ? await customCodedPolicies(manager, sourceDefinition)
+        : Object.fromEntries(sourceCustomSnapshot.filter((item): item is CatalogDraftCustomCodedElement =>
+          !item.retired && item.datatype === "coded").map((item) => [item.id, item]));
       const cloned = await this.compatibleClone(manager, source[0].catalog_release_id, catalogReleaseId,
-        materializeLegacyChoicePolicies(sourceDefinition, sourceCatalog));
+        materializeLegacyChoicePolicies(sourceDefinition, sourceCatalog, sourceCustomPolicies));
       const digest = canonicalDefinitionSha256(cloned.definition);
       const inserted = mutationRows<VersionRow>(await manager.query(`
         insert into forms.form_version
@@ -213,12 +218,12 @@ export class FormAuthoringService {
       const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds);
       const customSnapshot = body.definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
         ? await releaseCustomDefinitions(manager, draft.catalog_release_id) : null;
-      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog,
-        customSnapshot === null ? await customCodedPolicies(manager, body.definition)
-          : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
-            .map((item) => [item.id, item])));
+      const customPolicies = customSnapshot === null ? await customCodedPolicies(manager, body.definition)
+        : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
+          .map((item) => [item.id, item]));
+      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog, customPolicies);
       if (choiceFindings.length) throw new UnprocessableEntityException({ message: "Form validation failed", findings: choiceFindings });
-      const definition = materializeLegacyChoicePolicies(body.definition, choiceCatalog);
+      const definition = materializeLegacyChoicePolicies(body.definition, choiceCatalog, customPolicies);
       const digest = canonicalDefinitionSha256(definition);
       const updated = await manager.query<VersionRow[]>(`
         with updated as (

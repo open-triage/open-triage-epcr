@@ -78,10 +78,20 @@ export function effectiveCatalogFields(definition: FormDraftDefinition, catalogF
 }
 
 /** Snapshot the effective legacy catalog selection when a successor is created. */
-export function materializeLegacyChoicePolicies(definition: FormDraftDefinition, catalogFields: CatalogFields): FormDraftDefinition {
+export function materializeLegacyChoicePolicies(definition: FormDraftDefinition, catalogFields: CatalogFields,
+  customFields: Record<string, CatalogDraftCustomCodedElement> = {}): FormDraftDefinition {
   return { ...definition, sections: definition.sections.map((section) => ({ ...section,
     fields: section.fields.map((field) => {
-      if (field.source.kind !== "nemsis" || field.choicePolicy !== undefined) return field;
+      if (field.choicePolicy !== undefined) return field;
+      if (field.source.kind === "custom") {
+        const custom = customFields[field.source.elementDefinitionId];
+        if (!custom) return field;
+        return { ...field, choicePolicy: [
+          ...custom.choices.map(({ code }) => ({ kind: "code" as const, code, codeSystem: custom.codeSystem })),
+          ...custom.permittedNotValues.filter((code) => field.allowedAbsenceStates?.includes(code))
+            .map((code) => ({ kind: "not-value" as const, code })),
+        ] };
+      }
       const catalog = catalogFields[field.source.elementId];
       if (!catalog?.codeChoices?.length && !catalog?.exceptionalChoices?.some((choice) => choice.key.startsWith("not-value:"))) return field;
       return { ...field, choicePolicy: [
