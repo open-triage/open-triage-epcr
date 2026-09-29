@@ -11,6 +11,8 @@ export function customCodedDefinitionFindings(item: CatalogDraftCustomCodedEleme
   if (item.datatype !== "coded" || item.recurrence !== "single") findings.push("Custom coded definitions must be single-value coded elements");
   if (typeof item.codeSystem !== "string" || !/^[A-Za-z][A-Za-z0-9+.-]*:\S+$/.test(item.codeSystem) || item.codeSystem.length > 255)
     findings.push("Custom code system must be a URI of at most 255 characters");
+  if (typeof item.codeSystem === "string" && /^urn:nemsis(?::|$)/i.test(item.codeSystem))
+    findings.push("A custom code system cannot claim the NEMSIS identity");
   if (!Array.isArray(item.choices) || !item.choices.length) findings.push("Custom coded definitions need at least one choice");
   const codes = new Set<string>();
   for (const [index, choice] of (Array.isArray(item.choices) ? item.choices : []).entries()) {
@@ -22,6 +24,10 @@ export function customCodedDefinitionFindings(item: CatalogDraftCustomCodedEleme
       findings.push(`choice ${index} needs a label of at most 255 characters`);
     if (choice?.nemsisCode !== undefined && (typeof choice.nemsisCode !== "string" || !choice.nemsisCode.trim()))
       findings.push(`choice ${index} has an invalid NEMSIS code mapping`);
+    if (choice?.localization !== undefined && (choice.localization.schemaVersion !== 1 ||
+      typeof choice.localization.sv?.label !== "string" || !choice.localization.sv.label.trim() ||
+      choice.localization.sv.label.length > 255 || choice.localization.sv.reviewedSource?.label !== choice.label))
+      findings.push(`choice ${index} translation must review the current English label`);
   }
   if (item.nemsisElement !== undefined && (typeof item.nemsisElement !== "string" || !/^e[A-Za-z0-9]+\.\d{2}$/.test(item.nemsisElement)))
     findings.push("NEMSIS element mapping must be an EMS data element identifier");

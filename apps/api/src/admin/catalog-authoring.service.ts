@@ -657,6 +657,10 @@ export class CatalogAuthoringService {
     if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
     const customIds = new Set<string>();
     const customKeys = new Set<string>();
+    const reservedSystems = new Set((await manager.query<Array<{ code_system: string }>>(`
+      select distinct code_system from catalog.element_option where release_id=$1 and code_system <> ''
+      union select distinct code_system from catalog.value_set_option where release_id=$1 and code_system <> ''
+    `, [sourceReleaseId])).map((row) => row.code_system));
     const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomElement }>>(`
       select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
@@ -667,6 +671,8 @@ export class CatalogAuthoringService {
       findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
       if (itemFindings.length) continue;
       if (item.datatype === "coded") {
+        if (reservedSystems.has(item.codeSystem))
+          findings.push(`Custom code system ${item.codeSystem} is reserved by the pinned standard catalog`);
         if (item.nemsisElement && !sourceById.has(item.nemsisElement))
           findings.push(`Custom element ${item.namespace}.${item.slug} maps to an unknown NEMSIS element`);
         if (item.choices.some((choice) => choice.nemsisCode) && !item.nemsisElement)
@@ -690,12 +696,15 @@ export class CatalogAuthoringService {
       if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
       customIds.add(item.id); customKeys.add(key);
       const old = inherited.find((row) => row.id === item.id);
+      const oldConstraints = old?.definition.datatype !== "coded" ? old?.definition.constraints : undefined;
+      const itemConstraints = item.datatype !== "coded" ? item.constraints : undefined;
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
         old.definition.usage !== item.usage || old.definition.identifying !== item.identifying ||
         (item.datatype !== "coded" && old.definition.datatype !== "coded" &&
           ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
-            old.definition.constraints?.[key as keyof typeof item.constraints] !== item.constraints?.[key as keyof typeof item.constraints])) ||
+            oldConstraints?.[key as keyof NonNullable<typeof oldConstraints>] !==
+              itemConstraints?.[key as keyof NonNullable<typeof itemConstraints>])) ||
         (item.datatype === "coded" && old.definition.datatype === "coded" &&
           (old.definition.codeSystem !== item.codeSystem || catalogDefinitionSha256(old.definition.choices) !== catalogDefinitionSha256(item.choices)))))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);

@@ -26,7 +26,7 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
     <label>English title <input required value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} /></label>
     <label>English definition <textarea required value={definition} maxLength={255} onChange={(event) => setDefinition(event.target.value)} /></label>
     <label>Custom code system URI <input required value={codeSystem} onChange={(event) => setCodeSystem(event.target.value)} placeholder="https://example.org/ems/codes" /></label>
-    <label>Choices, one per line (code | English label | optional NEMSIS code)
+    <label>Choices, one per line (code | English label | optional NEMSIS code | optional Swedish label)
       <textarea required rows={5} value={choices} onChange={(event) => setChoices(event.target.value)} /></label>
     <label>Optional NEMSIS element mapping <input value={nemsisElement} onChange={(event) => setNemsisElement(event.target.value)} placeholder="eVitals.26" /></label>
     <label>Permitted NOT codes (comma separated) <input value={notValues} onChange={(event) => setNotValues(event.target.value)} placeholder="7701001, 7701003" /></label>
@@ -40,16 +40,20 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
     <button type="button" onClick={() => {
       const parsed = choices.trim().split(/\r?\n/).filter(Boolean).map((line) => line.split("|").map((part) => part.trim()));
       if (!namespace.trim() || !slug.trim() || !title.trim() || !definition.trim() || !codeSystem.trim() || !identifying ||
-        !parsed.length || parsed.some((parts) => !parts[0] || !parts[1] || parts.length > 3)) {
-        setError("Complete the coded definition and enter each choice as code | label | optional NEMSIS code."); return;
+        !parsed.length || parsed.some((parts) => !parts[0] || !parts[1] || parts.length > 4)) {
+        setError("Complete the coded definition and enter each choice as code | label | optional NEMSIS code | optional Swedish label."); return;
       }
       const values = (text: string) => text.split(",").map((item) => item.trim()).filter(Boolean);
+      const permittedNotValues = values(notValues);
+      const permittedPertinentNegatives = values(negatives);
       onAdd({ id: crypto.randomUUID(), namespace: namespace.trim(), slug: slug.trim(), title: title.trim(),
         definition: definition.trim(), datatype: "coded", recurrence: "single", usage,
         identifying: identifying === "yes", codeSystem: codeSystem.trim(),
-        choices: parsed.map(([code, label, nemsisCode]) => ({ code: code!, label: label!, ...(nemsisCode ? { nemsisCode } : {}) })),
+        choices: parsed.map(([code, label, nemsisCode, swedishLabel]) => ({ code: code!, label: label!,
+          ...(nemsisCode ? { nemsisCode } : {}), ...(swedishLabel ? { localization: { schemaVersion: 1 as const,
+            sv: { label: swedishLabel, reviewedSource: { label: label! } } } } : {}) })),
         ...(nemsisElement.trim() ? { nemsisElement: nemsisElement.trim() } : {}),
-        permittedNotValues: values(notValues), permittedPertinentNegatives: values(negatives) });
+        permittedNotValues, permittedPertinentNegatives });
       setError(""); setSlug(""); setTitle(""); setDefinition(""); setChoices("");
     }}>Add coded element</button>
     {error && <p role="alert">{error}</p>}

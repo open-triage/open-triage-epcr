@@ -21,7 +21,7 @@ export function customTextDefinitionFindings(value: unknown): string[] {
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
   if (item.datatype === "coded") return [...findings, ...customCodedDefinitionFindings(item as CatalogDraftCustomCodedElement)];
-  const constraints = item.datatype !== undefined && item.datatype !== "coded" ? item.constraints : undefined;
+  const constraints = "constraints" in item ? item.constraints : undefined;
   if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) findings.push("Custom constraints are required");
   else {
     const allowed = item.datatype === "string" || item.datatype === "other" ? ["minLength", "maxLength", "pattern"]
