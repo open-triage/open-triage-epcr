@@ -37,10 +37,12 @@ test("custom text validation rejects duplicate identity and incompatible publish
     recurrence: "single", usage: "Optional", constraints: { maxLength: 100 }, identifying: false };
   let inherited = [];
   let collisions = [];
+  let pinned = null;
   const manager = { query: async (sql) => {
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
     if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
+    if (sql.includes("customElementDefinitions")) return [{ definitions: pinned }];
     if (sql.includes("from catalog.element_identity")) return collisions;
     throw new Error(`unexpected query: ${sql}`);
   } };
@@ -53,7 +55,15 @@ test("custom text validation rejects duplicate identity and incompatible publish
   collisions = [{ id: custom.id, namespace: custom.namespace, canonical_key: `${custom.namespace}.${custom.slug}` }];
   assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /already published/);
   inherited = [{ id: custom.id, namespace: custom.namespace, slug: custom.slug, definition: custom }];
+  pinned = [custom];
   assert.equal((await service.validateDefinition(manager, "release-1", candidate)).valid, true);
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, title: "Revised local note", definition: "A clearer clinical description." }] })).valid, true);
+  assert.equal((await service.validateDefinition(manager, "release-1", { ...candidate,
+    customElements: [{ ...custom, retired: true }] })).valid, true);
+  pinned = [{ ...custom, retired: true }];
+  assert.match((await service.validateDefinition(manager, "release-1", candidate)).findings.join(" "), /cannot change its meaning/);
+  pinned = [custom];
   assert.match((await service.validateDefinition(manager, "release-1", { ...candidate,
     customElements: [{ ...custom, identifying: true }] })).findings.join(" "), /cannot change its meaning/);
 });

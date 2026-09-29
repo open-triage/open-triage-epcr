@@ -1,6 +1,7 @@
 import { compiledValidationBundleSha256, isNemsisDemographicElementId, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 import { effectiveCatalogFields } from "./field-choice-policy.js";
+import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
 
 type FieldRow = {
   element_id: string;
@@ -48,6 +49,8 @@ export async function clinicalFormConfiguration(
     section.fields.flatMap((field) => field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
   const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<ClinicalFormConfiguration["customFields"]>[string] }>>(`
     select id,definition from forms.custom_element_definition where id=any($1::uuid[])`, [customIds]) : [];
+  const customSnapshot = customIds.length ? await releaseCustomDefinitions(manager, catalogReleaseId) : null;
+  const snapshotById = new Map((customSnapshot ?? []).map((item) => [item.id, item]));
 
   const validation = validationVersionId ? await manager.query<Array<{ compiled_bundle: CompiledValidationBundle; compiled_sha256: string }>>(`
     select compiled_bundle,compiled_sha256 from validation.version
@@ -64,7 +67,7 @@ export async function clinicalFormConfiguration(
       && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
   return {
     definition: versions[0].canonical_definition,
-    customFields: Object.fromEntries(custom.map((row) => [row.id, row.definition])),
+    customFields: Object.fromEntries(custom.map((row) => [row.id, snapshotById.get(row.id) ?? row.definition])),
     catalogFields: effectiveCatalogFields(versions[0].canonical_definition,
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds, true)),

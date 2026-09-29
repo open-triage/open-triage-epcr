@@ -2,7 +2,7 @@
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomTextElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomTextElement } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
@@ -48,8 +48,9 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [dirty, setDirty] = useState(false);
   const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
     swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
-    identifying: "", datatype: "string" as CatalogDraftCustomTextElement["datatype"],
+    identifying: "", datatype: "string" as CatalogDraftCustomElement["datatype"],
     minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
   const showError = useCallback((reason: unknown) => { setError(adminError(reason, "admin.catalogOperationFailed")); }, [adminError]);
   useEffect(() => {
@@ -114,6 +115,23 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   }
   function addCustomText() {
     if (!draft || !canWrite || !("revision" in draft)) return;
+    if (editingCustomId) {
+      const existing = draft.definition.customElements?.find((item) => item.id === editingCustomId);
+      if (!existing || existing.retired || !customText.title.trim() || !customText.definition.trim()) {
+        setError(t("admin.customMissingDetails")); return;
+      }
+      setDraft({ ...draft, definition: { ...draft.definition,
+        customElements: draft.definition.customElements?.map((item) => item.id === editingCustomId ? {
+          ...item, title: customText.title.trim(), definition: customText.definition.trim(),
+          ...(customText.swedishTitle.trim() ? { localization: { schemaVersion: 1 as const, sv: {
+            label: customText.swedishTitle.trim(), description: customText.swedishDefinition.trim(),
+            reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {})
+        } : item) } });
+      setDirty(true); setError(""); setStatus(t("admin.customRevisionSaved")); setEditingCustomId(null);
+      setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
+        usage: "Optional", identifying: "", datatype: "string", minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+      return;
+    }
     const namespace = customText.namespace.trim(); const slug = customText.slug.trim();
     if (!namespace || !slug || !customText.title.trim() || !customText.definition.trim() || !customText.identifying) {
       setError(t("admin.customMissingDetails")); return;
@@ -122,7 +140,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       setError(t("admin.customDuplicateIdentity")); return;
     }
     const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
-      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype, recurrence: "single",
+      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype as CatalogDraftCustomTextElement["datatype"], recurrence: "single",
       usage: customText.usage, identifying: customText.identifying === "yes",
       constraints: customText.datatype === "string" || customText.datatype === "other" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
         ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
@@ -174,21 +192,43 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <p>{item.definition}</p>
         {item.datatype === "coded" && <p>{item.codeSystem}: {item.choices.map((choice) => `${choice.code} — ${choice.label}`).join(", ")}
           {item.nemsisElement ? `; NEMSIS ${item.nemsisElement}` : ""}</p>}
+        {item.retired && <span>{t("admin.customRetired")}</span>}
+        {canEdit && !item.retired && <>
+          <button type="button" onClick={() => {
+            setEditingCustomId(item.id);
+            setCustomText({ namespace: item.namespace, slug: item.slug, title: item.title,
+              definition: item.definition, swedishTitle: item.localization?.sv?.label ?? "",
+              swedishDefinition: item.localization?.sv?.description ?? "", usage: item.usage,
+              identifying: item.identifying ? "yes" : "no", datatype: item.datatype,
+              minLength: item.datatype === "coded" ? "" : String(item.constraints.minLength ?? ""),
+              maxLength: item.datatype === "coded" ? "" : String(item.constraints.maxLength ?? ""),
+              pattern: item.datatype === "coded" ? "" : item.constraints.pattern ?? "",
+              minimum: item.datatype === "coded" ? "" : String(item.constraints.minimum ?? ""),
+              maximum: item.datatype === "coded" ? "" : String(item.constraints.maximum ?? "") });
+          }}>{t("admin.customRevise")}</button>
+          <button type="button" onClick={() => {
+            setDraft({ ...draft, definition: { ...draft.definition, customElements: draft.definition.customElements?.map((entry) =>
+              entry.id === item.id ? { ...entry, retired: true } : entry) } });
+            setDirty(true); setStatus(t("admin.customRetired"));
+          }}>{t("admin.customRetire")}</button>
+        </>}
       </li>)}</ul>
       {canEdit && <fieldset disabled={busy}>
-        <legend>{t("admin.createStandaloneText")}</legend>
-        <label>{language === "sv" ? "Datatyp" : "Data type"} <select value={customText.datatype} onChange={(event) => setCustomText({ ...customText,
-          datatype: event.target.value as CatalogDraftCustomTextElement["datatype"] })}>
+        <legend>{editingCustomId ? t("admin.customRevise") : t("admin.createStandaloneText")}</legend>
+        {editingCustomId && <p>{t("admin.customRevisionHint")}</p>}
+        <label>{language === "sv" ? "Datatyp" : "Data type"} <select disabled={Boolean(editingCustomId)} value={customText.datatype} onChange={(event) => setCustomText({ ...customText,
+          datatype: event.target.value as CatalogDraftCustomElement["datatype"] })}>
           <option value="string">{language === "sv" ? "Text" : "Text"}</option>
           <option value="number">{language === "sv" ? "Tal" : "Number"}</option>
           <option value="dateTime">{language === "sv" ? "Datum och tid" : "Date and time"}</option>
           <option value="boolean">{language === "sv" ? "Ja eller nej" : "Yes or no"}</option>
           <option value="binary">{language === "sv" ? "Binär (fil, högst 75 000 byte)" : "Binary (file, at most 75,000 bytes)"}</option>
           <option value="other">{language === "sv" ? "Annat (text)" : "Other (text)"}</option>
+          <option value="coded" disabled>{language === "sv" ? "Kodad" : "Coded"}</option>
         </select></label>
-        <label>{t("admin.customNamespace")} <input required value={customText.namespace} placeholder="org.example.ems"
+        <label>{t("admin.customNamespace")} <input required disabled={Boolean(editingCustomId)} value={customText.namespace} placeholder="org.example.ems"
           onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
-        <label>{t("admin.customIdentifier")} <input required value={customText.slug} placeholder="LocalNote"
+        <label>{t("admin.customIdentifier")} <input required disabled={Boolean(editingCustomId)} value={customText.slug} placeholder="LocalNote"
           onChange={(event) => setCustomText({ ...customText, slug: event.target.value })} /></label>
         <label>{t("admin.customEnglishTitle")} <input required maxLength={100} value={customText.title}
           onChange={(event) => setCustomText({ ...customText, title: event.target.value })} /></label>
@@ -198,25 +238,25 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           onChange={(event) => setCustomText({ ...customText, swedishTitle: event.target.value })} /></label>
         <label>{t("admin.customSwedishDefinition")} <textarea maxLength={255} value={customText.swedishDefinition}
           onChange={(event) => setCustomText({ ...customText, swedishDefinition: event.target.value })} /></label>
-        <label>{t("admin.customUsage")} <select value={customText.usage} onChange={(event) => setCustomText({ ...customText,
+        <label>{t("admin.customUsage")} <select disabled={Boolean(editingCustomId)} value={customText.usage} onChange={(event) => setCustomText({ ...customText,
           usage: event.target.value as CatalogDraftCustomTextElement["usage"] })}>
           {["Optional", "Recommended", "Required", "Mandatory"].map((usage) => <option key={usage}>{usage}</option>)}
         </select></label>
-        <label>{t("admin.customIdentifying")} <select required value={customText.identifying}
+        <label>{t("admin.customIdentifying")} <select required disabled={Boolean(editingCustomId)} value={customText.identifying}
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
           <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
         </select></label>
-        {(customText.datatype === "string" || customText.datatype === "other") && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" max="100000" value={customText.minLength}
+        {(customText.datatype === "string" || customText.datatype === "other") && <><label>{t("admin.customMinimumLength")} <input type="number" min="0" max="100000" disabled={Boolean(editingCustomId)} value={customText.minLength}
           onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
-        <label>{t("admin.customMaximumLength")} <input type="number" min="0" value={customText.maxLength}
+        <label>{t("admin.customMaximumLength")} <input type="number" min="0" disabled={Boolean(editingCustomId)} value={customText.maxLength}
           onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>
-        <label>{t("admin.customPattern")} <input value={customText.pattern}
+        <label>{t("admin.customPattern")} <input disabled={Boolean(editingCustomId)} value={customText.pattern}
           onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label></>}
-        {customText.datatype === "number" && <><label>{language === "sv" ? "Minsta värde" : "Minimum"} <input type="number" value={customText.minimum}
+        {customText.datatype === "number" && <><label>{language === "sv" ? "Minsta värde" : "Minimum"} <input type="number" disabled={Boolean(editingCustomId)} value={customText.minimum}
           onChange={(event) => setCustomText({ ...customText, minimum: event.target.value })} /></label>
-          <label>{language === "sv" ? "Högsta värde" : "Maximum"} <input type="number" value={customText.maximum}
+          <label>{language === "sv" ? "Högsta värde" : "Maximum"} <input type="number" disabled={Boolean(editingCustomId)} value={customText.maximum}
           onChange={(event) => setCustomText({ ...customText, maximum: event.target.value })} /></label></>}
-        <button type="button" onClick={addCustomText}>{t("admin.customAddText")}</button>
+        <button type="button" onClick={addCustomText}>{t(editingCustomId ? "admin.customSaveRevision" : "admin.customAddText")}</button>
       </fieldset>}
       {canEdit && <CustomCodedAuthoring disabled={busy} onAdd={(element) => {
         if (draft.definition.customElements?.some((item) => item.namespace === element.namespace && item.slug === element.slug)) {

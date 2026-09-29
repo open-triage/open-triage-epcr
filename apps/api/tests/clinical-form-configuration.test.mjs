@@ -26,6 +26,23 @@ test("a newly published form receives agency custom codes from its pinned catalo
   ]);
 });
 
+test("custom wording is resolved from the report's pinned catalog release", async () => {
+  const id = "da77b0fc-a701-41b0-a387-18b07662ed71";
+  const original = { id, title: "Original note", definition: "Original meaning", datatype: "string" };
+  const revised = { ...original, title: "Clearer note", definition: "Clearer description" };
+  const manager = { query: async (sql, params) => {
+    if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [
+      { key: "notes", fields: [{ key: "note", source: { kind: "custom", elementDefinitionId: id } }] }
+    ] } }];
+    if (sql.includes("from forms.custom_element_definition")) return [{ id, definition: original }];
+    if (sql.includes("customElementDefinitions")) return [{ definitions: params[0] === "new-release" ? [revised] : [original] }];
+    if (sql.includes("from catalog.group_definition")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  assert.equal((await clinicalFormConfiguration(manager, "old-form", "old-release")).customFields[id].title, "Original note");
+  assert.equal((await clinicalFormConfiguration(manager, "new-form", "new-release")).customFields[id].title, "Clearer note");
+});
+
 test("report configuration verifies the pinned artifact and distributes only its enabled live subset", async () => {
   const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: "validation-1",
     catalogReleaseId: "catalog-release", rules: [

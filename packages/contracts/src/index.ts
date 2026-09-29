@@ -716,6 +716,8 @@ export interface CatalogDraftCustomTextElement {
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
   constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };
   identifying: boolean | null;
+  /** Retired in this catalog version; historical pinned forms remain readable. */
+  retired?: boolean;
   localization?: CatalogDraftElement["localization"];
 }
 
