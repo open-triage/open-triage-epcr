@@ -95,7 +95,9 @@ function validateStandardValue(
     const notValue = requireRecord(list, value.notValue, `${path}.notValue`);
     if (!element.nillable) diagnostic(list, `${path}.notValue`, `${element.id} does not support Not Values in NEMSIS ${NEMSIS_DATA_MODEL.release}`);
     if (requireString(list, notValue.code, `${path}.notValue.code`)
-      && !element.permittedNotValues.some(({ code }) => code === notValue.code)) {
+      && (!element.permittedNotValues.some(({ code }) => code === notValue.code) ||
+        (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+          choice.kind === "not-value" && choice.code === notValue.code)))) {
       diagnostic(list, `${path}.notValue.code`, `code ${notValue.code} is not permitted for ${element.id}`);
     }
   }
@@ -111,7 +113,9 @@ function validateStandardValue(
     if (value.notValue !== undefined) {
       const notValue = requireRecord(list, value.notValue, `${path}.notValue`);
       if (requireString(list, notValue.code, `${path}.notValue.code`)
-        && !element.permittedNotValues.some(({ code }) => code === notValue.code)) {
+        && (!element.permittedNotValues.some(({ code }) => code === notValue.code) ||
+          (configured?.choiceOrder !== undefined && !configured.choiceOrder.some((choice) =>
+            choice.kind === "not-value" && choice.code === notValue.code)))) {
         diagnostic(list, `${path}.notValue.code`, `code ${notValue.code} is not permitted for ${element.id}`);
       }
     }
@@ -131,7 +135,7 @@ function validateStandardValue(
       ? configured.codeChoices.some(({ code, codeSystem }) => code === value.code
         && (codeSystem || "") === (typeof value.system === "string" ? value.system : ""))
       : resolved.permissibleValues.some(({ code }) => code === value.code);
-    if (requireString(list, value.code, `${path}.code`) && resolved.exhaustive && !validCode) {
+    if (requireString(list, value.code, `${path}.code`) && (resolved.exhaustive || configured?.choiceOrder !== undefined) && !validCode) {
       diagnostic(list, `${path}.code`, `code ${value.code} is not in the exhaustive value set for ${element.id}`);
     }
     return;

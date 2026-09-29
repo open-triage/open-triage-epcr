@@ -118,7 +118,7 @@ export function validateStationaryCodedSelection(field: StationaryCodedField, se
   }
   if (selection.kind === "coded") {
     if (!selection.code.trim()) throw new Error(`${field.elementId} requires a code`);
-    if (field.exhaustive && !field.options.some(({ code, system }) => code === selection.code &&
+    if ((field.exhaustive || field.choiceOrder !== undefined) && !field.options.some(({ code, system }) => code === selection.code &&
       (system ?? "") === (selection.system ?? ""))) {
       throw new Error(`${selection.code} is not in the exhaustive value set for ${field.elementId}`);
     }
