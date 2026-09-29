@@ -701,6 +701,22 @@ export interface CatalogDraftDefinition {
   hiddenElementIds?: string[];
   elements: CatalogDraftElement[];
   codeLists: CatalogDraftCodeList[];
+  customElements?: CatalogDraftCustomTextElement[];
+}
+
+/** A standalone, single-value text extension owned by one organization. */
+export interface CatalogDraftCustomTextElement {
+  id: string;
+  namespace: string;
+  slug: string;
+  title: string;
+  definition: string;
+  datatype: "string";
+  recurrence: "single";
+  usage: "Mandatory" | "Required" | "Recommended" | "Optional";
+  constraints: { minLength?: number; maxLength?: number; pattern?: string };
+  identifying: boolean | null;
+  localization?: CatalogDraftElement["localization"];
 }
 
 export interface CatalogDraft {
@@ -960,6 +976,7 @@ export interface FormCatalogElement {
   description: string;
   baseDatatype: string;
   groupPath: string[];
+  customElementDefinitionId?: string;
 }
 
 export interface FormCatalogElementPage {
