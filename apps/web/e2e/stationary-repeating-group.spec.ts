@@ -60,7 +60,7 @@ test("stationary repeating rows retain focus, identity, and narrow-layout access
   await expect(edit).toBeFocused();
 });
 
-test("single-occurrence nested groups are flattened into their parent dialog", async ({ page }) => {
+test("single-occurrence nested groups render directly in their parent dialog", async ({ page }) => {
   await page.route(`**/api/calls/${assignmentId}/open`, (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify(demoOpenAssignment),
@@ -119,7 +119,7 @@ test("optional repeating rows activate child validation only while an occurrence
   await page.getByRole("dialog", { name: "Add Procedure" }).getByRole("button", { name: "Add row" }).click();
   await expect(procedures.locator("tbody tr")).toHaveCount(1);
   await expect(procedures).toHaveClass(/stationary-validation-state error/);
-  await expect(procedures.locator(".stationary-validation-messages")).toContainText("requires at least 1 value");
+  await expect(procedures.locator(".stationary-validation-messages")).toContainText("Record Date/Time Procedure Performed.");
   await procedures.getByRole("button", { name: "Remove Procedure row" }).click();
   await expect(procedures.locator("tbody tr")).toHaveCount(0);
   await expect(procedures).not.toHaveClass(/stationary-validation-state/);
@@ -179,4 +179,32 @@ test("nested repeating rows remain scoped to their originating parent workflow",
   await expect(reopenedNested.locator("tbody tr")).toHaveCount(1);
   await reopened.getByRole("button", { name: "Close dialog" }).click();
   await expect(firstEdit).toBeFocused();
+});
+
+test("mobile vitals retain direct blood pressure entry and cancellation", async ({ page }) => {
+  await page.route(`**/api/calls/${assignmentId}/open`, route => route.fulfill({ json: demoOpenAssignment }));
+  await page.route(`**/api/reports/${demoOpenAssignment.report.id}/active`, route => route.fulfill({ status: 304 }));
+  await page.goto("/");
+  await page.evaluate(() => window.localStorage.clear());
+  await page.reload();
+  await page.getByLabel("Username").fill("demo");
+  await page.getByLabel("Password").fill("opentriagedemo");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("button", { name: "Open call", exact: true }).click();
+  await page.getByRole("button", { name: "Add vital signs" }).click();
+  let dialog = page.getByRole("dialog", { name: "Vital signs", exact: true });
+  await expect(dialog.getByRole("button", { name: /Add .* fields/ })).toHaveCount(0);
+  const systolic = dialog.getByRole("textbox", { name: /Systolic/ });
+  await expect(systolic).toBeVisible();
+  await systolic.fill("123");
+  await systolic.press("Tab");
+  await dialog.getByRole("button", { name: "Add vital set" }).click();
+  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  dialog = page.getByRole("dialog", { name: "Vital signs", exact: true });
+  await expect(dialog.getByRole("textbox", { name: /Systolic/ })).toHaveValue("123");
+  await dialog.getByRole("textbox", { name: /Systolic/ }).fill("150");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Escape");
+  await page.locator(".timeline-event-button").filter({ hasText: "Vital signs" }).first().click();
+  await expect(page.getByRole("dialog").getByRole("textbox", { name: /Systolic/ })).toHaveValue("123");
 });

@@ -55,6 +55,24 @@ function elementValidationFindings(findings: ReadonlyArray<StationarySectionFind
 
 const FormPresentationContext = createContext<{ language: FormLanguage }>({ language: "en" });
 
+function ReadOnlyGroupField({ instance, placement, findings, catalogFields }: {
+  readonly instance: EncounterGroupInstance;
+  readonly placement: StationaryElementPlacement;
+  readonly findings: ReadonlyArray<StationarySectionFinding>;
+  readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+}) {
+  const { language } = useContext(FormPresentationContext);
+  const pinned = catalogFields?.[placement.id];
+  const label = pinned ? resolveCatalogElementText(pinned, placement.id, language, "label")
+    : placement.label ?? requireNemsisDataElement(placement.id).name;
+  const values = instance.elements.find(({ id }) => id === placement.id)?.values ?? [];
+  return <div data-element-id={placement.id}><strong>{label}</strong><p>{values.map((value) =>
+    value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code
+      : resolveMessage(language, "stationary.exceptionalValue")).join(", ") || resolveMessage(language, "stationary.notRecorded")}</p>
+    <StationaryValidationMessages findings={elementValidationFindings(findings, placement.groupId, instance.instanceId, placement.id)} />
+  </div>;
+}
+
 function GroupField({ document, instance, placement, findings = [], initialFocus = false, catalogFields = {}, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly instance: EncounterGroupInstance;
@@ -230,9 +248,9 @@ function RepeatingGroupDialog({ placement, draft, instanceId, isNew, returnFocus
         <button className="stationary-dialog-close" type="button" aria-label={t("stationary.closeDialog")} title={t("stationary.close")} onClick={onCancel}>×</button>
       </div>
       <div className="stationary-group-dialog-fields">
-        {placement.elements.map((element, index) => editable
+        {placement.elements.map((element, index) => editable && element.mode !== "read-only"
           ? <GroupField key={element.id} document={draft} instance={instance} placement={element} findings={validationFindings} initialFocus={index === 0} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDraftChange} />
-          : <div key={element.id}><strong>{element.label ?? requireNemsisDataElement(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : t("stationary.exceptionalValue")).join(", ") || t("stationary.notRecorded")}</p></div>)}
+          : <ReadOnlyGroupField key={element.id} instance={instance} placement={element} findings={validationFindings} catalogFields={clinicalForm?.catalogFields} />)}
         {!placement.elements.length && <p>{t("stationary.noDirectFields")}</p>}
       </div>
       <NestedGroupContents document={draft} placement={placement} parentInstanceId={instance.instanceId} findings={liveFindings} clinicalForm={clinicalForm} onDocumentChange={onDraftChange} />
@@ -253,28 +271,31 @@ function NestedSingleGroup({ document, placement, parentInstanceId, findings, cl
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
-  const catalog = requireNemsisDataElement;
   const { language } = useContext(FormPresentationContext);
   const t = (key: string, parameters: Record<string, string | number> = {}) => resolveMessage(language, key, parameters);
   const label = resolveCatalogGroupText(clinicalForm?.catalogGroups, placement.id, language,
     placement.presentation.label ?? getNemsisGroup(placement.id)?.name ?? stationaryDisplayLabel(placement.id));
-  const instance = document.groups.find(({ id }) => id === placement.id)?.instances.find((candidate) => candidate.parentInstanceId === parentInstanceId);
+  const [emptyInstanceId] = useState(() => crypto.randomUUID());
+  // Supply a detached empty child to the normal controls. Only a committed edit
+  // sends this document to the parent draft; opening or canceling records nothing.
+  // Descendants receive the detached ancestor too, preserving the canonical chain.
+  const prepared = ensureNestedSingleGroupOccurrence(document, placement.id, parentInstanceId, () => emptyInstanceId);
+  if (!prepared.ok) return null;
+  const entryDocument = prepared.document;
+  const instance = entryDocument.groups.find(({ id }) => id === placement.id)!.instances
+    .find((candidate) => candidate.instanceId === prepared.instanceId)!;
   const editable = placement.mode !== "read-only";
-  const validationFindings = groupValidationFindings(findings, placement.id, instance?.instanceId);
-  if (!instance) return <div className="stationary-nested-single stationary-nested-single-empty" aria-label={t("stationary.fields", { label })} data-group-id={placement.id} data-parent-instance-id={parentInstanceId}>
-    {editable && <button type="button" onClick={() => {
-      const result = ensureNestedSingleGroupOccurrence(document, placement.id, parentInstanceId);
-      if (result.ok) onDocumentChange(result.document);
-    }}>{t("stationary.addFields", { label })}</button>}
-    <StationaryValidationMessages findings={validationFindings} />
-  </div>;
+  const validationFindings = groupValidationFindings(findings, placement.id, instance.instanceId);
+  const commit = (next: EncounterDocument) => {
+    if (editable && next !== entryDocument) onDocumentChange(next);
+  };
   return <div className="stationary-nested-single" aria-label={t("stationary.fields", { label })} data-group-id={placement.id} data-group-instance-id={instance.instanceId} data-parent-instance-id={parentInstanceId}>
     <div className="stationary-group-dialog-fields">
-      {placement.elements.map((element) => editable
-        ? <GroupField key={element.id} document={document} instance={instance} placement={element} findings={validationFindings} catalogFields={clinicalForm?.catalogFields} onDocumentChange={onDocumentChange} />
-        : <div key={element.id}><strong>{element.label ?? catalog(element.id).name}</strong><p>{instance.elements.find(({ id }) => id === element.id)?.values.map((value) => value.kind === "scalar" ? String(value.value) : value.kind === "coded" ? value.display ?? value.code : t("stationary.exceptionalValue")).join(", ") || t("stationary.notRecorded")}</p></div>)}
+      {placement.elements.map((element) => editable && element.mode !== "read-only"
+        ? <GroupField key={element.id} document={entryDocument} instance={instance} placement={element} findings={validationFindings} catalogFields={clinicalForm?.catalogFields} onDocumentChange={commit} />
+        : <ReadOnlyGroupField key={element.id} instance={instance} placement={element} findings={validationFindings} catalogFields={clinicalForm?.catalogFields} />)}
     </div>
-    <NestedGroupContents document={document} placement={placement} parentInstanceId={instance.instanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />
+    <NestedGroupContents document={entryDocument} placement={placement} parentInstanceId={instance.instanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={commit} />
     <StationaryValidationMessages findings={validationFindings.filter((finding) => !(finding.target.fieldId ?? finding.target.elementId))} />
   </div>;
 }
@@ -290,8 +311,8 @@ function NestedGroupContents({ document, placement, parentInstanceId, findings, 
   if (!placement.children.length) return null;
   return <div className="stationary-nested-groups">
     {placement.children.map((child) => child.presentation.kind === "table"
-      ? <RepeatingGroupTable key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />
-      : <NestedSingleGroup key={child.id} document={document} placement={child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}
+      ? <RepeatingGroupTable key={child.id} document={document} placement={placement.mode === "read-only" ? { ...child, mode: "read-only" } : child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />
+      : <NestedSingleGroup key={child.id} document={document} placement={placement.mode === "read-only" ? { ...child, mode: "read-only" } : child} parentInstanceId={parentInstanceId} findings={findings} clinicalForm={clinicalForm} onDocumentChange={onDocumentChange} />)}
   </div>;
 }
 
