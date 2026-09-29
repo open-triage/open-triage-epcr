@@ -16,8 +16,11 @@ export function customTextDefinitionFindings(value: unknown): string[] {
     findings.push("Custom identity exceeds the NEMSIS 255-character limit");
   if (typeof item.title !== "string" || item.title.trim().length < 2 || item.title.length > 100) findings.push("Custom title must contain 2–100 characters");
   if (typeof item.definition !== "string" || item.definition.trim().length < 2 || item.definition.length > 255) findings.push("Custom definition must contain 2–255 characters");
-  if (!["string", "number", "dateTime", "boolean", "binary", "other", "coded"].includes(String(item.datatype)) || item.recurrence !== "single")
-    findings.push("This catalog supports standalone single-value NEMSIS custom datatype definitions");
+  if (!["string", "number", "dateTime", "boolean", "binary", "other", "coded"].includes(String(item.datatype)) ||
+      !["single", "multiple"].includes(String(item.recurrence)))
+    findings.push("Choose a supported custom datatype and single or multiple recurrence");
+  if (item.correlatesTo !== undefined && !["eMedications.MedicationGroup", "eExam.AssessmentGroup"].includes(item.correlatesTo))
+    findings.push("Correlation target must be a supported repeated medication or assessment group");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
   if (item.retired !== undefined && typeof item.retired !== "boolean") findings.push("Custom retirement state must be a boolean");

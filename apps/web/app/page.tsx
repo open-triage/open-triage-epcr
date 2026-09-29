@@ -11,6 +11,7 @@ import { QuickActionIcon } from "../components/quick-action-icon";
 import { StationaryRecord } from "../components/stationary-record";
 import { CustomTextFields } from "../components/custom-text-fields";
 import { CustomCodedFields } from "../components/custom-coded-fields";
+import { RepeatedCustomFields } from "../components/repeated-custom-fields";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
 import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
@@ -870,6 +871,9 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
             language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
           {report.clinicalForm.definition.sections.map((section) => <CustomCodedFields key={`coded-${section.key}`}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+          {report.clinicalForm.definition.sections.map((section) => <RepeatedCustomFields key={`repeated-${section.key}`}
             document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
             language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
         </section>}

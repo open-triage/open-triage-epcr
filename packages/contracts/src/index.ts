@@ -704,7 +704,7 @@ export interface CatalogDraftDefinition {
   customElements?: CatalogDraftCustomElement[];
 }
 
-/** A standalone, single-value scalar extension owned by one organization. */
+/** A scalar extension owned by one organization. A target binds values to a stable group instance. */
 export interface CatalogDraftCustomTextElement {
   id: string;
   namespace: string;
@@ -712,7 +712,9 @@ export interface CatalogDraftCustomTextElement {
   title: string;
   definition: string;
   datatype: "string" | "number" | "dateTime" | "boolean" | "binary" | "other";
-  recurrence: "single";
+  recurrence: "single" | "multiple";
+  /** Supported NEMSIS 3.5.1 repeated group; omission places the field at report root. */
+  correlatesTo?: "eMedications.MedicationGroup" | "eExam.AssessmentGroup";
   usage: "Mandatory" | "Required" | "Recommended" | "Optional";
   constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number };
   identifying: boolean | null;

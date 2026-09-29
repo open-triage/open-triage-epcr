@@ -49,6 +49,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
     swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
     identifying: "", datatype: "string" as CatalogDraftCustomElement["datatype"],
+    recurrence: "single" as CatalogDraftCustomTextElement["recurrence"], correlatesTo: "",
     minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
@@ -129,7 +130,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         } : item) } });
       setDirty(true); setError(""); setStatus(t("admin.customRevisionSaved")); setEditingCustomId(null);
       setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
-        usage: "Optional", identifying: "", datatype: "string", minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+        usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "",
+        minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
       return;
     }
     const namespace = customText.namespace.trim(); const slug = customText.slug.trim();
@@ -140,7 +142,9 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       setError(t("admin.customDuplicateIdentity")); return;
     }
     const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
-      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype as CatalogDraftCustomTextElement["datatype"], recurrence: "single",
+      title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype as CatalogDraftCustomTextElement["datatype"],
+      recurrence: customText.recurrence,
+      ...(customText.correlatesTo ? { correlatesTo: customText.correlatesTo as NonNullable<CatalogDraftCustomTextElement["correlatesTo"]> } : {}),
       usage: customText.usage, identifying: customText.identifying === "yes",
       constraints: customText.datatype === "string" || customText.datatype === "other" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
         ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
@@ -154,7 +158,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       customElements: [...(draft.definition.customElements ?? []), element] } });
     setDirty(true); setError(""); setStatus(t("admin.customAdded", { identity: `${namespace}.${slug}` }));
     setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
-      usage: "Optional", identifying: "", datatype: "string", minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
+      usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "",
+      minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   }
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
@@ -190,6 +195,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <strong>{item.namespace}.{item.slug} — {language === "sv" ? item.localization?.sv?.label || item.title : item.title}</strong>
         {` (${item.usage}; ${t("admin.customIdentifying")}: ${t(item.identifying ? "admin.customYes" : "admin.customNo")})`}
         <p>{item.definition}</p>
+        <p>{item.recurrence === "multiple" ? "Multiple values" : "Single value"}{item.correlatesTo ? ` per ${item.correlatesTo}` : " per report"}</p>
         {item.datatype === "coded" && <p>{item.codeSystem}: {item.choices.map((choice) => `${choice.code} — ${choice.label}`).join(", ")}
           {item.nemsisElement ? `; NEMSIS ${item.nemsisElement}` : ""}</p>}
         {item.retired && <span>{t("admin.customRetired")}</span>}
@@ -200,6 +206,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
               definition: item.definition, swedishTitle: item.localization?.sv?.label ?? "",
               swedishDefinition: item.localization?.sv?.description ?? "", usage: item.usage,
               identifying: item.identifying ? "yes" : "no", datatype: item.datatype,
+              recurrence: item.recurrence, correlatesTo: item.correlatesTo ?? "",
               minLength: item.datatype === "coded" ? "" : String(item.constraints.minLength ?? ""),
               maxLength: item.datatype === "coded" ? "" : String(item.constraints.maxLength ?? ""),
               pattern: item.datatype === "coded" ? "" : item.constraints.pattern ?? "",
@@ -241,6 +248,17 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <label>{t("admin.customUsage")} <select disabled={Boolean(editingCustomId)} value={customText.usage} onChange={(event) => setCustomText({ ...customText,
           usage: event.target.value as CatalogDraftCustomTextElement["usage"] })}>
           {["Optional", "Recommended", "Required", "Mandatory"].map((usage) => <option key={usage}>{usage}</option>)}
+        </select></label>
+        <label>{language === "sv" ? "Upprepning" : "Recurrence"} <select disabled={Boolean(editingCustomId)} value={customText.recurrence}
+          onChange={(event) => setCustomText({ ...customText, recurrence: event.target.value as CatalogDraftCustomTextElement["recurrence"] })}>
+          <option value="single">{language === "sv" ? "Ett värde per mål" : "One value per target"}</option>
+          <option value="multiple">{language === "sv" ? "Flera värden per mål" : "Multiple values per target"}</option>
+        </select></label>
+        <label>{language === "sv" ? "Koppla till" : "Correlate with"} <select disabled={Boolean(editingCustomId)} value={customText.correlatesTo}
+          onChange={(event) => setCustomText({ ...customText, correlatesTo: event.target.value })}>
+          <option value="">{language === "sv" ? "Patientrapport" : "Patient report"}</option>
+          <option value="eMedications.MedicationGroup">{language === "sv" ? "Läkemedelspost" : "Medication entry"}</option>
+          <option value="eExam.AssessmentGroup">{language === "sv" ? "Bedömningspost" : "Assessment entry"}</option>
         </select></label>
         <label>{t("admin.customIdentifying")} <select required disabled={Boolean(editingCustomId)} value={customText.identifying}
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>

@@ -281,7 +281,7 @@ export class FormPublicationService {
           catalogElementIdentityId: null,
           customElementDefinitionId: element.id,
           customGroupDefinitionId: group?.id ?? null,
-          analyticalRepeatable: Boolean(group)
+          analyticalRepeatable: Boolean(group || (element.definition as { correlatesTo?: string }).correlatesTo)
         });
       }
     }

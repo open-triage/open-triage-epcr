@@ -228,6 +228,13 @@ export class AmendReportService {
       if (!groups[0]) throw new UnprocessableEntityException(`Group ${occurrence.groupInstanceId} is not in the signed report`);
     }
     const metadata = await this.elementMetadata(manager, report, occurrence);
+    if (metadata.custom_definition) {
+      const target = metadata.custom_definition.correlatesTo ?? "PatientCareReportGroup";
+      const group = await manager.query<Array<{ group_id: string }>>(
+        "select group_id from clinical.group_instance where id=$1 and report_id=$2 and tombstoned_at is null",
+        [occurrence.groupInstanceId ?? null, report.id]);
+      if (group[0]?.group_id !== target) throw new UnprocessableEntityException(`Custom element requires ${target} target`);
+    }
     await this.validateDatatype(manager, occurrence.value!, metadata, report, occurrence.elementId);
     const corrected: Record<string, unknown> = {
       id: occurrence.id,
@@ -433,6 +440,15 @@ export class AmendReportService {
           throw new UnprocessableEntityException(`${definition.element_id} permits at most ${definition.max_occurs} occurrence(s)`);
         }
       }
+    }
+    const customDefinitions = await manager.query<Array<{ element_id: string }>>(`
+      select ced.namespace || '.' || ced.slug as element_id
+      from forms.custom_element_definition ced
+      join forms.form_field ff on ff.custom_element_definition_id=ced.id
+      where ff.form_version_id=$1 and ced.definition->>'recurrence'='single'`, [report.form_version_id]);
+    for (const definition of customDefinitions) for (const [key, count] of counts) {
+      if (key.endsWith(`:${definition.element_id}`) && count > 1)
+        throw new UnprocessableEntityException(`${definition.element_id} permits one occurrence per target`);
     }
     const required = await manager.query<Array<{ stable_key: string; identity_id: string }>>(`select stable_key,
         coalesce(catalog_element_identity_id, custom_element_definition_id) as identity_id

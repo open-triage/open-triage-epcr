@@ -20,6 +20,7 @@ import type { FormLanguage } from "../app/form-localization";
 import { resolveMessage } from "../app/localization";
 import { CustomTextFields } from "./custom-text-fields";
 import { CustomCodedFields } from "./custom-coded-fields";
+import { RepeatedCustomFields } from "./repeated-custom-fields";
 
 function statusText(language: FormLanguage, errors: number, warnings: number): string {
   return `${resolveMessage(language, "mobile.errorCount", { count: errors }, errors)}, ${resolveMessage(language, "mobile.warningCount", { count: warnings }, warnings)}`;
@@ -160,6 +161,8 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
           {"fields" in section && <CustomTextFields document={document} fields={section.fields} definitions={customFields}
             language={language} onDocumentChange={onDocumentChange} />}
           {"fields" in section && <CustomCodedFields document={document} fields={section.fields} definitions={customFields}
+            language={language} onDocumentChange={onDocumentChange} />}
+          {"fields" in section && <RepeatedCustomFields document={document} fields={section.fields} definitions={customFields}
             language={language} onDocumentChange={onDocumentChange} />}
         </section>;
       })}

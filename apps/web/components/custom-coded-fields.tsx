@@ -39,7 +39,7 @@ export function CustomCodedFields({ document, fields, definitions = {}, language
   return <div className="custom-coded-fields">{fields.flatMap((field) => {
     if (field.source.kind !== "custom" || field.source.groupDefinitionId) return [];
     const definition = definitions?.[field.source.elementDefinitionId];
-    if (!definition || definition.datatype !== "coded") return [];
+    if (!definition || definition.datatype !== "coded" || definition.recurrence === "multiple" || definition.correlatesTo) return [];
     const value = customCodedValue(document, definition);
     const choices = field.choicePolicy ? field.choicePolicy.flatMap((choice) => choice.kind === "code"
       ? definition.choices.filter((candidate) => candidate.code === choice.code && choice.codeSystem === definition.codeSystem)
