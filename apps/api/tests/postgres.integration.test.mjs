@@ -13,6 +13,8 @@ import pg from "pg";
 import { AppModule } from "../dist/app.module.js";
 import { canonicalDefinitionSha256 } from "../dist/forms/form-publication.validation.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
+import { DraftReportService } from "../dist/reports/draft-report.service.js";
+import { encounterDocument } from "../dist/reports/encounter-document.persistence.js";
 import { routeDispatchAssignment } from "../dist/dispatch/dispatch-assignment.projection.js";
 import {
   DEMO_CLINICIAN_PASSWORD,
@@ -792,9 +794,11 @@ integrationTest("authorized Admin context resolves only the session organization
   const customText = { id: randomUUID(), namespace: "org.integration.ems", slug: `Note${randomUUID().replaceAll("-", "")}`,
     title: "Local note", definition: "A locally requested clinical note.", datatype: "string", recurrence: "single",
     usage: "Required", constraints: { minLength: 2, maxLength: 100 }, identifying: false };
+  const identifyingText = { ...customText, id: randomUUID(), slug: `Private${randomUUID().replaceAll("-", "")}`,
+    title: "Private note", identifying: true };
   const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
     sourceLabel: "Locally managed choice", category: null, enabled: true };
-  const changedDefinition = { ...draft.definition, customElements: [customText], elements: draft.definition.elements.map((element) =>
+  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText], elements: draft.definition.elements.map((element) =>
     element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
@@ -882,14 +886,16 @@ integrationTest("authorized Admin context resolves only the session organization
   });
   assert.equal(formDraft.catalogReleaseId, published.id);
   assert.equal(formDraft.clonedFromId, formVersionId);
-  assert.deepEqual(formDraft.definition, activeFormDefinition);
+  assert.deepEqual({ ...formDraft.definition, sections: formDraft.definition.sections.map((section) => ({ ...section,
+    fields: section.fields.map(({ choicePolicy: _choicePolicy, ...field }) => field) })) }, activeFormDefinition);
   assert.deepEqual(formDraft.diagnostics, []);
   const customChoices = await forms.searchCatalog(active.sessionToken, formDraft.id,
     { query: customText.slug.toLowerCase() });
   assert.ok(customChoices.items.some((item) => item.customElementDefinitionId === customText.id));
   const editedFormDefinition = { ...formDraft.definition,
     sections: [{ ...formDraft.definition.sections[2], fields: [...formDraft.definition.sections[2].fields,
-      { key: "local-note", source: { kind: "custom", elementDefinitionId: customText.id } }] },
+      { key: "local-note", source: { kind: "custom", elementDefinitionId: customText.id } },
+      { key: "private-note", source: { kind: "custom", elementDefinitionId: identifyingText.id } }] },
     formDraft.definition.sections[0]] };
   const formSaved = await forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: editedFormDefinition
@@ -916,6 +922,50 @@ integrationTest("authorized Admin context resolves only the session organization
   const projectedCustom = await client.query(`select custom_element_definition_id,analytical_repeatable
     from forms.form_field where form_version_id=$1 and stable_key='local-note'`, [customPublishedForm.id]);
   assert.deepEqual(projectedCustom.rows, [{ custom_element_definition_id: customText.id, analytical_repeatable: false }]);
+  const reportId = randomUUID(); const incidentId = randomUUID(); const patientId = randomUUID();
+  await client.query("insert into clinical.incident(id,organization_id) values ($1,$2)", [incidentId, organizationId]);
+  await client.query(`insert into clinical.patient(id,organization_id,identity_state,pseudonymous_key)
+    values ($1,$2,'unknown',$3)`, [patientId, organizationId, randomUUID().replaceAll("-", "").repeat(2)]);
+  const demographics = (await client.query(`select id from app_identity.agency_demographic_version
+    where organization_id=$1 and catalog_release_id=$2 order by version desc limit 1`, [organizationId, published.id])).rows[0];
+  await client.query(`insert into clinical.report
+    (id,organization_id,incident_id,patient_id,agency_demographic_version_id,form_version_id,
+     catalog_release_id,documenting_user_id,form_definition_sha256,catalog_artifact_sha256)
+    values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [reportId, organizationId, incidentId, patientId,
+    demographics.id, customPublishedForm.id, published.id, owner.userId, customPublishedForm.definitionSha256,
+    published.definitionSha256]);
+  const clinician = new DraftReportService(transactionalDatabase, { requireCapability: async () =>
+    ({ organization: { id: organizationId }, user: { id: owner.userId } }) });
+  const groupId = randomUUID();
+  const fields = [customText, identifyingText].map((item) => ({ id: randomUUID(),
+    elementId: `${item.namespace}.${item.slug}`, groupInstanceId: groupId, ordinal: 0,
+    value: { kind: "text", value: item.identifying ? "Private response" : "Public response" } }));
+  await assert.rejects(clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    occurrences: [{ ...fields[0], value: { kind: "text", value: "x" } }]
+  }), /published text constraints/);
+  const documented = await clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    groups: [{ id: groupId, groupId: "PatientCareReportGroup", ordinal: 0 }], occurrences: fields
+  });
+  assert.equal(documented.revision, 1);
+  const reopened = await clinician.get("session", reportId);
+  assert.deepEqual(reopened.occurrences.filter(({ elementId }) => elementId.startsWith("org.integration.ems."))
+    .map(({ elementId, identifying, valueText }) => ({ elementId, identifying, valueText }))
+    .sort((a, b) => a.valueText.localeCompare(b.valueText)), [
+      { elementId: `${identifyingText.namespace}.${identifyingText.slug}`, identifying: true, valueText: "Private response" },
+      { elementId: `${customText.namespace}.${customText.slug}`, identifying: false, valueText: "Public response" }
+    ]);
+  const recoveredDocument = await encounterDocument(transactionalDatabase.manager, reportId);
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${customText.namespace}.${customText.slug}` && values[0]?.kind === "scalar" && values[0].value === "Public response"));
+  const analyticalColumns = await client.query(`select table_schema,column_name from information_schema.columns
+    where table_name='epcr' and table_schema in ('analytics_private','analytics_pseudonymous')
+      and column_name in ('additional_elements','additional_identifying_elements')`);
+  assert.ok(analyticalColumns.rows.some(({ table_schema, column_name }) =>
+    table_schema === "analytics_private" && column_name === "additional_identifying_elements"));
+  assert.equal(analyticalColumns.rows.some(({ table_schema, column_name }) =>
+    table_schema === "analytics_pseudonymous" && column_name === "additional_identifying_elements"), false);
 });
 
 integrationTest("a catalog-bound Validation draft publishes immutably and activates against its compatible form", async (t) => {

@@ -114,10 +114,10 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
     if (!draft || !canWrite || !("revision" in draft)) return;
     const namespace = customText.namespace.trim(); const slug = customText.slug.trim();
     if (!namespace || !slug || !customText.title.trim() || !customText.definition.trim() || !customText.identifying) {
-      setError("Enter an identity, title, definition, and identifying classification."); return;
+      setError(t("admin.customMissingDetails")); return;
     }
     if (draft.definition.customElements?.some((item) => item.namespace === namespace && item.slug === slug)) {
-      setError("That custom identity is already in this catalog."); return;
+      setError(t("admin.customDuplicateIdentity")); return;
     }
     const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
       title: customText.title.trim(), definition: customText.definition.trim(), datatype: "string", recurrence: "single",
@@ -130,7 +130,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {}) };
     setDraft({ ...draft, definition: { ...draft.definition,
       customElements: [...(draft.definition.customElements ?? []), element] } });
-    setDirty(true); setError(""); setStatus(`Added ${namespace}.${slug}. Save and validate before publishing.`);
+    setDirty(true); setError(""); setStatus(t("admin.customAdded", { identity: `${namespace}.${slug}` }));
     setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
       usage: "Optional", identifying: "", minLength: "", maxLength: "", pattern: "" });
   }
@@ -163,40 +163,41 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   return <div className="catalog-editor">
     {versionWorkspace}
     <section aria-labelledby="custom-text-heading">
-      <h3 id="custom-text-heading">Custom text elements</h3>
+      <h3 id="custom-text-heading">{t("admin.customTextElements")}</h3>
       <ul>{(draft.definition.customElements ?? []).map((item) => <li key={item.id}>
-        <strong>{item.namespace}.{item.slug} — {item.title}</strong> ({item.usage}; {item.identifying ? "identifying" : "non-identifying"})
+        <strong>{item.namespace}.{item.slug} — {language === "sv" ? item.localization?.sv?.label || item.title : item.title}</strong>
+        {` (${item.usage}; ${t("admin.customIdentifying")}: ${t(item.identifying ? "admin.customYes" : "admin.customNo")})`}
         <p>{item.definition}</p>
       </li>)}</ul>
       {canEdit && <fieldset disabled={busy}>
-        <legend>Create a standalone text element</legend>
-        <label>Namespace <input required value={customText.namespace} placeholder="org.example.ems"
+        <legend>{t("admin.createStandaloneText")}</legend>
+        <label>{t("admin.customNamespace")} <input required value={customText.namespace} placeholder="org.example.ems"
           onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
-        <label>Identifier <input required value={customText.slug} placeholder="LocalNote"
+        <label>{t("admin.customIdentifier")} <input required value={customText.slug} placeholder="LocalNote"
           onChange={(event) => setCustomText({ ...customText, slug: event.target.value })} /></label>
-        <label>English title <input required maxLength={100} value={customText.title}
+        <label>{t("admin.customEnglishTitle")} <input required maxLength={100} value={customText.title}
           onChange={(event) => setCustomText({ ...customText, title: event.target.value })} /></label>
-        <label>English definition <textarea required maxLength={255} value={customText.definition}
+        <label>{t("admin.customEnglishDefinition")} <textarea required maxLength={255} value={customText.definition}
           onChange={(event) => setCustomText({ ...customText, definition: event.target.value })} /></label>
-        <label>Swedish title <input maxLength={100} value={customText.swedishTitle}
+        <label>{t("admin.customSwedishTitle")} <input maxLength={100} value={customText.swedishTitle}
           onChange={(event) => setCustomText({ ...customText, swedishTitle: event.target.value })} /></label>
-        <label>Swedish definition <textarea maxLength={255} value={customText.swedishDefinition}
+        <label>{t("admin.customSwedishDefinition")} <textarea maxLength={255} value={customText.swedishDefinition}
           onChange={(event) => setCustomText({ ...customText, swedishDefinition: event.target.value })} /></label>
-        <label>NEMSIS usage <select value={customText.usage} onChange={(event) => setCustomText({ ...customText,
+        <label>{t("admin.customUsage")} <select value={customText.usage} onChange={(event) => setCustomText({ ...customText,
           usage: event.target.value as CatalogDraftCustomTextElement["usage"] })}>
           {["Optional", "Recommended", "Required", "Mandatory"].map((usage) => <option key={usage}>{usage}</option>)}
         </select></label>
-        <label>Identifying information <select required value={customText.identifying}
+        <label>{t("admin.customIdentifying")} <select required value={customText.identifying}
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
-          <option value="">Choose classification</option><option value="yes">Yes</option><option value="no">No</option>
+          <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
         </select></label>
-        <label>Minimum length <input type="number" min="0" value={customText.minLength}
+        <label>{t("admin.customMinimumLength")} <input type="number" min="0" value={customText.minLength}
           onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
-        <label>Maximum length <input type="number" min="0" value={customText.maxLength}
+        <label>{t("admin.customMaximumLength")} <input type="number" min="0" value={customText.maxLength}
           onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>
-        <label>Pattern <input value={customText.pattern}
+        <label>{t("admin.customPattern")} <input value={customText.pattern}
           onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label>
-        <button type="button" onClick={addCustomText}>Add custom text element</button>
+        <button type="button" onClick={addCustomText}>{t("admin.customAddText")}</button>
       </fieldset>}
     </section>
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`

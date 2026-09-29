@@ -864,7 +864,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
         onOpenEvent={openTimelineEvent}
       />}
       {presentationMode === "mobile" && shell.view === "timeline" && report?.clinicalForm?.customFields &&
-        <section className="content-panel" aria-label="Custom fields">
+        <section className="content-panel" aria-label={t("mobile.customFields")}>
           {report.clinicalForm.definition.sections.map((section) => <CustomTextFields key={section.key}
             document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
             language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}

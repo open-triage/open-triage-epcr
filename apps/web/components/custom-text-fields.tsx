@@ -30,13 +30,18 @@ export function setCustomTextValue(document: EncounterDocument, definition: Cata
   }) };
 }
 
-export function customTextFindings(definition: CatalogDraftCustomTextElement, value: string): string[] {
-  if (!value) return ["Mandatory", "Required"].includes(definition.usage) ? ["A value is required."] : [];
+export function customTextFindings(definition: CatalogDraftCustomTextElement, value: string, language = "en"): string[] {
+  const swedish = language === "sv";
+  if (!value) return ["Mandatory", "Required"].includes(definition.usage)
+    ? [swedish ? "Ett värde krävs." : "A value is required."] : [];
   const constraints = definition.constraints;
   return [
-    ...(constraints.minLength !== undefined && value.length < constraints.minLength ? [`Enter at least ${constraints.minLength} characters.`] : []),
-    ...(constraints.maxLength !== undefined && value.length > constraints.maxLength ? [`Enter at most ${constraints.maxLength} characters.`] : []),
-    ...(constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value) ? ["Value does not match the catalog pattern."] : []),
+    ...(constraints.minLength !== undefined && value.length < constraints.minLength ? [swedish
+      ? `Ange minst ${constraints.minLength} tecken.` : `Enter at least ${constraints.minLength} characters.`] : []),
+    ...(constraints.maxLength !== undefined && value.length > constraints.maxLength ? [swedish
+      ? `Ange högst ${constraints.maxLength} tecken.` : `Enter at most ${constraints.maxLength} characters.`] : []),
+    ...(constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value) ? [swedish
+      ? "Värdet matchar inte katalogens mönster." : "Value does not match the catalog pattern."] : []),
   ];
 }
 
@@ -52,7 +57,7 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
     const definition = definitions?.[field.source.elementDefinitionId];
     if (!definition || definition.datatype !== "string" || field.source.groupDefinitionId) return [];
     const value = customTextValue(document, definition);
-    const findings = customTextFindings(definition, value);
+    const findings = customTextFindings(definition, value, language);
     const id = `custom-text-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;
     const label = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     const help = language === "sv" ? definition.localization?.sv?.description || definition.definition : definition.definition;
