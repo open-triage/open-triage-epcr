@@ -32,6 +32,8 @@ function target(doc: EncounterDocument, id: string) {
 }
 
 test("repeated values bind to stable medication entries through reload and draft projection", () => {
+  assert.throws(() => setCustomOccurrence(document, text, "missing", { kind: "scalar", occurrenceId: "bad", value: "Bad" }),
+    /Missing custom correlation target/);
   const one = setCustomOccurrence(document, text, firstId, { kind: "scalar", occurrenceId: "one", value: "Better" });
   const two = setCustomOccurrence(one, text, secondId, { kind: "scalar", occurrenceId: "two", value: "No change" });
   const three = setCustomOccurrence(two, text, firstId, { kind: "scalar", occurrenceId: "three", value: "Reassessed" });

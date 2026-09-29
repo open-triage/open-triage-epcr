@@ -23,6 +23,8 @@ export function setCustomOccurrence(document: EncounterDocument, definition: Cat
   targetInstanceId: string, value: EncounterValue | undefined, occurrenceId?: string): EncounterDocument {
   const groupId = definition.correlatesTo ?? ROOT;
   const elementId = customTextIdentity(definition);
+  if (!customTargets(document, definition).some((instance) => instance.instanceId === targetInstanceId))
+    throw new Error(`Missing custom correlation target ${groupId}/${targetInstanceId}`);
   return { ...document, groups: document.groups.map((group) => group.id !== groupId ? group : {
     ...group, instances: group.instances.map((instance) => instance.instanceId !== targetInstanceId ? instance : {
       ...instance, elements: (() => {
