@@ -68,6 +68,7 @@ export async function clinicalFormConfiguration(
   return {
     definition: versions[0].canonical_definition,
     customFields: Object.fromEntries(custom.map((row) => [row.id, snapshotById.get(row.id) ?? row.definition])),
+    customGroups: await customGroupsConfiguration(manager, catalogReleaseId),
     catalogFields: effectiveCatalogFields(versions[0].canonical_definition,
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds, true)),
@@ -75,6 +76,13 @@ export async function clinicalFormConfiguration(
     ...(liveBundle ? { validation: { versionId: validationVersionId!,
       compiledSha256: compiledValidationBundleSha256(liveBundle), bundle: liveBundle } } : {}),
   };
+}
+
+export async function customGroupsConfiguration(manager: Pick<EntityManager, "query">, catalogReleaseId: string): Promise<NonNullable<ClinicalFormConfiguration["customGroups"]>> {
+  const rows = await manager.query<Array<{ definition: import("@open-triage/contracts").CatalogDraftCustomGroup }>>(`
+    select jsonb_array_elements(coalesce(provenance->'customGroupDefinitions','[]'::jsonb)) as definition
+    from catalog.release where id=$1`, [catalogReleaseId]);
+  return Object.fromEntries(rows.map((row) => [row.definition.id, row.definition]));
 }
 
 /** Loads the immutable catalog behavior needed to preview or document a selected set of fields. */

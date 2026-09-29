@@ -2,7 +2,7 @@
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomTextElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomElement, CatalogDraftCustomGroup, CatalogDraftCustomTextElement } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
@@ -46,10 +46,11 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [newGroup, setNewGroup] = useState({ namespace: "", slug: "", title: "", recurrence: "multiple" as CatalogDraftCustomGroup["recurrence"], correlatesTo: "" });
   const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
     swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
     identifying: "", datatype: "string" as CatalogDraftCustomElement["datatype"],
-    recurrence: "single" as CatalogDraftCustomTextElement["recurrence"], correlatesTo: "",
+    recurrence: "single" as CatalogDraftCustomTextElement["recurrence"], correlatesTo: "", groupDefinitionId: "",
     minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
@@ -130,7 +131,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         } : item) } });
       setDirty(true); setError(""); setStatus(t("admin.customRevisionSaved")); setEditingCustomId(null);
       setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
-        usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "",
+        usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "", groupDefinitionId: "",
         minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
       return;
     }
@@ -145,6 +146,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       title: customText.title.trim(), definition: customText.definition.trim(), datatype: customText.datatype as CatalogDraftCustomTextElement["datatype"],
       recurrence: customText.recurrence,
       ...(customText.correlatesTo ? { correlatesTo: customText.correlatesTo as NonNullable<CatalogDraftCustomTextElement["correlatesTo"]> } : {}),
+      ...(customText.groupDefinitionId ? { groupDefinitionId: customText.groupDefinitionId } : {}),
       usage: customText.usage, identifying: customText.identifying === "yes",
       constraints: customText.datatype === "string" || customText.datatype === "other" ? { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
         ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
@@ -158,7 +160,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       customElements: [...(draft.definition.customElements ?? []), element] } });
     setDirty(true); setError(""); setStatus(t("admin.customAdded", { identity: `${namespace}.${slug}` }));
     setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
-      usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "",
+      usage: "Optional", identifying: "", datatype: "string", recurrence: "single", correlatesTo: "", groupDefinitionId: "",
       minLength: "", maxLength: "", pattern: "", minimum: "", maximum: "" });
   }
   async function action(work: () => Promise<void>) {
@@ -189,6 +191,31 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
 
   return <div className="catalog-editor">
     {versionWorkspace}
+    <section aria-label="Custom groups">
+      <h3>{language === "sv" ? "Anpassade grupper" : "Custom groups"}</h3>
+      <ul>{(draft.definition.customGroups ?? []).map((group) => <li key={group.id}>
+        {group.namespace}.{group.slug} — {language === "sv" ? group.localization?.sv?.label || group.title : group.title}
+        {` (${group.recurrence}${group.correlatesTo ? `; ${group.correlatesTo}` : ""})`}
+      </li>)}</ul>
+      {canEdit && <fieldset disabled={busy}><legend>{language === "sv" ? "Skapa grupp" : "Create group"}</legend>
+        <label>Namespace <input value={newGroup.namespace} onChange={(event) => setNewGroup({ ...newGroup, namespace: event.target.value })} /></label>
+        <label>Slug <input value={newGroup.slug} onChange={(event) => setNewGroup({ ...newGroup, slug: event.target.value })} /></label>
+        <label>English title <input value={newGroup.title} onChange={(event) => setNewGroup({ ...newGroup, title: event.target.value })} /></label>
+        <label>Recurrence <select value={newGroup.recurrence} onChange={(event) => setNewGroup({ ...newGroup, recurrence: event.target.value as CatalogDraftCustomGroup["recurrence"] })}>
+          <option value="single">Single</option><option value="multiple">Multiple</option></select></label>
+        <label>Correlate with <select value={newGroup.correlatesTo} onChange={(event) => setNewGroup({ ...newGroup, correlatesTo: event.target.value })}>
+          <option value="">Patient report</option><option value="eMedications.MedicationGroup">Medication entry</option>
+          <option value="eExam.AssessmentGroup">Assessment entry</option></select></label>
+        <button type="button" onClick={() => {
+          if (!newGroup.namespace.trim() || !newGroup.slug.trim() || !newGroup.title.trim()) { setError("Complete the custom group identity and title."); return; }
+          const group: CatalogDraftCustomGroup = { id: crypto.randomUUID(), namespace: newGroup.namespace.trim(), slug: newGroup.slug.trim(),
+            title: newGroup.title.trim(), recurrence: newGroup.recurrence,
+            ...(newGroup.correlatesTo ? { correlatesTo: newGroup.correlatesTo as NonNullable<CatalogDraftCustomGroup["correlatesTo"]> } : {}) };
+          setDraft({ ...draft, definition: { ...draft.definition, customGroups: [...(draft.definition.customGroups ?? []), group] } });
+          setDirty(true); setNewGroup({ namespace: "", slug: "", title: "", recurrence: "multiple", correlatesTo: "" });
+        }}>Add group</button>
+      </fieldset>}
+    </section>
     <section aria-labelledby="custom-text-heading">
       <h3 id="custom-text-heading">{t("admin.customTextElements")}</h3>
       <ul>{(draft.definition.customElements ?? []).map((item) => <li key={item.id}>
@@ -196,6 +223,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         {` (${item.usage}; ${t("admin.customIdentifying")}: ${t(item.identifying ? "admin.customYes" : "admin.customNo")})`}
         <p>{item.definition}</p>
         <p>{item.recurrence === "multiple" ? "Multiple values" : "Single value"}{item.correlatesTo ? ` per ${item.correlatesTo}` : " per report"}</p>
+        {item.groupDefinitionId && <p>Grouping: {draft.definition.customGroups?.find((group) => group.id === item.groupDefinitionId)?.title ?? item.groupDefinitionId}</p>}
         {item.datatype === "coded" && <p>{item.codeSystem}: {item.choices.map((choice) => `${choice.code} — ${choice.label}`).join(", ")}
           {item.nemsisElement ? `; NEMSIS ${item.nemsisElement}` : ""}</p>}
         {item.retired && <span>{t("admin.customRetired")}</span>}
@@ -206,7 +234,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
               definition: item.definition, swedishTitle: item.localization?.sv?.label ?? "",
               swedishDefinition: item.localization?.sv?.description ?? "", usage: item.usage,
               identifying: item.identifying ? "yes" : "no", datatype: item.datatype,
-              recurrence: item.recurrence, correlatesTo: item.correlatesTo ?? "",
+              recurrence: item.recurrence, correlatesTo: item.correlatesTo ?? "", groupDefinitionId: item.groupDefinitionId ?? "",
               minLength: item.datatype === "coded" ? "" : String(item.constraints.minLength ?? ""),
               maxLength: item.datatype === "coded" ? "" : String(item.constraints.maxLength ?? ""),
               pattern: item.datatype === "coded" ? "" : item.constraints.pattern ?? "",
@@ -260,6 +288,15 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           <option value="eMedications.MedicationGroup">{language === "sv" ? "Läkemedelspost" : "Medication entry"}</option>
           <option value="eExam.AssessmentGroup">{language === "sv" ? "Bedömningspost" : "Assessment entry"}</option>
         </select></label>
+        <label>{language === "sv" ? "Gruppering" : "Grouping"} <select disabled={Boolean(editingCustomId)} value={customText.groupDefinitionId}
+          onChange={(event) => {
+            const group = draft.definition.customGroups?.find((candidate) => candidate.id === event.target.value);
+            setCustomText({ ...customText, groupDefinitionId: event.target.value,
+              ...(group ? { namespace: group.namespace, correlatesTo: group.correlatesTo ?? "" } : {}) });
+          }}>
+          <option value="">{language === "sv" ? "Ingen" : "None"}</option>
+          {(draft.definition.customGroups ?? []).map((group) => <option key={group.id} value={group.id}>{group.title}</option>)}
+        </select></label>
         <label>{t("admin.customIdentifying")} <select required disabled={Boolean(editingCustomId)} value={customText.identifying}
           onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
           <option value="">{t("admin.customChooseClassification")}</option><option value="yes">{t("admin.customYes")}</option><option value="no">{t("admin.customNo")}</option>
@@ -276,7 +313,7 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           onChange={(event) => setCustomText({ ...customText, maximum: event.target.value })} /></label></>}
         <button type="button" onClick={addCustomText}>{t(editingCustomId ? "admin.customSaveRevision" : "admin.customAddText")}</button>
       </fieldset>}
-      {canEdit && <CustomCodedAuthoring disabled={busy} onAdd={(element) => {
+      {canEdit && <CustomCodedAuthoring disabled={busy} groups={draft.definition.customGroups ?? []} onAdd={(element) => {
         if (draft.definition.customElements?.some((item) => item.namespace === element.namespace && item.slug === element.slug)) {
           setError(t("admin.customDuplicateIdentity")); return;
         }

@@ -10,8 +10,8 @@ const targetNames: Record<string, { en: string; sv: string }> = {
   "eExam.AssessmentGroup": { en: "Assessment", sv: "Bedömning" },
 };
 
-export function customTargets(document: EncounterDocument, definition: CatalogDraftCustomElement): ReadonlyArray<EncounterGroupInstance> {
-  return document.groups.find((group) => group.id === (definition.correlatesTo ?? ROOT))?.instances ?? [];
+export function customTargets(document: EncounterDocument, definition: CatalogDraftCustomElement, groupId?: string): ReadonlyArray<EncounterGroupInstance> {
+  return document.groups.find((group) => group.id === (groupId ?? definition.correlatesTo ?? ROOT))?.instances ?? [];
 }
 
 export function customValues(instance: EncounterGroupInstance, definition: CatalogDraftCustomElement): ReadonlyArray<EncounterValue> {
@@ -20,10 +20,10 @@ export function customValues(instance: EncounterGroupInstance, definition: Catal
 
 /** Replaces only one identified value in one identified clinical entry. */
 export function setCustomOccurrence(document: EncounterDocument, definition: CatalogDraftCustomElement,
-  targetInstanceId: string, value: EncounterValue | undefined, occurrenceId?: string): EncounterDocument {
-  const groupId = definition.correlatesTo ?? ROOT;
+  targetInstanceId: string, value: EncounterValue | undefined, occurrenceId?: string, targetGroupId?: string): EncounterDocument {
+  const groupId = targetGroupId ?? definition.correlatesTo ?? ROOT;
   const elementId = customTextIdentity(definition);
-  if (!customTargets(document, definition).some((instance) => instance.instanceId === targetInstanceId))
+  if (!customTargets(document, definition, groupId).some((instance) => instance.instanceId === targetInstanceId))
     throw new Error(`Missing custom correlation target ${groupId}/${targetInstanceId}`);
   return { ...document, groups: document.groups.map((group) => group.id !== groupId ? group : {
     ...group, instances: group.instances.map((instance) => instance.instanceId !== targetInstanceId ? instance : {
@@ -58,24 +58,27 @@ function codedKey(value: EncounterValue | undefined): string {
   return "";
 }
 
-export function RepeatedCustomFields({ document, fields, definitions = {}, language = "en", onDocumentChange }: {
+export function RepeatedCustomFields({ document, fields, definitions = {}, language = "en", targetGroupId, targetInstanceId, onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly fields: ReadonlyArray<FormDraftField>;
   readonly definitions?: ClinicalFormConfiguration["customFields"];
   readonly language?: string;
+  readonly targetGroupId?: string;
+  readonly targetInstanceId?: string;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const [pending, setPending] = useState<Record<string, boolean>>({});
   return <div className="repeated-custom-fields">{fields.flatMap((field) => {
-    if (field.source.kind !== "custom" || field.source.groupDefinitionId) return [];
+    if (field.source.kind !== "custom" || Boolean(field.source.groupDefinitionId) !== Boolean(targetGroupId) ||
+      targetGroupId && !field.source.groupDefinitionId) return [];
     const definition = definitions?.[field.source.elementDefinitionId];
-    if (!definition || (definition.recurrence === "single" && !definition.correlatesTo)) return [];
-    const groupId = definition.correlatesTo ?? ROOT;
+    if (!definition || !targetGroupId && definition.recurrence === "single" && !definition.correlatesTo) return [];
+    const groupId = targetGroupId ?? definition.correlatesTo ?? ROOT;
     const label = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     const help = language === "sv" ? definition.localization?.sv?.description || definition.definition : definition.definition;
     return <fieldset key={field.key} data-element-id={customTextIdentity(definition)}>
       <legend>{label}</legend><p>{help}</p>
-      {customTargets(document, definition).map((instance, targetIndex) => {
+      {customTargets(document, definition, targetGroupId).filter((instance) => !targetInstanceId || instance.instanceId === targetInstanceId).map((instance, targetIndex) => {
         const values = customValues(instance, definition);
         const pendingKey = `${field.key}:${instance.instanceId}`;
         const displayed: ReadonlyArray<EncounterValue> = pending[pendingKey]
@@ -91,9 +94,9 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
               if (isPending) {
                 setPending((current) => ({ ...current, [pendingKey]: false }));
                 if (next) onDocumentChange(setCustomOccurrence(document, definition, instance.instanceId,
-                  { ...next, occurrenceId: crypto.randomUUID() }));
+                  { ...next, occurrenceId: crypto.randomUUID() }, undefined, targetGroupId));
               } else onDocumentChange(setCustomOccurrence(document, definition,
-                instance.instanceId, next, value.occurrenceId));
+                instance.instanceId, next, value.occurrenceId, targetGroupId));
             };
             return <div key={value.occurrenceId} data-custom-occurrence-id={value.occurrenceId}>
               <label htmlFor={id}>{label}{definition.recurrence === "multiple" ? ` ${valueIndex + 1}` : ""}</label>
@@ -134,7 +137,7 @@ export function RepeatedCustomFields({ document, fields, definitions = {}, langu
               {language === "sv" ? "Lägg till värde" : "Add value"}</button>}
         </div>;
       })}
-      {customTargets(document, definition).length === 0 && <p>{language === "sv" ? "Lägg till en målpost först." : "Add a target entry first."}</p>}
+      {customTargets(document, definition, targetGroupId).length === 0 && <p>{language === "sv" ? "Lägg till en målpost först." : "Add a target entry first."}</p>}
     </fieldset>;
   })}</div>;
 }

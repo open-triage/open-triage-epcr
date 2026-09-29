@@ -12,6 +12,7 @@ import { StationaryRecord } from "../components/stationary-record";
 import { CustomTextFields } from "../components/custom-text-fields";
 import { CustomCodedFields } from "../components/custom-coded-fields";
 import { RepeatedCustomFields } from "../components/repeated-custom-fields";
+import { CustomGroupFields } from "../components/custom-group-fields";
 import { formatClinicalDate, formatClinicalNumber, useRegionalFormat } from "./regional-format";
 import { clinicalInstantParts, useAgencyTimeZone } from "./agency-time-zone";
 import { TimePicker } from "../components/time-picker";
@@ -847,6 +848,7 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
             formDefinition={report?.clinicalForm?.definition}
             catalogFields={report?.clinicalForm?.catalogFields}
             customFields={report?.clinicalForm?.customFields}
+            customGroups={report?.clinicalForm?.customGroups}
             catalogGroups={report?.clinicalForm?.catalogGroups}
             validation={report?.clinicalForm?.validation}
             onDocumentChange={(document) => dispatch({ type: "document-opened", document })}
@@ -876,6 +878,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
           {report.clinicalForm.definition.sections.map((section) => <RepeatedCustomFields key={`repeated-${section.key}`}
             document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
             language={language} onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
+          {report.clinicalForm.definition.sections.map((section) => <CustomGroupFields key={`group-${section.key}`}
+            document={encounter.document} fields={section.fields} definitions={report.clinicalForm!.customFields}
+            groups={report.clinicalForm!.customGroups} language={language}
+            onDocumentChange={(document) => dispatch({ type: "document-opened", document })} />)}
         </section>}
       {presentationMode === "stationary" && stationaryTimelineOpen && <aside id="stationary-timeline-sidebar" className="stationary-timeline-sidebar" aria-label={t("mobile.encounterTimeline")} onKeyDown={(event) => {
         if (event.key !== "Escape") return;

@@ -96,6 +96,7 @@ test("cloning to a newer catalog keeps field order and disables new codes while 
     if (sql.includes("insert into forms.form_version")) return [[{ id: draftId, form_id: formId,
       catalog_release_id: catalogId, cloned_from_id: sourceFormId, revision: 1,
       canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3], updated_at: new Date() }], 1];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormAuthoringService({ manager, transaction: async (_level, work) => work(manager) },
@@ -142,6 +143,7 @@ test("cloning retains unresolved references for review and leaves the source agg
       if (sql.includes("insert into app_identity.configuration_event")) return [];
       if (sql.includes("from catalog.value_set_element")) return [];
       if (sql.includes("from catalog.group_definition")) return [];
+      if (sql.includes("customGroupDefinitions")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
   };
@@ -213,6 +215,7 @@ test("form writers delete only the expected draft revision and retain audit evid
       definition_sha256: "a".repeat(64), updated_at: new Date() }];
     if (sql.includes("insert into app_identity.configuration_event")) return [];
     if (sql.startsWith("delete from forms.form_version")) return [{ id: draftId }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const writer = { ...session, capabilities: ["forms:read", "forms:write"] };
@@ -273,6 +276,7 @@ test("catalog search returns the full searchable clinical catalog and excludes d
       element_id: `ePatient.${String(index + 1).padStart(2, "0")}`, name: `Patient ${index + 1}`,
       description: "Patient catalog element", base_datatype: "string", group_path: ["ePatient"]
     }));
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } }, { requireCapability: async () => session });
   const page = await service.searchCatalog("owner-session", draftId, { query: " Patient ", offset: "40" });
@@ -299,6 +303,7 @@ test("new form picker uses revised wording and omits retired custom definitions"
       { element_id: "org.example.ems.Old", name: "Old note", description: "Old wording",
         base_datatype: "string", group_path: [], custom_element_definition_id: retiredId }
     ];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } }, { requireCapability: async () => session });
   const page = await service.searchCatalog("owner-session", draftId, { query: "" });
@@ -334,6 +339,7 @@ test("publishing requires a saved revision and note without changing the agency 
     if (sql.includes("from catalog.element_definition")) return definition.sections.flatMap((section) =>
       section.fields.filter((field) => field.source.kind === "nemsis").map((field) => element(field.source.elementId)));
     if (sql.includes("from catalog.value_set_element") || sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormAuthoringService({ manager, query: async (sql) => {
@@ -363,6 +369,7 @@ test("direct publication rejects an unresolved catalog adoption without touching
     if (sql.includes("from catalog.element_definition")) return parameters[0] === sourceCatalogId
       ? [element("ePatient.01")] : [];
     if (sql.includes("from catalog.value_set_element")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormAuthoringService({ manager, query: async (sql) =>
@@ -394,6 +401,7 @@ test("activation pins one exact version and appends previous/new audit evidence"
       return [[{ activated_at: "2026-09-07T02:05:00.000Z" }], 1];
     }
     if (sql.includes("insert into app_identity.configuration_event")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormAuthoringService({ transaction: async (_level, work) => work(manager) },
@@ -465,6 +473,7 @@ test("saving and reopening an arranged form retains names, empty sections, and m
     if (sql.includes("from forms.form_version")) return [row];
     if (sql.includes("from catalog.element_definition")) return [element("eMedications.03")];
     if (sql.includes("from catalog.value_set_element") || sql.includes("from catalog.group_definition") || sql.includes("configuration_event")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormAuthoringService({ ...manager, manager, transaction: async (_level, work) => work(manager) }, { requireCapability: async () => session });

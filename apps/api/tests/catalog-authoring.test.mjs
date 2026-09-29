@@ -44,6 +44,7 @@ test("custom text validation rejects duplicate identity and incompatible publish
     if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
     if (sql.includes("customElementDefinitions")) return [{ definitions: pinned }];
     if (sql.includes("from catalog.element_identity")) return collisions;
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const service = new CatalogAuthoringService({ manager, query: (...args) => manager.query(...args) },
@@ -85,6 +86,7 @@ test("custom coded publication validates pinned NEMSIS mappings and distinct cod
     if (sql.includes("select ced.id,ced.namespace,ced.slug,ced.definition")) return inherited;
     if (sql.includes("customElementDefinitions")) return [{ definitions: [custom] }];
     if (sql.includes("from catalog.element_identity")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const service = new CatalogAuthoringService({ manager }, { requireCapability: async () => session });
@@ -121,6 +123,7 @@ test("stale catalog saves fail before changing canonical content", async () => {
     if (sql.includes("select * from catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
       source_release_id: "release-1", revision: 3, canonical_definition: definition,
       definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   await assert.rejects(serviceWith(manager).save("session", "draft-1", { expectedRevision: 2, definition }), ConflictException);
@@ -138,6 +141,7 @@ test("catalog writers delete only their unpublished draft at the expected revisi
     if (sql.includes("select * from catalog.authoring_draft")) return [draft];
     if (sql.includes("insert into app_identity.configuration_event")) return [];
     if (sql.includes("delete from catalog.authoring_draft")) return [{ id: draft.id }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const service = serviceWith(manager, { requireCapability: async (_token, capability) => {
@@ -179,6 +183,7 @@ test("saving normalizes legacy element labels and requiredness before validation
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const saved = await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: legacyDefinition });
@@ -202,6 +207,7 @@ test("Catalog saves discard attempted requiredness and documented occurrence pol
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: persisted, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   await serviceWith(manager).save("session", "draft-1", { expectedRevision: 1, definition: attempted });
@@ -218,6 +224,7 @@ test("identity, datatype, storage, and unsupported constraint changes are reject
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
     if (sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const changed = { ...definition, elements: [{ ...element, baseDatatype: "integer",
@@ -317,6 +324,7 @@ test("Catalog readers inspect the active sealed definition when no authoring dra
     }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const viewed = await serviceWith(manager).inspectActive("reader-session");
@@ -337,6 +345,7 @@ test("cloning the active catalog unwraps PostgreSQL mutation tuples into a usabl
       display_name: parameters[5], canonical_definition: JSON.parse(parameters[2]),
       definition_sha256: parameters[3], updated_at: "2026-09-13T10:00:00.000Z", published_release_id: null
     }], 1];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const cloned = await serviceWith(manager).cloneActive("owner-session", { displayName: "Night catalog" });
@@ -365,6 +374,7 @@ function listManager(currentDefinition) {
     if (sql.includes("update catalog.authoring_draft")) return [{ id: "draft-1", organization_id: "org-1",
       source_release_id: "release-1", revision: 2, canonical_definition: currentDefinition,
       definition_sha256: catalogDefinitionSha256(currentDefinition), updated_at: new Date(), published_release_id: null }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
 }
@@ -391,6 +401,7 @@ test("inline enumerations are exposed as element-selectable editable code lists"
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option")) return [];
     if (sql.includes("select 'inline:'")) return [inline];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const cloned = await serviceWith(manager).cloneDefinition(manager, "release-1");
@@ -433,6 +444,7 @@ test("Swedish text survives a revision-checked save and incomplete translations 
       return [{ id: "draft-1", organization_id: "org-1", source_release_id: "release-1", revision: 2,
         canonical_definition: savedDefinition, definition_sha256: parameters[3], updated_at: new Date(), published_release_id: null }];
     }
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const localized = { ...definition, elements: [{ ...element, label: "Updated name", description: "Updated description",
@@ -454,6 +466,7 @@ test("malformed catalog localization remains a publication-blocking structural e
       definition_sha256: catalogDefinitionSha256(definition), updated_at: new Date(), published_release_id: null }];
     if (sql.includes("from catalog.element_definition e left join catalog.analytics_element_mapping")) return [sourceElement];
     if (sql.includes("from catalog.value_set v left join catalog.value_set_option") || sql.includes("select 'inline:'")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`unexpected query: ${sql}`);
   } };
   const changed = { ...definition, elements: [{ ...element, localization: { schemaVersion: 1, sv: { label: 12 } } }] };

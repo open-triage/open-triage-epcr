@@ -1,10 +1,11 @@
 "use client";
 
-import type { CatalogDraftCustomCodedElement } from "@open-triage/contracts";
+import type { CatalogDraftCustomCodedElement, CatalogDraftCustomGroup } from "@open-triage/contracts";
 import React, { useState } from "react";
 
-export function CustomCodedAuthoring({ disabled, onAdd }: {
+export function CustomCodedAuthoring({ disabled, groups = [], onAdd }: {
   readonly disabled: boolean;
+  readonly groups?: ReadonlyArray<CatalogDraftCustomGroup>;
   readonly onAdd: (definition: CatalogDraftCustomCodedElement) => void;
 }) {
   const [namespace, setNamespace] = useState("");
@@ -20,6 +21,7 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
   const [usage, setUsage] = useState<CatalogDraftCustomCodedElement["usage"]>("Optional");
   const [recurrence, setRecurrence] = useState<CatalogDraftCustomCodedElement["recurrence"]>("single");
   const [correlatesTo, setCorrelatesTo] = useState("");
+  const [groupDefinitionId, setGroupDefinitionId] = useState("");
   const [error, setError] = useState("");
   return <fieldset disabled={disabled}>
     <legend>Create custom coded element</legend>
@@ -43,6 +45,11 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
       <option value="">Patient report</option><option value="eMedications.MedicationGroup">Medication entry</option>
       <option value="eExam.AssessmentGroup">Assessment entry</option>
     </select></label>
+    <label>Grouping <select value={groupDefinitionId} onChange={(event) => {
+      const group = groups.find((candidate) => candidate.id === event.target.value);
+      setGroupDefinitionId(event.target.value);
+      if (group) { setNamespace(group.namespace); setCorrelatesTo(group.correlatesTo ?? ""); }
+    }}><option value="">None</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.title}</option>)}</select></label>
     <label>Contains identifying information <select required value={identifying} onChange={(event) => setIdentifying(event.target.value)}>
       <option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option>
     </select></label>
@@ -58,6 +65,7 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
       onAdd({ id: crypto.randomUUID(), namespace: namespace.trim(), slug: slug.trim(), title: title.trim(),
         definition: definition.trim(), datatype: "coded", recurrence, usage,
         ...(correlatesTo ? { correlatesTo: correlatesTo as NonNullable<CatalogDraftCustomCodedElement["correlatesTo"]> } : {}),
+        ...(groupDefinitionId ? { groupDefinitionId } : {}),
         identifying: identifying === "yes", codeSystem: codeSystem.trim(),
         choices: parsed.map(([code, label, nemsisCode, swedishLabel]) => ({ code: code!, label: label!,
           ...(nemsisCode ? { nemsisCode } : {}), ...(swedishLabel ? { localization: { schemaVersion: 1 as const,

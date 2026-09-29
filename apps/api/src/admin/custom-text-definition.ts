@@ -21,6 +21,8 @@ export function customTextDefinitionFindings(value: unknown): string[] {
     findings.push("Choose a supported custom datatype and single or multiple recurrence");
   if (item.correlatesTo !== undefined && !["eMedications.MedicationGroup", "eExam.AssessmentGroup"].includes(item.correlatesTo))
     findings.push("Correlation target must be a supported repeated medication or assessment group");
+  if (item.groupDefinitionId !== undefined && (typeof item.groupDefinitionId !== "string" || !uuid.test(item.groupDefinitionId)))
+    findings.push("Custom grouping reference must be a version-4 UUID");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
   if (item.retired !== undefined && typeof item.retired !== "boolean") findings.push("Custom retirement state must be a boolean");

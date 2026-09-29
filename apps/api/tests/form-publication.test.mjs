@@ -93,6 +93,7 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
       return [{ sections: 1, fields: 1, rules: 0 }];
     }
     if (normalized.includes("select display_name from forms.form_version")) return [{ display_name: "Complete Stationary" }];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new FormPublicationService({ transaction: async (_isolation, work) => work(manager) });
@@ -116,6 +117,7 @@ test("direct form publication rejects a custom field retired in its pinned catal
       id, organization_id: "org-1", base_datatype: "string", retired_at: null
     }];
     if (sql.includes("customElementDefinitions")) return [{ definitions: [{ id, retired: true }] }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const service = new FormPublicationService({});

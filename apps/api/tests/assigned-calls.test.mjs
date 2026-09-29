@@ -308,6 +308,7 @@ test("opening and retrying one assignment creates one draft without an automatic
     if (normalized.includes("from clinical.report_note")) return [];
     if (normalized.includes("from clinical.report_photo_note")) return [];
     if (normalized.includes("from clinical.report_audio_note")) return [];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const dataSource = { ...transactional(manager, isolations), query: manager.query };
@@ -385,6 +386,7 @@ test("Clinical Demo generation ignores ordinary calls, creates once, reuses per 
       audits.push(parameters);
       return [];
     }
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const sessions = {
@@ -456,6 +458,7 @@ test("generation creates an unopened call even when the clinician has another dr
       return [{ created_at: parameters[5], expires_at: generated.expires_at }];
     }
     if (normalized.includes("insert into clinical_audit.synthetic_generation_event")) return [];
+    if (normalized.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${normalized}`);
   } };
   const service = new AssignedCallsService(transactional(manager), {

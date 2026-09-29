@@ -14,6 +14,7 @@ test("a newly published form receives agency custom codes from its pinned catalo
     if (sql.includes("from catalog.value_set_element")) return [{ element_id: "eAirway.03", code: "AGENCY-DEVICE",
       code_system: "LOCAL", label: "Agency airway device", terminology_version: null }];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
 
@@ -37,6 +38,7 @@ test("custom wording is resolved from the report's pinned catalog release", asyn
     if (sql.includes("from forms.custom_element_definition")) return [{ id, definition: original }];
     if (sql.includes("customElementDefinitions")) return [{ definitions: params[0] === "new-release" ? [revised] : [original] }];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   assert.equal((await clinicalFormConfiguration(manager, "old-form", "old-release")).customFields[id].title, "Original note");
@@ -58,6 +60,7 @@ test("report configuration verifies the pinned artifact and distributes only its
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: digest }];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const configuration = await clinicalFormConfiguration(manager, "form-version", "catalog-release", "validation-1", digest);
@@ -83,6 +86,7 @@ test("clinical form text is loaded only from its pinned catalog release", async 
       supports_pertinent_negatives: false }];
     if (sql.includes("from catalog.value_set_element")) return [];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const oldReport = await clinicalFormConfiguration(manager, "form-old", "old-release");
@@ -103,6 +107,7 @@ test("pinned Swedish choice metadata preserves code system and English source la
       code_system: "", label: "Yes", localization: { schemaVersion: 1, sv: { label: "Ja" } },
       terminology_version: null }];
     if (sql.includes("from catalog.group_definition")) return [];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const fields = await (await import("../dist/forms/clinical-form-configuration.js"))
@@ -118,6 +123,7 @@ test("group translations follow the pinned release, including untranslated older
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from catalog.group_definition")) return [{ group_id: "eVitals.VitalGroup", name: "Vital Group",
       localization: parameters[0] === "new" ? { schemaVersion: 1, sv: { name: "Vitalparametrar" } } : null }];
+    if (sql.includes("customGroupDefinitions")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const oldReport = await clinicalFormConfiguration(manager, "form-old", "old");
