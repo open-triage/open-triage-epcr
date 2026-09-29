@@ -7,6 +7,7 @@ import {
   validateCanonicalFormDefinition
 } from "../dist/forms/form-publication.validation.js";
 import { FormPublicationService } from "../dist/forms/form-publication.service.js";
+import { validateFieldCompletionRequirements } from "../dist/forms/field-choice-policy.js";
 
 const formVersionId = "42000000-0000-4000-8000-000000000001";
 const validPublishInput = {
@@ -19,6 +20,22 @@ test("canonical form hashes do not depend on object key order", () => {
   const left = { schemaVersion: 1, sections: [{ key: "one", fields: [] }] };
   const right = { sections: [{ fields: [], key: "one" }], schemaVersion: 1 };
   assert.equal(canonicalDefinitionSha256(left), canonicalDefinitionSha256(right));
+});
+
+test("completion requirements can strengthen one form without weakening catalog usage", () => {
+  const standard = { key: "standard", source: { kind: "nemsis", elementId: "ePatient.01" }, required: true };
+  const custom = { key: "custom", source: { kind: "custom", elementDefinitionId: "custom-id" }, required: true };
+  const definition = { schemaVersion: 1, sections: [{ key: "care", fields: [standard, custom] }] };
+  const catalog = { "ePatient.01": { agencyRequired: false, minOccurs: 0, codeChoices: [{ code: "A", codeSystem: "test" }] } };
+  const customFields = { "custom-id": { datatype: "coded", usage: "Optional", choices: [{ code: "B" }],
+    permittedNotValues: [], permittedPertinentNegatives: [] } };
+  assert.deepEqual(validateFieldCompletionRequirements(definition, catalog, customFields), []);
+  assert.deepEqual(validateFieldCompletionRequirements({ ...definition, sections: [{ key: "care", fields: [
+    { ...standard, required: false }, { ...custom, choicePolicy: [] }
+  ] }] }, { "ePatient.01": { ...catalog["ePatient.01"], minOccurs: 1 } }, customFields), [
+    "field standard cannot weaken the catalog completion requirement",
+    "field custom is required but has no enabled choices",
+  ]);
 });
 
 test("canonical form validation rejects malformed and dangling rules", () => {

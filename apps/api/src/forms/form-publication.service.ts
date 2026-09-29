@@ -25,7 +25,7 @@ import {
   withoutLegacyFormWording
 } from "./form-publication.validation.js";
 import { catalogFieldsConfiguration } from "./clinical-form-configuration.js";
-import { customCodedPolicies, validateFieldChoicePolicies } from "./field-choice-policy.js";
+import { customCodedPolicies, validateFieldChoicePolicies, validateFieldCompletionRequirements } from "./field-choice-policy.js";
 
 type FormVersionRow = {
   id: string;
@@ -124,7 +124,10 @@ export class FormPublicationService {
           customSnapshot === null ? await customCodedPolicies(manager, definition)
             : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
               .map((item) => [item.id, item])));
-        if (invalidChoices.length) throw new UnprocessableEntityException({ message: "Form publication failed", findings: invalidChoices });
+        const completionFindings = validateFieldCompletionRequirements(definition, catalogFields,
+          Object.fromEntries((customSnapshot ?? []).filter((item) => !item.retired).map((item) => [item.id, item])));
+        if (invalidChoices.length || completionFindings.length) throw new UnprocessableEntityException({
+          message: "Form publication failed", findings: [...invalidChoices, ...completionFindings] });
         await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_field where form_version_id = $1", [version.id]);

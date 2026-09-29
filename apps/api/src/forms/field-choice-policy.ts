@@ -1,4 +1,4 @@
-import type { CatalogDraftCustomCodedElement, ClinicalFormConfiguration, FormDraftDefinition } from "@open-triage/contracts";
+import type { CatalogDraftCustomCodedElement, CatalogDraftCustomElement, ClinicalFormConfiguration, FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
 
 type CatalogFields = ClinicalFormConfiguration["catalogFields"];
@@ -43,6 +43,31 @@ export function validateFieldChoicePolicies(definition: FormDraftDefinition, cat
         : catalog.supportsNotValues && catalog.exceptionalChoices?.some((candidate) => candidate.key === `not-value:${choice.code}`);
       if (!valid) findings.push(`field ${field.key} choice ${choice.kind}:${choice.code} is unavailable in the pinned catalog`);
     }
+  }
+  return findings;
+}
+
+/** A form may raise the documentation floor, but cannot lower its pinned catalog floor. */
+export function validateFieldCompletionRequirements(definition: FormDraftDefinition, catalogFields: CatalogFields,
+  customFields: Record<string, CatalogDraftCustomElement> = {}): string[] {
+  const findings: string[] = [];
+  for (const section of definition.sections) for (const field of section.fields) {
+    const catalog = field.source.kind === "nemsis" ? catalogFields[field.source.elementId] : undefined;
+    const custom = field.source.kind === "custom" ? customFields[field.source.elementDefinitionId] : undefined;
+    const catalogRequired = catalog ? catalog.minOccurs > 0 || catalog.agencyRequired ||
+      catalog.usage === "Mandatory" || catalog.usage === "Required"
+      : custom ? custom.usage === "Mandatory" || custom.usage === "Required" : false;
+    if (field.required === false && catalogRequired)
+      findings.push(`field ${field.key} cannot weaken the catalog completion requirement`);
+    const required = field.required === true || catalogRequired;
+    if (!required) continue;
+    if (field.choicePolicy?.length === 0 && !(field.allowedAbsenceStates?.length) &&
+      !(catalog?.exceptionalChoices?.some((choice) => choice.key.startsWith("pertinent-negative:"))) &&
+      (catalog?.codeChoices?.length || custom?.datatype === "coded" && custom.choices.length))
+      findings.push(`field ${field.key} is required but has no enabled choices`);
+    if (custom?.datatype === "coded" && !custom.choices.length && !custom.permittedNotValues.length &&
+      !custom.permittedPertinentNegatives.length)
+      findings.push(`field ${field.key} is required but has no documented value or exceptional value`);
   }
   return findings;
 }

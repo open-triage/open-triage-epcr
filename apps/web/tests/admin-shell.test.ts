@@ -527,7 +527,7 @@ test("Stationary preview is interactive, explicitly ephemeral, and leaves the fi
   assert.doesNotMatch(markup, /data-element-id="ePatient\.01"/);
 });
 
-test("preview validation is scoped to included fields and honors an explicit optional override", () => {
+test("preview validation preserves the catalog minimum despite an invalid optional override", () => {
   const document = createStationaryPreviewDocument();
   const groups = document.groups.map((group) => ({ ...group, instances: group.instances.map((instance) => ({
     ...instance,
@@ -537,7 +537,7 @@ test("preview validation is scoped to included fields and honors an explicit opt
     revision: 4, definitionSha256: "a".repeat(64), definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [
       { key: "age", source: { kind: "nemsis" as const, elementId: "ePatient.15" }, required: false }
     ] }] }, diagnostics: [], updatedAt: "2026-09-07T01:00:00.000Z" };
-  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), false);
+  assert.equal(stationaryPreviewFindings({ ...document, groups }, draft).some((finding) => finding.target.fieldId === "ePatient.15"), true);
 });
 
 test("form saves send section order with the current revision and CSRF proof", async (t) => {

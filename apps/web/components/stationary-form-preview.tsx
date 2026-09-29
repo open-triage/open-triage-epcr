@@ -19,7 +19,9 @@ export function createStationaryPreviewDocument(): EncounterDocument {
 /** Applies catalog validation only to the fields present in this draft. */
 export function stationaryPreviewFindings(document: EncounterDocument, draft: StationaryFormDraft): ReadonlyArray<StationaryValidationFinding> {
   const fields = new Map(draft.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-    field.source.kind === "nemsis" ? [[field.source.elementId, field] as const] : [])));
+    field.source.kind === "nemsis" ? [[field.source.elementId, field] as const]
+      : draft.customFields?.[field.source.elementDefinitionId] ? [[
+        `${draft.customFields[field.source.elementDefinitionId]!.namespace}.${draft.customFields[field.source.elementDefinitionId]!.slug}`, field] as const] : [])));
   const groups = new Set(configuredStationaryPreviewSections(draft.definition).flatMap((section) => [...section.groupIds]));
   return validateStationaryRecord(document, { definition: draft.definition,
     catalogFields: previewCatalogFields(draft.definition, draft.catalogFields ?? {}) },
@@ -28,7 +30,7 @@ export function stationaryPreviewFindings(document: EncounterDocument, draft: St
     if (!elementId) return groups.has(finding.target.groupId);
     const field = fields.get(elementId);
     if (!field) return false;
-    return !(field.required === false && finding.id.startsWith("stationary:field.minimum:"));
+    return true;
   });
 }
 

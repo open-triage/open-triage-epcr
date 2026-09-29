@@ -49,6 +49,11 @@ export function updateFieldChoices(definition: FormDraftDefinition, fieldKey: st
     fields: section.fields.map((field) => field.key === fieldKey ? { ...field, choicePolicy: choices } : field) })) };
 }
 
+export function updateFieldRequired(definition: FormDraftDefinition, fieldKey: string, required: boolean): FormDraftDefinition {
+  return { ...definition, sections: definition.sections.map((section) => ({ ...section,
+    fields: section.fields.map((field) => field.key === fieldKey ? { ...field, required } : field) })) };
+}
+
 export function hasFormElement(definition: FormDraftDefinition, elementId: string): boolean {
   return definition.sections.some((section) => section.fields.some((field) =>
     field.source.kind === "nemsis" && field.source.elementId === elementId));
@@ -208,9 +213,18 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           const newIds = new Set((newChoicesByField?.[field.key] ?? []).map(choiceIdentity));
           const selectedIds = new Set(selected.map(choiceIdentity));
           const reviewChoices = [...selected, ...available.filter((choice) => !selectedIds.has(choiceIdentity(choice)))];
+          const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
+          const custom = field.source.kind === "custom" ? customFields?.[field.source.elementDefinitionId] : undefined;
+          const catalogRequired = catalog ? catalog.minOccurs > 0 || catalog.agencyRequired ||
+            catalog.usage === "Mandatory" || catalog.usage === "Required"
+            : custom ? custom.usage === "Mandatory" || custom.usage === "Required" : false;
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
+              <label><input type="checkbox" checked={catalogRequired || field.required === true} disabled={busy || catalogRequired}
+                onChange={(event) => onChange(updateFieldRequired(definition, field.key, event.target.checked),
+                  `Updated completion requirement for ${label}.`)} />{language === "sv" ? "Obligatoriskt i detta formulär" : "Required on this form"}</label>
+              {catalogRequired && <small>{language === "sv" ? "Krävs av katalogen" : "Required by the catalog"}</small>}
               {reviewChoices.length > 0 && <details><summary>{language === "sv" ? "Aktiva val och ordning" : "Enabled choices and order"}
                 {newIds.size > 0 && ` · ${newIds.size} ${language === "sv" ? "nya val" : "new choices"}`}</summary>
                 <ol aria-label={`Choices for ${label}`}>{reviewChoices.map((choice) => {

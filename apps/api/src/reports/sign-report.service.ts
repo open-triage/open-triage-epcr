@@ -402,7 +402,9 @@ export class SignReportService {
       (ff.custom_element_definition_id is not null or m.element_id is not null) as clinically_stored,
       ff.catalog_element_identity_id, ff.custom_element_definition_id,
       case when e.agency_required is true then 0
-        when ced.definition->>'usage' in ('Mandatory','Required') then 1 else e.min_occurs end as min_occurs,
+        when ced.definition->>'usage' in ('Mandatory','Required') then 1
+        when e.usage in ('Mandatory','Required') then greatest(e.min_occurs, 1)
+        else e.min_occurs end as min_occurs,
       e.agency_required, e.agency_required_severity
       from forms.form_field ff
       left join catalog.element_definition e on e.release_id = $2
@@ -473,15 +475,15 @@ export class SignReportService {
       // reference, but it is supplied by the pinned configuration rather than
       // stored as clinician-authored element occurrences on the report.
       if (!field.clinically_stored) continue;
-      if ((!report.validation_version_id || field.custom_element_definition_id) && field.required && values.length === 0) {
+      if (field.required && values.length === 0) {
         findings.push(this.finding("form.required", `$.fields.${field.stable_key}`,
           `Required form field ${field.stable_key} has no value`));
       }
-      if (!report.validation_version_id && field.agency_required === true && values.length === 0) {
+      if (field.agency_required === true && !field.required && values.length === 0) {
         findings.push(this.finding("catalog.agency-required", `$.fields.${field.stable_key}`,
           `Agency-required field ${field.stable_key} has no value`, field.agency_required_severity ?? "error"));
       }
-      if ((!report.validation_version_id || field.custom_element_definition_id) && field.min_occurs !== null && values.length < field.min_occurs) {
+      if (field.min_occurs !== null && field.min_occurs > (field.required ? 1 : 0) && values.length < field.min_occurs) {
         findings.push(this.finding("catalog.cardinality", `$.fields.${field.stable_key}`,
           `Field ${field.stable_key} requires at least ${field.min_occurs} occurrence(s); found ${values.length}`));
       }
@@ -489,7 +491,7 @@ export class SignReportService {
     for (const rule of rules) {
       const applies = this.evaluateRule(rule.expression, byField);
       const target = byField.get(rule.target_key) ?? [];
-      if (!report.validation_version_id && rule.rule_kind === "requiredness" && applies && target.length === 0) {
+      if (rule.rule_kind === "requiredness" && applies && target.length === 0) {
         findings.push(this.finding("form.conditional-required", `$.fields.${rule.target_key}`,
           `Field ${rule.target_key} is required by its current form condition`));
       }
