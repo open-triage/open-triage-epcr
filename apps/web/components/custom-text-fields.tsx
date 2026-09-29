@@ -81,7 +81,8 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
   return <div className="custom-text-fields">{fields.flatMap((field) => {
     if (field.source.kind !== "custom") return [];
     const definition = definitions?.[field.source.elementDefinitionId];
-    if (!definition || definition.datatype === "coded" || field.source.groupDefinitionId) return [];
+    if (!definition || definition.datatype === "coded" || field.source.groupDefinitionId ||
+      definition.recurrence === "multiple" || definition.correlatesTo) return [];
     const value = customTextValue(document, definition);
     const findings = [...customTextFindings(definition, value, language), ...(fileErrors[field.key] ? [fileErrors[field.key]] : [])];
     const id = `custom-text-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;

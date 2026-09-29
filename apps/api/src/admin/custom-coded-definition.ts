@@ -8,7 +8,7 @@ export const CUSTOM_PERTINENT_NEGATIVES = ["8801001", "8801003", "8801005", "880
 
 export function customCodedDefinitionFindings(item: CatalogDraftCustomCodedElement): string[] {
   const findings: string[] = [];
-  if (item.datatype !== "coded" || item.recurrence !== "single") findings.push("Custom coded definitions must be single-value coded elements");
+  if (item.datatype !== "coded") findings.push("Custom coded definitions require a coded datatype");
   if (typeof item.codeSystem !== "string" || !/^[A-Za-z][A-Za-z0-9+.-]*:\S+$/.test(item.codeSystem) || item.codeSystem.length > 255)
     findings.push("Custom code system must be a URI of at most 255 characters");
   if (typeof item.codeSystem === "string" && /^urn:nemsis(?::|$)/i.test(item.codeSystem))

@@ -570,16 +570,17 @@ export class DraftReportService {
       max_occurs: string | number;
       occurrence_count: string | number;
     }>>(`
-      select occurrence.element_id, definition.max_occurs, count(*) as occurrence_count
+      select occurrence.element_id, max(definition.max_occurs) as max_occurs, count(*) as occurrence_count
       from clinical.element_occurrence occurrence
-      join catalog.element_definition definition
+      left join catalog.element_definition definition
         on definition.release_id = occurrence.catalog_release_id
        and definition.element_id = occurrence.element_id
+      left join forms.custom_element_definition custom on custom.id = occurrence.element_identity_id
       where occurrence.report_id = $1
         and occurrence.tombstoned_at is null
-        and definition.max_occurs is not null
-      group by occurrence.group_instance_id, occurrence.element_id, definition.max_occurs
-      having count(*) > definition.max_occurs
+        and (definition.max_occurs is not null or custom.definition->>'recurrence' = 'single')
+      group by occurrence.group_instance_id, occurrence.element_id
+      having count(*) > coalesce(max(definition.max_occurs), 1)
       order by occurrence.element_id
       limit 1
     `, [report.id]);
@@ -1396,7 +1397,7 @@ export class DraftReportService {
     const fields = formFieldIds.length ? await manager.query<ElementMetadata[]>(`
         select ff.id as form_field_id, ced.namespace || '.' || ced.slug as element_id,
                coalesce(ff.catalog_element_identity_id, ff.custom_element_definition_id) as element_identity_id,
-               ced.base_datatype, null::integer as max_occurs,
+               ced.base_datatype, case when ced.definition->>'recurrence' = 'single' then 1 else null end as max_occurs,
                (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
                (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
                ff.analytical_repeatable, ced.identifying, ced.definition as custom_definition,
@@ -1412,7 +1413,8 @@ export class DraftReportService {
     const customElementIds = elementIds.filter((id) => id.split(".").length > 2);
     const custom = customElementIds.length ? await manager.query<ElementMetadata[]>(`
       select ced.namespace || '.' || ced.slug as element_id,ff.id as form_field_id,
-             ced.id as element_identity_id,ced.base_datatype,null::integer as max_occurs,
+             ced.id as element_identity_id,ced.base_datatype,
+             case when ced.definition->>'recurrence' = 'single' then 1 else null end as max_occurs,
              ff.analytical_repeatable,ced.identifying,
              (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
              (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,

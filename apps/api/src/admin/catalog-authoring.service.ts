@@ -696,6 +696,12 @@ export class CatalogAuthoringService {
       const itemFindings = customTextDefinitionFindings(item);
       findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
       if (itemFindings.length) continue;
+      if (item.correlatesTo) {
+        const targets = await manager.query<Array<{ group_id: string }>>(`
+          select group_id from catalog.group_definition
+          where release_id=$1 and group_id=$2 and repeating`, [sourceReleaseId, item.correlatesTo]);
+        if (!targets[0]) findings.push(`Custom element ${item.namespace}.${item.slug} has an unavailable correlation target ${item.correlatesTo}`);
+      }
       if (item.datatype === "coded") {
         if (reservedSystems.has(item.codeSystem))
           findings.push(`Custom code system ${item.codeSystem} is reserved by the pinned standard catalog`);
@@ -726,6 +732,7 @@ export class CatalogAuthoringService {
       if (!old && item.retired) findings.push(`Custom element ${key} must be published before retirement`);
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         prior?.datatype !== item.datatype || prior?.recurrence !== item.recurrence ||
+        prior?.correlatesTo !== item.correlatesTo ||
         prior?.usage !== item.usage || prior?.identifying !== item.identifying ||
         !compatibleCustomMeaning(prior, item) ||
         (prior?.retired === true && item.retired !== true)))

@@ -425,7 +425,9 @@ export class SignReportService {
         when 'duration' then to_jsonb(o.value_duration) else null end as scalar_value,
       o.code, o.code_system, o.absence_code, o.not_value_code, o.pertinent_negative_code,
       coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
-      e.min_occurs, e.max_occurs, ced.definition->'constraints' as text_constraints,
+      e.min_occurs, coalesce(e.max_occurs,
+        case when ced.definition->>'recurrence' = 'single' then 1 else null end) as max_occurs,
+      ced.definition->'constraints' as text_constraints,
       ced.definition as custom_definition, ff.allowed_absence_states
       from clinical.element_occurrence o
       left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id

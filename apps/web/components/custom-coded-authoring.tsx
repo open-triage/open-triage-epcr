@@ -18,6 +18,8 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
   const [negatives, setNegatives] = useState("");
   const [identifying, setIdentifying] = useState("");
   const [usage, setUsage] = useState<CatalogDraftCustomCodedElement["usage"]>("Optional");
+  const [recurrence, setRecurrence] = useState<CatalogDraftCustomCodedElement["recurrence"]>("single");
+  const [correlatesTo, setCorrelatesTo] = useState("");
   const [error, setError] = useState("");
   return <fieldset disabled={disabled}>
     <legend>Create custom coded element</legend>
@@ -34,6 +36,13 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
     <label>Usage <select value={usage} onChange={(event) => setUsage(event.target.value as CatalogDraftCustomCodedElement["usage"])}>
       {(["Optional", "Recommended", "Required", "Mandatory"] as const).map((value) => <option key={value}>{value}</option>)}
     </select></label>
+    <label>Recurrence <select value={recurrence} onChange={(event) => setRecurrence(event.target.value as CatalogDraftCustomCodedElement["recurrence"])}>
+      <option value="single">One value per target</option><option value="multiple">Multiple values per target</option>
+    </select></label>
+    <label>Correlate with <select value={correlatesTo} onChange={(event) => setCorrelatesTo(event.target.value)}>
+      <option value="">Patient report</option><option value="eMedications.MedicationGroup">Medication entry</option>
+      <option value="eExam.AssessmentGroup">Assessment entry</option>
+    </select></label>
     <label>Contains identifying information <select required value={identifying} onChange={(event) => setIdentifying(event.target.value)}>
       <option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option>
     </select></label>
@@ -47,7 +56,8 @@ export function CustomCodedAuthoring({ disabled, onAdd }: {
       const permittedNotValues = values(notValues);
       const permittedPertinentNegatives = values(negatives);
       onAdd({ id: crypto.randomUUID(), namespace: namespace.trim(), slug: slug.trim(), title: title.trim(),
-        definition: definition.trim(), datatype: "coded", recurrence: "single", usage,
+        definition: definition.trim(), datatype: "coded", recurrence, usage,
+        ...(correlatesTo ? { correlatesTo: correlatesTo as NonNullable<CatalogDraftCustomCodedElement["correlatesTo"]> } : {}),
         identifying: identifying === "yes", codeSystem: codeSystem.trim(),
         choices: parsed.map(([code, label, nemsisCode, swedishLabel]) => ({ code: code!, label: label!,
           ...(nemsisCode ? { nemsisCode } : {}), ...(swedishLabel ? { localization: { schemaVersion: 1 as const,
