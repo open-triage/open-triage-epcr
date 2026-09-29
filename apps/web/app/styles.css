@@ -876,3 +876,6 @@ input, select, textarea { touch-action: manipulation; }
 .session-bar .language-menu button { display: flex; justify-content: space-between; gap: 20px; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; color: var(--green-dark); background: #fff; font: inherit; text-align: left; }
 .session-bar .language-menu button[aria-checked="true"] { background: #edf5ef; font-weight: 750; }
 .session-bar .language-menu button:hover, .session-bar .language-menu button:focus-visible { background: #e2eee5; outline: 2px solid var(--green); outline-offset: -2px; }
+
+.call-opening { padding: 28px 20px; min-height: 220px; background: #f3f7f4; }
+.call-opening h1 { margin: 0 0 12px; font-size: var(--text-heading); }

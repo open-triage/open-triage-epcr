@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { activateStationaryForm, cloneStationaryFormDraft, deleteStationaryFormDraft, loadStationaryFormDraft, loadStationaryFormVersions, loadValidationVersions, publishStationaryFormDraft, saveStationaryFormDraft, searchFormCatalog } from "../app/admin-context";
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { addFormElement, FormElementPicker, FormSectionElements } from "./form-authoring";
+import { PlatformRequestError } from "../app/platform-errors";
 import { LoadingStatus } from "./loading-status";
 
 type FormSection = FormDraftDefinition["sections"][number];
@@ -90,16 +91,21 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
   const [activationNote, setActivationNote] = useState("");
   const [published, setPublished] = useState<PublishedStationaryForm | null>(null);
   const [activated, setActivated] = useState(false);
+  const [activationReview, setActivationReview] = useState<{
+    formId: string; validationId: string; note: string; rules: ReadonlyArray<{ id: string; name: string }>;
+    published?: PublishedStationaryForm;
+  } | null>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const draftId = draft?.id;
 
   useEffect(() => {
+    if (loaded) return;
     let current = true;
     loadStationaryFormDraft().then((loadedDraft) => { if (current) setDraft(loadedDraft); })
       .catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); })
       .finally(() => { if (current) setLoaded(true); });
     return () => { current = false; };
-  }, [adminError]);
+  }, [adminError, loaded]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -116,6 +122,13 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       .catch((reason: unknown) => { if (current) setError(adminError(reason, "admin.stationaryFormOperation")); });
     return () => { current = false; };
   }, [active, adminError]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   useEffect(() => { if (pendingRemoval !== null) confirmationRef.current?.focus(); }, [pendingRemoval]);
 
@@ -145,6 +158,33 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         `Added ${element.elementId}.`);
     } catch (reason) { setError(adminError(reason, "admin.stationaryFormOperation")); }
   }
+  async function activate(formId: string, validationId: string, note: string,
+    publication?: PublishedStationaryForm, removedRuleIds?: readonly string[]) {
+    try {
+      const activation = await activateStationaryForm(csrfToken, formId, validationId, note, removedRuleIds);
+      setActivationReview(null); setActivated(true); setActivationNote("");
+      setVersions((current) => current.map((item) => ({ ...item, status: item.id === formId ? "active" : "published" })));
+      setStatus(t("admin.stationaryFormActivatedForNewReportsExisting"));
+      setValidationVersions(await loadValidationVersions());
+      onActivated?.(activation, publication);
+    } catch (reason) {
+      if (reason instanceof PlatformRequestError && reason.code === "admin.formValidationRemovalRequired"
+        && reason.impactedRules?.length) {
+        setActivationReview({ formId, validationId, note, rules: reason.impactedRules, published: publication });
+      } else throw reason;
+    }
+  }
+  const activationConfirmation = activationReview && <section role="alertdialog" aria-modal="false"
+    aria-labelledby="form-validation-removal-heading" className="form-remove-confirmation" tabIndex={-1}
+    ref={(node) => { node?.focus(); }}>
+    <h3 id="form-validation-removal-heading">{t("admin.formValidationRemovalHeading")}</h3>
+    <p>{t("admin.formValidationRemovalExplanation")}</p>
+    <ul>{activationReview.rules.map((rule) => <li key={rule.id}>{rule.name}</li>)}</ul>
+    <button type="button" disabled={busy} onClick={() => action(() => activate(activationReview.formId,
+      activationReview.validationId, activationReview.note, activationReview.published,
+      activationReview.rules.map(({ id }) => id)))}>{t("admin.removeRulesAndActivate")}</button>
+    <button type="button" disabled={busy} onClick={() => setActivationReview(null)}>{t("admin.cancelActivation")}</button>
+  </section>;
   const selectedVersion = versions.find(({ id }) => id === selectedVersionId);
   const activationCatalogId = published?.catalogReleaseId ?? selectedVersion?.catalogReleaseId;
   const compatibleValidations = validationVersions.filter(({ catalogReleaseId: id }) => id === activationCatalogId);
@@ -165,43 +205,38 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     onCreateDraft={() => action(async () => {
       const cloned = await cloneStationaryFormDraft(csrfToken,
         preferredCatalogReleaseId || selectedVersion?.catalogReleaseId || catalogReleaseId, newDisplayName, selectedVersionId);
-      setPublished(null); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
+      setPublished(null); setActivated(false); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
     })}>
     {selectedVersion && selectedVersion.status !== "active" && activationAllowed && !published &&
       <>{validationChoice}<AuthoringLifecycleAction title="Selected Stationary form" kind="activate" note={activationNote}
-        onNoteChange={setActivationNote} disabled={busy || !selectedValidation} buttonLabel={t("admin.activateSelectedVersion")}
+        onNoteChange={setActivationNote} disabled={busy || !!activationReview || !selectedValidation} buttonLabel={t("admin.activateSelectedVersion")}
         onSubmit={() => action(async () => {
           if (!selectedValidation) return;
-          const activation = await activateStationaryForm(csrfToken, selectedVersion.id, selectedValidation.id, activationNote);
-          setStatus(t("admin.stationaryFormActivatedForNewReports")); setActivationNote("");
-          setVersions((current) => current.map((item) => ({ ...item, status: item.id === selectedVersion.id ? "active" : "published" })));
-          onActivated?.(activation);
+          await activate(selectedVersion.id, selectedValidation.id, activationNote);
         })} /></>}
   </AuthoringVersionWorkspace>;
   if (!loaded) return <LoadingStatus><AdminText messageKey="admin.loadingStationaryFormDraft" /></LoadingStatus>;
   if (!draft) return <div className="form-empty">
     {versionWorkspace}
+    {activationConfirmation}
     {error && <p role="alert">{error}</p>}
     <p role="status" aria-live="polite">{status}</p>
   </div>;
 
   if (published) return <div className="form-publication" aria-labelledby="published-form-heading">
     {versionWorkspace}
+    {activationConfirmation}
     <h3 id="published-form-heading">{t("admin.publishedName", { name: published.displayName })}</h3>
     <p>{t("admin.sectionsSectionsAnd", { sections: published.structuralSummary.sections, elements: published.structuralSummary.fields })}</p>
     <p className="form-activation-status" role="status"><AdminText messageKey="admin.publishedVersionNotActive" /></p>
     {activationAllowed ? <>
       {validationChoice}
       <AuthoringLifecycleAction title="Stationary form" kind="activate" note={activationNote}
-        onNoteChange={setActivationNote} disabled={busy || activated || !selectedValidation}
+        onNoteChange={setActivationNote} disabled={busy || activated || !!activationReview || !selectedValidation}
         detail={t("admin.activationAppliesThis")}
         buttonLabel={t(activated ? "Agency default active" : "Activate as agency default")} onSubmit={() => action(async () => {
         if (!selectedValidation) return;
-        const activation = await activateStationaryForm(csrfToken, published.id, selectedValidation.id, activationNote);
-        setActivated(true);
-        setVersions((current) => current.map((item) => ({ ...item, status: item.id === published.id ? "active" : "published" })));
-        setStatus(t("admin.stationaryFormActivatedForNewReportsExisting"));
-        onActivated?.(activation, published);
+        await activate(published.id, selectedValidation.id, activationNote, published);
       })} />
     </> : <p role="note"><AdminText messageKey="admin.activatingAForm" /></p>}
     {error && <p role="alert">{error}</p>}
@@ -210,6 +245,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
 
   return <div className="form-editor">
     {versionWorkspace}
+    {activationConfirmation}
     <div className="form-actions form-editor-toolbar" role="group" aria-label={t("admin.formDraftActions")}>
       <span role="status">{busy ? t("admin.working") : dirty ? t("admin.unsavedChanges") : t("admin.allChangesSaved")}</span>
       <button type="button" disabled={busy || pendingRemoval !== null} onClick={() => {

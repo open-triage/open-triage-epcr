@@ -191,7 +191,7 @@ test("reopening restores the creator's report with its pinned form and saved con
     if (normalized.includes("select canonical_definition from forms.form_version")) return [{ canonical_definition: {
       schemaVersion: 1, sections: [{ key: "patient", fields: [{ key: "birth-date", source: { kind: "nemsis", elementId: "ePatient.17" } }] }]
     } }];
-    if (normalized.includes("from catalog.element_definition e join catalog.release cr")) return [{
+    if (normalized.includes("from catalog.element_definition e")) return [{
       element_id: "ePatient.17", agency_required: false, min_occurs: 0, max_occurs: 1,
       nillable: true, supports_not_values: true, supports_pertinent_negatives: false
     }];

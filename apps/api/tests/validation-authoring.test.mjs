@@ -336,6 +336,7 @@ test("publication persists source and compiled integrity with a complete actor-a
   let audit;
   let publishedBundle;
   const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("pg_advisory_xact_lock")) return [];
     if (sql.includes("for update")) return [row];
     if (sql.includes("from catalog.element_definition")) return [{ element_id: "eResponse.03", name: "Incident", base_datatype: "string" }];
     if (sql.includes("from catalog.group_definition") || sql.includes("from catalog.element_option")) return [];
