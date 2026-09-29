@@ -78,6 +78,7 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
       organization_id: "32000000-0000-4000-8000-000000000001", catalog_release_id: "catalog-release",
     }];
     if (normalized.includes("from app_identity.app_user")) return [{ id: validPublishInput.publishedBy }];
+    if (normalized.includes("with wording as materialized")) return [];
     if (normalized.includes("from catalog.element_definition e")) {
       assert.match(normalized, /left join catalog\.analytics_element_mapping/);
       return [{ element_id: "dAgency.01", element_identity_id: "agency-identity",

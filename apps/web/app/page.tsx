@@ -1,7 +1,7 @@
 "use client";
 
 import { DialogCancelButton, DialogRemoveButton } from "../components/documentation-dialog-buttons";
-import { mobileDisplayDefinition } from "./mobile-localization";
+import { enabledMobileOptions, mobileDisplayDefinition } from "./mobile-localization";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type SyntheticEvent } from "react";
 import { MedicationDialog } from "../components/medication-dialog";
@@ -175,10 +175,10 @@ function EncounterWorkspace({ session, report, presentationMode, language, onSav
       ...(procedureCatalogChoices ? { choices: procedureCatalogChoices.map((choice) => ({ code: choice.code,
         label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
         sourceLabel: choice.sourceLabel ?? choice.label, category: "" })) } : {}) },
-    successOptions: baseProcedure.successOptions.map((option) => ({ ...option,
+    successOptions: enabledMobileOptions(baseProcedure.successOptions, "eProcedures.06", (option) => option.code, report?.clinicalForm).map((option) => ({ ...option,
       label: report?.clinicalForm?.catalogFields["eProcedures.06"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.06"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
-    outcomeOptions: baseProcedure.outcomeOptions.map((option) => ({ ...option,
+    outcomeOptions: enabledMobileOptions(baseProcedure.outcomeOptions, "eProcedures.08", (option) => option.code, report?.clinicalForm).map((option) => ({ ...option,
       label: report?.clinicalForm?.catalogFields["eProcedures.08"]?.codeChoices?.find((choice) => choice.code === option.code)?.localization?.sv?.label && language === "sv"
         ? report.clinicalForm.catalogFields["eProcedures.08"].codeChoices!.find((choice) => choice.code === option.code)!.localization!.sv!.label! : option.label })),
     labels: { ...baseProcedure.labels,

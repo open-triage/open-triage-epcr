@@ -880,6 +880,8 @@ export interface ClinicalFormConfiguration {
   } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    /** Effective unified order for enabled codes and NOT values on a field. */
+    choiceOrder?: NonNullable<FormDraftField["choicePolicy"]>;
     name?: string;
     description?: string;
     localization?: CatalogDraftElement["localization"];

@@ -166,7 +166,7 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
           if (new Set(identities).size !== identities.length)
             findings.push(`${fieldPath}.choicePolicy contains duplicate choices`);
         }
-        if (field.source?.kind !== "nemsis") findings.push(`${fieldPath}.choicePolicy requires a NEMSIS field`);
+        if (!isRecord(field.source) || field.source.kind !== "nemsis") findings.push(`${fieldPath}.choicePolicy requires a NEMSIS field`);
       }
       if (field.rules !== undefined && !Array.isArray(field.rules)) findings.push(`${fieldPath}.rules must be an array`);
       fields.push(field as unknown as CanonicalFormField);

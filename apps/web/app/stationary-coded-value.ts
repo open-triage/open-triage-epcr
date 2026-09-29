@@ -31,6 +31,7 @@ export type StationaryCodedField = {
   readonly options: ReadonlyArray<StationaryCodedOption>;
   readonly systems: ReadonlyArray<NemsisCodeSystem>;
   readonly exceptionalChoices: ReadonlyArray<StationaryExceptionalChoice>;
+  readonly choiceOrder?: NonNullable<ClinicalFormConfiguration["catalogFields"][string]["choiceOrder"]>;
 };
 
 export type StationaryCodedSelection = ({
@@ -90,12 +91,15 @@ export function configuredStationaryCodedField(
 ): StationaryCodedField {
   const base = stationaryCodedField(elementOrId);
   const language = currentCatalogLanguage();
-  const exceptionalChoices = base.exceptionalChoices.map((choice) => {
+  const exceptionalChoices = base.exceptionalChoices.filter((choice) =>
+    !choice.key.startsWith("not-value:") || configured?.exceptionalChoices === undefined ||
+      configured.exceptionalChoices.some((candidate) => candidate.key === choice.key)).map((choice) => {
     const localization = configured?.exceptionalChoices?.find((candidate) => candidate.key === choice.key)?.localization;
     return { ...choice, label: language === "sv" ? localization?.sv?.label?.trim() || choice.label : choice.label };
   }) as StationaryCodedField["exceptionalChoices"];
   if (!configured?.codeChoices) return { ...base, exceptionalChoices };
-  return { ...base, exceptionalChoices, options: configured.codeChoices.map((choice) => ({
+  return { ...base, exceptionalChoices, ...(configured.choiceOrder ? { choiceOrder: configured.choiceOrder } : {}),
+    options: configured.codeChoices.map((choice) => ({
     code: choice.code,
     label: language === "sv" ? choice.localization?.sv?.label?.trim() || choice.label : choice.label,
     ...(choice.codeSystem ? { system: choice.codeSystem } : {}),

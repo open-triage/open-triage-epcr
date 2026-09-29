@@ -112,7 +112,7 @@ export class FormPublicationService {
         const metadata = await this.resolveMetadata(manager, version, definition);
         const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
           field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds);
+        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds, true);
         const invalidChoices = validateFieldChoicePolicies(definition, catalogFields);
         if (invalidChoices.length) throw new UnprocessableEntityException({ message: "Form publication failed", findings: invalidChoices });
         await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);

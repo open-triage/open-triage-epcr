@@ -12,6 +12,8 @@ export function validateFieldChoicePolicies(definition: FormDraftDefinition, cat
       findings.push(`field ${field.key} has no matching catalog definition`);
       continue;
     }
+    if (!catalog.codeChoices && !catalog.supportsNotValues)
+      findings.push(`field ${field.key} does not support coded or NOT choices`);
     for (const choice of field.choicePolicy) {
       const valid = choice.kind === "code"
         ? catalog.codeChoices?.some((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)
@@ -24,14 +26,15 @@ export function validateFieldChoicePolicies(definition: FormDraftDefinition, cat
 
 /** Resolve one field's ordered policy without modifying shared catalog data. */
 export function effectiveFieldChoices(field: FormDraftDefinition["sections"][number]["fields"][number],
-  catalogFields: CatalogFields): CatalogFields[string] | undefined {
+  catalogFields: CatalogFields, availableCatalogFields: CatalogFields = catalogFields): CatalogFields[string] | undefined {
   if (field.source.kind !== "nemsis") return undefined;
-  const catalog = catalogFields[field.source.elementId];
+  const catalog = (field.choicePolicy === undefined ? catalogFields : availableCatalogFields)[field.source.elementId];
   if (!catalog || field.choicePolicy === undefined) return catalog;
   const codes = field.choicePolicy.filter((choice): choice is Extract<ChoicePolicy[number], { kind: "code" }> => choice.kind === "code");
   const notValues = new Set(field.choicePolicy.filter((choice) => choice.kind === "not-value")
     .map((choice) => `not-value:${choice.code}`));
   return { ...catalog,
+    choiceOrder: field.choicePolicy,
     codeChoices: codes.flatMap((choice) => catalog.codeChoices?.filter((candidate) =>
       candidate.code === choice.code && candidate.codeSystem === choice.codeSystem) ?? []),
     exceptionalChoices: catalog.exceptionalChoices?.filter((choice) =>
@@ -39,11 +42,12 @@ export function effectiveFieldChoices(field: FormDraftDefinition["sections"][num
   };
 }
 
-export function effectiveCatalogFields(definition: FormDraftDefinition, catalogFields: CatalogFields): CatalogFields {
+export function effectiveCatalogFields(definition: FormDraftDefinition, catalogFields: CatalogFields,
+  availableCatalogFields: CatalogFields = catalogFields): CatalogFields {
   const projected = { ...catalogFields };
   for (const section of definition.sections) for (const field of section.fields) {
     if (field.source.kind === "nemsis") {
-      const resolved = effectiveFieldChoices(field, catalogFields);
+      const resolved = effectiveFieldChoices(field, catalogFields, availableCatalogFields);
       if (resolved) projected[field.source.elementId] = resolved;
     }
   }
