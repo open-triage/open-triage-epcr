@@ -1,12 +1,35 @@
-import type { ClinicalFormConfiguration, FormDraftDefinition } from "@open-triage/contracts";
+import type { CatalogDraftCustomCodedElement, ClinicalFormConfiguration, FormDraftDefinition } from "@open-triage/contracts";
+import type { EntityManager } from "typeorm";
 
 type CatalogFields = ClinicalFormConfiguration["catalogFields"];
 type ChoicePolicy = NonNullable<FormDraftDefinition["sections"][number]["fields"][number]["choicePolicy"]>;
 
-export function validateFieldChoicePolicies(definition: FormDraftDefinition, catalogFields: CatalogFields): string[] {
+export async function customCodedPolicies(manager: Pick<EntityManager, "query">, definition: FormDraftDefinition): Promise<Record<string, CatalogDraftCustomCodedElement>> {
+  const ids = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+    field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+  if (!ids.length) return {};
+  const rows = await manager.query<Array<{ id: string; definition: CatalogDraftCustomCodedElement }>>(`
+    select id, definition from forms.custom_element_definition where id=any($1::uuid[]) and base_datatype='coded'
+  `, [ids]);
+  return Object.fromEntries(rows.map((row) => [row.id, row.definition]));
+}
+
+export function validateFieldChoicePolicies(definition: FormDraftDefinition, catalogFields: CatalogFields,
+  customFields: Record<string, CatalogDraftCustomCodedElement> = {}): string[] {
   const findings: string[] = [];
   for (const section of definition.sections) for (const field of section.fields) {
-    if (field.choicePolicy === undefined || field.source.kind !== "nemsis") continue;
+    if (field.choicePolicy === undefined) continue;
+    if (field.source.kind === "custom") {
+      const custom = customFields[field.source.elementDefinitionId];
+      if (!custom) { findings.push(`field ${field.key} does not support coded choices`); continue; }
+      for (const choice of field.choicePolicy) {
+        const valid = choice.kind === "code" ? choice.codeSystem === custom.codeSystem &&
+          custom.choices.some((candidate) => candidate.code === choice.code)
+          : custom.permittedNotValues.includes(choice.code);
+        if (!valid) findings.push(`field ${field.key} choice ${choice.kind}:${choice.code} is unavailable in the pinned custom definition`);
+      }
+      continue;
+    }
     const catalog = catalogFields[field.source.elementId];
     if (!catalog) {
       findings.push(`field ${field.key} has no matching catalog definition`);

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomTextElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogDraftCustomElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -442,14 +442,14 @@ export class CatalogAuthoringService {
   private async cloneDefinition(manager: EntityManager, sourceReleaseId: string): Promise<CatalogDraftDefinition> {
     const elements = await this.sourceElements(manager, sourceReleaseId);
     const codeLists = await this.sourceCodeLists(manager, sourceReleaseId);
-    const customElements = await manager.query<Array<{ definition: CatalogDraftCustomTextElement }>>(`
+    const customElements = await manager.query<Array<{ definition: CatalogDraftCustomElement }>>(`
       select ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))
       order by ced.namespace, ced.slug`, [sourceReleaseId]);
     return { schemaVersion: 1, sourceReleaseId,
       ...(customElements.length ? { customElements: customElements.map((row) => {
-        const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomTextElement & { catalogReleaseId?: string };
+        const { catalogReleaseId: _release, ...definition } = row.definition as CatalogDraftCustomElement & { catalogReleaseId?: string };
         return definition;
       }) } : {}),
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
@@ -657,15 +657,35 @@ export class CatalogAuthoringService {
     if (custom !== undefined && !Array.isArray(custom)) findings.push("customElements must be an array");
     const customIds = new Set<string>();
     const customKeys = new Set<string>();
-    const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomTextElement }>>(`
+    const inherited = await manager.query<Array<{ id: string; namespace: string; slug: string; definition: CatalogDraftCustomElement }>>(`
       select ced.id,ced.namespace,ced.slug,ced.definition from forms.custom_element_definition ced
       join catalog.release cr on cr.id=$1
       where ced.id::text in (select jsonb_array_elements_text(coalesce(cr.provenance->'customElementIds','[]'::jsonb)))`, [sourceReleaseId]);
     for (const [index, candidate] of (Array.isArray(custom) ? custom : []).entries()) {
-      const item = candidate as CatalogDraftCustomTextElement;
+      const item = candidate as CatalogDraftCustomElement;
       const itemFindings = customTextDefinitionFindings(item);
       findings.push(...itemFindings.map((message) => `customElements[${index}]: ${message}`));
       if (itemFindings.length) continue;
+      if (item.datatype === "coded") {
+        if (item.nemsisElement && !sourceById.has(item.nemsisElement))
+          findings.push(`Custom element ${item.namespace}.${item.slug} maps to an unknown NEMSIS element`);
+        if (item.choices.some((choice) => choice.nemsisCode) && !item.nemsisElement)
+          findings.push(`Custom element ${item.namespace}.${item.slug} needs an element mapping for mapped codes`);
+        if (item.nemsisElement) {
+          const mappedCodes = item.choices.flatMap((choice) => choice.nemsisCode ? [choice.nemsisCode] : []);
+          if (mappedCodes.length) {
+            const valid = await manager.query<Array<{ code: string }>>(`
+              select distinct code from catalog.element_option where release_id=$1 and element_id=$2 and code=any($3::text[])
+              union select distinct option.code from catalog.value_set_element linked
+                join catalog.value_set_option option on option.release_id=linked.release_id and option.value_set_id=linked.value_set_id
+                where linked.release_id=$1 and linked.element_id=$2 and option.code=any($3::text[])
+            `, [sourceReleaseId, item.nemsisElement, mappedCodes]);
+            const accepted = new Set(valid.map((row) => row.code));
+            for (const code of mappedCodes) if (!accepted.has(code))
+              findings.push(`NEMSIS mapping ${item.nemsisElement}/${code} is not a pinned catalog code`);
+          }
+        }
+      }
       const key = `${item.namespace}.${item.slug}`;
       if (customIds.has(item.id) || customKeys.has(key) || sourceById.has(key)) findings.push(`Duplicate custom identity ${key}`);
       customIds.add(item.id); customKeys.add(key);
@@ -673,8 +693,11 @@ export class CatalogAuthoringService {
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
         old.definition.usage !== item.usage || old.definition.identifying !== item.identifying ||
-        ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
-          old.definition.constraints?.[key as keyof typeof item.constraints] !== item.constraints?.[key as keyof typeof item.constraints])))
+        (item.datatype !== "coded" && old.definition.datatype !== "coded" &&
+          ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
+            old.definition.constraints?.[key as keyof typeof item.constraints] !== item.constraints?.[key as keyof typeof item.constraints])) ||
+        (item.datatype === "coded" && old.definition.datatype === "coded" &&
+          (old.definition.codeSystem !== item.codeSystem || catalogDefinitionSha256(old.definition.choices) !== catalogDefinitionSha256(item.choices)))))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
     }
     for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);

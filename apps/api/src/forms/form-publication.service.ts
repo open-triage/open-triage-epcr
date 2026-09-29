@@ -21,7 +21,7 @@ import {
   withoutLegacyFormWording
 } from "./form-publication.validation.js";
 import { catalogFieldsConfiguration } from "./clinical-form-configuration.js";
-import { validateFieldChoicePolicies } from "./field-choice-policy.js";
+import { customCodedPolicies, validateFieldChoicePolicies } from "./field-choice-policy.js";
 
 type FormVersionRow = {
   id: string;
@@ -46,6 +46,7 @@ type CustomElementRow = {
   organization_id: string;
   base_datatype: string;
   retired_at: Date | null;
+  definition: import("@open-triage/contracts").CatalogDraftCustomElement;
 };
 
 type CustomGroupRow = {
@@ -113,7 +114,8 @@ export class FormPublicationService {
         const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
           field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
         const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds, true);
-        const invalidChoices = validateFieldChoicePolicies(definition, catalogFields);
+        const invalidChoices = validateFieldChoicePolicies(definition, catalogFields,
+          await customCodedPolicies(manager, definition));
         if (invalidChoices.length) throw new UnprocessableEntityException({ message: "Form publication failed", findings: invalidChoices });
         await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);
@@ -216,7 +218,7 @@ export class FormPublicationService {
       where e.release_id = $1 and e.element_id = any($2::text[])
     `, [version.catalog_release_id, nemsisIds]);
     const custom = customIds.length ? await manager.query<CustomElementRow[]>(`
-      select ced.id, ced.organization_id, ced.base_datatype, ced.retired_at
+      select ced.id, ced.organization_id, ced.base_datatype, ced.retired_at, ced.definition
       from forms.custom_element_definition ced join catalog.release cr on cr.id=$2
       where ced.id = any($1::uuid[])
         and (ced.definition->>'catalogReleaseId' is null or
@@ -266,6 +268,12 @@ export class FormPublicationService {
           findings.push(`field ${field.key} references an unknown custom group`);
           continue;
         }
+        if (element.base_datatype === "coded") {
+          const coded = element.definition as import("@open-triage/contracts").CatalogDraftCustomCodedElement;
+          const invalid = (field.allowedAbsenceStates ?? []).filter((code) =>
+            !coded.permittedNotValues.includes(code) && !coded.permittedPertinentNegatives.includes(code));
+          if (invalid.length) findings.push(`field ${field.key} uses unsupported custom absence states: ${invalid.join(", ")}`);
+        } else if (field.choicePolicy !== undefined) findings.push(`field ${field.key} does not support coded choices`);
         result.set(field.key, {
           catalogElementIdentityId: null,
           customElementDefinitionId: element.id,

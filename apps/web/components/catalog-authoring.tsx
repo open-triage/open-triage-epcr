@@ -9,6 +9,7 @@ import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadC
 import { AuthoringLifecycleAction, AuthoringVersionWorkspace } from "./authoring-version-workspace";
 import { catalogTranslationIssues, updateCatalogEnglish, updateCatalogChoiceEnglish, type TranslationIssue } from "../app/translation-diagnostics";
 import { TranslationIssueSummary } from "./translation-issue-summary";
+import { CustomCodedAuthoring } from "./custom-coded-authoring";
 
 export function catalogAuthority(capabilities: ReadonlyArray<string>): {
   readonly canRead: boolean; readonly canWrite: boolean; readonly canPublish: boolean;
@@ -171,6 +172,8 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
         <strong>{item.namespace}.{item.slug} — {language === "sv" ? item.localization?.sv?.label || item.title : item.title}</strong>
         {` (${item.usage}; ${t("admin.customIdentifying")}: ${t(item.identifying ? "admin.customYes" : "admin.customNo")})`}
         <p>{item.definition}</p>
+        {item.datatype === "coded" && <p>{item.codeSystem}: {item.choices.map((choice) => `${choice.code} — ${choice.label}`).join(", ")}
+          {item.nemsisElement ? `; NEMSIS ${item.nemsisElement}` : ""}</p>}
       </li>)}</ul>
       {canEdit && <fieldset disabled={busy}>
         <legend>{t("admin.createStandaloneText")}</legend>
@@ -215,6 +218,14 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
           onChange={(event) => setCustomText({ ...customText, maximum: event.target.value })} /></label></>}
         <button type="button" onClick={addCustomText}>{t("admin.customAddText")}</button>
       </fieldset>}
+      {canEdit && <CustomCodedAuthoring disabled={busy} onAdd={(element) => {
+        if (draft.definition.customElements?.some((item) => item.namespace === element.namespace && item.slug === element.slug)) {
+          setError(t("admin.customDuplicateIdentity")); return;
+        }
+        setDraft({ ...draft, definition: { ...draft.definition,
+          customElements: [...(draft.definition.customElements ?? []), element] } });
+        setDirty(true); setError(""); setStatus(`Unsaved custom coded element ${element.namespace}.${element.slug}`);
+      }} />}
     </section>
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
       : canWrite ? `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. Create a draft to edit it.`

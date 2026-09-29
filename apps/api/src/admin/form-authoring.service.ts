@@ -6,7 +6,7 @@ import { canonicalDefinitionSha256, FormPublicationValidationError, validateCano
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
 import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms/clinical-form-configuration.js";
-import { materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
+import { customCodedPolicies, materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 
@@ -167,7 +167,8 @@ export class FormAuthoringService {
       const choiceElementIds = [...new Set(body.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
         field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
       const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds, true);
-      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog);
+      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog,
+        await customCodedPolicies(manager, body.definition));
       if (choiceFindings.length) throw new UnprocessableEntityException({ message: "Form validation failed", findings: choiceFindings });
       const definition = materializeLegacyChoicePolicies(body.definition, choiceCatalog);
       const digest = canonicalDefinitionSha256(definition);
@@ -356,10 +357,11 @@ export class FormAuthoringService {
     }) }));
     const cloned = { ...definition, sections };
     const targetCatalog = await catalogFieldsConfiguration(manager, targetReleaseId, elementIds, true);
+    const customPolicies = await customCodedPolicies(manager, cloned);
     for (const [sectionIndex, section] of cloned.sections.entries()) for (const [fieldIndex, field] of section.fields.entries()) {
-      if (field.source.kind !== "nemsis" || field.choicePolicy === undefined) continue;
+      if (field.choicePolicy === undefined) continue;
       const candidate = { schemaVersion: 1 as const, sections: [{ key: section.key, fields: [field] }] };
-      for (const message of validateFieldChoicePolicies(candidate, targetCatalog)) diagnostics.push({
+      for (const message of validateFieldChoicePolicies(candidate, targetCatalog, customPolicies)) diagnostics.push({
         code: "incompatible-reference", path: `sections[${sectionIndex}].fields[${fieldIndex}].choicePolicy`, message
       });
     }
