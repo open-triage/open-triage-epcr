@@ -6,7 +6,7 @@ import { clinicalFormConfiguration } from "../dist/forms/clinical-form-configura
 test("a newly published form receives agency custom codes from its pinned catalog", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [
-      { key: "airway", fields: [{ key: "device", source: { kind: "nemsis", elementId: "eAirway.03" } }] }
+      { key: "local-airway", name: "Airway care", fields: [{ key: "device", source: { kind: "nemsis", elementId: "eAirway.03" } }] }
     ] } }];
     if (sql.includes("from catalog.element_definition")) return [{ element_id: "eAirway.03",
       agency_required: false, agency_required_severity: null, min_occurs: 0, max_occurs: 1,
@@ -18,6 +18,9 @@ test("a newly published form receives agency custom codes from its pinned catalo
   } };
 
   const configuration = await clinicalFormConfiguration(manager, "form-version", "catalog-release");
+  assert.equal(configuration.definition.sections[0].key, "local-airway");
+  assert.equal(configuration.definition.sections[0].name, "Airway care");
+  assert.deepEqual(configuration.definition.sections[0].fields[0].source, { kind: "nemsis", elementId: "eAirway.03" });
   assert.deepEqual(configuration.catalogFields["eAirway.03"].codeChoices, [
     { code: "AGENCY-DEVICE", codeSystem: "LOCAL", label: "Agency airway device" }
   ]);

@@ -30,7 +30,7 @@ export function openStationaryFormPreview(draft: StationaryFormDraft): boolean {
 }
 
 function operationErrorMessage(reason: unknown): string {
-  return reason instanceof Error ? reason.message : "Stationary form operation failed.";
+  return reason instanceof Error ? reason.message : "Form operation failed.";
 }
 
 export function moveFormSection(definition: FormDraftDefinition, from: number, to: number): FormDraftDefinition {
@@ -43,7 +43,7 @@ export function moveFormSection(definition: FormDraftDefinition, from: number, t
 
 export function removeFormSection(definition: FormDraftDefinition, index: number): FormDraftDefinition {
   if (index < 0 || index >= definition.sections.length) return definition;
-  if (definition.sections.length === 1) throw new Error("A Stationary form must contain at least one section.");
+  if (definition.sections.length === 1) throw new Error("A form must contain at least one section.");
   return { ...definition, sections: definition.sections.filter((_, sectionIndex) => sectionIndex !== index) };
 }
 
@@ -199,7 +199,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
         {version.displayName} · v{version.version}{version.status === "active" ? t("admin.active2") : ""}</option>)}
     </select>
   </div>;
-  const versionWorkspace = <AuthoringVersionWorkspace title="Stationary form" versions={versions}
+  const versionWorkspace = <AuthoringVersionWorkspace title={t("admin.stationaryForm")} versions={versions}
     selectedId={selectedVersionId} onSelect={setSelectedVersionId} draftName={newDisplayName}
     onDraftNameChange={setNewDisplayName} canWrite={canWrite} busy={busy} hasDraft={Boolean(draft && !published)}
     onCreateDraft={() => action(async () => {
@@ -208,7 +208,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       setPublished(null); setActivated(false); setDraft(cloned); setNewDisplayName(""); setDirty(false); setStatus(t("admin.stationaryFormDraftCreated"));
     })}>
     {selectedVersion && selectedVersion.status !== "active" && activationAllowed && !published &&
-      <>{validationChoice}<AuthoringLifecycleAction title="Selected Stationary form" kind="activate" note={activationNote}
+      <>{validationChoice}<AuthoringLifecycleAction title={t("admin.selectedStationaryForm")} kind="activate" note={activationNote}
         onNoteChange={setActivationNote} disabled={busy || !!activationReview || !selectedValidation} buttonLabel={t("admin.activateSelectedVersion")}
         onSubmit={() => action(async () => {
           if (!selectedValidation) return;
@@ -231,7 +231,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
     <p className="form-activation-status" role="status"><AdminText messageKey="admin.publishedVersionNotActive" /></p>
     {activationAllowed ? <>
       {validationChoice}
-      <AuthoringLifecycleAction title="Stationary form" kind="activate" note={activationNote}
+      <AuthoringLifecycleAction title={t("admin.stationaryForm")} kind="activate" note={activationNote}
         onNoteChange={setActivationNote} disabled={busy || activated || !!activationReview || !selectedValidation}
         detail={t("admin.activationAppliesThis")}
         buttonLabel={t(activated ? "Agency default active" : "Activate as agency default")} onSubmit={() => action(async () => {
@@ -306,7 +306,7 @@ export function StationaryFormAuthoring({ csrfToken, capabilities, catalogReleas
       <input id="form-display-name" disabled={!canWrite || busy} maxLength={120} required value={draft.displayName ?? ""}
         onChange={(event) => { setDraft({ ...draft, displayName: event.target.value }); setDirty(true); setStatus(t("admin.unsavedChanges")); }} />
       {publicationAllowed ? <>
-        <AuthoringLifecycleAction title="Stationary form" kind="publish" note={publicationNote}
+        <AuthoringLifecycleAction title={t("admin.stationaryForm")} kind="publish" note={publicationNote}
           onNoteChange={setPublicationNote} disabled={busy || dirty || !draft.displayName?.trim() || pendingRemoval !== null || draft.diagnostics.length > 0}
           buttonLabel={t("admin.publishImmutableForm")} onSubmit={() => action(async () => {
             if (!draft.displayName?.trim()) throw new Error(t("admin.enterAForm"));

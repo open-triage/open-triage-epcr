@@ -65,7 +65,7 @@ test("a not-found error during publish keeps its original status instead of beco
 });
 
 test("publishing a complete Stationary form retains read-only NEMSIS metadata without analytics mappings", async () => {
-  const definition = { schemaVersion: 1, sections: [{ key: "DemographicGroup", fields: [{
+  const definition = { schemaVersion: 1, sections: [{ key: "DemographicGroup", name: "Agency details", fields: [{
     key: "dAgency.01", source: { kind: "nemsis", elementId: "dAgency.01" },
   }] }] };
   const digest = canonicalDefinitionSha256(definition);
@@ -101,6 +101,19 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
   });
 
   assert.equal(published.status, "published");
+  assert.equal(definition.sections[0].name, "Agency details");
+  assert.equal(canonicalDefinitionSha256(definition), digest);
   assert.equal(fieldWrites.length, 1);
   assert.equal(fieldWrites[0][10], false);
+});
+
+
+test("visual section names round-trip without changing field binding and reject invalid names", () => {
+  const definition = { schemaVersion: 1, sections: [{ key: "local-care", name: "Care given", fields: [
+    { key: "medication", source: { kind: "nemsis", elementId: "eMedications.03" } }
+  ] }, { key: "next", name: "Next steps", fields: [] }] };
+  assert.deepEqual(validateCanonicalFormDefinition(JSON.parse(JSON.stringify(definition))), definition);
+  for (const name of ["", "   ", "a".repeat(121), 42]) {
+    assert.throws(() => validateCanonicalFormDefinition({ ...definition, sections: [{ ...definition.sections[0], name }] }), /sections\[0\].name/);
+  }
 });

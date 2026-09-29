@@ -10,6 +10,7 @@ import { resolveCatalogGroupText } from "../app/catalog-localization";
 
 export function formSectionLabel(section: FormDraftDefinition["sections"][number],
   catalogGroups?: ClinicalFormConfiguration["catalogGroups"], language = "en"): string {
+  if (section.name) return section.name;
   const sourceName = getNemsisGroup(section.key)?.name;
   const catalogName = resolveCatalogGroupText(catalogGroups, section.key, language, sourceName ?? section.key);
   if (catalogName) return stationaryDisplayLabel(catalogName);
@@ -36,6 +37,28 @@ export function addFormElement(definition: FormDraftDefinition, sectionKey: stri
   return { ...definition, sections: definition.sections.map((section) => section.key === sectionKey
     ? { ...section, fields: [...section.fields, { key, source: { kind: "nemsis", elementId: element.elementId } }] }
     : section) };
+}
+
+/** Section identity is independent of its editable visual name. */
+export function createFormSection(definition: FormDraftDefinition, name: string, key = `section-${crypto.randomUUID()}`): FormDraftDefinition {
+  if (!name.trim() || name.trim().length > 120) throw new Error("Enter a section name of 1–120 characters.");
+  if (definition.sections.some((section) => section.key === key)) throw new Error("Section identity already exists.");
+  return { ...definition, sections: [...definition.sections, { key, name: name.trim(), fields: [] }] };
+}
+
+export function renameFormSection(definition: FormDraftDefinition, key: string, name: string): FormDraftDefinition {
+  return { ...definition, sections: definition.sections.map((section) => section.key === key ? { ...section, name } : section) };
+}
+
+/** Move the complete field, including its source and rule identity, without rebinding it. */
+export function transferFormElement(definition: FormDraftDefinition, sourceKey: string, fieldKey: string, targetKey: string): FormDraftDefinition {
+  const source = definition.sections.find(({ key }) => key === sourceKey);
+  const field = source?.fields.find(({ key }) => key === fieldKey);
+  if (!field || !definition.sections.some(({ key }) => key === targetKey)) throw new Error("Choose an existing field and destination section.");
+  if (sourceKey === targetKey) return definition;
+  return { ...definition, sections: definition.sections.map((section) => section.key === sourceKey
+    ? { ...section, fields: section.fields.filter(({ key }) => key !== fieldKey) }
+    : section.key === targetKey ? { ...section, fields: [...section.fields, field] } : section) };
 }
 
 export function removeFormElement(definition: FormDraftDefinition, sectionKey: string, fieldKey: string): FormDraftDefinition {
@@ -99,10 +122,19 @@ export function FormSectionElements({ definition, catalogGroups, language = "en"
   readonly onRequestRemoveSection?: (index: number) => void;
 }) {
   const t = useAdminText();
+  const [newSectionName, setNewSectionName] = useState("");
   const [expandedSection, setExpandedSection] = useState<string | null>(definition.sections[0]?.key ?? null);
   const selectedKey = definition.sections.some(({ key }) => key === expandedSection)
     ? expandedSection : expandedSection === null ? null : definition.sections[0]?.key ?? null;
   return <div className="form-fields">
+    {!readOnly && <fieldset disabled={busy}>
+      <label htmlFor="new-section-name">{t("admin.newSectionName")}</label>
+      <input id="new-section-name" maxLength={120} value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} />
+      <button type="button" disabled={!newSectionName.trim()} onClick={() => {
+        const next = createFormSection(definition, newSectionName);
+        onChange(next, t("admin.sectionCreated")); setExpandedSection(next.sections.at(-1)!.key); setNewSectionName("");
+      }}>{t("admin.createSection")}</button>
+    </fieldset>}
     <label htmlFor="form-section-navigation"><AdminText messageKey="admin.goToSection" /></label>
     <select id="form-section-navigation" value={selectedKey ?? ""} onChange={(event) => setExpandedSection(event.target.value || null)}>
       <option value=""><AdminText messageKey="admin.allSectionsCollapsed" /></option>
@@ -126,6 +158,10 @@ export function FormSectionElements({ definition, catalogGroups, language = "en"
             onClick={() => onRequestRemoveSection(sectionIndex)}><AdminText messageKey="admin.removeSection" /></button>
         </div>}
       </header>
+      {open && !readOnly && <label>{t("admin.sectionName")}
+        <input aria-label={t("admin.sectionName")} disabled={busy} maxLength={120} value={section.name ?? formSectionLabel(section, catalogGroups, language)}
+          onChange={(event) => onChange(renameFormSection(definition, section.key, event.target.value), t("admin.sectionRenamed"))} />
+      </label>}
       {open && <ol aria-label={`${section.key} form elements`}>
         {section.fields.map((field, index) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
@@ -133,6 +169,13 @@ export function FormSectionElements({ definition, catalogGroups, language = "en"
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
+              <label>{t("admin.moveToSection")}
+                <select aria-label={`${t("admin.moveToSection")} ${label}`} disabled={busy} value={section.key}
+                  onChange={(event) => onChange(transferFormElement(definition, section.key, field.key, event.target.value), t("admin.fieldMoved"))}>
+                  {definition.sections.map((target) => <option key={target.key} value={target.key}>{formSectionLabel(target, catalogGroups, language)}</option>)}
+                </select>
+              </label>
+              <small>{t("admin.dataBinding")}: {field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.groupPath.join(" / ") : field.source.groupDefinitionId ?? field.source.elementDefinitionId}</small>
               <button type="button" disabled={busy || index === 0} aria-label={`Move ${label} up`} onClick={() =>
                 onChange(moveFormElement(definition, section.key, index, index - 1), `Moved ${label} up.`)}><AdminText messageKey="admin.moveUp" /></button>
               <button type="button" disabled={busy || index === section.fields.length - 1} aria-label={`Move ${label} down`} onClick={() =>

@@ -39,6 +39,7 @@ export type ConfiguredStationarySection = {
   readonly hash: string;
   readonly label: string;
   readonly catalogGroupId: string;
+  readonly visualName?: string;
   readonly blocks: ReadonlyArray<StationaryRenderBlock>;
   readonly fields: FormDraftDefinition["sections"][number]["fields"];
   readonly groupIds: ReadonlySet<string>;
@@ -126,7 +127,8 @@ export function configuredStationaryPreviewSections(definition: FormDraftDefinit
     return [{
       id: `draft-${sectionIndex}-${section.key}`,
       hash: `stationary-preview-section-${sectionIndex}-${section.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`,
-      label: getNemsisGroup(section.key)?.name ?? section.key,
+      label: section.name ?? getNemsisGroup(section.key)?.name ?? section.key,
+      visualName: section.name,
       catalogGroupId: section.key,
       blocks,
       fields,

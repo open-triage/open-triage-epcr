@@ -318,7 +318,7 @@ export class FormAuthoringService {
         return false;
       }
       return true;
-    }) })).filter((section) => section.fields.length > 0);
+    }) }));
     return { definition: { ...definition, sections }, diagnostics };
   }
 
