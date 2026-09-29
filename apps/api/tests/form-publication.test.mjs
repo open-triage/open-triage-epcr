@@ -108,6 +108,25 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
   assert.equal(fieldWrites[0][10], false);
 });
 
+test("direct form publication rejects a custom field retired in its pinned catalog", async () => {
+  const id = "da77b0fc-a701-41b0-a387-18b07662ed71";
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition")) return [];
+    if (sql.includes("from forms.custom_element_definition")) return [{
+      id, organization_id: "org-1", base_datatype: "string", retired_at: null
+    }];
+    if (sql.includes("customElementDefinitions")) return [{ definitions: [{ id, retired: true }] }];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormPublicationService({});
+  await assert.rejects(service.resolveMetadata(manager, {
+    organization_id: "org-1", catalog_release_id: "new-release"
+  }, { schemaVersion: 1, sections: [{ key: "notes", fields: [{ key: "note",
+    source: { kind: "custom", elementDefinitionId: id } }] }] }),
+  (error) => error.getStatus?.() === 422 &&
+    error.getResponse().findings.some((finding) => finding.includes("unavailable custom element")));
+});
+
 
 test("visual section names round-trip without changing field binding and reject invalid names", () => {
   const definition = { schemaVersion: 1, sections: [{ key: "local-care", name: "Care given", fields: [
