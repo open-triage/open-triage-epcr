@@ -1,5 +1,6 @@
 import { compiledValidationBundleSha256, isNemsisDemographicElementId, type ClinicalFormConfiguration, type CompiledValidationBundle, type FormDraftDefinition } from "@open-triage/contracts";
 import type { EntityManager } from "typeorm";
+import { effectiveCatalogFields } from "./field-choice-policy.js";
 
 type FieldRow = {
   element_id: string;
@@ -58,7 +59,8 @@ export async function clinicalFormConfiguration(
       && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
   return {
     definition: versions[0].canonical_definition,
-    catalogFields: await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
+    catalogFields: effectiveCatalogFields(versions[0].canonical_definition,
+      await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds)),
     catalogGroups: await catalogGroupsConfiguration(manager, catalogReleaseId),
     ...(liveBundle ? { validation: { versionId: validationVersionId!,
       compiledSha256: compiledValidationBundleSha256(liveBundle), bundle: liveBundle } } : {}),

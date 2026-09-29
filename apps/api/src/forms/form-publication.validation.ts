@@ -155,6 +155,19 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
       if (field.configuration !== undefined) {
         findings.push(`${fieldPath}.configuration is unsupported; edit wording in the element catalog`);
       }
+      if (field.choicePolicy !== undefined) {
+        if (!Array.isArray(field.choicePolicy) || field.choicePolicy.some((choice) => !isRecord(choice) ||
+          !["code", "not-value"].includes(String(choice.kind)) || typeof choice.code !== "string" || !choice.code.trim() ||
+          (choice.kind === "code" && typeof choice.codeSystem !== "string") ||
+          (choice.kind === "not-value" && choice.codeSystem !== undefined))) {
+          findings.push(`${fieldPath}.choicePolicy must contain coded or NOT choice identities`);
+        } else {
+          const identities = field.choicePolicy.map((choice) => `${choice.kind}:${choice.kind === "code" ? choice.codeSystem : ""}:${choice.code}`);
+          if (new Set(identities).size !== identities.length)
+            findings.push(`${fieldPath}.choicePolicy contains duplicate choices`);
+        }
+        if (field.source?.kind !== "nemsis") findings.push(`${fieldPath}.choicePolicy requires a NEMSIS field`);
+      }
       if (field.rules !== undefined && !Array.isArray(field.rules)) findings.push(`${fieldPath}.rules must be an array`);
       fields.push(field as unknown as CanonicalFormField);
     });

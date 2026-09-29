@@ -862,6 +862,8 @@ export interface FormDraftField {
     { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
+  /** Ordered choices enabled for this field. Omission preserves a legacy published form's catalog behavior. */
+  choicePolicy?: Array<{ kind: "code"; code: string; codeSystem: string } | { kind: "not-value"; code: string }>;
   rules?: FormDraftRule[];
 }
 

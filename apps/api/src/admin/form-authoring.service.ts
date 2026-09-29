@@ -6,6 +6,7 @@ import { canonicalDefinitionSha256, FormPublicationValidationError, validateCano
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
 import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms/clinical-form-configuration.js";
+import { effectiveCatalogFields, materializeLegacyChoicePolicies, validateFieldChoicePolicies } from "../forms/field-choice-policy.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 
@@ -92,8 +93,12 @@ export class FormAuthoringService {
           throw new ConflictException("A Stationary form draft is already pinned to another catalog");
         return this.result(manager, existing[0]);
       }
+      const sourceDefinition = this.definition(source[0].canonical_definition);
+      const sourceElementIds = [...new Set(sourceDefinition.sections.flatMap((section) => section.fields.flatMap((field) =>
+        field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+      const sourceCatalog = await catalogFieldsConfiguration(manager, source[0].catalog_release_id, sourceElementIds);
       const cloned = await this.compatibleClone(manager, source[0].catalog_release_id, catalogReleaseId,
-        this.definition(source[0].canonical_definition));
+        materializeLegacyChoicePolicies(sourceDefinition, sourceCatalog));
       const digest = canonicalDefinitionSha256(cloned.definition);
       const inserted = mutationRows<VersionRow>(await manager.query(`
         insert into forms.form_version
@@ -149,6 +154,11 @@ export class FormAuthoringService {
       if (checked.diagnostics.length) throw new UnprocessableEntityException({
         message: "Form validation failed", findings: checked.diagnostics
       });
+      const choiceElementIds = [...new Set(body.definition.sections.flatMap((section) => section.fields.flatMap((field) =>
+        field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+      const choiceCatalog = await catalogFieldsConfiguration(manager, draft.catalog_release_id, choiceElementIds);
+      const choiceFindings = validateFieldChoicePolicies(body.definition, choiceCatalog);
+      if (choiceFindings.length) throw new UnprocessableEntityException({ message: "Form validation failed", findings: choiceFindings });
       const digest = canonicalDefinitionSha256(body.definition);
       const updated = await manager.query<VersionRow[]>(`
         with updated as (
@@ -405,7 +415,7 @@ export class FormAuthoringService {
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition, catalogFields,
+      definition, catalogFields: effectiveCatalogFields(definition, catalogFields),
       catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
