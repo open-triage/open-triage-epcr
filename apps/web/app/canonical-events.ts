@@ -168,7 +168,7 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
     return [{ groupId: "eProcedures.ProcedureGroup", instance: owned(event.id, observedAt, [
       { id: "eProcedures.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: observedAt }] },
       { id: "eProcedures.03", values: [{ kind: "coded", occurrenceId: `${event.id}:procedure`, code: procedure.code, system: "SNOMED-CT", display: procedure.label, attributes: { warningAcknowledged: procedure.warningAcknowledged } }] },
-      { id: "eProcedures.05", values: [{ kind: "scalar", occurrenceId: `${event.id}:attempts`, value: procedure.attempts }] },
+      ...(procedure.attempts === "" ? [] : [{ id: "eProcedures.05", values: [{ kind: "scalar" as const, occurrenceId: `${event.id}:attempts`, value: procedure.attempts }] }]),
       ...(success ? [{ id: "eProcedures.06", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:success`, code: success.code, display: success.label }] }] : []),
       ...(outcome ? [{ id: "eProcedures.08", values: [{ kind: "coded" as const, occurrenceId: `${event.id}:outcome`, code: outcome.code, display: outcome.label }] }] : []),
       ...(procedure.complications.length ? [{ id: "eProcedures.07", values: procedure.complications.map((code, index) => ({ kind: "coded" as const, occurrenceId: `${event.id}:complication:${index}`, code })) }] : []),
@@ -264,7 +264,7 @@ export function encounterEvents(document: EncounterDocument, definition: Encount
       const success = coded(instance, "eProcedures.06");
       const outcome = coded(instance, "eProcedures.08");
       events.push({ id: instance.instanceId, ...observed, kind: "procedure", title: procedure.display, detail: "", reference: `${definition.events.procedure.references.procedure} · ${definition.events.procedure.terminology.codeSystem} ${procedure.code}`, visitorEntered: true, procedure: {
-        code: procedure.code, label: procedure.display, attempts: Number(scalar(instance, "eProcedures.05")) || 0,
+        code: procedure.code, label: procedure.display, attempts: scalar(instance, "eProcedures.05") === "" ? "" : Number(scalar(instance, "eProcedures.05")) || 0,
         success: definition.events.procedure.successOptions.find((item) => item.label === success?.display || item.value === success?.code)?.value ?? "" as "yes",
         outcome: definition.events.procedure.outcomeOptions.find((item) => item.label === outcome?.display || item.code === outcome?.code || item.value === outcome?.code)?.value ?? "" as "improved",
         complications: element(instance, "eProcedures.07")?.values.flatMap((value) => value.kind === "coded" ? [value.code] : []) ?? [],

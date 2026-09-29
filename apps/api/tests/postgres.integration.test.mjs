@@ -795,7 +795,7 @@ integrationTest("authorized Admin context resolves only the session organization
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value)],
-      defaultValue: { code: localValue.code, codeSystem: localValue.codeSystem } } : list.listId === changedInlineList.listId
+      defaultValue: null } : list.listId === changedInlineList.listId
       ? { ...list, values: list.values.map((value) => value.code === disabledInlineValue.code && value.codeSystem === disabledInlineValue.codeSystem
         ? { ...value, label: `${value.label} (agency label)`, enabled: false } : value) } : list) };
   const saved = await authoring.save(active.sessionToken, draft.id, { expectedRevision: 1, displayName: "Integration catalog", definition: changedDefinition });
@@ -843,7 +843,7 @@ integrationTest("authorized Admin context resolves only the session organization
   assert.equal(sourceCode.rows[0].display, disabledValue.label);
   assert.equal(sourceCode.rows[0].enabled, true);
   assert.deepEqual(publishedCodes.rows, [
-    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: true },
+    { code: localValue.code, display: localValue.label, enabled: true, sort_order: 0, is_default: false },
     { code: disabledValue.code, display: `${disabledValue.label} (agency label)`, enabled: false, sort_order: 1, is_default: false }
   ]);
   const publishedInlineCode = await client.query(`select o.display,c.enabled,c.sort_order
