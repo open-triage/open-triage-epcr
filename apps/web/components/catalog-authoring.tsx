@@ -2,7 +2,7 @@
 
 import { AdminText, useAdminError, useAdminText } from "../app/admin-localization";
 
-import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement } from "@open-triage/contracts";
+import type { AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftElement, CatalogDraftCustomTextElement } from "@open-triage/contracts";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingStatus } from "./loading-status";
 import { cloneCatalogDraft, loadActiveCatalogDefinition, loadCatalogDraft, loadCatalogVersion, loadCatalogVersions, publishCatalogDraft, saveCatalogDraft, deleteCatalogDraft, validateCatalogDraft } from "../app/admin-context";
@@ -45,6 +45,9 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
   const [busy, setBusy] = useState(false);
   const [selectedListKey, setSelectedListKey] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [customText, setCustomText] = useState({ namespace: "", slug: "", title: "", definition: "",
+    swedishTitle: "", swedishDefinition: "", usage: "Optional" as CatalogDraftCustomTextElement["usage"],
+    identifying: "", minLength: "", maxLength: "", pattern: "" });
   const hasAuthoringDraft = Boolean(draft && "revision" in draft);
   const showError = useCallback((reason: unknown) => { setError(adminError(reason, "admin.catalogOperationFailed")); }, [adminError]);
   useEffect(() => {
@@ -107,6 +110,30 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
       codeLists: current.definition.codeLists.map((list) => list.listId === next.listId ? next : list) } } : current);
     setDirty(true); setStatus(`Unsaved changes. ${announcement}`); setError("");
   }
+  function addCustomText() {
+    if (!draft || !canWrite || !("revision" in draft)) return;
+    const namespace = customText.namespace.trim(); const slug = customText.slug.trim();
+    if (!namespace || !slug || !customText.title.trim() || !customText.definition.trim() || !customText.identifying) {
+      setError("Enter an identity, title, definition, and identifying classification."); return;
+    }
+    if (draft.definition.customElements?.some((item) => item.namespace === namespace && item.slug === slug)) {
+      setError("That custom identity is already in this catalog."); return;
+    }
+    const element: CatalogDraftCustomTextElement = { id: crypto.randomUUID(), namespace, slug,
+      title: customText.title.trim(), definition: customText.definition.trim(), datatype: "string", recurrence: "single",
+      usage: customText.usage, identifying: customText.identifying === "yes",
+      constraints: { ...(customText.minLength ? { minLength: Number(customText.minLength) } : {}),
+        ...(customText.maxLength ? { maxLength: Number(customText.maxLength) } : {}),
+        ...(customText.pattern ? { pattern: customText.pattern } : {}) },
+      ...(customText.swedishTitle.trim() ? { localization: { schemaVersion: 1, sv: {
+        label: customText.swedishTitle.trim(), description: customText.swedishDefinition.trim(),
+        reviewedSource: { label: customText.title.trim(), description: customText.definition.trim() } } } } : {}) };
+    setDraft({ ...draft, definition: { ...draft.definition,
+      customElements: [...(draft.definition.customElements ?? []), element] } });
+    setDirty(true); setError(""); setStatus(`Added ${namespace}.${slug}. Save and validate before publishing.`);
+    setCustomText({ namespace: "", slug: "", title: "", definition: "", swedishTitle: "", swedishDefinition: "",
+      usage: "Optional", identifying: "", minLength: "", maxLength: "", pattern: "" });
+  }
   async function action(work: () => Promise<void>) {
     setBusy(true); setError("");
     try { await work(); } catch (reason) { showError(reason); } finally { setBusy(false); }
@@ -135,6 +162,43 @@ export function CatalogAuthoring({ csrfToken, capabilities, onPublished, active 
 
   return <div className="catalog-editor">
     {versionWorkspace}
+    <section aria-labelledby="custom-text-heading">
+      <h3 id="custom-text-heading">Custom text elements</h3>
+      <ul>{(draft.definition.customElements ?? []).map((item) => <li key={item.id}>
+        <strong>{item.namespace}.{item.slug} — {item.title}</strong> ({item.usage}; {item.identifying ? "identifying" : "non-identifying"})
+        <p>{item.definition}</p>
+      </li>)}</ul>
+      {canEdit && <fieldset disabled={busy}>
+        <legend>Create a standalone text element</legend>
+        <label>Namespace <input required value={customText.namespace} placeholder="org.example.ems"
+          onChange={(event) => setCustomText({ ...customText, namespace: event.target.value })} /></label>
+        <label>Identifier <input required value={customText.slug} placeholder="LocalNote"
+          onChange={(event) => setCustomText({ ...customText, slug: event.target.value })} /></label>
+        <label>English title <input required maxLength={100} value={customText.title}
+          onChange={(event) => setCustomText({ ...customText, title: event.target.value })} /></label>
+        <label>English definition <textarea required maxLength={255} value={customText.definition}
+          onChange={(event) => setCustomText({ ...customText, definition: event.target.value })} /></label>
+        <label>Swedish title <input maxLength={100} value={customText.swedishTitle}
+          onChange={(event) => setCustomText({ ...customText, swedishTitle: event.target.value })} /></label>
+        <label>Swedish definition <textarea maxLength={255} value={customText.swedishDefinition}
+          onChange={(event) => setCustomText({ ...customText, swedishDefinition: event.target.value })} /></label>
+        <label>NEMSIS usage <select value={customText.usage} onChange={(event) => setCustomText({ ...customText,
+          usage: event.target.value as CatalogDraftCustomTextElement["usage"] })}>
+          {["Optional", "Recommended", "Required", "Mandatory"].map((usage) => <option key={usage}>{usage}</option>)}
+        </select></label>
+        <label>Identifying information <select required value={customText.identifying}
+          onChange={(event) => setCustomText({ ...customText, identifying: event.target.value })}>
+          <option value="">Choose classification</option><option value="yes">Yes</option><option value="no">No</option>
+        </select></label>
+        <label>Minimum length <input type="number" min="0" value={customText.minLength}
+          onChange={(event) => setCustomText({ ...customText, minLength: event.target.value })} /></label>
+        <label>Maximum length <input type="number" min="0" value={customText.maxLength}
+          onChange={(event) => setCustomText({ ...customText, maxLength: event.target.value })} /></label>
+        <label>Pattern <input value={customText.pattern}
+          onChange={(event) => setCustomText({ ...customText, pattern: event.target.value })} /></label>
+        <button type="button" onClick={addCustomText}>Add custom text element</button>
+      </fieldset>}
+    </section>
     <p>{"revision" in draft ? `Draft revision ${draft.revision}. Stable identity, datatype, and storage semantics are read-only.`
       : canWrite ? `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. Create a draft to edit it.`
         : `${draft.status === "active" ? t("admin.active") : t("admin.published")} Catalog ${draft.displayName}, version ${draft.version}. You have read-only access to this definition.`}</p>

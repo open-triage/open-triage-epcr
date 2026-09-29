@@ -890,6 +890,7 @@ export interface FormDraftDefinition {
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
+  customFields?: Record<string, CatalogDraftCustomTextElement>;
   /** Group wording from the same immutable catalog as the fields. */
   catalogGroups?: Record<string, { name: string; localization?: {
     schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
@@ -943,6 +944,7 @@ export interface StationaryFormDraft {
   definition: FormDraftDefinition;
   /** Published catalog configuration used by the detached authoring preview. */
   catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  customFields?: ClinicalFormConfiguration["customFields"];
   catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
   updatedAt: string;

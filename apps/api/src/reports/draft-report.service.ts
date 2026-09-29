@@ -76,6 +76,7 @@ type ElementMetadata = {
   supports_not_values: boolean;
   supports_pertinent_negatives: boolean;
   max_occurs: number | null;
+  text_constraints?: { minLength?: number; maxLength?: number; pattern?: string } | null;
 };
 
 type SingletonTargetStateRow = DraftTargetStateRow & {
@@ -1235,13 +1236,20 @@ export class DraftReportService {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
       this.validateDatatype(value, metadata, occurrence.elementId);
+      if (metadata.text_constraints && value.kind === "text") {
+        const constraints = metadata.text_constraints;
+        if (constraints.minLength !== undefined && value.value.length < constraints.minLength ||
+            constraints.maxLength !== undefined && value.value.length > constraints.maxLength ||
+            constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value.value))
+          throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published text constraints`);
+      }
       const columns = this.valueColumns(value);
       return {
         id: occurrence.id,
         group_instance_id: occurrence.groupInstanceId ?? null,
         element_identity_id: metadata.element_identity_id,
         element_id: occurrence.elementId,
-        form_field_id: occurrence.formFieldId ?? null,
+        form_field_id: occurrence.formFieldId ?? metadata.form_field_id ?? null,
         ordinal: occurrence.ordinal ?? 0,
         analytical_repeatable: metadata.analytical_repeatable,
         identifying: metadata.identifying,
@@ -1383,9 +1391,21 @@ export class DraftReportService {
         where ff.id = any($1::uuid[]) and ff.form_version_id = $2
       `, [formFieldIds, report.form_version_id]) : [];
     const fieldsById = new Map(fields.map((metadata) => [metadata.form_field_id!, metadata]));
+    const custom = await manager.query<ElementMetadata[]>(`
+      select ced.namespace || '.' || ced.slug as element_id,ff.id as form_field_id,
+             ced.id as element_identity_id,ced.base_datatype,null::integer as max_occurs,
+             ff.analytical_repeatable,ced.identifying,
+             (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
+             (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
+             array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states,
+             ced.definition->'constraints' as text_constraints
+      from forms.form_field ff join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
+      where ff.form_version_id=$1 and ced.namespace || '.' || ced.slug=any($2::text[])
+    `, [report.form_version_id, elementIds]);
+    const customByElement = new Map(custom.map((metadata) => [metadata.element_id!, metadata]));
     const result = new Map<string, ElementMetadata>();
     for (const occurrence of occurrences) {
-      let metadata = standardByElement.get(occurrence.elementId);
+      let metadata = standardByElement.get(occurrence.elementId) ?? customByElement.get(occurrence.elementId);
       const field = occurrence.formFieldId ? fieldsById.get(occurrence.formFieldId) : undefined;
       if (!metadata && field?.base_datatype && field.element_id === occurrence.elementId) metadata = field;
       if (!metadata) {

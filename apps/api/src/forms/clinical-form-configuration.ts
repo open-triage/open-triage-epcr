@@ -44,6 +44,10 @@ export async function clinicalFormConfiguration(
 
   const elementIds = [...new Set(versions[0].canonical_definition.sections.flatMap((section) =>
     section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
+  const customIds = [...new Set(versions[0].canonical_definition.sections.flatMap((section) =>
+    section.fields.flatMap((field) => field.source.kind === "custom" ? [field.source.elementDefinitionId] : [])))];
+  const custom = customIds.length ? await manager.query<Array<{ id: string; definition: NonNullable<ClinicalFormConfiguration["customFields"]>[string] }>>(`
+    select id,definition from forms.custom_element_definition where id=any($1::uuid[])`, [customIds]) : [];
 
   const validation = validationVersionId ? await manager.query<Array<{ compiled_bundle: CompiledValidationBundle; compiled_sha256: string }>>(`
     select compiled_bundle,compiled_sha256 from validation.version
@@ -60,6 +64,7 @@ export async function clinicalFormConfiguration(
       && !rule.references?.elementIds?.some(isNemsisDemographicElementId)) } : undefined;
   return {
     definition: versions[0].canonical_definition,
+    customFields: Object.fromEntries(custom.map((row) => [row.id, row.definition])),
     catalogFields: effectiveCatalogFields(versions[0].canonical_definition,
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds),
       await catalogFieldsConfiguration(manager, catalogReleaseId, elementIds, true)),
