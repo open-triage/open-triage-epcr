@@ -15,13 +15,14 @@ export function customTextDefinitionFindings(value: unknown): string[] {
     findings.push("Custom identity exceeds the NEMSIS 255-character limit");
   if (typeof item.title !== "string" || item.title.trim().length < 2 || item.title.length > 100) findings.push("Custom title must contain 2–100 characters");
   if (typeof item.definition !== "string" || item.definition.trim().length < 2 || item.definition.length > 255) findings.push("Custom definition must contain 2–255 characters");
-  if (!["string", "number", "dateTime", "boolean"].includes(String(item.datatype)) || item.recurrence !== "single") findings.push("This catalog supports standalone single-value text, number, date/time, and boolean definitions");
+  if (!["string", "number", "dateTime", "boolean", "binary", "other"].includes(String(item.datatype)) || item.recurrence !== "single")
+    findings.push("This catalog supports standalone single-value NEMSIS custom datatype definitions");
   if (!["Mandatory", "Required", "Recommended", "Optional"].includes(String(item.usage))) findings.push("Custom usage is invalid");
   if (item.identifying !== true && item.identifying !== false) findings.push("Choose whether this field contains identifying information");
   const constraints = item.constraints;
   if (!constraints || typeof constraints !== "object" || Array.isArray(constraints)) findings.push("Custom constraints are required");
   else {
-    const allowed = item.datatype === "string" ? ["minLength", "maxLength", "pattern"]
+    const allowed = item.datatype === "string" || item.datatype === "other" ? ["minLength", "maxLength", "pattern"]
       : item.datatype === "number" ? ["minimum", "maximum"] : [];
     if (Object.keys(constraints).some((key) => !allowed.includes(key))) findings.push(`Unsupported ${String(item.datatype)} constraint`);
     for (const key of ["minLength", "maxLength"] as const) if (constraints[key] !== undefined &&

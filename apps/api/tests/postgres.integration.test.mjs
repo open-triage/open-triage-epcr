@@ -796,9 +796,13 @@ integrationTest("authorized Admin context resolves only the session organization
     usage: "Required", constraints: { minLength: 2, maxLength: 100 }, identifying: false };
   const identifyingText = { ...customText, id: randomUUID(), slug: `Private${randomUUID().replaceAll("-", "")}`,
     title: "Private note", identifying: true };
+  const binaryElement = { ...customText, id: randomUUID(), slug: `Binary${randomUUID().replaceAll("-", "")}`,
+    title: "Local binary", datatype: "binary", constraints: {}, identifying: true };
+  const otherElement = { ...customText, id: randomUUID(), slug: `Other${randomUUID().replaceAll("-", "")}`,
+    title: "Other result", datatype: "other", constraints: { minLength: 2, maxLength: 100 } };
   const localValue = { code: `LOCAL-${randomUUID()}`, codeSystem: "Local identity", label: "Locally managed choice",
     sourceLabel: "Locally managed choice", category: null, enabled: true };
-  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText], elements: draft.definition.elements.map((element) =>
+  const changedDefinition = { ...draft.definition, customElements: [customText, identifyingText, binaryElement, otherElement], elements: draft.definition.elements.map((element) =>
     element.elementId === changedElement.elementId ? { ...element, requirednessSeverity: "warning" } : element),
     codeLists: draft.definition.codeLists.map((list) => list.listId === changedList.listId ? { ...list,
       values: [localValue, ...list.values.map((value) => value.code === disabledValue.code && value.codeSystem === disabledValue.codeSystem
@@ -895,7 +899,9 @@ integrationTest("authorized Admin context resolves only the session organization
   const editedFormDefinition = { ...formDraft.definition,
     sections: [{ ...formDraft.definition.sections[2], fields: [...formDraft.definition.sections[2].fields,
       { key: "local-note", source: { kind: "custom", elementDefinitionId: customText.id } },
-      { key: "private-note", source: { kind: "custom", elementDefinitionId: identifyingText.id } }] },
+      { key: "private-note", source: { kind: "custom", elementDefinitionId: identifyingText.id } },
+      { key: "local-binary", source: { kind: "custom", elementDefinitionId: binaryElement.id } },
+      { key: "local-other", source: { kind: "custom", elementDefinitionId: otherElement.id } }] },
     formDraft.definition.sections[0]] };
   const formSaved = await forms.save(active.sessionToken, formDraft.id, {
     expectedRevision: formDraft.revision, definition: editedFormDefinition
@@ -937,20 +943,30 @@ integrationTest("authorized Admin context resolves only the session organization
   const clinician = new DraftReportService(transactionalDatabase, { requireCapability: async () =>
     ({ organization: { id: organizationId }, user: { id: owner.userId } }) });
   const groupId = randomUUID();
-  const fields = [customText, identifyingText].map((item) => ({ id: randomUUID(),
+  const fields = [customText, identifyingText, binaryElement, otherElement].map((item) => ({ id: randomUUID(),
     elementId: `${item.namespace}.${item.slug}`, groupInstanceId: groupId, ordinal: 0,
-    value: { kind: "text", value: item.identifying ? "Private response" : "Public response" } }));
+    value: item.datatype === "binary" ? { kind: "binary", value: "AAEC/w==" }
+      : { kind: "text", value: item.identifying ? "Private response" : item.datatype === "other" ? "Other response" : "Public response" } }));
   await assert.rejects(clinician.save("session", reportId, {
     commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
     occurrences: [{ ...fields[0], value: { kind: "text", value: "x" } }]
   }), /published text constraints/);
+  await assert.rejects(clinician.save("session", reportId, {
+    commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
+    occurrences: [{ ...fields[2], value: { kind: "binary", value: "AAEC/w=" } }]
+  }), /base64/);
   const documented = await clinician.save("session", reportId, {
     commandId: randomUUID(), expectedRevision: 0, authorId: owner.userId,
     groups: [{ id: groupId, groupId: "PatientCareReportGroup", ordinal: 0 }], occurrences: fields
   });
   assert.equal(documented.revision, 1);
   const reopened = await clinician.get("session", reportId);
+  assert.ok(reopened.occurrences.some(({ elementId, valueBinary, identifying }) =>
+    elementId === `${binaryElement.namespace}.${binaryElement.slug}` && valueBinary === "AAEC/w==" && identifying));
+  assert.ok(reopened.occurrences.some(({ elementId, valueText }) =>
+    elementId === `${otherElement.namespace}.${otherElement.slug}` && valueText === "Other response"));
   assert.deepEqual(reopened.occurrences.filter(({ elementId }) => elementId.startsWith("org.integration.ems."))
+    .filter(({ elementId }) => [customText, identifyingText].some((item) => elementId === `${item.namespace}.${item.slug}`))
     .map(({ elementId, identifying, valueText }) => ({ elementId, identifying, valueText }))
     .sort((a, b) => a.valueText.localeCompare(b.valueText)), [
       { elementId: `${identifyingText.namespace}.${identifyingText.slug}`, identifying: true, valueText: "Private response" },
@@ -959,6 +975,10 @@ integrationTest("authorized Admin context resolves only the session organization
   const recoveredDocument = await encounterDocument(transactionalDatabase.manager, reportId);
   assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
     .some(({ id, values }) => id === `${customText.namespace}.${customText.slug}` && values[0]?.kind === "scalar" && values[0].value === "Public response"));
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${binaryElement.namespace}.${binaryElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "AAEC/w=="));
+  assert.ok(recoveredDocument.groups.find(({ id }) => id === "PatientCareReportGroup")?.instances[0]?.elements
+    .some(({ id, values }) => id === `${otherElement.namespace}.${otherElement.slug}` && values[0]?.kind === "scalar" && values[0].value === "Other response"));
   const analyticalColumns = await client.query(`select table_schema,column_name from information_schema.columns
     where table_name='epcr' and table_schema in ('analytics_private','analytics_pseudonymous')
       and column_name in ('additional_elements','additional_identifying_elements')`);

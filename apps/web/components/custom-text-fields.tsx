@@ -1,11 +1,13 @@
 "use client";
 
 import type { CatalogDraftCustomTextElement, ClinicalFormConfiguration, EncounterDocument, FormDraftField } from "@open-triage/contracts";
-import React from "react";
+import React, { useState } from "react";
 import { clinicalInstantParts, clinicalWallTimeInput, useAgencyTimeZone } from "../app/agency-time-zone";
 import { TimePicker } from "./time-picker";
 
 const GROUP_ID = "PatientCareReportGroup";
+const MAX_CUSTOM_RESULT_LENGTH = 100000;
+const canonicalBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
 export function customTextIdentity(definition: CatalogDraftCustomTextElement): string {
   return `${definition.namespace}.${definition.slug}`;
@@ -41,6 +43,9 @@ export function customTextFindings(definition: CatalogDraftCustomTextElement, va
   const swedish = language === "sv";
   if (value === "" || value === null) return ["Mandatory", "Required"].includes(definition.usage)
     ? [swedish ? "Ett värde krävs." : "A value is required."] : [];
+  if (definition.datatype === "binary") return typeof value !== "string" || value.length > MAX_CUSTOM_RESULT_LENGTH ||
+      !canonicalBase64.test(value) || value.length % 4 !== 0
+    ? [swedish ? "Ange giltiga base64-data med högst 100 000 tecken." : "Provide canonical base64 data of at most 100,000 characters."] : [];
   const constraints = definition.constraints;
   if (definition.datatype === "number") {
     const number = typeof value === "number" ? value : Number(value);
@@ -57,8 +62,8 @@ export function customTextFindings(definition: CatalogDraftCustomTextElement, va
   return [
     ...(constraints.minLength !== undefined && value.length < constraints.minLength ? [swedish
       ? `Ange minst ${constraints.minLength} tecken.` : `Enter at least ${constraints.minLength} characters.`] : []),
-    ...(value.length > (constraints.maxLength ?? 100000) ? [swedish
-      ? `Ange högst ${constraints.maxLength ?? 100000} tecken.` : `Enter at most ${constraints.maxLength ?? 100000} characters.`] : []),
+    ...(value.length > (constraints.maxLength ?? MAX_CUSTOM_RESULT_LENGTH) ? [swedish
+      ? `Ange högst ${constraints.maxLength ?? MAX_CUSTOM_RESULT_LENGTH} tecken.` : `Enter at most ${constraints.maxLength ?? MAX_CUSTOM_RESULT_LENGTH} characters.`] : []),
     ...(constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value) ? [swedish
       ? "Värdet matchar inte katalogens mönster." : "Value does not match the catalog pattern."] : []),
   ];
@@ -72,21 +77,40 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const zone = useAgencyTimeZone();
+  const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
   return <div className="custom-text-fields">{fields.flatMap((field) => {
     if (field.source.kind !== "custom") return [];
     const definition = definitions?.[field.source.elementDefinitionId];
-    if (!definition || !["string", "number", "dateTime", "boolean"].includes(definition.datatype) || field.source.groupDefinitionId) return [];
+    if (!definition || field.source.groupDefinitionId) return [];
     const value = customTextValue(document, definition);
-    const findings = customTextFindings(definition, value, language);
+    const findings = [...customTextFindings(definition, value, language), ...(fileErrors[field.key] ? [fileErrors[field.key]] : [])];
     const id = `custom-text-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;
     const label = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     const help = language === "sv" ? definition.localization?.sv?.description || definition.definition : definition.definition;
     return <div className="stationary-field-shell" data-element-id={customTextIdentity(definition)} key={field.key}>
       <label htmlFor={id}>{label}</label>
       <p id={`${id}-help`}>{help}</p>
-      {definition.datatype === "string" ? <textarea id={id} rows={3} value={value} aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
+      {definition.datatype === "binary" ? <>
+        <input id={id} type="file" aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
+          aria-invalid={Boolean(findings.length)} onChange={async (event) => {
+            const file = event.currentTarget.files?.[0];
+            if (!file) return;
+            if (file.size === 0 || file.size > 75000) {
+              setFileErrors((current) => ({ ...current, [field.key]: language === "sv"
+                ? "Välj en fil på 1–75 000 byte." : "Choose a file of 1–75,000 bytes." })); return;
+            }
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            const encoded = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
+            setFileErrors((current) => ({ ...current, [field.key]: "" }));
+            onDocumentChange(setCustomTextValue(document, definition, encoded));
+          }} />
+        {value && <><span>{language === "sv" ? `${value.length * 3 / 4 - (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0)} byte sparade`
+          : `${value.length * 3 / 4 - (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0)} bytes saved`}</span>
+          <button type="button" onClick={() => onDocumentChange(setCustomTextValue(document, definition, null))}>
+            {language === "sv" ? "Rensa fil" : "Clear file"}</button></>}
+      </> : definition.datatype === "string" || definition.datatype === "other" ? <textarea id={id} rows={3} value={value} aria-describedby={`${id}-help${findings.length ? ` ${id}-errors` : ""}`}
         aria-invalid={Boolean(findings.length)} required={field.required || ["Mandatory", "Required"].includes(definition.usage)}
-        minLength={definition.constraints.minLength} maxLength={definition.constraints.maxLength ?? 100000}
+        minLength={definition.constraints.minLength} maxLength={definition.constraints.maxLength ?? MAX_CUSTOM_RESULT_LENGTH}
         onChange={(event) => onDocumentChange(setCustomTextValue(document, definition, event.target.value))} />
       : definition.datatype === "number" ? <input id={id} type="number" step="any" value={value}
         min={definition.constraints.minimum} max={definition.constraints.maximum}

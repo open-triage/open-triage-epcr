@@ -1236,9 +1236,14 @@ export class DraftReportService {
       const metadata = metadataByOccurrence.get(occurrence.id)!;
       const value = occurrence.value!;
       this.validateDatatype(value, metadata, occurrence.elementId);
+      if (metadata.base_datatype === "binary" && value.kind === "binary" &&
+          (value.value.length < 1 || value.value.length > 100000 ||
+           !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.value) ||
+           Buffer.from(value.value, "base64").toString("base64") !== value.value))
+        throw new UnprocessableEntityException(`${occurrence.elementId} requires canonical base64 of at most 100000 characters`);
       if (metadata.text_constraints && value.kind === "text") {
         const constraints = metadata.text_constraints;
-        if (value.value.length > 100000 || constraints.minLength !== undefined && value.value.length < constraints.minLength ||
+        if (value.value.length < 1 || value.value.length > 100000 || constraints.minLength !== undefined && value.value.length < constraints.minLength ||
             constraints.maxLength !== undefined && value.value.length > constraints.maxLength ||
             constraints.pattern && !new RegExp(`^(?:${constraints.pattern})$`).test(value.value))
           throw new UnprocessableEntityException(`${occurrence.elementId} does not satisfy its published text constraints`);

@@ -57,3 +57,25 @@ test("custom scalar values preserve type through document and draft round trips"
   assert.ok(customTextFindings(fields.number, 101).length);
   assert.ok(customTextFindings(fields.dateTime, "2026-09-29T10:30").length);
 });
+
+test("Binary round-trips as bytes and Other remains bounded text", () => {
+  const binary: CatalogDraftCustomTextElement = { ...definition, slug: "LocalBinary", datatype: "binary", constraints: {} };
+  const payload = "AAEC/w==";
+  const next = setCustomTextValue(syntheticEncounter.document, binary, payload);
+  assert.equal(customTextValue(loadEncounterDocument(next), binary), payload);
+  assert.deepEqual(customTextFindings(binary, payload), []);
+  assert.ok(customTextFindings(binary, "AAE").length);
+  assert.ok(customTextFindings(binary, "AAEC/w==".repeat(13000)).length);
+  assert.ok(encounterDocumentToDraftMutations("7ab167d8-c730-4f83-a5f6-9b965b9a25ce", next, undefined,
+    { [binary.id]: binary }).occurrences
+    .some(({ elementId, value }) => elementId === customTextIdentity(binary) && value?.kind === "binary" && value.value === payload));
+
+  const other: CatalogDraftCustomTextElement = { ...definition, slug: "LocalOther", datatype: "other" };
+  const otherDocument = setCustomTextValue(syntheticEncounter.document, other, "Other result");
+  assert.equal(customTextValue(loadEncounterDocument(otherDocument), other), "Other result");
+  assert.deepEqual(customTextFindings(other, "Other result"), []);
+  assert.ok(customTextFindings(other, "x").length);
+  assert.ok(encounterDocumentToDraftMutations("7ab167d8-c730-4f83-a5f6-9b965b9a25ce", otherDocument, undefined,
+    { [other.id]: other }).occurrences
+    .some(({ elementId, value }) => elementId === customTextIdentity(other) && value?.kind === "text" && value.value === "Other result"));
+});
