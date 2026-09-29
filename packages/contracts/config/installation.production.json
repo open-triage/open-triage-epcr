@@ -1,5 +1,6 @@
 {
   "schemaVersion": "1.0.0",
+  "language": "en",
   "signIn": {
     "brandText": "OpenTriage ePCR",
     "helperText": "Demo credentials: username **demo**, password **opentriagedemo**"

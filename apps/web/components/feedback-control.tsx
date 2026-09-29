@@ -1,4 +1,7 @@
 "use client";
+import { PlatformRequestError } from "../app/platform-errors";
+
+import { resolveErrorMessage, resolveMessage, type AgencyLanguage } from "../app/localization";
 
 import type { FeedbackDiagnosticMode, FeedbackDiagnosticScreen, FeedbackDiagnostics, FeedbackSubmissionType } from "@open-triage/contracts";
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -7,12 +10,14 @@ import { captureFeedbackDiagnostics, diagnosticsForSubmission } from "../app/fee
 import { recordFeedbackInteraction } from "../app/feedback-telemetry";
 import { TransientNotice } from "./transient-notice";
 
-export function FeedbackControl({ csrfToken, online, mode, screen }: {
+export function FeedbackControl({ csrfToken, online, mode, screen, language = "en" }: {
   readonly csrfToken: string;
   readonly online: boolean;
   readonly mode: FeedbackDiagnosticMode;
   readonly screen: FeedbackDiagnosticScreen;
+  readonly language?: AgencyLanguage;
 }) {
+  const t = (key: string, parameters?: Record<string, string | number>) => resolveMessage(language, key, parameters);
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLElement>(null);
   const headingId = useId();
@@ -25,11 +30,15 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const diagnostics = useRef<FeedbackDiagnostics | null>(null);
-  const validation = description ? feedbackDescriptionError(description) : null;
+  const validation = description ? feedbackDescriptionError(description, language) : null;
 
   useEffect(() => {
     if (open) dialog.current?.querySelector<HTMLElement>("button")?.focus();
   }, [open]);
+
+  useEffect(() => {
+    if (open && error && !pending) dialog.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+  }, [open, error, pending]);
 
   function closeAndRestore() {
     if (pending) return;
@@ -60,8 +69,8 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const fieldError = feedbackDescriptionError(description);
-    if (!type) { setError("Choose Bug or Feature before submitting."); return; }
+    const fieldError = feedbackDescriptionError(description, language);
+    if (!type) { setError(t("noteUi.choose.bug.or.feature.before.submitting")); return; }
     if (fieldError) { setError(fieldError); return; }
     setPending(true);
     setError(null);
@@ -72,16 +81,17 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
       idempotencyKey.current = draftKey;
       const result = await submitFeedback(csrfToken, {
         idempotencyKey: draftKey, type, description: description.trim(), diagnostics: diagnosticsForSubmission(captured, type)
-      });
+      }, language);
       setOpen(false);
       setType(null);
       setDescription("");
       diagnostics.current = null;
       idempotencyKey.current = null;
-      setNotice(`Feedback received. Reference ${result.referenceCode}.`);
+      setNotice(t("noteUi.feedbackReceived", { reference: result.referenceCode }));
       window.requestAnimationFrame(() => trigger.current?.focus());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Feedback could not be submitted. Please try again.");
+      setError(reason instanceof PlatformRequestError && !reason.code.startsWith("legacy.http") ? reason.message :
+        resolveErrorMessage(language, reason instanceof PlatformRequestError ? null : reason instanceof Error ? reason.message : null, "noteUi.feedbackFailure"));
     } finally {
       setPending(false);
     }
@@ -89,8 +99,8 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
 
   return <>
     <button ref={trigger} className="feedback-trigger" type="button"
-      aria-label={online ? "Send feedback" : "Send feedback unavailable while offline"}
-      title={online ? "Send feedback" : "Feedback is unavailable while offline"} disabled={!online}
+      aria-label={online ? t("noteUi.send.feedback") : t("noteUi.send.feedback.unavailable.while.offline")}
+      title={online ? t("noteUi.send.feedback") : t("noteUi.feedback.is.unavailable.while.offline")} disabled={!online}
       onClick={() => {
         setNotice(null);
         recordFeedbackInteraction("feedback.opened");
@@ -111,31 +121,31 @@ export function FeedbackControl({ csrfToken, online, mode, screen }: {
       <section ref={dialog} className="note-dialog feedback-dialog" role="dialog" aria-modal="true"
         aria-labelledby={headingId} onKeyDown={trapKeys}>
         <div className="note-dialog-heading">
-          <div><p className="eyebrow">OpenTriage feedback</p><h2 id={headingId}>Send feedback</h2></div>
-          <button type="button" aria-label="Close feedback" title="Close" disabled={pending} onClick={closeAndRestore}>×</button>
+          <div><p className="eyebrow">{t("noteUi.opentriage.feedback")}</p><h2 id={headingId}>{t("noteUi.send.feedback")}</h2></div>
+          <button type="button" aria-label={t("noteUi.close.feedback")} title={t("noteUi.close")} disabled={pending} onClick={closeAndRestore}>×</button>
         </div>
-        <p className="feedback-warning" role="note"><strong>Do not include patient-identifying information.</strong> Describe the application behavior or need only.</p>
-        <fieldset className="feedback-type"><legend>Feedback type</legend>
-          <div role="group" aria-label="Feedback type">
+        <p className="feedback-warning" role="note"><strong>{t("noteUi.do.not.include.patient.identifying.information")}</strong> {t("noteUi.feedbackWarning")}</p>
+        <fieldset className="feedback-type"><legend>{t("noteUi.feedback.type")}</legend>
+          <div role="group" aria-label={t("noteUi.feedback.type")}>
             {(["bug", "feature"] as const).map((value) => <button key={value} type="button"
               aria-pressed={type === value} disabled={pending} onClick={() => {
                 recordFeedbackInteraction(value === "bug" ? "feedback.type.bug.selected" : "feedback.type.feature.selected");
                 setType(value); setError(null);
               }}>
-              {value === "bug" ? "Bug" : "Feature"}
+              {value === "bug" ? t("noteUi.bug") : t("noteUi.feature")}
             </button>)}
           </div>
         </fieldset>
         <form onSubmit={submit} noValidate>
-          <label htmlFor={descriptionId}>{feedbackPrompt(type)}</label>
+          <label htmlFor={descriptionId}>{feedbackPrompt(type, language)}</label>
           <textarea id={descriptionId} value={description} maxLength={FEEDBACK_DESCRIPTION_MAX_LENGTH} required disabled={pending}
             aria-describedby={`${descriptionId}-limit${error ? ` ${descriptionId}-error` : ""}`}
             onChange={(event) => { setDescription(event.target.value); setError(null); }} />
-          <small id={`${descriptionId}-limit`}>{description.length.toLocaleString()} / 4,000 characters</small>
+          <small id={`${descriptionId}-limit`}>{t("noteUi.captionCount", { count: description.length.toLocaleString(language === "sv" ? "sv-SE" : "en-US"), max: (4000).toLocaleString(language === "sv" ? "sv-SE" : "en-US") })}</small>
           {error && <p id={`${descriptionId}-error`} className="validation-message error" role="alert">{error}</p>}
           <div className="note-dialog-actions">
-            <button type="button" disabled={pending} onClick={closeAndRestore}>Cancel</button>
-            <button type="submit" disabled={pending || !type || Boolean(validation)}>{pending ? "Submitting…" : "Submit feedback"}</button>
+            <button type="button" disabled={pending} onClick={closeAndRestore}>{t("noteUi.cancel")}</button>
+            <button type="submit" disabled={pending || !type || Boolean(validation)}>{pending ? t("noteUi.submitting") : t("noteUi.submit.feedback")}</button>
           </div>
         </form>
       </section>

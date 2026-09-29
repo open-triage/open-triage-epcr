@@ -103,8 +103,11 @@ export class ReviewValidationService {
       } else {
         try {
           const document = await encounterDocument(manager, report.id);
+          const settings = await manager.query<Array<{ language: string }>>(`
+            select language from app_identity.agency_settings where organization_id=$1
+          `, [report.organization_id]);
           const result = evaluateValidationBundleSafely(version.compiled_bundle, document, "review",
-            { timestamp: evaluatedAt });
+            { timestamp: evaluatedAt, language: settings[0]?.language ?? "en" });
           findings = result.findings;
           failures = result.failures.map((failure) => ({ ...failure, executionTarget: "review" }));
         } catch {

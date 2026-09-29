@@ -414,3 +414,32 @@ test("a server validation count is used until the form computes a local count", 
 
   assert.equal(cachedOpenCalls(storage, session.user.id)[0]?.validationErrorCount, 2);
 });
+
+test("reconnection preserves pinned translations, integrity data, canonical edits, and queued commands", () => {
+  const storage = memoryStorage();
+  const pinned = { ...opened, report: { ...opened.report, validationVersionId: "validation-1",
+    formDefinitionSha256: "a".repeat(64), catalogArtifactSha256: "b".repeat(64),
+    validationCompiledSha256: "c".repeat(64),
+    clinicalForm: { definition: { schemaVersion: 1 as const, sections: [{ key: "patient", fields: [] }] },
+      catalogFields: { "ePatient.02": { name: "Patient name", localization: { schemaVersion: 1 as const, sv: { label: "Patient äldre" } },
+        agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: false,
+        supportsNotValues: false, supportsPertinentNegatives: false } } } } };
+  cacheOpenedReport(storage, session, pinned, "CALL-51");
+  const edited = { ...opened.report.document, encounter: { ...opened.report.document.encounter,
+    updatedAt: "2026-09-04T12:00:00.000Z" } };
+  cacheLocalReportDocument(storage, opened.report.id, edited);
+  queueDraftChange(storage, opened.report.id, command("queued-1", 4));
+  const refreshed = { ...pinned, report: { ...pinned.report, clinicalForm: {
+    ...pinned.report.clinicalForm, definition: { schemaVersion: 1 as const, sections: [] },
+    catalogFields: {} } } };
+  cacheOpenedReport(storage, session, refreshed, "CALL-51");
+  const reopened = cachedReopenResponse(storage, session.user.id, opened.report.id)!.report;
+  assert.deepEqual(reopened.clinicalForm, pinned.report.clinicalForm);
+  assert.equal(reopened.formDefinitionSha256, pinned.report.formDefinitionSha256);
+  assert.equal(reopened.catalogArtifactSha256, pinned.report.catalogArtifactSha256);
+  assert.equal(reopened.validationCompiledSha256, pinned.report.validationCompiledSha256);
+  assert.equal(reopened.document.encounter.updatedAt, edited.encounter.updatedAt);
+  assert.equal(nextDraftChange(storage, opened.report.id)?.command.commandId, "queued-1");
+  assert.throws(() => cacheOpenedReport(storage, session, { ...pinned, report: {
+    ...pinned.report, formVersionId: "new-form-version" } }, "CALL-51"), /pinned clinical configuration/);
+});

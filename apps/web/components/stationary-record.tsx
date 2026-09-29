@@ -15,30 +15,38 @@ import { StationaryNonRepeatingRecord } from "./stationary-non-repeating-record"
 import { StationaryRepeatingGroups } from "./stationary-repeating-groups";
 import { stationaryDisplayLabel } from "../app/stationary-label";
 import { getNemsisDataElement } from "../app/nemsis-data-model";
+import { currentCatalogLanguage, resolveCatalogGroupText } from "../app/catalog-localization";
+import type { FormLanguage } from "../app/form-localization";
+import { resolveMessage } from "../app/localization";
 
-function statusText(errors: number, warnings: number): string {
-  return `${errors} ${errors === 1 ? "error" : "errors"}, ${warnings} ${warnings === 1 ? "warning" : "warnings"}`;
+function statusText(language: FormLanguage, errors: number, warnings: number): string {
+  return `${resolveMessage(language, "mobile.errorCount", { count: errors }, errors)}, ${resolveMessage(language, "mobile.warningCount", { count: warnings }, warnings)}`;
 }
 
 /** Complete, sectioned stationary projection of the compiled NEMSIS record. */
 export function StationaryRecord({ document, findings = [], sectionFindings = findings,
-  formDefinition, catalogFields = {}, validation, onDocumentChange }: {
+  formDefinition, catalogFields = {}, catalogGroups, validation, language = currentCatalogLanguage(), onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly findings?: ReadonlyArray<StationarySectionFinding>;
   /** Includes encounter-review findings for section counts without duplicating inline field messages. */
   readonly sectionFindings?: ReadonlyArray<StationarySectionFinding>;
   readonly formDefinition?: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   readonly validation?: ClinicalFormConfiguration["validation"];
+  readonly language?: FormLanguage;
   readonly onDocumentChange: (document: EncounterDocument) => void;
 }) {
   const defaultSections = useMemo(() => configuredStationarySections(), []);
   const previewSections = useMemo(() => {
     if (!formDefinition) return undefined;
-    const configured = configuredStationaryPreviewSections(formDefinition);
+    const configured = configuredStationaryPreviewSections(formDefinition, language);
     return configured.some((section) => section.blocks.length > 0) ? configured : undefined;
-  }, [formDefinition]);
+  }, [formDefinition, language]);
   const sections = previewSections ?? defaultSections;
+  const sectionLabel = (section: (typeof sections)[number]) => "blocks" in section
+    ? stationaryDisplayLabel(resolveCatalogGroupText(catalogGroups, section.catalogGroupId, language, section.label))
+    : resolveMessage(language, "stationary.section." + section.id);
   const inlineGroups = useMemo(() => new Map(STATIONARY_NON_REPEATING_GROUPS.map((group) => [group.id, group])), []);
   const statuses = useMemo(() => {
     if (!previewSections) return stationarySectionStatuses(sectionFindings, defaultSections);
@@ -96,11 +104,11 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
   }, [moveToSection, sections]);
 
   return <div className="stationary-record-layout">
-    <nav className="stationary-section-rail" aria-label="Stationary record sections">
+    <nav className="stationary-section-rail" aria-label={resolveMessage(language, "stationary.sections")}>
       <ul>{sections.map((section) => {
         const status = statuses.get(section.id)!;
-        const summary = statusText(status.errors, status.warnings);
-        const label = stationaryDisplayLabel(section.label);
+        const summary = statusText(language, status.errors, status.warnings);
+        const label = sectionLabel(section);
         return <li key={section.id}>
           <button type="button"
             aria-current={activeId === section.id ? "location" : undefined}
@@ -110,19 +118,19 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
           >
             <span>{label}</span>
             <span className="stationary-section-counts" aria-hidden="true">
-              <span className={`error-count${status.errors ? "" : " zero-count"}`} title="Blocking errors">{status.errors}</span>
-              <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title="Warnings">{status.warnings}</span>
+              <span className={`error-count${status.errors ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.blockingErrors")}>{status.errors}</span>
+              <span className={`warning-count${status.warnings ? "" : " zero-count"}`} title={resolveMessage(language, "stationary.warnings")}>{status.warnings}</span>
             </span>
           </button>
         </li>;
       })}</ul>
-      <span className="visually-hidden" aria-live="polite">Current section: {stationaryDisplayLabel(sections.find(({ id }) => id === activeId)?.label ?? "")}</span>
+      <span className="visually-hidden" aria-live="polite">{resolveMessage(language, "stationary.currentSection", { section: sections.find(({ id }) => id === activeId) ? sectionLabel(sections.find(({ id }) => id === activeId)!) : "" })}</span>
     </nav>
 
-    <div className="stationary-record-page" aria-label="Complete stationary NEMSIS record">
+    <div className="stationary-record-page" aria-label={resolveMessage(language, "stationary.completeRecord")}>
       {sections.map((section) => {
         const status = statuses.get(section.id)!;
-        const label = stationaryDisplayLabel(section.label);
+        const label = sectionLabel(section);
         return <section
           className="stationary-record-section"
           data-stationary-section={section.id}
@@ -134,9 +142,9 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
           <header className="stationary-record-section-heading">
             <h1 id={`${section.hash}-heading`} data-stationary-section-heading tabIndex={-1}>{label}</h1>
             <p>
-              <span className="visually-hidden">{statusText(status.errors, status.warnings)}</span>
-              <span className={`error-count${status.errors ? "" : " zero-count"}`}>{status.errors} errors</span>
-              <span className={`warning-count${status.warnings ? "" : " zero-count"}`}>{status.warnings} warnings</span>
+              <span className="visually-hidden">{statusText(language, status.errors, status.warnings)}</span>
+              <span className={`error-count${status.errors ? "" : " zero-count"}`}>{resolveMessage(language, "mobile.errorCount", { count: status.errors }, status.errors)}</span>
+              <span className={`warning-count${status.warnings ? "" : " zero-count"}`}>{resolveMessage(language, "mobile.warningCount", { count: status.warnings }, status.warnings)}</span>
             </p>
           </header>
           {("blocks" in section ? section.blocks : stationarySectionBlocks(section)).map((block, blockIndex) => block.kind === "inline"
@@ -144,9 +152,9 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
               { ...inlineGroups.get(block.group.id)!, fields: block.elementIds
                 ? block.elementIds.flatMap((id) => inlineGroups.get(block.group.id)!.fields.find((field) => field.id === id) ?? [])
                 : inlineGroups.get(block.group.id)!.fields }
-            ]} findings={findings} catalogFields={catalogFields} onDocumentChange={onDocumentChange} />
+            ]} findings={findings} catalogFields={catalogFields} catalogGroups={catalogGroups} language={language} onDocumentChange={onDocumentChange} />
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
-              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, ...(validation ? { validation } : {}) } : undefined} onDocumentChange={onDocumentChange} />)}
+              clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
         </section>;
       })}
     </div>

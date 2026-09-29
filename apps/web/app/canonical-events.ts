@@ -18,11 +18,11 @@ const eventSections = {
   medication: "eMedicationsSection",
 } as const;
 
-function timestamp(document: EncounterDocument, event: EncounterEvent): string {
+function timestamp(document: EncounterDocument, event: EncounterEvent, zone: string | null): string {
   const existing = document.groups.flatMap(({ instances }) => instances).find(({ instanceId }) => instanceId === event.id);
   const timeElement = event.vitals ? "eVitals.01" : event.procedure ? "eProcedures.01" : "eMedications.01";
   const original = existing ? scalar(existing, timeElement) || String(existing.attributes?.[DOCUMENTED_TIME] ?? "") : event.dateTime;
-  const local = original ? localStationaryDateTimeParts(original) : undefined;
+  const local = original ? localStationaryDateTimeParts(original, zone) : undefined;
   // Retain seconds and the original instant when another field is edited,
   // including the second occurrence of an ambiguous autumn DST wall clock.
   if (original && local && local.date === event.date && local.time === event.time) return original;
@@ -31,12 +31,13 @@ function timestamp(document: EncounterDocument, event: EncounterEvent): string {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(event.time.slice(0, 5))) {
     return `${event.date ?? DEMO_FALLBACK_DATE}T${event.time.slice(0, 5)}:00+00:00`;
   }
-  return stationaryLocalDateTimeInput(event.date ?? DEMO_FALLBACK_DATE, event.time.slice(0, 5));
+  return stationaryLocalDateTimeInput(event.date ?? DEMO_FALLBACK_DATE, event.time.slice(0, 5), zone,
+    event.dateTime && local?.date === event.date && local?.time === event.time ? new Date(event.dateTime).toISOString() : undefined);
 }
 
-function dateAndTime(value: unknown): { date: string; time: string; dateTime: string } {
+function dateAndTime(value: unknown, zone: string | null): { date: string; time: string; dateTime: string } {
   const lexical = typeof value === "string" ? value : `${DEMO_FALLBACK_DATE}T00:00:00Z`;
-  const local = localStationaryDateTimeParts(lexical);
+  const local = localStationaryDateTimeParts(lexical, zone);
   return { date: local?.date ?? lexical.slice(0, 10), time: local?.time ?? lexical.slice(11, 16), dateTime: lexical };
 }
 
@@ -119,10 +120,6 @@ function optionCode(elementId: string, label: string) {
     .find((item) => item.label.toLocaleLowerCase() === label.toLocaleLowerCase());
 }
 
-function choice(elementId: string, label: string) {
-  return optionCode(elementId, label) ?? (label ? { code: label, label } : null);
-}
-
 function scalarValue(elementId: string, value: string): string | number {
   const base = getNemsisDataElement(elementId)?.datatype.base;
   return base && ["integer", "decimal", "double", "float"].includes(base) ? Number(value) : value;
@@ -166,10 +163,8 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
   }
   if (event.procedure) {
     const procedure = event.procedure;
-    const successLabel = definition.events.procedure.successOptions.find(({ value }) => value === procedure.success)?.label ?? procedure.success;
-    const outcomeLabel = definition.events.procedure.outcomeOptions.find(({ value }) => value === procedure.outcome)?.label ?? procedure.outcome;
-    const success = choice("eProcedures.06", successLabel);
-    const outcome = choice("eProcedures.08", outcomeLabel);
+    const success = definition.events.procedure.successOptions.find(({ value }) => value === procedure.success);
+    const outcome = definition.events.procedure.outcomeOptions.find(({ value }) => value === procedure.outcome);
     return [{ groupId: "eProcedures.ProcedureGroup", instance: owned(event.id, observedAt, [
       { id: "eProcedures.01", values: [{ kind: "scalar", occurrenceId: `${event.id}:time`, value: observedAt }] },
       { id: "eProcedures.03", values: [{ kind: "coded", occurrenceId: `${event.id}:procedure`, code: procedure.code, system: "SNOMED-CT", display: procedure.label, attributes: { warningAcknowledged: procedure.warningAcknowledged } }] },
@@ -200,11 +195,11 @@ function eventInstances(document: EncounterDocument, event: EncounterEvent, defi
   return [];
 }
 
-export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition): EncounterDocument {
+export function saveCanonicalEvent(document: EncounterDocument, event: EncounterEvent, definition: EncounterDefinition, zone: string | null = null): EncounterDocument {
   // App-native notes never enter the NEMSIS encounter document.
   if (event.kind === "note") return document;
   document = ensureEventSection(document, event);
-  const updatedAt = timestamp(document, event);
+  const updatedAt = timestamp(document, event, zone);
   const removedIds = eventSubtreeIds(document, event.id);
   let groups = document.groups.map((group) => ({ ...group, instances: group.instances.filter((instance) => !removedIds.has(instance.instanceId)) }));
   for (const { groupId, instance } of eventInstances(document, event, definition, updatedAt)) {
@@ -245,13 +240,13 @@ function eventSubtreeIds(document: EncounterDocument, eventId: string): Set<stri
   return removed;
 }
 
-export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition): ReadonlyArray<EncounterEvent> {
+export function encounterEvents(document: EncounterDocument, definition: EncounterDefinition, zone: string | null = null): ReadonlyArray<EncounterEvent> {
   const events: EncounterEvent[] = [];
   const dosage = new Map(document.groups.find((group) => group.id === "eMedications.DosageGroup")?.instances
     .filter(documented).map((instance) => [instance.parentInstanceId ?? instance.instanceId.replace(/:dosage$/, ""), instance]) ?? []);
   for (const group of document.groups) for (const instance of group.instances) {
     if (!documented(instance) || group.id === "eMedications.DosageGroup") continue;
-    const observed = dateAndTime(scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01") || instance.attributes?.[DOCUMENTED_TIME]);
+    const observed = dateAndTime(scalar(instance, group.id === "eVitals.VitalGroup" ? "eVitals.01" : group.id === "eProcedures.ProcedureGroup" ? "eProcedures.01" : "eMedications.01") || instance.attributes?.[DOCUMENTED_TIME], zone);
     if (group.id === "eVitals.VitalGroup") {
       const values = { systolic: "", diastolic: "", heartRate: "", spo2: "", respiratoryRate: "", gcs: "", pain: "", nullValues: {} } as VitalValues;
       definition.events.vitals.fields.forEach((field) => {

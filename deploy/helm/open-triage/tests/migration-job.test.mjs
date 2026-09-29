@@ -38,7 +38,7 @@ test("demo deployment restores its idempotent synthetic installation before roll
   const output = render("--values", fileURLToPath(new URL("../demo-reference.values.yaml", import.meta.url)));
   const job = output.slice(output.indexOf("# Source: open-triage/templates/migration-job.yaml"));
 
-  assert.match(job, /command: \["npm", "run", "bootstrap:synthetic:runtime", "-w", "@open-triage\/database"\]/);
+  assert.match(job, /command: \["npm", "run", "install:synthetic:runtime", "-w", "@open-triage\/database"\]/);
   assert.match(job, /name: PGOPTIONS\n\s+value: "-c lock_timeout=45s -c statement_timeout=8min"/);
   assert.match(job, /requests:\n\s+cpu: 10m\n\s+memory: 64Mi/);
 });

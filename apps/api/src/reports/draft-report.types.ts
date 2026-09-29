@@ -83,6 +83,8 @@ export interface DraftReportResult {
   formVersionId: string;
   catalogReleaseId: string;
   validationVersionId?: string;
+  formDefinitionSha256?: string;
+  catalogArtifactSha256?: string;
   validationCompiledSha256?: string;
   documentingUserId: string;
   mediaPolicy: ReportMediaPolicy;

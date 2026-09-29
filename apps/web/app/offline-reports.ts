@@ -101,10 +101,29 @@ export function cacheOpenedReport(
 ): CachedOpenReport {
   const callNumber = typeof call === "string" ? call : call.callNumber;
   const existing = read(storage).find((candidate) => candidate.report.id === opened.report.id);
+  if (existing && (existing.report.formVersionId !== opened.report.formVersionId ||
+      existing.report.catalogReleaseId !== opened.report.catalogReleaseId ||
+      (existing.report.validationVersionId && opened.report.validationVersionId &&
+        existing.report.validationVersionId !== opened.report.validationVersionId) ||
+      (existing.report.formDefinitionSha256 && opened.report.formDefinitionSha256 &&
+        existing.report.formDefinitionSha256 !== opened.report.formDefinitionSha256) ||
+      (existing.report.catalogArtifactSha256 && opened.report.catalogArtifactSha256 &&
+        existing.report.catalogArtifactSha256 !== opened.report.catalogArtifactSha256) ||
+      (existing.report.validationCompiledSha256 && opened.report.validationCompiledSha256 &&
+        existing.report.validationCompiledSha256 !== opened.report.validationCompiledSha256))) {
+    throw new Error("The report's pinned clinical configuration changed unexpectedly");
+  }
   const cached: CachedOpenReport = {
     report: {
       ...existing?.report,
       ...opened.report,
+      // Published definitions are immutable. A reconnect must not replace the exact
+      // translations and validation wording already protected with this report.
+      ...(existing?.report.clinicalForm ? { clinicalForm: existing.report.clinicalForm } : {}),
+      ...(existing?.report.validationVersionId ? { validationVersionId: existing.report.validationVersionId } : {}),
+      ...(existing?.report.formDefinitionSha256 ? { formDefinitionSha256: existing.report.formDefinitionSha256 } : {}),
+      ...(existing?.report.catalogArtifactSha256 ? { catalogArtifactSha256: existing.report.catalogArtifactSha256 } : {}),
+      ...(existing?.report.validationCompiledSha256 ? { validationCompiledSha256: existing.report.validationCompiledSha256 } : {}),
       callNumber,
       ...(typeof call === "string" ? {} : {
         ...(call.dispatchedAt ? { dispatchedAt: call.dispatchedAt } : {}),

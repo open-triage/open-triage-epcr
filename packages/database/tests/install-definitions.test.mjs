@@ -38,3 +38,16 @@ test("installation definitions provide one full default and an inactive Sweden o
   assert.equal(swedenValidation.rules.filter(({ primaryTargetElementId, enabled }) =>
     primaryTargetElementId.startsWith("ePayment.") && !enabled).length, 52);
 });
+
+test("fresh install definitions leave all wording to the catalog", async () => {
+  const localization = await definition("localization", "localization_sv");
+  assert.equal(localization.catalog.groups.eResponseSection.name, "Uppdrag");
+  assert.equal(localization.catalog.elements["eVitals.14"].label, "Andningsfrekvens");
+  assert.equal(Object.hasOwn(localization, "formPresentation"), false);
+  for (const key of ["form_nemsis-full", "form_sweden"]) {
+    const form = (await definition("forms", key)).definition;
+    assert.equal(Object.hasOwn(form, "locales"), false);
+    assert.ok(form.sections.every((section) => !Object.hasOwn(section, "presentation")));
+    assert.ok(form.sections.flatMap(({ fields }) => fields).every((field) => !Object.hasOwn(field, "configuration")));
+  }
+});

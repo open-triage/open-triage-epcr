@@ -16,25 +16,17 @@ export interface CanonicalFormField {
     | { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
-  configuration?: Record<string, unknown>;
   rules?: CanonicalFormRule[];
 }
 
 export interface CanonicalFormSection {
   key: string;
-  presentation?: Record<string, unknown>;
   fields: CanonicalFormField[];
-}
-
-export interface CanonicalFormLocale {
-  locale: string;
-  translations: Record<string, unknown>;
 }
 
 export interface CanonicalFormDefinition {
   schemaVersion: 1;
   sections: CanonicalFormSection[];
-  locales?: CanonicalFormLocale[];
 }
 
 export interface PublishFormVersionCommand {
@@ -51,5 +43,5 @@ export interface PublishedFormVersion {
   status: "published";
   definitionSha256: string;
   publishedAt: string;
-  projections: { sections: number; fields: number; rules: number; locales: number };
+  projections: { sections: number; fields: number; rules: number };
 }

@@ -88,35 +88,35 @@ async function ensureBaselineConfiguration(client, actorId) {
       installation.displayName]);
     if (!inserted.rows[0]) throw new Error("The reserved complete Stationary form version is unavailable");
     const sectionRows = definition.sections.map((section, position) => ({
-      id: randomUUID(), stableKey: section.key, position, presentation: section.presentation,
+      id: randomUUID(), stableKey: section.key, position,
     }));
     await client.query(`insert into forms.form_section
-      (id, form_version_id, stable_key, position, presentation)
-      select section.id, $1, section.stable_key, section.position, section.presentation
+      (id, form_version_id, stable_key, position)
+      select section.id, $1, section.stable_key, section.position
       from jsonb_to_recordset($2::jsonb) as section(
-        id uuid, stable_key text, position integer, presentation jsonb)`,
+        id uuid, stable_key text, position integer)`,
     [formVersionId, JSON.stringify(sectionRows.map((section) => ({
-      id: section.id, stable_key: section.stableKey, position: section.position, presentation: section.presentation,
+      id: section.id, stable_key: section.stableKey, position: section.position,
     })))]);
     const fieldRows = definition.sections.flatMap((section, sectionPosition) => section.fields.map((field, position) => ({
       sectionId: sectionRows[sectionPosition].id, stableKey: field.key, position,
-      elementId: field.source.elementId, configuration: field.configuration,
+      elementId: field.source.elementId,
     })));
     const insertedFields = await client.query(`insert into forms.form_field
       (form_version_id, section_id, stable_key, position, source_kind,
-       catalog_element_identity_id, required, analytical_repeatable, configuration)
+       catalog_element_identity_id, required, analytical_repeatable)
       select $1, field.section_id, field.stable_key, field.position, 'nemsis',
         definition.element_identity_id, false,
-        coalesce(mapping.analytical_location = 'repeatable', false), field.configuration
+        coalesce(mapping.analytical_location = 'repeatable', false)
       from jsonb_to_recordset($3::jsonb) as field(
-        section_id uuid, stable_key text, position integer, element_id text, configuration jsonb)
+        section_id uuid, stable_key text, position integer, element_id text)
       join catalog.element_definition definition
         on definition.release_id = $2 and definition.element_id = field.element_id
       left join catalog.analytics_element_mapping mapping
         on mapping.release_id = definition.release_id and mapping.element_id = definition.element_id
       returning id`, [formVersionId, catalogReleaseId, JSON.stringify(fieldRows.map((field) => ({
         section_id: field.sectionId, stable_key: field.stableKey, position: field.position,
-        element_id: field.elementId, configuration: field.configuration,
+        element_id: field.elementId,
       })))]);
     if (insertedFields.rowCount !== fieldRows.length) {
       throw new Error(`The complete Stationary form projected ${insertedFields.rowCount} of ${fieldRows.length} fields`);

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -192,8 +193,23 @@ export async function migrate({
   }
 }
 
+async function runSiblingScript(name) {
+  const child = spawn(process.execPath, [path.resolve(import.meta.dirname, name)], {
+    cwd: path.resolve(import.meta.dirname, "../../.."),
+    env: process.env,
+    stdio: "inherit",
+  });
+  const [code, signal] = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));
+  });
+  if (code !== 0) throw new Error(`${name} failed${signal ? ` with signal ${signal}` : ` with exit code ${code}`}`);
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await migrate();
+  // Canonical installation definitions are inputs: import them after the schema exists.
+  await runSiblingScript("load-nemsis-catalog.mjs");
   const { seedInitialValidationVersions } = await import("./seed-initial-validation-versions.mjs");
   await seedInitialValidationVersions();
   const { seedInstallDefinitions } = await import("./seed-install-definitions.mjs");

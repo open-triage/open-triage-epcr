@@ -216,7 +216,7 @@ test("the complete synthetic mobile call journey survives offline work, restart,
     expect(state.savedCommandIds).toContain(queuedBeforeRestart);
 
     state.completed = true;
-    await page.getByRole("button", { name: "Refresh calls" }).click();
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await expect(page.locator(".transient-notice")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
     await expect(page.locator(".active-report-notice")).toHaveCount(0);

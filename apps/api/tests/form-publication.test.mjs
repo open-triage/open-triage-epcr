@@ -16,8 +16,8 @@ const validPublishInput = {
 };
 
 test("canonical form hashes do not depend on object key order", () => {
-  const left = { schemaVersion: 1, sections: [{ key: "one", presentation: { title: "One", order: 1 }, fields: [] }] };
-  const right = { sections: [{ fields: [], presentation: { order: 1, title: "One" }, key: "one" }], schemaVersion: 1 };
+  const left = { schemaVersion: 1, sections: [{ key: "one", fields: [] }] };
+  const right = { sections: [{ fields: [], key: "one" }], schemaVersion: 1 };
   assert.equal(canonicalDefinitionSha256(left), canonicalDefinitionSha256(right));
 });
 
@@ -89,7 +89,7 @@ test("publishing a complete Stationary form retains read-only NEMSIS metadata wi
     if (normalized.includes("with updated as")) return [{ published_at: "2026-09-13T10:00:00.000Z" }];
     if (normalized.includes("insert into app_identity.configuration_event")) return [];
     if (normalized.includes("from forms.form_section where form_version_id")) {
-      return [{ sections: 1, fields: 1, rules: 0, locales: 0 }];
+      return [{ sections: 1, fields: 1, rules: 0 }];
     }
     if (normalized.includes("select display_name from forms.form_version")) return [{ display_name: "Complete Stationary" }];
     throw new Error(`Unexpected SQL: ${normalized}`);

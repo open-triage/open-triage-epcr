@@ -235,6 +235,12 @@ export class AdminController {
     return this.catalogs.save(sessionToken(request, authorization), id, body);
   }
 
+  @Delete("catalog-drafts/:id")
+  deleteCatalog(@Param("id", new ParseUUIDPipe()) id: string, @Body() body: unknown,
+    @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<void> {
+    return this.catalogs.delete(sessionToken(request, authorization), id, body);
+  }
+
   @Post("catalog-drafts/:id/validate")
   validateCatalog(@Param("id", new ParseUUIDPipe()) id: string,
     @Req() request: RequestLike, @Headers("authorization") authorization?: string): Promise<CatalogValidationResult> {

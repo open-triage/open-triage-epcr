@@ -1,5 +1,8 @@
 export interface InstallationSettings {
   schemaVersion: "1.0.0";
+  language: string;
+  regionalFormat?: "en-US" | "sv-SE" | null;
+  timeZone?: string | null;
   signIn: {
     brandText: string;
     helperText: string;
@@ -37,6 +40,25 @@ function exactKeys(value: Record<string, unknown>, path: string, expected: reado
   }
 }
 
+function languageAt(value: unknown): string {
+  if (typeof value !== "string" || value.length > 35 || !/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(value)) {
+    throw new TypeError("language must be a valid language code");
+  }
+  return value;
+}
+
+function regionalFormatAt(value: unknown): "en-US" | "sv-SE" | null {
+  if (value !== null && value !== "en-US" && value !== "sv-SE") throw new TypeError("regionalFormat must be en-US, sv-SE, or null");
+  return value;
+}
+
+function timeZoneAt(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z_+-]+)+)$/.test(value)) throw new TypeError("timeZone must be a named IANA time zone or null");
+  try { new Intl.DateTimeFormat("en-US", { timeZone: value }); } catch { throw new TypeError("timeZone must be a named IANA time zone or null"); }
+  return value;
+}
+
 function booleanAt(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") throw new TypeError(`${path} must be a boolean`);
   return value;
@@ -65,7 +87,7 @@ function stringAt(value: unknown, path: string, maximumLength: number): string {
 /** Runtime boundary for settings loaded from JSON or deployment configuration. */
 export function parseInstallationSettings(value: unknown): InstallationSettings {
   const root = objectAt(value, "installation settings");
-  exactKeys(root, "installation settings", ["schemaVersion", "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
+  exactKeys(root, "installation settings", ["schemaVersion", "language", ...(root.regionalFormat === undefined ? [] : ["regionalFormat"]), ...(root.timeZone === undefined ? [] : ["timeZone"]), "signIn", "clinicalRetention", "authentication", "offlineRecovery", "exports"]);
   if (root.schemaVersion !== "1.0.0") throw new TypeError("installation settings.schemaVersion must be 1.0.0");
   const signIn = objectAt(root.signIn, "signIn");
   const retention = objectAt(root.clinicalRetention, "clinicalRetention");
@@ -79,6 +101,9 @@ export function parseInstallationSettings(value: unknown): InstallationSettings 
   exactKeys(exports, "exports", ["downloadsAllowed", "auditExportsAllowed", "configurationExportsAllowed"]);
   return {
     schemaVersion: "1.0.0",
+    language: languageAt(root.language),
+    ...(root.regionalFormat === undefined ? {} : { regionalFormat: regionalFormatAt(root.regionalFormat) }),
+    ...(root.timeZone === undefined ? {} : { timeZone: timeZoneAt(root.timeZone) }),
     signIn: {
       brandText: stringAt(signIn.brandText, "signIn.brandText", 100),
       helperText: stringAt(signIn.helperText, "signIn.helperText", 300),

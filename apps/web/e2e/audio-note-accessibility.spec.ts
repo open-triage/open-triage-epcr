@@ -66,7 +66,8 @@ test("spoken-audio capture explains scope, exposes recording feedback, and requi
   });
   await page.keyboard.up("Space");
   await expect(dialog.getByText(/Recording interrupted/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Discard" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Discard" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: /Use .*recording/ })).toBeVisible();
   await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
   await expect(dialog.locator("textarea")).toHaveCount(1);
@@ -83,7 +84,7 @@ test("denied microphone access gives recovery steps and leaves Text note availab
   await dialog.getByRole("button", { name: "Hold to record" }).dispatchEvent("pointerdown", { button: 0, pointerId: 1 });
   await expect(dialog.getByRole("alert")).toContainText("Allow microphone access for this site in browser settings");
   await expect(dialog.getByRole("alert")).toContainText("Text notes remain available");
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Text note" }).click();
   await expect(page.getByLabel("Note text")).toBeFocused();
 });

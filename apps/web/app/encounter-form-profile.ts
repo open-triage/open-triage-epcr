@@ -9,8 +9,6 @@ type ProfileSection = { readonly id: SectionId; readonly visible: boolean; reado
 export type EncounterFormProfile = {
   readonly schemaVersion: 1; readonly id: string; readonly version: number;
   readonly sections: ReadonlyArray<ProfileSection>;
-  readonly labels?: Readonly<Record<string, string>>;
-  readonly helpText?: Readonly<Record<string, string>>;
   readonly review: { readonly groups: ReadonlyArray<{ readonly severity: ReviewSeverity; readonly title: string; readonly empty: string }>; readonly sectionOrder: ReadonlyArray<ConfiguredEventType> };
   readonly summary: { readonly vitalOrder: ReadonlyArray<string> };
 };
@@ -35,7 +33,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 export function compileEncounterFormProfile(value: unknown, catalog: ElementCatalog = createElementCatalog()): EncounterDefinition {
   const errors: string[] = [];
   const root = isRecord(value) ? value : {};
-  const allowedRoot = ["schemaVersion", "id", "version", "sections", "labels", "helpText", "review", "summary"];
+  const allowedRoot = ["schemaVersion", "id", "version", "sections", "review", "summary"];
   Object.keys(root).filter((key) => !allowedRoot.includes(key)).forEach((key) => errors.push(`$.${key}: illegal override; datatype, cardinality, coded values, NV and PN semantics are catalog-owned`));
   if (root.schemaVersion !== 1) errors.push("$.schemaVersion: must be 1");
   if (typeof root.id !== "string" || !root.id.trim()) errors.push("$.id: must be a non-empty string");
@@ -74,15 +72,6 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
   });
   sectionIds.forEach((id) => { if (!seenSections.has(id)) errors.push(`$.sections: missing supported section ${id}`); });
 
-  const validateElementText = (candidate: unknown, path: string) => {
-    if (candidate === undefined) return;
-    if (!isRecord(candidate)) { errors.push(`${path}: must be an object`); return; }
-    Object.entries(candidate).forEach(([id, text]) => {
-      if (!catalog.get(id)) errors.push(`${path}.${id}: unknown standard or namespaced custom element`);
-      if (typeof text !== "string" || !text.trim()) errors.push(`${path}.${id}: must be a non-empty string`);
-    });
-  };
-  validateElementText(root.labels, "$.labels"); validateElementText(root.helpText, "$.helpText");
   const review = isRecord(root.review) ? root.review : {};
   const summary = isRecord(root.summary) ? root.summary : {};
   const validateEventOrder = (candidate: unknown, path: string) => {
@@ -100,7 +89,6 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
 
   const profile = value as EncounterFormProfile;
   const section = (id: SectionId) => profile.sections.find((candidate) => candidate.id === id)!;
-  const labels = profile.labels ?? {};
   const vitalByReference = new Map<string, EncounterDefinition["events"]["vitals"]["fields"][number]>(catalogBackedDefaults.events.vitals.fields.map((field) => [field.reference, field]));
   const medicationByReference = new Map<string, EncounterDefinition["events"]["medication"]["fields"][number]>(catalogBackedDefaults.events.medication.fields.map((field) => [field.reference, field]));
   const procedureByReference = new Map<string, ProcedureField>(Object.entries(catalogBackedDefaults.events.procedure.references).map(([field, reference]) => [reference, field as ProcedureField]));
@@ -109,7 +97,7 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
   const procedureMetadata = procedureElementMetadata(procedureReferences);
   const medicationFields = section("medication").elements.map((reference) => {
     const base = medicationByReference.get(reference)!;
-    return { ...base, label: labels[reference] ?? base.label };
+    return base;
   });
   const medicationMetadata = medicationElementMetadata(medicationFields.map(({ id, reference }) => ({ id, reference })));
   const definition: EncounterDefinition = {
@@ -122,7 +110,7 @@ export function compileEncounterFormProfile(value: unknown, catalog: ElementCata
       note: catalogBackedDefaults.events.note,
       procedure: { ...catalogBackedDefaults.events.procedure, quickAction: { visible: section("procedure").visible, label: section("procedure").quickActionLabel }, fieldOrder: section("procedure").elements.map((reference) => procedureByReference.get(reference)!), required: procedureMetadata.required, attempts: procedureMetadata.attempts, successOptions: procedureMetadata.successOptions, outcomeOptions: procedureMetadata.outcomeOptions, complicationOptions: procedureMetadata.complicationOptions },
       medication: { ...catalogBackedDefaults.events.medication, quickAction: { visible: section("medication").visible, label: section("medication").quickActionLabel }, fields: medicationFields, doseUnits: medicationMetadata.doseUnits, routes: medicationMetadata.routes },
-      vitals: { ...catalogBackedDefaults.events.vitals, quickAction: { visible: section("vitals").visible, label: section("vitals").quickActionLabel }, labels: { ...catalogBackedDefaults.events.vitals.labels, absenceHelp: profile.helpText?.["eVitals.06"] ?? catalogBackedDefaults.events.vitals.labels.absenceHelp }, fields: section("vitals").elements.map((reference) => { const base = vitalByReference.get(reference)!; return { ...base, label: labels[reference] ?? base.label, ...vitalElementMetadata(reference as `e${string}`, base.boundaries.warningLow, base.boundaries.warningHigh) }; }), summary: profile.summary.vitalOrder.map((reference) => vitalSummaryByField.get(vitalByReference.get(reference)!.id)!).filter(Boolean) },
+      vitals: { ...catalogBackedDefaults.events.vitals, quickAction: { visible: section("vitals").visible, label: section("vitals").quickActionLabel }, fields: section("vitals").elements.map((reference) => { const base = vitalByReference.get(reference)!; return { ...base, ...vitalElementMetadata(reference as `e${string}`, base.boundaries.warningLow, base.boundaries.warningHigh) }; }), summary: profile.summary.vitalOrder.map((reference) => vitalSummaryByField.get(vitalByReference.get(reference)!.id)!).filter(Boolean) },
     },
   };
   return validateEncounterDefinition(definition);

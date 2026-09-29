@@ -9,14 +9,8 @@ const outputPath = path.join(webRoot, "app/data/stationary-layout-1.0.0.json");
 function groupPresentation(group, elements) {
   const descendants = elements.filter((element) => element.groupPath.includes(group.id));
   const columns = descendants.slice(0, 4).map(({ id }) => ({ elementId: id }));
-  if (group.repeating) return {
-    kind: "table",
-    label: group.name,
-    help: `Add or edit ${group.name} entries.`,
-    dialog: { addLabel: `Add ${group.name}`, editLabel: `Edit ${group.name}` },
-    columns,
-  };
-  return { kind: "inline", label: group.name };
+  if (group.repeating) return { kind: "table", columns };
+  return { kind: "inline" };
 }
 
 export async function generateStationaryLayout() {

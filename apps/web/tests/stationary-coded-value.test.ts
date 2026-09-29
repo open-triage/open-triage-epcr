@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
+import { readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { EncounterDocument, EncounterValue } from "@open-triage/contracts";
 import synthetic from "../app/data/synthetic-encounter-document.json";
@@ -241,4 +242,66 @@ test("a report reopens locally with an agency code from its pinned catalog", () 
   if (restored.status !== "restored") throw new Error("expected agency-coded report to reopen");
   assert.equal(restored.state.encounter.document.groups.find(({ id }) => id === "ePatientSection")!
     .instances[0]!.elements.find(({ id }) => id === "ePatient.14")!.values[0]?.kind, "coded");
+});
+
+test("Swedish choice and absence text preserve the selected clinical codes", () => {
+  const previous = globalThis.document;
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { lang: "sv" } } });
+  try {
+    const field = configuredStationaryCodedField("eProcedures.06", {
+      agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: true, supportsPertinentNegatives: false,
+      codeChoices: [{ code: "9923003", codeSystem: "", label: "Yes",
+        localization: { schemaVersion: 1, sv: { label: "Ja" } } }],
+      exceptionalChoices: [{ key: "not-value:7701003", localization: { schemaVersion: 1,
+        sv: { label: "Ej registrerat" } } }],
+    });
+    assert.equal(field.options[0]?.label, "Ja");
+    assert.equal(codedSelectionFromOption(field.options[0]!).code, "9923003");
+    assert.equal(field.exceptionalChoices.find(({ key }) => key === "not-value:7701003")?.label, "Ej registrerat");
+    assert.equal(exceptionalSelection(field, "not-value:7701003")?.code, "7701003");
+  } finally { Object.defineProperty(globalThis, "document", { configurable: true, value: previous }); }
+});
+
+test("coded picker distinguishes the same code in different systems", () => {
+  const base = stationaryCodedField("ePatient.25");
+  const field = { ...base, options: [
+    { code: "SHARED", system: "urn:first", label: "First", suggested: true },
+    { code: "SHARED", system: "urn:second", label: "Second", suggested: true },
+  ] };
+  assert.doesNotThrow(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:second" }));
+  assert.throws(() => validateStationaryCodedSelection(field, { kind: "coded", code: "SHARED", system: "urn:third" }), /exhaustive/);
+  const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
+  assert.match(html, /value="0">First/);
+  assert.match(html, /value="1">Second/);
+});
+
+
+test("shipped Swedish choice seed appears in the clinical picker without changing coded values", async () => {
+  const seed = JSON.parse(await readFile(new URL("../../../defines/localization/localization_sv.json", import.meta.url), "utf8"));
+  const source = requireNemsisDataElement("eMedications.06");
+  assert.equal(source.valueSource.kind, "inline-enumerated");
+  if (source.valueSource.kind !== "inline-enumerated") return;
+  const translated = ({ code: "3706021", ...seed.catalog.codeLists["inline:eMedications.06"].choices[""]["3706021"] });
+  const original = source.valueSource.values.find(({ code }) => code === translated.code)!;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement: { lang: "sv" } } });
+  try {
+    const field = configuredStationaryCodedField(source, {
+      agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+      supportsNotValues: false, supportsPertinentNegatives: false,
+      codeChoices: [{ code: original.code, codeSystem: "", label: original.label,
+        localization: { schemaVersion: 1, sv: { label: translated.label,
+          reviewedSource: { label: original.label } } } }],
+    });
+    assert.equal(field.options[0]?.label, "Milligram (mg)");
+    assert.equal(field.options[0]?.code, "3706021");
+    const selection = codedSelectionFromOption(field.options[0]!);
+    assert.equal(selection.code, "3706021");
+    const html = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange() {} }));
+    assert.match(html, /Milligram \(mg\)/);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "document", previous);
+    else Reflect.deleteProperty(globalThis, "document");
+  }
 });

@@ -1,3 +1,5 @@
+export { SUPPORTED_UI_LANGUAGES, isSupportedUiLanguage } from "./ui-languages.generated.js";
+
 export interface HealthResponse {
   status: "ok";
   service: "open-triage-api";
@@ -16,6 +18,7 @@ export {
   formatValidationSource,
   isNemsisDemographicElementId,
   repairNemsisImportedMessage,
+  validationRuleText,
   type CompiledValidationBundle,
   type CompiledValidationExpression,
   type CompiledValidationRule,
@@ -281,6 +284,9 @@ export interface ReportMediaPolicy {
 
 export interface AgencyMediaSettings {
   organizationId: string;
+  language: string;
+  regionalFormat: "en-US" | "sv-SE" | null;
+  timeZone: string | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -295,6 +301,9 @@ export interface AgencyMediaSettings {
 
 export interface UpdateAgencyMediaSettingsCommand {
   expectedRevision: number;
+  language: string;
+  regionalFormat?: "en-US" | "sv-SE" | null;
+  timeZone?: string | null;
   reportMediaAllowanceBytes: number;
   imageMediaLimitBytes: number;
   appearance: AgencyAppearance;
@@ -635,6 +644,15 @@ export interface CatalogDraftElement {
   elementId: string;
   /** Agency-editable clinical label; the stable element identity remains elementId. */
   label: string;
+  /** English source description; optional for legacy catalogs. */
+  description?: string;
+  /** Translation and English source values recorded at review time. */
+  localization?: { schemaVersion: 1; sv?: {
+    label?: string; description?: string;
+    reviewedSource?: { label?: string; description?: string };
+  } };
+  specialChoices?: Array<{ kind: "not-value" | "pertinent-negative"; code: string; label: string;
+    localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } } }>;
   identityId: string;
   baseDatatype: string;
   storageSemantics: {
@@ -662,6 +680,7 @@ export interface CatalogDraftCodeValue {
   sourceLabel: string;
   category: string | null;
   enabled: boolean;
+  localization?: { schemaVersion: 1; sv?: { label?: string; reviewedSource?: { label: string } } };
 }
 
 export interface CatalogDraftCodeList {
@@ -669,6 +688,7 @@ export interface CatalogDraftCodeList {
   name: string;
   classification: "defined" | "suggested" | "agency" | "inline";
   elementIds: string[];
+  localization?: { schemaVersion: 1; sv?: { name?: string; reviewedSource?: { name: string } } };
   values: CatalogDraftCodeValue[];
   defaultValue: { code: string; codeSystem: string } | null;
 }
@@ -711,6 +731,7 @@ export interface AuthoringVersionOption {
 export interface CatalogValidationResult {
   valid: boolean;
   findings: string[];
+  warnings?: string[];
   definitionSha256: string;
   projectionsVerified: boolean;
 }
@@ -840,20 +861,25 @@ export interface FormDraftField {
     { kind: "custom"; elementDefinitionId: string; groupDefinitionId?: string };
   required?: boolean;
   allowedAbsenceStates?: string[];
-  configuration?: Record<string, unknown>;
   rules?: FormDraftRule[];
 }
 
 export interface FormDraftDefinition {
   schemaVersion: 1;
-  sections: Array<{ key: string; presentation?: Record<string, unknown>; fields: FormDraftField[] }>;
-  locales?: Array<{ locale: string; translations: Record<string, unknown> }>;
+  sections: Array<{ key: string; fields: FormDraftField[] }>;
 }
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
+  /** Group wording from the same immutable catalog as the fields. */
+  catalogGroups?: Record<string, { name: string; localization?: {
+    schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };
+  } }>;
   definition: FormDraftDefinition;
   catalogFields: Record<string, {
+    name?: string;
+    description?: string;
+    localization?: CatalogDraftElement["localization"];
     agencyRequired: boolean;
     requirednessSeverity?: "warning" | "error" | null;
     minOccurs: number;
@@ -861,10 +887,13 @@ export interface ClinicalFormConfiguration {
     nillable: boolean;
     supportsNotValues: boolean;
     supportsPertinentNegatives: boolean;
+    exceptionalChoices?: Array<{ key: string; localization?: CatalogDraftCodeValue["localization"] }>;
     codeChoices?: Array<{
       code: string;
       codeSystem: string;
       label: string;
+      sourceLabel?: string;
+      localization?: CatalogDraftCodeValue["localization"];
       terminologyVersion?: string;
     }>;
   }>;
@@ -893,6 +922,7 @@ export interface StationaryFormDraft {
   definition: FormDraftDefinition;
   /** Published catalog configuration used by the detached authoring preview. */
   catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
   updatedAt: string;
 }
@@ -906,7 +936,7 @@ export interface PublishedStationaryForm {
   status: "published";
   definitionSha256: string;
   publishedAt: string;
-  structuralSummary: { sections: number; fields: number; rules: number; locales: number };
+  structuralSummary: { sections: number; fields: number; rules: number };
 }
 
 export interface StationaryFormActivation {
@@ -993,6 +1023,10 @@ export interface OpenAssignmentResponse {
     formVersionId: string;
     catalogReleaseId: string;
     validationVersionId?: string;
+    /** Immutable report-pinned source integrity metadata; absent on older report records. */
+    formDefinitionSha256?: string;
+    catalogArtifactSha256?: string;
+    validationCompiledSha256?: string;
     /** Present on live API responses; optional only while restoring pre-feature offline records. */
     mediaPolicy?: ReportMediaPolicy;
     /** Immutable rendering and validation configuration loaded from the report's pinned versions. */

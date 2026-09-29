@@ -1,21 +1,26 @@
 "use client";
 
+import { DialogCancelButton, DialogRemoveButton } from "./documentation-dialog-buttons";
+import type { AgencyLanguage } from "../app/localization";
 import { useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { MEDICATIONS, searchMedicationCatalog } from "../app/medication-catalog";
 import type { EncounterDefinition, MedicationFieldId } from "../app/encounter-definition";
 import { validateMedication, type MedicationDraft, type ReviewFinding, type ShellAction } from "../app/standard-encounter";
+import { displayDecimal, useRegionalFormat } from "../app/regional-format";
 import { TimePicker } from "./time-picker";
 import { DialogValidationMessage } from "./dialog-validation-message";
 
 type Props = {
   readonly draft: MedicationDraft;
+  readonly language: AgencyLanguage;
   readonly dispatch: React.Dispatch<ShellAction>;
   readonly dialogRef: RefObject<HTMLElement | null>;
   readonly definition: EncounterDefinition;
   readonly finding?: Pick<ReviewFinding, "severity" | "message">;
 };
 
-export function MedicationDialog({ draft, dispatch, dialogRef, definition, finding }: Props) {
+export function MedicationDialog({ language, draft, dispatch, dialogRef, definition, finding }: Props) {
+  const region = useRegionalFormat();
   const [query, setQuery] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const medication = definition.events.medication;
@@ -48,13 +53,13 @@ export function MedicationDialog({ draft, dispatch, dialogRef, definition, findi
           {validation(field.id)}
         </div>;
       case "time":
-        return <div className="dialog-field" key={field.id}><TimePicker className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><TimePicker language={language} className={frame(field.id)} label={field.label} date={draft.date} onDateChange={(value) => dispatch({ type: "medication-draft-changed", field: "date", value })} value={draft.time} selectedInstant={draft.dateTime} onDateTimeChange={(date, time, dateTime) => dispatch({ type: "clinical-time-selected", kind: "medication", date, time, dateTime })} onChange={(value) => dispatch({ type: "medication-draft-changed", field: "time", value })} />{validation(field.id)}</div>;
       case "dose":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={draft.dose} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<input inputMode="decimal" placeholder={field.placeholder} value={displayDecimal(draft.dose, region)} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "dose", value: event.target.value })} /></label>{validation(field.id)}</div>;
       case "unit":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}><option value="">{medication.labels.select}</option>{medication.doseUnits.map((unit) => <option key={unit}>{unit}</option>)}</select></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.unit} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "unit", value: event.target.value })}><option value="">{medication.labels.select}</option>{medication.doseUnits.map((unit) => <option key={unit} value={unit}>{medication.doseUnitLabels?.[unit] ?? unit}</option>)}</select></label>{validation(field.id)}</div>;
       case "route":
-        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.route} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "route", value: event.target.value })}><option value="">{medication.labels.selectRoute}</option>{medication.routes.map((route) => <option key={route}>{route}</option>)}</select></label>{validation(field.id)}</div>;
+        return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<select value={draft.route} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "route", value: event.target.value })}><option value="">{medication.labels.selectRoute}</option>{medication.routes.map((route) => <option key={route} value={route}>{medication.routeLabels?.[route] ?? route}</option>)}</select></label>{validation(field.id)}</div>;
       case "response":
         return <div className="dialog-field" key={field.id}><label className={frame(field.id)}>{field.label}<textarea rows={3} placeholder={field.placeholder} value={draft.response} onChange={(event) => dispatch({ type: "medication-draft-changed", field: "response", value: event.target.value })} /></label>{validation(field.id)}</div>;
     }
@@ -64,11 +69,11 @@ export function MedicationDialog({ draft, dispatch, dialogRef, definition, findi
     <section ref={dialogRef} className="note-dialog medication-dialog" role="dialog" aria-modal="true" aria-labelledby="medication-dialog-title">
       <div className="note-dialog-heading">
         <div><p className="eyebrow">{draft.isNew ? medication.labels.newEyebrow : medication.labels.editEyebrow}</p><h2 id="medication-dialog-title">{medication.labels.editorTitle}</h2></div>
-        <button className="remove-entry-button" type="button" onClick={() => dispatch({ type: "medication-removed" })}>{medication.labels.remove}</button>
+        {!draft.isNew && <DialogRemoveButton language={language} onClick={() => dispatch({ type: "medication-removed" })} />}
       </div>
       {medication.fields.map(renderField)}
       <div className="note-dialog-actions">
-        <button type="button" onClick={() => dispatch({ type: "medication-cancelled" })}>{medication.labels.cancel}</button>
+        <DialogCancelButton language={language} onClick={() => dispatch({ type: "medication-cancelled" })} />
         <button type="button" onClick={() => dispatch({ type: "medication-saved" })}>{draft.isNew ? medication.labels.add : medication.labels.save}</button>
       </div>
     </section>

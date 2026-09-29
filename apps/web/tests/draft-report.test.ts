@@ -13,6 +13,7 @@ import {
   deleteReportTextNote,
   demoActionMutationDelta,
   recoveryMutationBatches,
+  reconciledDraftSyncStatus,
   DRAFT_CONFLICT_RECOVERY_LIMIT,
   DraftSaveRejectedError,
   encounterDocumentToDraftMutations,
@@ -47,6 +48,13 @@ test("only a brand-new server report queues an initial persistence snapshot", ()
     "reopening an existing report must not create a no-op synchronization write");
   assert.equal(shouldQueueInitialDraftSnapshot("restored", 0, true, false), false);
   assert.equal(shouldQueueInitialDraftSnapshot("empty", 0, true, true), false);
+});
+
+test("authoritative reconciliation clears a stale sync blocker when no local changes remain", () => {
+  assert.equal(reconciledDraftSyncStatus("Pending sync", false), "Saved");
+  assert.equal(reconciledDraftSyncStatus("Conflict", false), "Saved");
+  assert.equal(reconciledDraftSyncStatus("Pending sync", true), "Pending sync");
+  assert.equal(reconciledDraftSyncStatus("Saving", true), "Saving");
 });
 
 test("a dispatch cancellation notice tells clinicians that opened documentation is preserved", () => {
@@ -371,10 +379,10 @@ test("signing surfaces revision, validation, session, server, and network failur
   );
   try {
     for (const [status, message] of [
-      [409, /record changed/i],
-      [422, /server validation/i],
-      [401, /session has ended/i],
-      [503, /could not be signed/i],
+      [409, /legacy.http409/i],
+      [422, /legacy.http422/i],
+      [401, /legacy.http401/i],
+      [503, /legacy.http503/i],
     ] as const) {
       globalThis.fetch = (async () => new Response(null, { status })) as typeof fetch;
       await assert.rejects(sign(), message);

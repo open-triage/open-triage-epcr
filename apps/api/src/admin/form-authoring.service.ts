@@ -2,10 +2,10 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException, O
 import { InjectDataSource } from "@nestjs/typeorm";
 import type { AuthoringVersionOption, ClinicianSession, FormCatalogElementPage, FormCloneDiagnostic, FormDraftDefinition, PublishedStationaryForm, StationaryFormActivation, StationaryFormDraft } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
-import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition } from "../forms/form-publication.validation.js";
+import { canonicalDefinitionSha256, FormPublicationValidationError, validateCanonicalFormDefinition, withoutLegacyFormWording } from "../forms/form-publication.validation.js";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { FormPublicationService } from "../forms/form-publication.service.js";
-import { catalogFieldsConfiguration } from "../forms/clinical-form-configuration.js";
+import { catalogFieldsConfiguration, catalogGroupsConfiguration } from "../forms/clinical-form-configuration.js";
 import { mutationRows } from "../database/mutation-result.js";
 import { ValidationAuthoringService } from "./validation-authoring.service.js";
 
@@ -274,6 +274,7 @@ export class FormAuthoringService {
 
   private async compatibleClone(manager: Pick<EntityManager, "query">, sourceReleaseId: string, targetReleaseId: string,
     definition: FormDraftDefinition): Promise<{ definition: FormDraftDefinition; diagnostics: FormCloneDiagnostic[] }> {
+    definition = this.definition(definition);
     const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
       field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
     const rows = elementIds.length ? await manager.query<ElementRow[]>(`
@@ -320,7 +321,7 @@ export class FormAuthoringService {
   }
 
   private definition(input: unknown): FormDraftDefinition {
-    try { return validateCanonicalFormDefinition(input) as unknown as FormDraftDefinition; }
+    try { return validateCanonicalFormDefinition(withoutLegacyFormWording(input)) as unknown as FormDraftDefinition; }
     catch (error) {
       if (error instanceof FormPublicationValidationError)
         throw new UnprocessableEntityException({ message: "Form validation failed", findings: error.findings });
@@ -395,13 +396,15 @@ export class FormAuthoringService {
       findings = sources[0] ? (await this.compatibleClone(manager, sources[0].catalog_release_id,
         row.catalog_release_id, sources[0].canonical_definition)).diagnostics : [];
     }
-    const elementIds = [...new Set(row.canonical_definition.sections.flatMap((section) =>
+    const definition = this.definition(row.canonical_definition);
+    const elementIds = [...new Set(definition.sections.flatMap((section) =>
       section.fields.flatMap((field) => field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
     const catalogFields = await catalogFieldsConfiguration(manager, row.catalog_release_id, elementIds);
     return { id: row.id, formId: row.form_id, catalogReleaseId: row.catalog_release_id,
       ...(row.display_name ? { displayName: row.display_name } : {}),
       clonedFromId: row.cloned_from_id!, revision: row.revision, definitionSha256: row.definition_sha256,
-      definition: row.canonical_definition, catalogFields, diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
+      definition, catalogFields,
+      catalogGroups: await catalogGroupsConfiguration(manager, row.catalog_release_id), diagnostics: findings ?? [], updatedAt: new Date(row.updated_at).toISOString() };
   }
 
   private authorize(token: string, capability: string): Promise<ClinicianSession> {

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { catalogArtifactSha256 } from "./catalog-artifact-sha256.mjs";
 import { readInstallDefinitions } from "./lib/install-definitions.mjs";
+import { readCatalogLocalizationSeed } from "./lib/catalog-localization.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(packageRoot, "../..");
@@ -12,6 +13,7 @@ const definitions = await readInstallDefinitions(path.join(repoRoot, "defines"))
 const selectedCatalog = definitions.defaultPair.catalog;
 const catalogPath = path.join(repoRoot, "defines/catalog", selectedCatalog.file);
 const mappingPath = path.join(packageRoot, `generated/${selectedCatalog.key}-analytics-mapping.json`);
+const localizationPath = path.join(repoRoot, "defines/localization/localization_sv.json");
 const catalogStandard = selectedCatalog.standard;
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -23,7 +25,13 @@ const [catalogText, mappingText] = await Promise.all([
 ]);
 const catalog = JSON.parse(catalogText);
 const mapping = JSON.parse(mappingText);
+const { elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization,
+  coverage, seedSha256 } = await readCatalogLocalizationSeed(localizationPath, catalog);
+const missing = Object.entries(coverage.missing).flatMap(([kind, ids]) => ids.map((id) => `${kind}:${id}`));
+if (missing.length) throw new Error(`Swedish catalog seed is incomplete: ${missing.join(", ")}`);
+console.log(`Swedish catalog coverage: ${JSON.stringify(coverage.supplied)}; ${coverage.reviewPending.length} candidates require clinical review.`);
 const catalogSha256 = catalogArtifactSha256(catalogText);
+const releaseSha256 = createHash("sha256").update(`${catalogSha256}:${seedSha256}`).digest("hex");
 
 if (mapping.catalogArtifactSha256 !== catalogSha256 || mapping.catalogVersion !== catalog.release) {
   throw new Error("Generated database mapping does not match the committed NEMSIS catalog");
@@ -57,10 +65,10 @@ try {
   await client.query("set constraints all deferred");
 
   const existing = await client.query(
-    "select id, artifact_sha256 from catalog.release where standard = $1 and version = $2 and dataset = $3 for update",
+    "select id, artifact_sha256, provenance from catalog.release where standard = $1 and version = $2 and dataset = $3 for update",
     [catalogStandard, catalog.release, catalog.dataset]
   );
-  if (existing.rows[0] && existing.rows[0].artifact_sha256 !== catalogSha256) {
+  if (existing.rows[0] && existing.rows[0].artifact_sha256 !== catalogSha256 && existing.rows[0].provenance?.catalogSourceSha256 !== catalogSha256) {
     throw new Error(
       `${catalogStandard} ${catalog.release} is already loaded with a different checksum (${existing.rows[0].artifact_sha256})`
     );
@@ -80,7 +88,7 @@ try {
        set artifact_sha256 = excluded.artifact_sha256,
            provenance = excluded.provenance
      returning id`,
-    [catalogStandard, catalog.release, catalog.dataset, catalog.schemaVersion, catalogSha256, JSON.stringify(catalog.provenance)]
+    [catalogStandard, catalog.release, catalog.dataset, catalog.schemaVersion, releaseSha256, JSON.stringify({ ...catalog.provenance, catalogSourceSha256: catalogSha256, elementLocalization, groupLocalization, codeListLocalization, specialChoiceLocalization, localizationSeedSha256: seedSha256 })]
   );
   const releaseId = releaseResult.rows[0].id;
 

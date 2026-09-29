@@ -74,32 +74,32 @@ test("an empty pinned form still renders the complete Stationary record", () => 
 
 test("a pinned form controls Stationary section and element order", () => {
   const formDefinition = { schemaVersion: 1 as const, sections: [{
-    key: "patient-first", presentation: { title: "Patient first" }, fields: [
+    key: "ePatientSection", fields: [
       { key: "sex", source: { kind: "nemsis" as const, elementId: "ePatient.25" } },
       { key: "name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
     ],
   }, {
-    key: "record-second", presentation: { title: "Record second" }, fields: [
+    key: "eRecordSection", fields: [
       { key: "record", source: { kind: "nemsis" as const, elementId: "eRecord.01" } },
     ],
   }] };
   const html = renderToStaticMarkup(createElement(StationaryRecord, { document, formDefinition, onDocumentChange() {} }));
-  assert.ok(html.indexOf("Patient first") < html.indexOf("Record second"));
+  assert.ok(html.indexOf("Patient") < html.indexOf("Record"));
   assert.ok(html.indexOf('data-element-id="ePatient.25"') < html.indexOf('data-element-id="ePatient.02"'));
   assert.doesNotMatch(html, /data-element-id="eVitals\.06"/);
 });
 
 test("a pinned form never exposes agency demographics or NEMSIS custom configuration", () => {
   const formDefinition = { schemaVersion: 1 as const, sections: [{
-    key: "demographics", presentation: { title: "Agency demographics" }, fields: [
+    key: "demographics", fields: [
       { key: "agency-number", source: { kind: "nemsis" as const, elementId: "dAgency.01" } },
     ],
   }, {
-    key: "custom-configuration", presentation: { title: "Custom configuration" }, fields: [
+    key: "custom-configuration", fields: [
       { key: "custom-title", source: { kind: "nemsis" as const, elementId: "eCustomConfiguration.01" } },
     ],
   }, {
-    key: "clinical", presentation: { title: "Patient" }, fields: [
+    key: "clinical", fields: [
       { key: "patient-name", source: { kind: "nemsis" as const, elementId: "ePatient.02" } },
     ],
   }] };

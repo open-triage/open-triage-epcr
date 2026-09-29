@@ -167,6 +167,8 @@ function ruleAdvisories(rules: ValidationRuleSource[]): Map<string, ValidationDi
     items.push({ severity: "warning", code, message, ruleId: rule.id });
     diagnostics.set(rule.id, items);
   };
+  for (const rule of rules) if (!rule.localization?.sv?.name?.trim() || !rule.localization.sv.message?.trim())
+    add(rule, "wording", "Swedish rule name or message is missing; English wording will be used.");
   for (let left = 0; left < rules.length; left += 1) for (let right = left + 1; right < rules.length; right += 1) {
     const first = rules[left]!; const second = rules[right]!;
     if (canonicalRule(first) === canonicalRule(second)) {
@@ -799,12 +801,47 @@ export class ValidationAuthoringService {
           originalMessage: requiredText(value.originalMessage, "rule.provenance.originalMessage", 20_000) } as ValidationRuleProvenance;
       });
     }
+    let localization: ValidationRuleSource["localization"];
+    if (body.localization !== undefined) {
+      const value = record(body.localization);
+      if (value.schemaVersion !== 1 || Object.keys(value).some((key) => !["schemaVersion", "sv"].includes(key)))
+        throw new UnprocessableEntityException("rule.localization is malformed");
+      const sv = value.sv === undefined ? undefined : record(value.sv);
+      if (sv && Object.keys(sv).some((key) => !["name", "message", "reviewedSource"].includes(key)))
+        throw new UnprocessableEntityException("rule.localization.sv is malformed");
+      const reviewed = sv?.reviewedSource === undefined ? undefined : record(sv.reviewedSource);
+      if (reviewed && Object.keys(reviewed).some((key) => !["name", "message"].includes(key)))
+        throw new UnprocessableEntityException("rule.localization.sv.reviewedSource is malformed");
+      const optional = (value: unknown, name: string, maximum: number) => {
+        if (value === undefined) return undefined;
+        if (typeof value !== "string" || value.length > maximum) throw new UnprocessableEntityException(`${name} must be text`);
+        return value;
+      };
+      localization = { schemaVersion: 1, ...(sv ? { sv: {
+        ...(sv.name !== undefined ? { name: optional(sv.name, "rule.localization.sv.name", 120) } : {}),
+        ...(sv.message !== undefined ? { message: optional(sv.message, "rule.localization.sv.message", 500) } : {}),
+        ...(reviewed ? { reviewedSource: {
+          ...(reviewed.name !== undefined ? { name: optional(reviewed.name, "rule.localization.sv.reviewedSource.name", 120) } : {}),
+          ...(reviewed.message !== undefined ? { message: optional(reviewed.message, "rule.localization.sv.reviewedSource.message", 500) } : {}),
+        } } : {}),
+      } } : {}) };
+    }
+    let messageParameters: ValidationRuleSource["messageParameters"];
+    if (body.messageParameters !== undefined) {
+      const values = record(body.messageParameters);
+      if (Object.keys(values).length > 32 || Object.entries(values).some(([key, value]) =>
+        !/^[A-Za-z][A-Za-z0-9_]*$/.test(key) || key.length > 80 ||
+        !(typeof value === "string" && value.length <= 500 || typeof value === "number" && Number.isFinite(value))))
+        throw new UnprocessableEntityException("rule.messageParameters is malformed");
+      messageParameters = values as ValidationRuleSource["messageParameters"];
+    }
     return { id: uuidText(body.id, "rule.id"), name: requiredText(body.name, "rule.name", 120),
       enabled: body.enabled, severity: severity as ValidationRuleSource["severity"],
       executionTargets: targets as ValidationRuleSource["executionTargets"],
       primaryTargetElementId: requiredText(body.primaryTargetElementId, "rule.primaryTargetElementId", 200),
       message: requiredText(body.message, "rule.message", 500), source: requiredText(body.source, "rule.source", 20_000),
-      ...(kind ? { sourceKind: kind as ValidationRuleSourceKind } : {}), ...(provenance ? { provenance } : {}) };
+      ...(kind ? { sourceKind: kind as ValidationRuleSourceKind } : {}), ...(provenance ? { provenance } : {}),
+      ...(localization ? { localization } : {}), ...(messageParameters ? { messageParameters } : {}) };
   }
 
   private rowRules(row: Pick<VersionRow, "source_rule">): ValidationRuleSource[] {

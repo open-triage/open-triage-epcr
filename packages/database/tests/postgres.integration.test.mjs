@@ -435,7 +435,7 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
   const loader = path.join(packageRoot, "scripts/load-nemsis-catalog.mjs");
   const loaderEnvironment = { ...process.env, DATABASE_URL: databaseUrl };
   const firstLoad = await execFileAsync(process.execPath, [loader], { env: loaderEnvironment });
-  assert.match(firstLoad.stdout, /Loaded NEMSIS 3\.5\.1:/);
+  assert.match(firstLoad.stdout, /already loaded with the expected checksum/);
 
   const identitiesBeforeReplay = await client.query(
     "select canonical_key, id from catalog.element_identity where namespace = 'NEMSIS' order by canonical_key"
@@ -470,8 +470,15 @@ integrationTest("the database foundation runs on a clean PostgreSQL 15+ server",
       distinct_named_columns: 198
     });
 
-    const release = await client.query("select artifact_sha256 from catalog.release where standard = 'NEMSIS'");
+    const release = await client.query("select artifact_sha256, provenance from catalog.release where standard = 'NEMSIS' and version = '3.5.1'");
     assert.match(release.rows[0].artifact_sha256, /^[a-f0-9]{64}$/);
+    assert.equal(Object.keys(release.rows[0].provenance.elementLocalization).length, 453);
+    assert.equal(Object.keys(release.rows[0].provenance.groupLocalization).length, 88);
+    assert.equal(release.rows[0].provenance.elementLocalization["eVitals.10"].sv.label, "Hjärtfrekvens");
+    assert.equal(release.rows[0].provenance.codeListLocalization["inline:eProcedures.06"]
+      .values[""]["9923003"].sv.label, "Ja");
+    assert.equal(release.rows[0].provenance.codeListLocalization["inline:eMedications.06"]
+      .values[""]["3706021"].sv.label, "Milligram (mg)");
   });
 
   await t.test("rejects incompatible datatypes while reusing stable element identities", async () => {

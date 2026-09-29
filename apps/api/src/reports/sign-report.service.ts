@@ -354,8 +354,11 @@ export class SignReportService {
         ruleId: "bundle", executionTarget: "sign" }];
     }
     const document = await encounterDocument(manager, report.id);
+    const settings = await manager.query<Array<{ language: string }>>(`
+      select language from app_identity.agency_settings where organization_id=$1
+    `, [report.organization_id]);
     const evaluated = evaluateValidationBundleSafely(versions[0].compiled_bundle, document, "sign",
-      { timestamp: evaluationTimestamp });
+      { timestamp: evaluationTimestamp, language: settings[0]?.language ?? "en" });
     return [...evaluated.findings.map((finding) => ({
       severity: finding.severity,
       code: "validation.required-element",

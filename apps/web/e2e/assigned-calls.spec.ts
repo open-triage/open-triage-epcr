@@ -81,7 +81,7 @@ test("open report terminology is used for visible copy and UI identifiers", asyn
   await expect(page.locator("#open-calls-title, .open-calls, .open-call-card")).toHaveCount(0);
 });
 
-test("the demo unit's assigned call shows its operational summary and manual cancellation refresh", async ({ page }) => {
+test("the demo unit's assigned call shows its operational summary and cancellation refresh when returning to the app", async ({ page }) => {
   let canceled = false;
   await page.route("**/demo-assigned-calls.json", (route) => fulfill(route, canceled ? [] : [assignedCall], canceled ? [assignedCall.id] : []));
   await signIn(page);
@@ -91,10 +91,9 @@ test("the demo unit's assigned call shows its operational summary and manual can
 
   const section = page.getByRole("region", { name: "Assigned calls" });
   await expect(page.getByRole("region", { name: "Open reports" })).toBeVisible();
-  const refresh = page.getByRole("button", { name: "Refresh calls" });
-  await expect(refresh).toHaveCount(1);
-  await expect(refresh).toHaveText("Refresh");
-  await expect(page.locator(".session-bar > .call-list-refresh")).toHaveCount(1);
+  const languageSelector = page.getByRole("button", { name: "Choose language" });
+  await expect(languageSelector).toBeVisible();
+  await expect(page.locator(".session-bar > .session-language-selector")).toHaveCount(1);
   const identityBox = await page.getByText("Signed in as Synthetic Clinician").boundingBox();
   expect(Math.abs((identityBox!.x + identityBox!.width / 2) - page.viewportSize()!.width / 2)).toBeLessThanOrEqual(1);
   expect(await page.locator(".authenticated-shell > div > section h1").allTextContents()).toEqual(["Assigned calls", "Open reports"]);
@@ -113,10 +112,8 @@ test("the demo unit's assigned call shows its operational summary and manual can
   await expect(card.getByText(dispatchedAt)).toBeVisible();
 
   canceled = true;
-  const refreshSize = await refresh.boundingBox();
-  await refresh.click();
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(card).toHaveCount(0);
-  expect(await refresh.boundingBox()).toEqual(refreshSize);
   await expect(section.getByRole("status")).toHaveCount(0);
 });
 
@@ -142,7 +139,7 @@ test("assignment polling runs every ten seconds only while visible and refreshes
 
   await page.clock.fastForward(10_000);
   await expect.poll(() => requests).toBeGreaterThan(launchRequests);
-  await expect(page.getByRole("button", { name: "Refresh calls" })).toHaveText("Refresh");
+  await expect(page.getByRole("button", { name: "Choose language" })).toBeVisible();
   const visibleRequests = requests;
 
   await page.evaluate(() => {
@@ -675,7 +672,7 @@ test("a stationary-completed report disappears from Open reports and only its ca
   }, { completedId: openedAssignment.report.id, openId: openCalls[1].reportId });
 
   completed = true;
-  await page.getByRole("button", { name: "Refresh calls" }).click();
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
 
   await expect(section.getByText(assignedCall.callNumber, { exact: true })).toHaveCount(0);
   const completionNotice = section.getByRole("status");
@@ -710,7 +707,7 @@ test("completion discovered while a form is active stops editing and returns to 
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
 
   completed = true;
-  await page.getByRole("button", { name: "Refresh calls" }).click();
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
 
   await expect(page.locator(".transient-notice")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Timeline" })).toHaveCount(0);
@@ -765,4 +762,22 @@ test("an Android-sized browser closes and reopens an edited call offline, then s
   await expect(page.locator(".sync-status")).toHaveText("Saved", { timeout: 3_000 });
   expect(commandIds).toHaveLength(2);
   expect(commandIds[1]).not.toBe(commandIds[0]);
+});
+
+
+test("header language selector switches bundled languages and remembers the browser preference", async ({ page }) => {
+  await page.route("**/demo-assigned-calls.json", (route) => fulfill(route));
+  await signIn(page);
+  const selector = page.locator(".language-trigger");
+  await expect(selector).toHaveAccessibleName("Choose language");
+  await selector.click();
+  await expect(page.getByRole("menuitemradio")).toHaveText(["English✓", "Svenska"]);
+  await page.getByRole("menuitemradio", { name: "Svenska" }).click();
+  await expect(selector).toHaveAccessibleName("Välj språk");
+  await expect(page.locator("html")).toHaveAttribute("lang", "sv");
+  await page.reload();
+  await expect(selector).toHaveAccessibleName("Välj språk");
+  await selector.click();
+  await page.getByRole("menuitemradio", { name: "English" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
 });

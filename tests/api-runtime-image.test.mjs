@@ -11,11 +11,13 @@ test("the API container separates its build toolchain from the production runtim
   const runtime = dockerfile.slice(dockerfile.indexOf("FROM node:22-bookworm-slim AS runtime"));
 
   assert.equal((dockerfile.match(/^FROM /gm) ?? []).length, 2);
+  assert.match(dockerfile, /COPY apps\/web\/messages apps\/web\/messages/);
   assert.match(runtime, /npm ci --omit=dev/);
   for (const workspace of ["api", "contracts", "database"]) {
     assert.match(runtime, new RegExp(`--workspace @open-triage/${workspace}`));
   }
   assert.doesNotMatch(runtime, /COPY apps\/web\/package\.json/);
+  assert.doesNotMatch(runtime, /COPY apps\/web\/messages/);
   assert.doesNotMatch(runtime, /COPY apps\/api apps\/api/);
   assert.doesNotMatch(runtime, /COPY packages\/database packages\/database/);
   assert.match(runtime, /COPY --from=build \/workspace\/apps\/api\/dist apps\/api\/dist/);
@@ -64,6 +66,7 @@ test("the pruned runtime explicitly retains approved database operations and the
     "COPY defines defines",
     "seed-initial-validation-versions.mjs",
     "seed-install-definitions.mjs",
+    "COPY packages/database/scripts/lib packages/database/scripts/lib",
     "packages/contracts/examples/dispatch",
   ]) {
     assert.ok(dockerfile.includes(asset), `runtime is missing ${asset}`);
@@ -80,7 +83,7 @@ test("CI boots and inspects the pruned image before it can pass the deployment g
 
   assert.match(validation, /docker build -f deploy\/docker\/api\.Dockerfile/);
   assert.match(validation, /npm run migrate:runtime -w @open-triage\/database/);
-  assert.match(validation, /npm run load:catalog -w @open-triage\/database/);
+  assert.doesNotMatch(validation, /npm run load:catalog -w @open-triage\/database/);
   assert.match(validation, /insert into app_identity\.organization/);
   assert.match(validation, /npm run bootstrap:synthetic:runtime -w @open-triage\/database/);
   assert.match(validation, /curl --fail --silent http:\/\/127\.0\.0\.1:3001\/api\/health/);

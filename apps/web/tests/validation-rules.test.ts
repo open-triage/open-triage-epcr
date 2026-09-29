@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileValidationRule, compiledValidationBundleSha256, encounterValueFacets, evaluateValidationBundle,
-  evaluateValidationBundleSafely, explainValidationRule, formatValidationSource,
+  evaluateValidationBundleSafely, explainValidationRule, formatValidationSource, validationRuleText,
   type CompiledValidationBundle, type EncounterDocument, type ValidationCatalog,
   type ValidationRuleSource } from "@open-triage/contracts";
 import syntheticEncounter from "../app/data/synthetic-encounter-document.json";
@@ -383,4 +383,36 @@ test("evaluation clock, expression and traversal limits, safe regex, and compati
   assert.deepEqual(safe.failures.map(({ ruleId, code }) => ({ ruleId, code })), [{ ruleId: rule.id, code: "compatibility" }]);
   assert.equal(compiledValidationBundleSha256(bundle), compiledValidationBundleSha256(structuredClone(bundle)));
   assert.notEqual(compiledValidationBundleSha256(bundle), compiledValidationBundleSha256({ ...bundle, rules: [] }));
+});
+
+
+test("localized wording changes findings without changing outcomes, version, or acknowledgement identity", () => {
+  const translated: ValidationRuleSource = { ...rule, executionTargets: ["live", "sign", "review"],
+    message: "Document {item}", messageParameters: { item: "incident number" },
+    localization: { schemaVersion: 1, sv: { name: "Dokumentera händelsenummer",
+      message: "Dokumentera {item}", reviewedSource: { name: rule.name, message: "Document {item}" } } } };
+  const compiled = compileValidationRule(translated, versionId, new Set(["eResponse.03"])).compiled!;
+  assert.ok(compiled);
+  assert.equal(validationRuleText(compiled, "sv", "name"), "Dokumentera händelsenummer");
+  const bundle: CompiledValidationBundle = { schemaVersion: 1, languageVersion: "1.0.0",
+    validationVersionId: versionId, catalogReleaseId: "catalog", rules: [compiled] };
+  const missing = structuredClone(syntheticEncounter) as unknown as {
+    groups: Array<{ instances: Array<{ elements: Array<{ id: string; values: unknown[] }> }> }>;
+  };
+  for (const group of missing.groups) for (const instance of group.instances)
+    instance.elements = instance.elements.filter(({ id }) => id !== "eResponse.03");
+  for (const target of ["live", "sign", "review"] as const) {
+    const en = evaluateValidationBundleSafely(bundle, missing as unknown as EncounterDocument, target, { ...evaluation, language: "en" });
+    const sv = evaluateValidationBundleSafely(bundle, missing as unknown as EncounterDocument, target, { ...evaluation, language: "sv" });
+    assert.equal(en.findings[0]?.message, "Document incident number");
+    assert.equal(sv.findings[0]?.message, "Dokumentera incident number");
+    assert.deepEqual({ ...en.findings[0], message: undefined }, { ...sv.findings[0], message: undefined });
+  }
+  assert.equal(compileValidationRule({ ...translated, messageParameters: {} }, versionId,
+    new Set(["eResponse.03"])).diagnostics.find(({ code }) => code === "message-parameters")?.severity, "error");
+  assert.equal(compileValidationRule({ ...translated, localization: { schemaVersion: 1 } }, versionId,
+    new Set(["eResponse.03"])).diagnostics.find(({ code }) => code === "wording")?.severity, "warning");
+  const older = compileValidationRule(rule, versionId, new Set(["eResponse.03"])).compiled!;
+  assert.equal(validationRuleText(older, "sv", "message"), rule.message);
+  assert.notEqual(compiledValidationBundleSha256(bundle), compiledValidationBundleSha256({ ...bundle, rules: [older] }));
 });

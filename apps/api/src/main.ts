@@ -5,6 +5,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { validateAuthenticationThrottleConfiguration } from "./sessions/authentication-throttle.js";
 import { securityHeaders } from "./security-headers.js";
+import { PlatformErrorFilter } from "./platform-error.filter.js";
 
 async function bootstrap() {
   validateAuthenticationThrottleConfiguration();
@@ -21,6 +22,7 @@ async function bootstrap() {
   app.useBodyParser("json", { limit: "64mb" });
   app.useBodyParser("urlencoded", { limit: "1mb", extended: true });
   app.setGlobalPrefix("api");
+  app.useGlobalFilters(new PlatformErrorFilter());
   app.enableCors({
     origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
     exposedHeaders: ["ETag"],

@@ -15,6 +15,7 @@ test("the sole installation policy is the production security and retention base
   const validate = new Ajv2020({ strict: true }).compile(schema);
   assert.equal(validate(production), true, JSON.stringify(validate.errors));
   assert.deepEqual(parseInstallationSettings(production), production);
+  assert.equal(production.language, "en");
   assert.deepEqual(selectedInstallationSettings(), production);
   assert.equal(production.authentication.minimumPasswordLength, 12);
   assert.equal(production.authentication.temporaryPasswordHours, 72);
@@ -113,5 +114,41 @@ test("the static prototype accepts manually supplied local credentials as a clin
   } finally {
     if (originalLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
     else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = originalLocalDemo;
+  }
+});
+
+test("offline startup uses only the last validated configuration for the same installation endpoint", async () => {
+  const oldApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const oldLocalDemo = process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { onLine: false } });
+  const bytes = new Map<string, string>();
+  const storage = {
+    getItem(key: string) { return bytes.get(key) ?? null; },
+    setItem(key: string, value: string) { bytes.set(key, value); },
+  };
+  try {
+    delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    process.env.NEXT_PUBLIC_API_URL = "https://api.example.test";
+    const unavailable = async () => { throw new TypeError("network unavailable"); };
+    for (const language of ["en", "sv"] as const) {
+      for (const regionalFormat of [null, "sv-SE"] as const) {
+        const expected = { ...production, language, regionalFormat };
+        await loadInstallationConfiguration(async () => new Response(JSON.stringify({ settings: expected,
+          appearance: DEFAULT_AGENCY_APPEARANCE }), { status: 200 }), storage);
+        const restored = await loadInstallationConfiguration(unavailable, storage);
+        assert.equal(restored.settings.language, language);
+        assert.equal(restored.settings.regionalFormat, regionalFormat);
+      }
+    }
+    process.env.NEXT_PUBLIC_API_URL = "https://another.example.test";
+    await assert.rejects(loadInstallationConfiguration(unavailable, storage), /network unavailable/);
+  } finally {
+    if (oldApiUrl === undefined) delete process.env.NEXT_PUBLIC_API_URL;
+    else process.env.NEXT_PUBLIC_API_URL = oldApiUrl;
+    if (oldLocalDemo === undefined) delete process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION;
+    else process.env.NEXT_PUBLIC_USE_LOCAL_DEMO_SESSION = oldLocalDemo;
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else Reflect.deleteProperty(globalThis, "navigator");
   }
 });

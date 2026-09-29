@@ -60,6 +60,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
       }], 1];
       if (sql.includes("insert into app_identity.configuration_event")) return [];
       if (sql.includes("from catalog.value_set_element")) return [];
+      if (sql.includes("from catalog.group_definition")) return [];
       throw new Error(`Unexpected SQL: ${sql}`);
     }
   };
@@ -218,7 +219,7 @@ test("publishing requires a saved revision and note without changing the agency 
   const publication = { publish: async (id, body, organization) => {
     calls.push({ id, body, organization });
     return { id, status: "published", definitionSha256: body.definitionSha256,
-      publishedAt: "2026-09-07T02:00:00.000Z", projections: { sections: 1, fields: 4, rules: 0, locales: 0 } };
+      publishedAt: "2026-09-07T02:00:00.000Z", projections: { sections: 1, fields: 4, rules: 0 } };
   } };
   const service = new FormAuthoringService({ query: async (sql) => {
     assert.doesNotMatch(sql, /agency_stationary_default/);
@@ -287,4 +288,25 @@ test("form activation delegates a selected compatible Validation bundle", async 
   assert.deepEqual(calls[1], { token: "owner-session",
     validationVersionId: "70000000-0000-4000-8000-000000000001",
     input: { formVersionId: draftId, catalogReleaseId: catalogId, changeNote: "Deploy complete bundle" } });
+});
+
+test("form definitions reject catalog-owned wording overrides", async () => {
+  const { validateCanonicalFormDefinition, withoutLegacyFormWording } = await import("../dist/forms/form-publication.validation.js");
+  const valid = { schemaVersion: 1, sections: [{ key: "patient", fields: [
+    { key: "ePatient.02", source: { kind: "nemsis", elementId: "ePatient.02" } }
+  ] }] };
+  assert.deepEqual(validateCanonicalFormDefinition(valid), valid);
+
+  const configured = structuredClone(valid);
+  configured.sections[0].fields[0].configuration = { label: "Name" };
+  assert.throws(() => validateCanonicalFormDefinition(configured), /element catalog/);
+
+  const presented = structuredClone(valid);
+  presented.sections[0].presentation = { title: "Patient" };
+  assert.throws(() => validateCanonicalFormDefinition(presented), /catalog group name/);
+
+  const localized = { ...valid, locales: [{ locale: "sv", translations: {} }] };
+  assert.throws(() => validateCanonicalFormDefinition(localized), /element catalog/);
+  const legacy = { ...localized, sections: [{ ...configured.sections[0], presentation: { title: "Patient" } }] };
+  assert.deepEqual(validateCanonicalFormDefinition(withoutLegacyFormWording(legacy)), valid);
 });

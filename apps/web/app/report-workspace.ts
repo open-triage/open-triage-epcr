@@ -10,6 +10,7 @@ import {
   applyDraftMutationDelta,
   demoActionMutationDelta,
   recoveryMutationBatches,
+  reconciledDraftSyncStatus,
   DRAFT_CONFLICT_RECOVERY_LIMIT,
   DRAFT_SAVE_DEBOUNCE_MS,
   DRAFT_SYNC_RETRY_MS,
@@ -338,7 +339,7 @@ export function useReportWorkspace({
   }, [report, validationErrorCount]);
 
   useEffect(() => {
-    const retry = () => { if (report && nextDraftChange(window.localStorage, report.id)) void flushSave(); };
+    const retry = () => { if (report) void flushSave(); };
     window.addEventListener("online", retry);
     return () => window.removeEventListener("online", retry);
   }, [flushSave, report]);
@@ -353,7 +354,7 @@ export function useReportWorkspace({
   useEffect(() => {
     if (!report || syncStatus !== "Pending sync") return;
     const retryTimer = window.setTimeout(() => {
-      if (navigator.onLine && nextDraftChange(window.localStorage, report.id)) void flushSave();
+      if (navigator.onLine) void flushSave();
     }, DRAFT_SYNC_RETRY_MS);
     return () => window.clearTimeout(retryTimer);
   }, [flushSave, report, syncStatus]);
@@ -386,6 +387,7 @@ export function useReportWorkspace({
         const localDelta = draftMutationDelta(localDraft, optimisticDraft);
         const hasUnqueuedChanges = localDelta.groups.length > 0 || localDelta.occurrences.length > 0;
         const hasPending = pending.length > 0 || hasUnqueuedChanges;
+        setSyncStatus((current) => reconciledDraftSyncStatus(current, hasPending));
         const queuedTargets = queued ? pendingDraftTargets({
           groups: pending.flatMap(({ command }) => command.groups),
           occurrences: pending.flatMap(({ command }) => command.occurrences),

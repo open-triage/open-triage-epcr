@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,7 +9,7 @@ const xsdRoot = path.join(sourceRoot, "xsd");
 const listRoot = path.join(sourceRoot, "lists");
 const dictionaryPath = path.join(sourceRoot, "Combined_ElementDetails_Full.txt");
 const enumerationsPath = path.join(sourceRoot, "Combined_ElementEnumerations.txt");
-const outputPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
+const catalogPath = path.join(webRoot, "../../defines/catalog/catalog_nemsis-3.5.1.json");
 const schemaPath = path.join(webRoot, "../../defines/catalog/schema_nemsis-3.5.1.json");
 const releaseBaseUrl = "https://nemsis.org/media/nemsis_v3/release-3.5.1";
 const masterBaseUrl = "https://nemsis.org/media/nemsis_v3/master";
@@ -256,6 +256,14 @@ function elementOrder(left, right) {
   const [rightSection, rightNumber] = right.id.split(".");
   return leftSection === rightSection ? Number(leftNumber) - Number(rightNumber) : leftSection < rightSection ? -1 : 1;
 }
+function groupDisplayName(identifier) {
+  const segment = identifier.includes(".") ? identifier.split(".").at(-1) : identifier;
+  return segment
+    .replace(/^e(?=[A-Z])/, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .trim();
+}
 function normalizeVocabulary(value) { return value === "ICD-10" ? "ICD-10-CM" : value === "SNOMED-CT" ? "SNOMED CT" : value; }
 function parseBundledList(specification, content) {
   const parsed = JSON.parse(content.toString("utf8")).DefinedList;
@@ -394,7 +402,7 @@ export async function generateCatalog() {
       generator: "apps/web/scripts/generate-nemsis-data-model.mjs",
       sources: sourceEntries.map(({ role, path: sourcePath, url, content }) => ({ role, path: sourcePath, url, sha256: sha256(content) })),
     },
-    groups: structure.groups, bundledLists, elements,
+    groups: structure.groups.map((group) => ({ ...group, name: groupDisplayName(group.name) })), bundledLists, elements,
   };
   await validateCatalog(catalog);
   return `${JSON.stringify(catalog, null, 2)}\n`;
@@ -411,16 +419,15 @@ export async function validateCatalog(catalog) {
 }
 
 async function main() {
-  const output = await generateCatalog();
-  if (process.argv.includes("--stdout")) { process.stdout.write(output); return; }
-  if (process.argv.includes("--check")) {
-    let committed = "";
-    try { committed = await readFile(outputPath, "utf8"); } catch { /* reported as drift below */ }
-    if (committed !== output) { console.error("catalog_nemsis-3.5.1.json is stale. Run: npm run generate:nemsis-data-model"); process.exitCode = 1; return; }
-    console.log("NEMSIS data model is current."); return;
+  const upstreamComparison = await generateCatalog();
+  if (process.argv.includes("--stdout")) { process.stdout.write(upstreamComparison); return; }
+  const canonical = await readFile(catalogPath, "utf8");
+  if (canonical !== upstreamComparison) {
+    console.error("The canonical catalog differs from the pinned NEMSIS source audit. Review and edit defines/catalog/catalog_nemsis-3.5.1.json directly.");
+    process.exitCode = 1;
+    return;
   }
-  await writeFile(outputPath, output);
-  console.log(`Generated ${path.relative(webRoot, outputPath)}`);
+  console.log("Canonical NEMSIS catalog matches the pinned upstream source audit.");
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((error) => {
   console.error(error instanceof Error ? error.message : error); process.exitCode = 1;

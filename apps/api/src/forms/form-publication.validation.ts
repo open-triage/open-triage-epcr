@@ -17,6 +17,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Removes wording accepted by historical form versions; the catalog now owns it. */
+export function withoutLegacyFormWording(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  const { locales: _locales, ...definition } = input;
+  if (!Array.isArray(definition.sections)) return definition;
+  return { ...definition, sections: definition.sections.map((candidate) => {
+    if (!isRecord(candidate)) return candidate;
+    const { presentation: _presentation, ...section } = candidate;
+    if (!Array.isArray(section.fields)) return section;
+    return { ...section, fields: section.fields.map((candidateField) => {
+      if (!isRecord(candidateField)) return candidateField;
+      const { configuration: _configuration, ...field } = candidateField;
+      return field;
+    }) };
+  }) };
+}
+
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function stableValue(value: unknown): unknown {
@@ -90,8 +107,8 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     if (typeof section.key !== "string" || !section.key.trim()) findings.push(`${path}.key is required`);
     else if (sectionKeys.has(section.key)) findings.push(`${path}.key is duplicated`);
     else sectionKeys.add(section.key);
-    if (section.presentation !== undefined && !isRecord(section.presentation)) {
-      findings.push(`${path}.presentation must be an object`);
+    if (section.presentation !== undefined) {
+      findings.push(`${path}.presentation is unsupported; edit the catalog group name instead`);
     }
     if (!Array.isArray(section.fields)) findings.push(`${path}.fields must be an array`);
     else section.fields.forEach((field, fieldIndex) => {
@@ -132,8 +149,8 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
          new Set(field.allowedAbsenceStates).size !== field.allowedAbsenceStates.length)) {
         findings.push(`${fieldPath}.allowedAbsenceStates must contain unique strings`);
       }
-      if (field.configuration !== undefined && !isRecord(field.configuration)) {
-        findings.push(`${fieldPath}.configuration must be an object`);
+      if (field.configuration !== undefined) {
+        findings.push(`${fieldPath}.configuration is unsupported; edit wording in the element catalog`);
       }
       if (field.rules !== undefined && !Array.isArray(field.rules)) findings.push(`${fieldPath}.rules must be an array`);
       fields.push(field as unknown as CanonicalFormField);
@@ -148,19 +165,7 @@ export function validateCanonicalFormDefinition(value: unknown): CanonicalFormDe
     validateExpression(rule.expression, `${path}.expression`, fieldKeys, findings);
   }));
   if (value.locales !== undefined) {
-    if (!Array.isArray(value.locales)) findings.push("locales must be an array");
-    else {
-      const locales = new Set<string>();
-      value.locales.forEach((locale, index) => {
-        if (!isRecord(locale) || typeof locale.locale !== "string" || !locale.locale.trim()) {
-          findings.push(`locales[${index}].locale is required`);
-        } else if (locales.has(locale.locale)) findings.push(`locales[${index}].locale is duplicated`);
-        else locales.add(locale.locale);
-        if (!isRecord(locale) || !isRecord(locale.translations)) {
-          findings.push(`locales[${index}].translations must be an object`);
-        }
-      });
-    }
+    findings.push("locales is unsupported; edit localization in the element catalog");
   }
   if (findings.length) throw new FormPublicationValidationError(findings);
   return value as unknown as CanonicalFormDefinition;

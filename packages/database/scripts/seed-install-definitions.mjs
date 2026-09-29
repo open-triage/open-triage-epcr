@@ -73,11 +73,9 @@ async function seedOne(source, template, target) {
   const catalogReleaseId = target.catalog_release_id;
   const existingPair = await publishedPair(source, organizationId, catalogReleaseId, templateName);
   if (existingPair) {
-    if (canonicalDefinitionSha256(existingPair.canonical_definition) !== expectedFormHash
-        || ruleFingerprint(existingPair.source_rule) !== expectedRuleHash) {
-      throw new Error(`A different ${templateName} published pair exists for organization ${organizationId}`);
-    }
-    return { organizationId, status: "already-available", formVersionId: existingPair.form_id,
+    const unchanged = canonicalDefinitionSha256(existingPair.canonical_definition) === expectedFormHash
+      && ruleFingerprint(existingPair.source_rule) === expectedRuleHash;
+    return { organizationId, status: unchanged ? "already-available" : "existing-version-preserved", formVersionId: existingPair.form_id,
       validationVersionId: existingPair.validation_id };
   }
   if (template.catalogKey !== `${target.catalog_standard.toLowerCase()}-${target.catalog_version}`) {
@@ -114,8 +112,7 @@ async function seedOne(source, template, target) {
   [organizationId, templateName, catalogReleaseId]);
   let formVersionId = formRows[0]?.id;
   if (formVersionId) {
-    if (canonicalDefinitionSha256(formRows[0].canonical_definition) !== expectedFormHash)
-      throw new Error(`A different ${templateName} form exists for organization ${organizationId}`);
+    // A previously published form is immutable, including agency-authored wording.
   } else {
     const draft = await forms.clone(token, { catalogReleaseId, sourceVersionId: target.form_version_id,
       displayName: templateName });
@@ -131,8 +128,7 @@ async function seedOne(source, template, target) {
     order by published_at desc limit 1`, [organizationId, catalogReleaseId, templateName]);
   let validationVersionId = validationRows[0]?.id;
   if (validationVersionId) {
-    if (ruleFingerprint(validationRows[0].source_rule) !== expectedRuleHash)
-      throw new Error(`Different ${templateName} rules exist for organization ${organizationId}`);
+    // A previously published validation version is immutable, including agency-authored wording.
   } else {
     const rules = templateRules(template, organizationId);
     validationVersionId = randomUUID();

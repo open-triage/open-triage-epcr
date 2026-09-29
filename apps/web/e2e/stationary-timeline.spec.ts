@@ -99,7 +99,7 @@ test("stationary timeline is remembered, filters events, restores focus, and edi
   noteButton = sidebar.getByRole("button", { name: /Open text note.*updated/ });
   await expect(noteButton).toBeVisible();
   await noteButton.click();
-  await page.getByRole("button", { name: "Delete text note" }).click();
+  await page.getByRole("button", { name: "Remove" }).click();
   await page.getByRole("button", { name: "Delete note" }).click();
   await expect(sidebar.getByText("Stationary sidebar observation updated")).toHaveCount(0);
   await expect(toggle).toBeFocused();

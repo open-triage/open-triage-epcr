@@ -1,3 +1,4 @@
+import { resolveMessage, type AgencyLanguage } from "./localization";
 
 export const REPORT_PHOTO_CAPTION_MAX_CHARACTERS = 1_000;
 export const CANONICAL_PHOTO_LONGEST_EDGE = 2_560;
@@ -21,16 +22,16 @@ export function canonicalPhotoDimensions(width: number, height: number, quarterT
   return { width: Math.max(1, Math.round(orientedWidth * scale)), height: Math.max(1, Math.round(orientedHeight * scale)) };
 }
 
-export function normalizePhotoCaption(value: string): { caption: string | null; characterCount: number; error: string | null } {
+export function normalizePhotoCaption(value: string, language: AgencyLanguage = "en"): { caption: string | null; characterCount: number; error: string | null } {
   const caption = value.normalize("NFC").trim();
   const characterCount = [...caption].length;
   return {
     caption: caption || null,
     characterCount,
     error: UNSAFE_CONTROL_CHARACTER.test(caption)
-      ? "Photo captions cannot contain control characters."
+      ? resolveMessage(language, "noteUi.photoCaptionControls")
       : characterCount > REPORT_PHOTO_CAPTION_MAX_CHARACTERS
-        ? `Photo captions are limited to ${REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString()} characters.`
+        ? resolveMessage(language, "noteUi.photoCaptionLimit", { max: REPORT_PHOTO_CAPTION_MAX_CHARACTERS.toLocaleString(language === "sv" ? "sv-SE" : "en-US") })
         : null,
   };
 }

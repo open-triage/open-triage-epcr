@@ -23,7 +23,8 @@ const reviewRule = {
   schemaVersion: 1, languageVersion: "1.0.0", ruleId, validationVersionId: versionId,
   name: "Review missing narrative", enabled: true, severity: "information",
   executionTargets: ["review"], primaryTarget: { elementId: "eNarrative.01" },
-  message: "Narrative needs review", assertion: { operator: "constant", value: false },
+  message: "Narrative needs review", localization: { schemaVersion: 1,
+    sv: { name: "Granska berättelsen", message: "Berättelsen behöver granskas" } }, assertion: { operator: "constant", value: false },
   references: { elementIds: [], codes: [] },
 };
 const bundle = { schemaVersion: 1, languageVersion: "1.0.0", validationVersionId: versionId,
@@ -52,6 +53,7 @@ function evaluatingManager({ storedSha256 = compiledSha256 } = {}) {
     if (sql.includes("from validation.version")) {
       return [{ id: versionId, compiled_bundle: bundle, compiled_sha256: storedSha256 }];
     }
+    if (sql.includes("from app_identity.agency_settings")) return [{ language: "sv" }];
     if (sql.includes("select r.id, r.created_at")) return [{ id: reportId,
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
@@ -87,6 +89,7 @@ test("a selected published review-only version evaluates one current report and 
   assert.equal(result.validationVersionId, versionId);
   assert.equal(result.findings[0].executionTarget, "review");
   assert.equal(result.findings[0].severity, "information");
+  assert.equal(result.findings[0].message, "Berättelsen behöver granskas");
   assert.ok(calls.some(({ sql }) => sql.includes("insert into clinical.validation_review_evaluation")));
   assert.ok(calls.every(({ sql }) => !sql.includes("clinical.validation_finding")));
 
@@ -100,6 +103,7 @@ test("review-only rules are omitted from the offline live bundle", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from forms.form_version")) return [{ canonical_definition: { schemaVersion: 1, sections: [] } }];
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (sql.includes("from catalog.group_definition")) return [];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const configuration = await clinicalFormConfiguration(manager, formVersionId, catalogReleaseId,
@@ -110,11 +114,13 @@ test("review-only rules are omitted from the offline live bundle", async () => {
 test("review-only rules do not participate in authoritative signing", async () => {
   const manager = { query: async (sql) => {
     if (sql.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (sql.includes("from catalog.group_definition")) return [];
     if (sql.includes("select r.id, r.created_at")) return [{ id: reportId,
       created_at: "2026-09-18T10:00:00Z", updated_at: "2026-09-18T11:00:00Z",
       form_id: randomUUID(), form_version: 1, catalog_standard: "NEMSIS",
       catalog_version: "3.5.1", catalog_dataset: "EMSDataSet" }];
     if (sql.includes("from clinical.group_instance") || sql.includes("from clinical.element_occurrence")) return [];
+    if (sql.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     throw new Error(`Unexpected SQL: ${sql}`);
   } };
   const signing = new SignReportService({}, {});

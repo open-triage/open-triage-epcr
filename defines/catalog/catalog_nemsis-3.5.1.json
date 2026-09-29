@@ -267,7 +267,7 @@
   "groups": [
     {
       "id": "EMSDataSet",
-      "name": "EMSDataSet",
+      "name": "EMS Data Set",
       "parentId": null,
       "path": [
         "EMSDataSet"
@@ -294,7 +294,7 @@
     },
     {
       "id": "DemographicGroup",
-      "name": "DemographicGroup",
+      "name": "Demographic Group",
       "parentId": "HeaderGroup",
       "path": [
         "EMSDataSet",
@@ -309,7 +309,7 @@
     },
     {
       "id": "eCustomConfigurationSection",
-      "name": "eCustomConfiguration",
+      "name": "Custom Configuration",
       "parentId": "HeaderGroup",
       "path": [
         "EMSDataSet",
@@ -324,7 +324,7 @@
     },
     {
       "id": "eCustomConfiguration.eCustomGroup",
-      "name": "eCustomConfiguration.CustomGroup",
+      "name": "Custom Group",
       "parentId": "eCustomConfigurationSection",
       "path": [
         "EMSDataSet",
@@ -340,7 +340,7 @@
     },
     {
       "id": "PatientCareReportGroup",
-      "name": "PatientCareReport",
+      "name": "Patient Care Report",
       "parentId": "HeaderGroup",
       "path": [
         "EMSDataSet",
@@ -355,7 +355,7 @@
     },
     {
       "id": "eRecordSection",
-      "name": "eRecord",
+      "name": "Record",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -371,7 +371,7 @@
     },
     {
       "id": "eRecord.SoftwareApplicationGroup",
-      "name": "eRecord.SoftwareApplicationGroup",
+      "name": "Software Application Group",
       "parentId": "eRecordSection",
       "path": [
         "EMSDataSet",
@@ -388,7 +388,7 @@
     },
     {
       "id": "eResponseSection",
-      "name": "eResponse",
+      "name": "Response",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -404,7 +404,7 @@
     },
     {
       "id": "eResponse.AgencyGroup",
-      "name": "eResponse.AgencyGroup",
+      "name": "Agency Group",
       "parentId": "eResponseSection",
       "path": [
         "EMSDataSet",
@@ -421,7 +421,7 @@
     },
     {
       "id": "eResponse.ServiceGroup",
-      "name": "eResponse.ServiceGroup",
+      "name": "Service Group",
       "parentId": "eResponseSection",
       "path": [
         "EMSDataSet",
@@ -438,7 +438,7 @@
     },
     {
       "id": "eDispatchSection",
-      "name": "eDispatch",
+      "name": "Dispatch",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -454,7 +454,7 @@
     },
     {
       "id": "eCrewSection",
-      "name": "eCrew",
+      "name": "Crew",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -470,7 +470,7 @@
     },
     {
       "id": "eCrew.CrewGroup",
-      "name": "eCrew.CrewGroup",
+      "name": "Crew Group",
       "parentId": "eCrewSection",
       "path": [
         "EMSDataSet",
@@ -487,7 +487,7 @@
     },
     {
       "id": "eTimesSection",
-      "name": "eTimes",
+      "name": "Times",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -503,7 +503,7 @@
     },
     {
       "id": "ePatientSection",
-      "name": "ePatient",
+      "name": "Patient",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -519,7 +519,7 @@
     },
     {
       "id": "ePatient.PatientNameGroup",
-      "name": "ePatient.PatientNameGroup",
+      "name": "Patient Name Group",
       "parentId": "ePatientSection",
       "path": [
         "EMSDataSet",
@@ -536,7 +536,7 @@
     },
     {
       "id": "ePatient.AgeGroup",
-      "name": "ePatient.AgeGroup",
+      "name": "Age Group",
       "parentId": "ePatientSection",
       "path": [
         "EMSDataSet",
@@ -553,7 +553,7 @@
     },
     {
       "id": "ePaymentSection",
-      "name": "ePayment",
+      "name": "Payment",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -569,7 +569,7 @@
     },
     {
       "id": "ePayment.CertificateGroup",
-      "name": "ePayment.CertificateGroup",
+      "name": "Certificate Group",
       "parentId": "ePaymentSection",
       "path": [
         "EMSDataSet",
@@ -586,7 +586,7 @@
     },
     {
       "id": "ePayment.InsuranceGroup",
-      "name": "ePayment.InsuranceGroup",
+      "name": "Insurance Group",
       "parentId": "ePaymentSection",
       "path": [
         "EMSDataSet",
@@ -603,7 +603,7 @@
     },
     {
       "id": "ePayment.ClosestRelativeGroup",
-      "name": "ePayment.ClosestRelativeGroup",
+      "name": "Closest Relative Group",
       "parentId": "ePaymentSection",
       "path": [
         "EMSDataSet",
@@ -620,7 +620,7 @@
     },
     {
       "id": "ePayment.EmployerGroup",
-      "name": "ePayment.EmployerGroup",
+      "name": "Employer Group",
       "parentId": "ePaymentSection",
       "path": [
         "EMSDataSet",
@@ -637,7 +637,7 @@
     },
     {
       "id": "ePayment.SupplyItemGroup",
-      "name": "ePayment.SupplyItemGroup",
+      "name": "Supply Item Group",
       "parentId": "ePaymentSection",
       "path": [
         "EMSDataSet",
@@ -654,7 +654,7 @@
     },
     {
       "id": "eSceneSection",
-      "name": "eScene",
+      "name": "Scene",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -670,7 +670,7 @@
     },
     {
       "id": "eScene.ResponderGroup",
-      "name": "eScene.ResponderGroup",
+      "name": "Responder Group",
       "parentId": "eSceneSection",
       "path": [
         "EMSDataSet",
@@ -687,7 +687,7 @@
     },
     {
       "id": "eSituationSection",
-      "name": "eSituation",
+      "name": "Situation",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -703,7 +703,7 @@
     },
     {
       "id": "eSituation.PatientComplaintGroup",
-      "name": "eSituation.PatientComplaintGroup",
+      "name": "Patient Complaint Group",
       "parentId": "eSituationSection",
       "path": [
         "EMSDataSet",
@@ -720,7 +720,7 @@
     },
     {
       "id": "eSituation.WorkRelatedGroup",
-      "name": "eSituation.WorkRelatedGroup",
+      "name": "Work Related Group",
       "parentId": "eSituationSection",
       "path": [
         "EMSDataSet",
@@ -737,7 +737,7 @@
     },
     {
       "id": "eInjurySection",
-      "name": "eInjury",
+      "name": "Injury",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -753,7 +753,7 @@
     },
     {
       "id": "eInjury.CollisionGroup",
-      "name": "eInjury.CollisionGroup",
+      "name": "Collision Group",
       "parentId": "eInjurySection",
       "path": [
         "EMSDataSet",
@@ -770,7 +770,7 @@
     },
     {
       "id": "eInjury.SeatGroup",
-      "name": "eInjury.SeatGroup",
+      "name": "Seat Group",
       "parentId": "eInjury.CollisionGroup",
       "path": [
         "EMSDataSet",
@@ -788,7 +788,7 @@
     },
     {
       "id": "eArrestSection",
-      "name": "eArrest",
+      "name": "Arrest",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -804,7 +804,7 @@
     },
     {
       "id": "eHistorySection",
-      "name": "eHistory",
+      "name": "History",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -820,7 +820,7 @@
     },
     {
       "id": "eHistory.PractitionerGroup",
-      "name": "eHistory.PractitionerGroup",
+      "name": "Practitioner Group",
       "parentId": "eHistorySection",
       "path": [
         "EMSDataSet",
@@ -837,7 +837,7 @@
     },
     {
       "id": "eHistory.ImmunizationsGroup",
-      "name": "eHistory.ImmunizationsGroup",
+      "name": "Immunizations Group",
       "parentId": "eHistorySection",
       "path": [
         "EMSDataSet",
@@ -854,7 +854,7 @@
     },
     {
       "id": "eHistory.CurrentMedsGroup",
-      "name": "eHistory.CurrentMedsGroup",
+      "name": "Current Meds Group",
       "parentId": "eHistorySection",
       "path": [
         "EMSDataSet",
@@ -871,7 +871,7 @@
     },
     {
       "id": "eNarrativeSection",
-      "name": "eNarrative",
+      "name": "Narrative",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -887,7 +887,7 @@
     },
     {
       "id": "eVitalsSection",
-      "name": "eVitals",
+      "name": "Vitals",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -903,7 +903,7 @@
     },
     {
       "id": "eVitals.VitalGroup",
-      "name": "eVitals.VitalGroup",
+      "name": "Vital Group",
       "parentId": "eVitalsSection",
       "path": [
         "EMSDataSet",
@@ -920,7 +920,7 @@
     },
     {
       "id": "eVitals.CardiacRhythmGroup",
-      "name": "eVitals.CardiacRhythmGroup",
+      "name": "Cardiac Rhythm Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -938,7 +938,7 @@
     },
     {
       "id": "eVitals.BloodPressureGroup",
-      "name": "eVitals.BloodPressureGroup",
+      "name": "Blood Pressure Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -956,7 +956,7 @@
     },
     {
       "id": "eVitals.HeartRateGroup",
-      "name": "eVitals.HeartRateGroup",
+      "name": "Heart Rate Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -974,7 +974,7 @@
     },
     {
       "id": "eVitals.GlasgowScoreGroup",
-      "name": "eVitals.GlasgowScoreGroup",
+      "name": "Glasgow Score Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -992,7 +992,7 @@
     },
     {
       "id": "eVitals.TemperatureGroup",
-      "name": "eVitals.TemperatureGroup",
+      "name": "Temperature Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -1010,7 +1010,7 @@
     },
     {
       "id": "eVitals.PainScaleGroup",
-      "name": "eVitals.PainScaleGroup",
+      "name": "Pain Scale Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -1028,7 +1028,7 @@
     },
     {
       "id": "eVitals.StrokeScaleGroup",
-      "name": "eVitals.StrokeScaleGroup",
+      "name": "Stroke Scale Group",
       "parentId": "eVitals.VitalGroup",
       "path": [
         "EMSDataSet",
@@ -1046,7 +1046,7 @@
     },
     {
       "id": "eLabsSection",
-      "name": "eLabs",
+      "name": "Labs",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1062,7 +1062,7 @@
     },
     {
       "id": "eLabs.LabGroup",
-      "name": "eLabs.LabGroup",
+      "name": "Lab Group",
       "parentId": "eLabsSection",
       "path": [
         "EMSDataSet",
@@ -1079,7 +1079,7 @@
     },
     {
       "id": "eLabs.LabResultGroup",
-      "name": "eLabs.LabResultGroup",
+      "name": "Lab Result Group",
       "parentId": "eLabs.LabGroup",
       "path": [
         "EMSDataSet",
@@ -1097,7 +1097,7 @@
     },
     {
       "id": "eLabs.LabImageGroup",
-      "name": "eLabs.LabImageGroup",
+      "name": "Lab Image Group",
       "parentId": "eLabs.LabGroup",
       "path": [
         "EMSDataSet",
@@ -1115,7 +1115,7 @@
     },
     {
       "id": "eLabs.WaveformGraphicGroup",
-      "name": "eLabs.WaveformGraphicGroup",
+      "name": "Waveform Graphic Group",
       "parentId": "eLabs.LabImageGroup",
       "path": [
         "EMSDataSet",
@@ -1134,7 +1134,7 @@
     },
     {
       "id": "eExamSection",
-      "name": "eExam",
+      "name": "Exam",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1150,7 +1150,7 @@
     },
     {
       "id": "eExam.AssessmentGroup",
-      "name": "eExam.AssessmentGroup",
+      "name": "Assessment Group",
       "parentId": "eExamSection",
       "path": [
         "EMSDataSet",
@@ -1167,7 +1167,7 @@
     },
     {
       "id": "eExam.AbdomenGroup",
-      "name": "eExam.AbdomenGroup",
+      "name": "Abdomen Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1185,7 +1185,7 @@
     },
     {
       "id": "eExam.SpineGroup",
-      "name": "eExam.SpineGroup",
+      "name": "Spine Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1203,7 +1203,7 @@
     },
     {
       "id": "eExam.ExtremityGroup",
-      "name": "eExam.ExtremityGroup",
+      "name": "Extremity Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1221,7 +1221,7 @@
     },
     {
       "id": "eExam.EyeGroup",
-      "name": "eExam.EyeGroup",
+      "name": "Eye Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1239,7 +1239,7 @@
     },
     {
       "id": "eExam.LungGroup",
-      "name": "eExam.LungGroup",
+      "name": "Lung Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1257,7 +1257,7 @@
     },
     {
       "id": "eExam.ChestGroup",
-      "name": "eExam.ChestGroup",
+      "name": "Chest Group",
       "parentId": "eExam.AssessmentGroup",
       "path": [
         "EMSDataSet",
@@ -1275,7 +1275,7 @@
     },
     {
       "id": "eProtocolsSection",
-      "name": "eProtocols",
+      "name": "Protocols",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1291,7 +1291,7 @@
     },
     {
       "id": "eProtocols.ProtocolGroup",
-      "name": "eProtocols.ProtocolGroup",
+      "name": "Protocol Group",
       "parentId": "eProtocolsSection",
       "path": [
         "EMSDataSet",
@@ -1308,7 +1308,7 @@
     },
     {
       "id": "eMedicationsSection",
-      "name": "eMedications",
+      "name": "Medications",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1324,7 +1324,7 @@
     },
     {
       "id": "eMedications.MedicationGroup",
-      "name": "eMedications.MedicationGroup",
+      "name": "Medication Group",
       "parentId": "eMedicationsSection",
       "path": [
         "EMSDataSet",
@@ -1341,7 +1341,7 @@
     },
     {
       "id": "eMedications.DosageGroup",
-      "name": "eMedications.DosageGroup",
+      "name": "Dosage Group",
       "parentId": "eMedications.MedicationGroup",
       "path": [
         "EMSDataSet",
@@ -1359,7 +1359,7 @@
     },
     {
       "id": "eProceduresSection",
-      "name": "eProcedures",
+      "name": "Procedures",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1375,7 +1375,7 @@
     },
     {
       "id": "eProcedures.ProcedureGroup",
-      "name": "eProcedures.ProcedureGroup",
+      "name": "Procedure Group",
       "parentId": "eProceduresSection",
       "path": [
         "EMSDataSet",
@@ -1392,7 +1392,7 @@
     },
     {
       "id": "eAirwaysSection",
-      "name": "eAirway",
+      "name": "Airway",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1408,7 +1408,7 @@
     },
     {
       "id": "eAirway.AirwayGroup",
-      "name": "eAirway.AirwayGroup",
+      "name": "Airway Group",
       "parentId": "eAirwaysSection",
       "path": [
         "EMSDataSet",
@@ -1425,7 +1425,7 @@
     },
     {
       "id": "eAirway.ConfirmationGroup",
-      "name": "eAirway.ConfirmationGroup",
+      "name": "Confirmation Group",
       "parentId": "eAirway.AirwayGroup",
       "path": [
         "EMSDataSet",
@@ -1443,7 +1443,7 @@
     },
     {
       "id": "eDevicesSection",
-      "name": "eDevice",
+      "name": "Device",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1459,7 +1459,7 @@
     },
     {
       "id": "eDevice.DeviceGroup",
-      "name": "eDevice.DeviceGroup",
+      "name": "Device Group",
       "parentId": "eDevicesSection",
       "path": [
         "EMSDataSet",
@@ -1476,7 +1476,7 @@
     },
     {
       "id": "eDevice.WaveformGroup",
-      "name": "eDevice.WaveformGroup",
+      "name": "Waveform Group",
       "parentId": "eDevice.DeviceGroup",
       "path": [
         "EMSDataSet",
@@ -1494,7 +1494,7 @@
     },
     {
       "id": "eDevice.ShockGroup",
-      "name": "eDevice.ShockGroup",
+      "name": "Shock Group",
       "parentId": "eDevice.DeviceGroup",
       "path": [
         "EMSDataSet",
@@ -1512,7 +1512,7 @@
     },
     {
       "id": "eDispositionSection",
-      "name": "eDisposition",
+      "name": "Disposition",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1528,7 +1528,7 @@
     },
     {
       "id": "eDisposition.DestinationGroup",
-      "name": "eDisposition.DestinationGroup",
+      "name": "Destination Group",
       "parentId": "eDispositionSection",
       "path": [
         "EMSDataSet",
@@ -1545,7 +1545,7 @@
     },
     {
       "id": "eDisposition.IncidentDispositionGroup",
-      "name": "eDisposition.IncidentDispositionGroup",
+      "name": "Incident Disposition Group",
       "parentId": "eDispositionSection",
       "path": [
         "EMSDataSet",
@@ -1562,7 +1562,7 @@
     },
     {
       "id": "eDisposition.HospitalTeamActivationGroup",
-      "name": "eDisposition.HospitalTeamActivationGroup",
+      "name": "Hospital Team Activation Group",
       "parentId": "eDispositionSection",
       "path": [
         "EMSDataSet",
@@ -1579,7 +1579,7 @@
     },
     {
       "id": "eOutcomeSection",
-      "name": "eOutcome",
+      "name": "Outcome",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1595,7 +1595,7 @@
     },
     {
       "id": "eOutcome.ExternalDataGroup",
-      "name": "eOutcome.ExternalDataGroup",
+      "name": "External Data Group",
       "parentId": "eOutcomeSection",
       "path": [
         "EMSDataSet",
@@ -1612,7 +1612,7 @@
     },
     {
       "id": "eOutcome.EmergencyDepartmentProceduresGroup",
-      "name": "eOutcome.EmergencyDepartmentProceduresGroup",
+      "name": "Emergency Department Procedures Group",
       "parentId": "eOutcomeSection",
       "path": [
         "EMSDataSet",
@@ -1629,7 +1629,7 @@
     },
     {
       "id": "eOutcome.HospitalProceduresGroup",
-      "name": "eOutcome.HospitalProceduresGroup",
+      "name": "Hospital Procedures Group",
       "parentId": "eOutcomeSection",
       "path": [
         "EMSDataSet",
@@ -1646,7 +1646,7 @@
     },
     {
       "id": "eCustomResultsSection",
-      "name": "eCustomResults",
+      "name": "Custom Results",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1662,7 +1662,7 @@
     },
     {
       "id": "eCustomConfiguration.eResultsGroup",
-      "name": "eCustomResults.ResultsGroup",
+      "name": "Results Group",
       "parentId": "eCustomResultsSection",
       "path": [
         "EMSDataSet",
@@ -1679,7 +1679,7 @@
     },
     {
       "id": "eOtherSection",
-      "name": "eOther",
+      "name": "Other",
       "parentId": "PatientCareReportGroup",
       "path": [
         "EMSDataSet",
@@ -1695,7 +1695,7 @@
     },
     {
       "id": "eOther.EMSCrewMemberGroup",
-      "name": "eOther.EMSCrewMemberGroup",
+      "name": "EMS Crew Member Group",
       "parentId": "eOtherSection",
       "path": [
         "EMSDataSet",
@@ -1712,7 +1712,7 @@
     },
     {
       "id": "eOther.FileGroup",
-      "name": "eOther.FileGroup",
+      "name": "File Group",
       "parentId": "eOtherSection",
       "path": [
         "EMSDataSet",
@@ -1729,7 +1729,7 @@
     },
     {
       "id": "eOther.SignatureGroup",
-      "name": "eOther.SignatureGroup",
+      "name": "Signature Group",
       "parentId": "eOtherSection",
       "path": [
         "EMSDataSet",

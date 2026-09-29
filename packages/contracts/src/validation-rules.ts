@@ -33,6 +33,11 @@ export interface ValidationRuleSource {
   executionTargets: ValidationExecutionTarget[];
   primaryTargetElementId: string;
   message: string;
+  /** English source remains in name/message for older published definitions. */
+  localization?: { schemaVersion: 1; sv?: { name?: string; message?: string;
+    reviewedSource?: { name?: string; message?: string } } };
+  /** Named values substituted in either language without affecting the assertion. */
+  messageParameters?: Record<string, string | number>;
   /** `when <boolean>` is optional; `require <boolean>` is mandatory. */
   source: string;
   /** Origin metadata is retained when the editable normalized copy changes. */
@@ -73,7 +78,7 @@ export interface ValidationCatalog {
 export interface ValidationDiagnostic {
   severity: "error" | "warning";
   code: "syntax" | "compatibility" | "resource-limit" | "catalog-reference" | "datatype" | "primary-target" | "execution-target" | "scope" | "occurrence-bound"
-    | "compile" | "smoke-evaluation" | "exact-duplicate" | "similar-rule" | "possible-conflict";
+    | "compile" | "smoke-evaluation" | "exact-duplicate" | "similar-rule" | "possible-conflict" | "wording" | "message-parameters";
   message: string;
   ruleId: string;
   line?: number;
@@ -115,6 +120,7 @@ export type ValidationComparison = "equal" | "not-equal" | "less-than" | "less-o
 export interface ValidationEvaluationContext {
   /** Caller-owned clock: evaluation never reads the ambient system time. */
   timestamp: string;
+  language?: string;
   limits?: Partial<{ maxExpressionNodes: number; maxTraversalSteps: number; maxValues: number }>;
 }
 
@@ -138,6 +144,8 @@ export interface CompiledValidationRule {
   primaryTarget: { elementId: string };
   scope?: { groupId: string; iteration: "each" };
   message: string;
+  localization?: ValidationRuleSource["localization"];
+  messageParameters?: ValidationRuleSource["messageParameters"];
   applicability?: CompiledValidationExpression;
   assertion: CompiledValidationExpression;
   references: { elementIds: string[]; codes: Array<{ elementId: string; codeSystem: string; code: string }> };
@@ -169,6 +177,15 @@ export interface ValidationFinding {
   message: string;
   primaryTarget: { elementId: string; groupInstanceId?: string; occurrenceId?: string };
   inputFingerprint: string;
+}
+
+/** Select wording from the rule which produced the finding; identity never depends on locale. */
+export function validationRuleText(rule: Pick<CompiledValidationRule, "name" | "message" | "localization" | "messageParameters"> & { ruleId?: string; id?: string },
+  language: string, field: "name" | "message"): string {
+  const source = language === "sv" ? rule.localization?.sv?.[field] : undefined;
+  const template = source?.trim() || rule[field]?.trim() || rule.name?.trim() || rule.ruleId || rule.id || "Validation rule";
+  return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (match, key: string) =>
+    rule.messageParameters?.[key] === undefined ? match : String(rule.messageParameters[key]));
 }
 
 function uniqueLegacyValues(values: Readonly<Record<string, string>>): Map<string, string | null> {
@@ -665,6 +682,32 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     diagnostics.push({ severity: "error", code: failure.code, ruleId: rule.id, message: failure.message, ...location(rule.source, failure.offset) });
     return { diagnostics };
   }
+  const localized = rule.localization;
+  if (localized !== undefined && (localized.schemaVersion !== 1 ||
+    (localized.sv !== undefined && (typeof localized.sv !== "object" || localized.sv === null ||
+      [localized.sv.name, localized.sv.message].some((value) => value !== undefined && typeof value !== "string") ||
+      (localized.sv.reviewedSource !== undefined &&
+        [localized.sv.reviewedSource.name, localized.sv.reviewedSource.message].some((value) => value !== undefined && typeof value !== "string")))))) {
+    diagnostics.push({ severity: "error", code: "wording", ruleId: rule.id, message: "Malformed localized rule wording" });
+  }
+  if (!rule.name?.trim() || !rule.message?.trim()) diagnostics.push({ severity: "warning", code: "wording", ruleId: rule.id,
+    message: "English rule name or message is missing" });
+  if (localized && (!localized.sv?.name?.trim() || !localized.sv.message?.trim())) diagnostics.push({ severity: "warning", code: "wording", ruleId: rule.id,
+    message: "Swedish rule name or message is missing" });
+  if (localized?.sv?.reviewedSource && (localized.sv.reviewedSource.name !== rule.name ||
+      localized.sv.reviewedSource.message !== rule.message)) diagnostics.push({ severity: "warning", code: "wording", ruleId: rule.id,
+    message: "Swedish wording needs English source review" });
+  const parameters = rule.messageParameters;
+  if (parameters !== undefined && (typeof parameters !== "object" || parameters === null || Array.isArray(parameters) ||
+      Object.entries(parameters).some(([key, value]) => !/^[A-Za-z][A-Za-z0-9_]*$/.test(key) ||
+        !["string", "number"].includes(typeof value) || typeof value === "number" && !Number.isFinite(value)))) {
+    diagnostics.push({ severity: "error", code: "message-parameters", ruleId: rule.id, message: "Malformed message parameters" });
+  }
+  const placeholders = [rule.message, localized?.sv?.message].filter((value): value is string => typeof value === "string")
+    .flatMap((value) => [...value.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]!));
+  if (placeholders.some((key) => !/^[A-Za-z][A-Za-z0-9_]*$/.test(key) || parameters?.[key] === undefined))
+    diagnostics.push({ severity: "error", code: "message-parameters", ruleId: rule.id,
+      message: "Message references an undefined or malformed named parameter" });
   const known = catalogParts(catalog);
   const expressions = [...(parsed.applicability ? referencedExpressions(parsed.applicability) : []), ...referencedExpressions(parsed.assertion)];
   for (const reference of expressions) {
@@ -748,6 +791,8 @@ export function compileValidationRule(rule: ValidationRuleSource, validationVers
     ruleId: rule.id, validationVersionId, name: rule.name.trim(), enabled: rule.enabled,
     severity: rule.severity, executionTargets: [...new Set(rule.executionTargets)].sort(),
     primaryTarget: { elementId: rule.primaryTargetElementId }, message: rule.message.trim(),
+    ...(rule.localization ? { localization: rule.localization } : {}),
+    ...(rule.messageParameters ? { messageParameters: rule.messageParameters } : {}),
     ...(parsed.scopeGroupId ? { scope: { groupId: parsed.scopeGroupId, iteration: "each" as const } } : {}),
     ...(parsed.applicability ? { applicability: parsed.applicability } : {}), assertion: parsed.assertion,
     references: { elementIds: elements, codes },
@@ -1031,7 +1076,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     if (rule.primaryTarget.elementId === "*" && rule.assertion.operator === "all-elements") {
       return violatingAllElements(rule.assertion.invariant, scope.elements, rule.assertion.excludedElementIds).map((match) => ({
         validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
-        executionTarget, message: repairNemsisImportedMessage(rule.message, rule.primaryTarget.elementId,
+        executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
           rule.references?.elementIds ?? []), primaryTarget: { elementId: match.element.id,
           groupInstanceId: match.groupInstanceId, ...(match.element.values[0]?.occurrenceId ? { occurrenceId: match.element.values[0].occurrenceId } : {}) },
         inputFingerprint: fingerprint(JSON.stringify([{ elementId: match.element.id, groupInstanceId: match.groupInstanceId,
@@ -1045,7 +1090,7 @@ export function evaluateValidationBundle(bundle: CompiledValidationBundle, docum
     // an acknowledged warning acquire a new identity on every refresh (and at
     // signing), even when the documented values had not changed.
     return [{ validationVersionId: bundle.validationVersionId, ruleId: rule.ruleId, severity: rule.severity,
-      executionTarget, message: repairNemsisImportedMessage(rule.message, rule.primaryTarget.elementId,
+      executionTarget, message: repairNemsisImportedMessage(validationRuleText(rule, context.language ?? "en", "message"), rule.primaryTarget.elementId,
         rule.references?.elementIds ?? []), primaryTarget: { elementId: rule.primaryTarget.elementId,
         ...(matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId ? { groupInstanceId: matches[0]?.groupInstanceId ?? scope.rootGroupInstanceId } : {}),
         ...(matches[0]?.element.values[0]?.occurrenceId ? { occurrenceId: matches[0].element.values[0].occurrenceId } : {}) },

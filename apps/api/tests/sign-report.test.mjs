@@ -189,12 +189,15 @@ test("authoritative signing evaluates the report's pinned required-element bundl
     catalogReleaseId: "catalog-release", rules: [{ schemaVersion: 1, languageVersion: "1.0.0",
       ruleId, validationVersionId, name: "Require patient name", enabled: true, severity: "error",
       executionTargets: ["live", "sign"], primaryTarget: { elementId: "ePatient.02" },
-      message: "Patient name is required", assertion: { operator: "present", elementId: "ePatient.02" } }] };
+      message: "Patient name is required", localization: { schemaVersion: 1,
+        sv: { name: "Patientnamn krävs", message: "Patientnamn krävs" } },
+      assertion: { operator: "present", elementId: "ePatient.02" } }] };
   const compiledSha256 = compiledValidationBundleSha256(bundle);
   let valuePresent = false;
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (normalized.includes("from app_identity.agency_settings")) return [{ language: "sv" }];
     if (normalized.includes("from clinical.report r join forms.form_version")) return [{
       id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
       catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"
@@ -217,6 +220,7 @@ test("authoritative signing evaluates the report's pinned required-element bundl
   assert.deepEqual(findings.map(({ severity, ruleId: id, targetElementId }) => ({ severity, id, targetElementId })), [{
     severity: "error", id: ruleId, targetElementId: "ePatient.02"
   }]);
+  assert.equal(findings[0].message, "Patientnamn krävs");
   valuePresent = true;
   assert.deepEqual(await service.validateAuthoredRules(manager, {
     id: "report-id", organization_id: "organization", catalog_release_id: "catalog-release",
@@ -236,6 +240,7 @@ test("signing blocks tampered artifacts and identifies a rule that fails at runt
   const manager = { query: async (sql) => {
     const normalized = sql.replace(/\s+/g, " ");
     if (normalized.includes("from validation.version")) return [{ compiled_bundle: bundle, compiled_sha256: compiledSha256 }];
+    if (normalized.includes("from app_identity.agency_settings")) return [{ language: "en" }];
     if (normalized.includes("from clinical.report r join forms.form_version")) return [{
       id: "report-id", created_at: new Date(), updated_at: new Date(), form_id: "form-id", form_version: 1,
       catalog_standard: "NEMSIS", catalog_version: "3.5.1", catalog_dataset: "EMSDataSet"

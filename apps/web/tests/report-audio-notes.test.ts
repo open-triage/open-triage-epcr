@@ -19,8 +19,8 @@ test("audio capture persists chunks, restores interrupted previews, and exposes 
   const storage = await readFile(path.join(webRoot, "app/protected-clinical-storage.ts"), "utf8");
   assert.match(component, /stageProtectedAudioChunk/);
   assert.match(component, /protectedAudioPreviewBlob/);
-  assert.match(component, /Use interrupted recording/);
-  assert.match(component, /Retry upload/);
+  assert.match(component, /noteUi.use.interrupted.recording/);
+  assert.match(component, /noteUi.retry.upload/);
   assert.match(workspace, /createReportAudioNote/);
   assert.match(workspace, /server audio copy could not be verified/);
   assert.match(workspace, /disabled={!report \|\| editingBlocked}/);

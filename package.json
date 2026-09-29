@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "license": "AGPL-3.0-only",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -n web,api -c cyan,magenta \"env -u PORT npm run dev -w @open-triage/web\" \"npm run dev -w @open-triage/api\"",
     "dev:local": "bash scripts/dev-local.sh",
     "db:reset:development": "npm run reset:development -w @open-triage/database --",
     "feedback:validate": "node scripts/feedback-validation.mjs",
-    "build": "npm run audit:nemsis-catalog && npm run check:nemsis-catalog-guardrails && npm run check:stationary-layout && npm run check:database && npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
-    "generate:nemsis-data-model": "node apps/web/scripts/generate-nemsis-data-model.mjs",
+    "build": "npm run audit:nemsis-catalog && npm run check:nemsis-catalog-guardrails && npm run check:canonical-definitions && npm run check:stationary-layout && npm run check:database && npm run build -w @open-triage/contracts && npm run build -w @open-triage/api && npm run build -w @open-triage/web",
     "generate:stationary-layout": "node apps/web/scripts/generate-stationary-layout.mjs",
     "generate:database": "npm run generate -w @open-triage/database",
     "check:nemsis-data-model": "node apps/web/scripts/generate-nemsis-data-model.mjs --check",
@@ -23,11 +25,14 @@
     "test": "npm run test:workflow && npm run test --workspaces --if-present",
     "test:helm": "node --test deploy/helm/open-triage/tests/*.test.mjs",
     "test:workflow": "node --test tests/*.test.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:canonical-definitions": "node scripts/check-canonical-definitions.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "typescript": "^5.9.2"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }

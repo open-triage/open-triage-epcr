@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminText, useAdminText } from "../app/admin-localization";
+
 import type { EncounterDocument, StationaryFormDraft } from "@open-triage/contracts";
 import React, { useMemo, useState } from "react";
 import { populateStationaryDemoData } from "../app/stationary-demo-data";
@@ -32,21 +34,24 @@ export function StationaryFormPreview({ draft, onReturn }: {
   readonly draft: StationaryFormDraft;
   readonly onReturn: () => void;
 }) {
+  const t = useAdminText();
   const [document, setDocument] = useState(createStationaryPreviewDocument);
+  const [language, setLanguage] = useState<"en" | "sv">("en");
   const findings = useMemo(() => stationaryPreviewFindings(document, draft), [document, draft]);
   return <section className="stationary-form-preview" aria-labelledby="stationary-preview-heading">
     <header className="stationary-preview-heading">
       <div>
-        <p className="eyebrow">Synthetic preview</p>
-        <h3 id="stationary-preview-heading">Draft Stationary form</h3>
-        <p>Interactive fictional data only. Changes here are temporary and never create or update a clinical report.</p>
+        <p className="eyebrow"><AdminText messageKey="admin.syntheticPreview" /></p>
+        <h3 id="stationary-preview-heading"><AdminText messageKey="admin.draftStationaryForm" /></h3>
+        <p><AdminText messageKey="admin.interactiveFictionalData" /></p>
       </div>
       <div className="form-actions">
-        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}>Reset synthetic data</button>
-        <button type="button" onClick={onReturn}>Return to form draft</button>
+        <label htmlFor="form-preview-language"><AdminText messageKey="admin.previewLanguage" /></label><select id="form-preview-language" value={language} onChange={(event) => setLanguage(event.target.value as "en" | "sv")}><option value="en"><AdminText messageKey="admin.english" /></option><option value="sv"><AdminText messageKey="admin.swedish" /></option></select>
+        <button type="button" onClick={() => setDocument(createStationaryPreviewDocument())}><AdminText messageKey="admin.resetSyntheticData" /></button>
+        <button type="button" onClick={onReturn}><AdminText messageKey="admin.returnToForm" /></button>
       </div>
     </header>
     <StationaryRecord document={document} findings={actionableStationaryFindings(findings)} formDefinition={draft.definition}
-      catalogFields={draft.catalogFields} onDocumentChange={setDocument} />
+      catalogFields={draft.catalogFields} catalogGroups={draft.catalogGroups} language={language} onDocumentChange={setDocument} />
   </section>;
 }

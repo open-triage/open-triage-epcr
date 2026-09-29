@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { type ClinicianSession } from "@open-triage/contracts";
-import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, createValidationRule, deactivateAdminRole, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, loadValidationRules, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, setValidationRuleEnabled, updateAdminRole, updateAdminUser } from "../app/admin-context";
+import { acceptOwnershipTransfer, activateStationaryForm, activateValidationVersion, cancelOwnershipTransfer, createAdminRole, createValidationRule, deactivateAdminRole, deleteCatalogDraft, deleteStationaryFormDraft, initiateOwnershipTransfer, loadActiveCatalogDefinition, loadAdminContext, loadAdminRoleHistory, loadAdminRoles, loadAdminUsers, loadAdminUserSessions, loadCatalogDraft, loadOwnershipTransfer, loadStationaryFormDraft, loadValidationRules, provisionAdminUser, publishStationaryFormDraft, publishValidationDraft, reactivateAdminRole, replaceAdminUserRoles, resetAdminUserCredential, revokeAdminUserSession, saveCatalogDraft, saveStationaryFormDraft, searchFormCatalog, setValidationRuleEnabled, updateAdminRole, updateAdminUser } from "../app/admin-context";
 import { reauthenticateClinicianSession } from "../app/clinician-session";
 import { AdminShell } from "../components/admin-shell";
 import { RoleCapabilityMatrix, roleDraftFindings, RolesPanel, UsersPanel } from "../components/admin-directory";
@@ -188,8 +188,8 @@ test("validation deletion accepts empty 200 and 204 success and still surfaces c
     };
     await deleteValidationDraft("csrf-proof", draft);
   }
-  globalThis.fetch = async () => Response.json({ message: "Draft revision is stale" }, { status: 409 });
-  await assert.rejects(deleteValidationDraft("csrf-proof", draft), /Draft revision is stale/);
+  globalThis.fetch = async () => Response.json({ code: "admin.http409", params: {}, message: "Draft revision is stale" }, { status: 409 });
+  await assert.rejects(deleteValidationDraft("csrf-proof", draft), /information changed/);
 });
 
 test("role editor explains prerequisite validation and protects capabilities outside the actor's authority", () => {
@@ -368,7 +368,7 @@ test("Admin context reports direct authorization failures without trusting clien
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
   globalThis.fetch = async () => new Response("Unauthorized", { status: 401 });
-  await assert.rejects(loadAdminContext(), /not authorized/);
+  await assert.rejects(loadAdminContext(), /legacy.http401/);
 });
 
 test("nullable admin draft endpoints accept an empty successful response", async (t) => {
@@ -393,6 +393,22 @@ test("catalog saves send the current revision and CSRF proof", async (t) => {
     return Response.json({ ...draft, revision: 8 });
   };
   assert.equal((await saveCatalogDraft("csrf-proof", draft)).revision, 8);
+});
+
+test("catalog deletion sends CSRF proof and the current revision", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const draft = { id: "draft-id", sourceReleaseId: "release-id", revision: 7,
+    definitionSha256: "a".repeat(64), updatedAt: "2026-09-06T12:00:00.000Z",
+    definition: { schemaVersion: 1 as const, sourceReleaseId: "release-id", elements: [], codeLists: [] } };
+  globalThis.fetch = async (input, init) => {
+    assert.match(String(input), /\/api\/admin\/catalog-drafts\/draft-id$/);
+    assert.equal(init?.method, "DELETE");
+    assert.equal((init?.headers as Record<string, string>)["x-csrf-token"], "csrf-proof");
+    assert.deepEqual(JSON.parse(String(init?.body)), { expectedRevision: 7 });
+    return new Response(null, { status: 204 });
+  };
+  await deleteCatalogDraft("csrf-proof", draft);
 });
 
 const codeList = { listId: "activity", name: "Patient Activity", classification: "suggested" as const,
@@ -429,7 +445,7 @@ test("Catalog authority requires the complete read-write-publish prerequisite ch
 test("read-only code-list inspection exposes definitions without mutable controls", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
     { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
-  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 9);
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 10);
   assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
 });
 
@@ -635,7 +651,7 @@ test("form editor initially renders one section and bounds search result rows", 
   assert.doesNotMatch(markup, /eSituation\.11/);
   assert.equal((markup.match(/aria-expanded="true"/g) ?? []).length, 1);
   assert.equal(formSectionLabel({ key: "ePatient", fields: [] }), "Patient");
-  assert.equal(formSectionLabel({ key: "dispatch", presentation: { title: "Dispatch details" }, fields: [] }), "Dispatch details");
+  assert.equal(formSectionLabel({ key: "eResponseSection", fields: [] }), "Response");
   const props = { definition: formDefinition, results: Array.from({ length: 100 }, (_, index) => ({
     ...catalogElement, elementId: `eTest.${index}`,
   })), targetSection: "patient", onQueryChange() {}, onSectionChange() {}, onAdd() {} };

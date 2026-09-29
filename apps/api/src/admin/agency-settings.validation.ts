@@ -1,6 +1,7 @@
 import { UnprocessableEntityException } from "@nestjs/common";
 import {
   DEFAULT_AGENCY_APPEARANCE,
+  isSupportedUiLanguage,
   MAX_REPORT_MEDIA_ALLOWANCE_BYTES,
   MIN_REPORT_MEDIA_ALLOWANCE_BYTES,
   type AgencyAppearance,
@@ -128,7 +129,7 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
     throw new UnprocessableEntityException("Agency Settings must be an object");
   }
   const body = input as Record<string, unknown>;
-  const allowedKeys = new Set(["expectedRevision", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
+  const allowedKeys = new Set(["expectedRevision", "language", "regionalFormat", "timeZone", "reportMediaAllowanceBytes", "imageMediaLimitBytes", "appearance", "demographics"]);
   if (Object.keys(body).some((key) => !allowedKeys.has(key))) {
     throw new UnprocessableEntityException("Agency Settings contains an unsupported property");
   }
@@ -151,7 +152,22 @@ export function validateUpdateAgencyMediaSettings(input: unknown): UpdateAgencyM
       "imageMediaLimitBytes must be a whole MiB between 1 MiB and the total report media allowance"
     );
   }
-  return { expectedRevision: Number(body.expectedRevision), reportMediaAllowanceBytes: allowance,
+  if (!isSupportedUiLanguage(body.language)) {
+    throw new UnprocessableEntityException("language must match a bundled UI dictionary");
+  }
+  if (body.regionalFormat !== undefined && body.regionalFormat !== null && body.regionalFormat !== "en-US" && body.regionalFormat !== "sv-SE") {
+    throw new UnprocessableEntityException("regionalFormat must be en-US, sv-SE, or null");
+  }
+  if (body.timeZone !== undefined && body.timeZone !== null) {
+    if (typeof body.timeZone !== "string" || !/^(?:UTC|[A-Za-z_]+(?:\/[A-Za-z_+-]+)+)$/.test(body.timeZone)) {
+      throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null");
+    }
+    try { new Intl.DateTimeFormat("en-US", { timeZone: body.timeZone }); }
+    catch { throw new UnprocessableEntityException("timeZone must be a named IANA time zone or null"); }
+  }
+  return { expectedRevision: Number(body.expectedRevision), language: body.language,
+    ...(body.regionalFormat === undefined ? {} : { regionalFormat: body.regionalFormat }),
+    ...(body.timeZone === undefined ? {} : { timeZone: body.timeZone as string | null }), reportMediaAllowanceBytes: allowance,
     imageMediaLimitBytes: imageLimit,
     appearance: appearance(body.appearance), demographics: demographics(body.demographics) };
 }

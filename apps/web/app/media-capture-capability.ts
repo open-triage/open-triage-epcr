@@ -1,3 +1,4 @@
+import { resolveErrorMessage, type AgencyLanguage } from "./localization";
 export type MediaCaptureKind = "camera" | "microphone";
 
 const LABELS = {
@@ -23,24 +24,25 @@ export function mediaCapturePreflightMessage(kind: MediaCaptureKind, environment
   return null;
 }
 
-export function mediaCaptureErrorMessage(kind: MediaCaptureKind, error: unknown): string {
+export function mediaCaptureErrorMessage(kind: MediaCaptureKind, error: unknown, language: AgencyLanguage = "en"): string {
   const labels = LABELS[kind];
   if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
-    return `${labels.label} access is blocked. Allow ${labels.device} access for this site in browser settings, then try again. Text notes remain available.`;
+    return resolveErrorMessage(language, `${labels.label} access is blocked. Allow ${labels.device} access for this site in browser settings, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraAccessBlocked" : "noteUi.capture.microphoneAccessBlocked");
   }
   if (error instanceof DOMException && error.name === "NotFoundError") {
-    return `No ${labels.device} was found. Connect or enable a ${labels.device}, then try again. Text notes remain available.`;
+    return resolveErrorMessage(language, `No ${labels.device} was found. Connect or enable a ${labels.device}, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraNotFound" : "noteUi.capture.microphoneNotFound");
   }
   if (error instanceof DOMException && (error.name === "NotReadableError" || error.name === "AbortError")) {
-    return `The ${labels.device} is busy or unavailable. Close other apps using it, check the device, then try again. Text notes remain available.`;
+    return resolveErrorMessage(language, `The ${labels.device} is busy or unavailable. Close other apps using it, check the device, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraBusyOrUnavailable" : "noteUi.capture.microphoneBusyOrUnavailable");
   }
-  return `The ${labels.device} is unavailable. Check browser site permissions and the device, then try again. Text notes remain available.`;
+  return resolveErrorMessage(language, `The ${labels.device} is unavailable. Check browser site permissions and the device, then try again. Text notes remain available.`, kind === "camera" ? "noteUi.capture.cameraUnavailable" : "noteUi.capture.microphoneUnavailable");
 }
 
-export function browserMediaCapturePreflight(kind: MediaCaptureKind, hasRecorder?: boolean): string | null {
-  return mediaCapturePreflightMessage(kind, {
+export function browserMediaCapturePreflight(kind: MediaCaptureKind, hasRecorder?: boolean, language: AgencyLanguage = "en"): string | null {
+  const message = mediaCapturePreflightMessage(kind, {
     secureContext: window.isSecureContext,
     hasGetUserMedia: typeof navigator.mediaDevices?.getUserMedia === "function",
     hasRecorder,
   });
+  return message ? resolveErrorMessage(language, message, kind === "camera" ? "noteUi.capture.cameraUnavailable" : "noteUi.capture.microphoneUnavailable") : null;
 }

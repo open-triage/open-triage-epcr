@@ -18,6 +18,9 @@ import { mutationRows } from "../database/mutation-result.js";
 
 type SettingsRow = {
   organization_id: string;
+  language: string;
+  regional_format: "en-US" | "sv-SE" | null;
+  time_zone: string | null;
   report_media_allowance_bytes: string | number;
   image_media_limit_bytes: string | number;
   brand_text: string;
@@ -62,7 +65,7 @@ export class AgencySettingsService {
     `);
     const appearance = rows[0] ? this.appearance(rows[0]) : { ...DEFAULT_AGENCY_APPEARANCE };
     const settings = selectedInstallationSettings();
-    return { settings: { ...settings, signIn: {
+    return { settings: { ...settings, language: rows[0]?.language ?? "en", regionalFormat: rows[0]?.regional_format ?? null, timeZone: rows[0]?.time_zone ?? null, signIn: {
       brandText: appearance.brandText, helperText: appearance.helperText,
     } }, appearance };
   }
@@ -92,12 +95,14 @@ export class AgencySettingsService {
       const demographicChanged = !this.sameDemographic(currentDemographic, command.demographics);
       if (Number(currentSettings.report_media_allowance_bytes) === command.reportMediaAllowanceBytes &&
           Number(currentSettings.image_media_limit_bytes) === command.imageMediaLimitBytes &&
-          !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
+          currentSettings.language === command.language &&
+          currentSettings.regional_format === (command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat) &&
+          currentSettings.time_zone === (command.timeZone === undefined ? currentSettings.time_zone : command.timeZone) && !appearanceChanged && !demographicChanged) return this.present(currentSettings, currentDemographic);
 
       const updatedRows = mutationRows<SettingsRow>(await manager.query(`
         update app_identity.agency_settings set
           report_media_allowance_bytes = $3, image_media_limit_bytes = $4,
-          brand_text = $5, helper_text = $6,
+          brand_text = $5, helper_text = $6, language = $15, regional_format = $16, time_zone = $17,
           logo_png_data_url = $7, accent_color = $8, accent_dark_color = $9,
           browser_theme_color = $10, pwa_background_color = $11, pwa_name = $12,
           pwa_short_name = $13, revision = revision + 1,
@@ -108,7 +113,8 @@ export class AgencySettingsService {
         command.appearance.brandText, command.appearance.helperText, command.appearance.logoPngDataUrl,
         command.appearance.accentColor, command.appearance.accentDarkColor,
         command.appearance.browserThemeColor, command.appearance.pwaBackgroundColor,
-        command.appearance.pwaName, command.appearance.pwaShortName, session.user.id]));
+        command.appearance.pwaName, command.appearance.pwaShortName, session.user.id, command.language, command.regionalFormat === undefined ? currentSettings.regional_format : command.regionalFormat,
+        command.timeZone === undefined ? currentSettings.time_zone : command.timeZone]));
       const updated = updatedRows[0];
       if (!updated) throw new ConflictException("Agency Settings revision is stale");
       const updatedDemographic = demographicChanged
@@ -180,8 +186,8 @@ export class AgencySettingsService {
        old_logo_sha256,new_logo_sha256,old_accent_color,new_accent_color,
        old_accent_dark_color,new_accent_dark_color,old_browser_theme_color,new_browser_theme_color,
        old_pwa_background_color,new_pwa_background_color,old_pwa_name,new_pwa_name,
-       old_pwa_short_name,new_pwa_short_name)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+       old_pwa_short_name,new_pwa_short_name,old_language,new_language,old_regional_format,new_regional_format,old_time_zone,new_time_zone)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)`,
     [organizationId, actorId, prior.revision, updated.revision,
       prior.report_media_allowance_bytes, updated.report_media_allowance_bytes,
       prior.image_media_limit_bytes, updated.image_media_limit_bytes,
@@ -192,7 +198,8 @@ export class AgencySettingsService {
       oldAppearance.browserThemeColor, newAppearance.browserThemeColor,
       oldAppearance.pwaBackgroundColor, newAppearance.pwaBackgroundColor,
       oldAppearance.pwaName, newAppearance.pwaName,
-      oldAppearance.pwaShortName, newAppearance.pwaShortName]);
+      oldAppearance.pwaShortName, newAppearance.pwaShortName, prior.language, updated.language,
+      prior.regional_format, updated.regional_format, prior.time_zone, updated.time_zone]);
   }
 
   private logoSha256(value: string | null): string | null {
@@ -223,7 +230,7 @@ export class AgencySettingsService {
       stateTerminologyVersion: demographic.dagency_04_terminology_version,
       effectiveFrom: new Date(demographic.effective_from).toISOString(),
     };
-    return { organizationId: row.organization_id, reportMediaAllowanceBytes,
+    return { organizationId: row.organization_id, language: row.language, regionalFormat: row.regional_format, timeZone: row.time_zone, reportMediaAllowanceBytes,
       imageMediaLimitBytes: Number(row.image_media_limit_bytes),
       appearance: this.appearance(row), demographics, revision: Number(row.revision),
       defaultReportMediaAllowanceBytes: DEFAULT_REPORT_MEDIA_ALLOWANCE_BYTES,

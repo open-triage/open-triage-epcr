@@ -31,7 +31,7 @@ export async function auditCatalog() {
     readFile(path.join(dataRoot, "nemsis-3.5.1-sources/Combined_ElementEnumerations.txt"), "utf8"),
   ]);
   const generatedText = await generateCatalog();
-  if (committedText !== generatedText) throw new Error("Catalog regeneration is not byte-for-byte identical; run npm run generate:nemsis-data-model");
+  if (committedText !== generatedText) throw new Error("Canonical catalog differs from the pinned NEMSIS source audit; review defines/catalog/catalog_nemsis-3.5.1.json");
   const catalog = JSON.parse(committedText);
   const dictionary = rows(dictionaryText);
   const officialElements = dictionary.values.filter((row) => row[dictionary.index.DatasetName] === "EMSDataSet" && row[dictionary.index.DatasetType] === "element").map((row) => row[dictionary.index.ElementNumber]);
@@ -44,5 +44,5 @@ export async function auditCatalog() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) auditCatalog().then(({ elements, enumerations }) => {
-  console.log(`Catalog exactly covers ${elements} official elements and ${enumerations} official enumerations; deterministic regeneration passed.`);
+  console.log(`Canonical catalog exactly covers ${elements} official elements and ${enumerations} official enumerations; pinned-source comparison passed.`);
 }).catch((error) => { console.error(error.message); process.exitCode = 1; });

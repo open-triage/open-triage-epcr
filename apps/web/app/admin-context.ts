@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import type { AdminCapabilityCatalog, AdminContext, AdminRole, AdminRoleHistory, AdminRoleList, AdminRoleSummaryList, AdminSessionList, AdminUserPage, AuthoringVersionOption, CancelOwnershipTransferCommand, CatalogDefinitionView, CatalogDraft, CatalogValidationResult, FormCatalogElementPage, InitiateOwnershipTransferCommand, OwnershipTransferState, ProvisionAdminUserCommand, ProvisionedAdminUser, PublishedCatalog, PublishedStationaryForm, PublishedValidationVersion, ReplaceAdminUserRolesCommand, ResetAdminCredentialCommand, ResetAdminCredentialResult, RevokedAdminSession, SaveAdminRoleCommand, StationaryFormActivation, StationaryFormDraft, UpdatedAdminUser, UpdatedAdminUserRoles, UpdateAdminUserCommand, ValidationActivation, ValidationDraft, ValidationDraftResult, ValidationRulePage, ValidationRuleSource } from "@open-triage/contracts";
 import type { AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
 import { apiRequestUrl, browserRequestConfiguration, browserRequestInit, browserRouteUrl } from "./browser-api";
@@ -15,13 +16,8 @@ async function catalogRequest<T>(path: string, csrfToken?: string, init?: Reques
     headers: { ...(init?.body ? { "content-type": "application/json" } : {}),
       ...(init?.method && init.method !== "GET" ? { "x-csrf-token": csrfToken } : {}), ...init?.headers }
   }));
+  if (!response.ok) throw await platformRequestError(response);
   const responseText = await response.text();
-  if (!response.ok) {
-    let body: { message?: string; findings?: string[] } = {};
-    try { body = responseText ? JSON.parse(responseText) as typeof body : {}; } catch {}
-    const message = Array.isArray(body.findings) ? body.findings.join("; ") : body.message;
-    throw new Error(message || (response.status === 409 ? "The catalog draft changed in another tab." : "Catalog request failed."));
-  }
   if (!responseText) {
     if (emptyResponse) return emptyResponse.value;
     throw new Error("The administration server returned an empty response.");
@@ -40,6 +36,9 @@ export const saveCatalogDraft = (csrfToken: string, draft: CatalogDraft) => cata
   method: "PUT", body: JSON.stringify({ expectedRevision: draft.revision, displayName: draft.displayName, definition: draft.definition })
 });
 export const validateCatalogDraft = (csrfToken: string, id: string) => catalogRequest<CatalogValidationResult>(`catalog-drafts/${id}/validate`, csrfToken, { method: "POST" });
+export const deleteCatalogDraft = (csrfToken: string, draft: CatalogDraft) => catalogRequest<void>(`catalog-drafts/${draft.id}`, csrfToken, {
+  method: "DELETE", body: JSON.stringify({ expectedRevision: draft.revision })
+}, { value: undefined });
 export const publishCatalogDraft = (csrfToken: string, draft: CatalogDraft, displayName: string, changeNote: string) => catalogRequest<PublishedCatalog>(`catalog-drafts/${draft.id}/publish`, csrfToken, {
   method: "POST", body: JSON.stringify({ expectedRevision: draft.revision, definitionSha256: draft.definitionSha256, displayName, changeNote })
 });
@@ -118,9 +117,7 @@ export async function loadAdminContext(): Promise<AdminContext> {
   const url = apiRequestUrl(requestPath, configuration) ?? browserRouteUrl(requestPath, configuration);
   const response = await fetch(url, browserRequestInit());
   if (!response.ok) {
-    throw new Error(response.status === 401 || response.status === 403
-      ? "Your account is not authorized to administer this installation."
-      : "Administration configuration is unavailable.");
+    throw await platformRequestError(response);
   }
   return response.json() as Promise<AdminContext>;
 }

@@ -15,8 +15,7 @@
       "parentId": null,
       "mode": "read-only",
       "presentation": {
-        "kind": "inline",
-        "label": "EMSDataSet"
+        "kind": "inline"
       }
     },
     {
@@ -25,12 +24,6 @@
       "mode": "read-only",
       "presentation": {
         "kind": "table",
-        "label": "Header",
-        "help": "Add or edit Header entries.",
-        "dialog": {
-          "addLabel": "Add Header",
-          "editLabel": "Edit Header"
-        },
         "columns": [
           {
             "elementId": "dAgency.01"
@@ -52,8 +45,7 @@
       "parentId": "HeaderGroup",
       "mode": "read-only",
       "presentation": {
-        "kind": "inline",
-        "label": "DemographicGroup"
+        "kind": "inline"
       }
     },
     {
@@ -61,8 +53,7 @@
       "parentId": "HeaderGroup",
       "mode": "read-only",
       "presentation": {
-        "kind": "inline",
-        "label": "eCustomConfiguration"
+        "kind": "inline"
       }
     },
     {
@@ -71,12 +62,6 @@
       "mode": "read-only",
       "presentation": {
         "kind": "table",
-        "label": "eCustomConfiguration.CustomGroup",
-        "help": "Add or edit eCustomConfiguration.CustomGroup entries.",
-        "dialog": {
-          "addLabel": "Add eCustomConfiguration.CustomGroup",
-          "editLabel": "Edit eCustomConfiguration.CustomGroup"
-        },
         "columns": [
           {
             "elementId": "eCustomConfiguration.01"
@@ -99,12 +84,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "PatientCareReport",
-        "help": "Add or edit PatientCareReport entries.",
-        "dialog": {
-          "addLabel": "Add PatientCareReport",
-          "editLabel": "Edit PatientCareReport"
-        },
         "columns": [
           {
             "elementId": "eAirway.01"
@@ -126,8 +105,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eRecord"
+        "kind": "inline"
       }
     },
     {
@@ -135,8 +113,7 @@
       "parentId": "eRecordSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eRecord.SoftwareApplicationGroup"
+        "kind": "inline"
       }
     },
     {
@@ -144,8 +121,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eResponse"
+        "kind": "inline"
       }
     },
     {
@@ -153,8 +129,7 @@
       "parentId": "eResponseSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eResponse.AgencyGroup"
+        "kind": "inline"
       }
     },
     {
@@ -162,8 +137,7 @@
       "parentId": "eResponseSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eResponse.ServiceGroup"
+        "kind": "inline"
       }
     },
     {
@@ -171,8 +145,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDispatch"
+        "kind": "inline"
       }
     },
     {
@@ -180,8 +153,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eCrew"
+        "kind": "inline"
       }
     },
     {
@@ -190,12 +162,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eCrew.CrewGroup",
-        "help": "Add or edit eCrew.CrewGroup entries.",
-        "dialog": {
-          "addLabel": "Add eCrew.CrewGroup",
-          "editLabel": "Edit eCrew.CrewGroup"
-        },
         "columns": [
           {
             "elementId": "eCrew.01"
@@ -214,8 +180,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eTimes"
+        "kind": "inline"
       }
     },
     {
@@ -223,8 +188,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePatient"
+        "kind": "inline"
       }
     },
     {
@@ -232,8 +196,7 @@
       "parentId": "ePatientSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePatient.PatientNameGroup"
+        "kind": "inline"
       }
     },
     {
@@ -241,8 +204,7 @@
       "parentId": "ePatientSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePatient.AgeGroup"
+        "kind": "inline"
       }
     },
     {
@@ -250,8 +212,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePayment"
+        "kind": "inline"
       }
     },
     {
@@ -259,8 +220,7 @@
       "parentId": "ePaymentSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePayment.CertificateGroup"
+        "kind": "inline"
       }
     },
     {
@@ -269,12 +229,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "ePayment.InsuranceGroup",
-        "help": "Add or edit ePayment.InsuranceGroup entries.",
-        "dialog": {
-          "addLabel": "Add ePayment.InsuranceGroup",
-          "editLabel": "Edit ePayment.InsuranceGroup"
-        },
         "columns": [
           {
             "elementId": "ePayment.09"
@@ -296,8 +250,7 @@
       "parentId": "ePaymentSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePayment.ClosestRelativeGroup"
+        "kind": "inline"
       }
     },
     {
@@ -305,8 +258,7 @@
       "parentId": "ePaymentSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "ePayment.EmployerGroup"
+        "kind": "inline"
       }
     },
     {
@@ -315,12 +267,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "ePayment.SupplyItemGroup",
-        "help": "Add or edit ePayment.SupplyItemGroup entries.",
-        "dialog": {
-          "addLabel": "Add ePayment.SupplyItemGroup",
-          "editLabel": "Edit ePayment.SupplyItemGroup"
-        },
         "columns": [
           {
             "elementId": "ePayment.55"
@@ -336,8 +282,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eScene"
+        "kind": "inline"
       }
     },
     {
@@ -346,12 +291,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eScene.ResponderGroup",
-        "help": "Add or edit eScene.ResponderGroup entries.",
-        "dialog": {
-          "addLabel": "Add eScene.ResponderGroup",
-          "editLabel": "Edit eScene.ResponderGroup"
-        },
         "columns": [
           {
             "elementId": "eScene.02"
@@ -373,8 +312,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eSituation"
+        "kind": "inline"
       }
     },
     {
@@ -383,12 +321,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eSituation.PatientComplaintGroup",
-        "help": "Add or edit eSituation.PatientComplaintGroup entries.",
-        "dialog": {
-          "addLabel": "Add eSituation.PatientComplaintGroup",
-          "editLabel": "Edit eSituation.PatientComplaintGroup"
-        },
         "columns": [
           {
             "elementId": "eSituation.03"
@@ -410,8 +342,7 @@
       "parentId": "eSituationSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eSituation.WorkRelatedGroup"
+        "kind": "inline"
       }
     },
     {
@@ -419,8 +350,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eInjury"
+        "kind": "inline"
       }
     },
     {
@@ -428,8 +358,7 @@
       "parentId": "eInjurySection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eInjury.CollisionGroup"
+        "kind": "inline"
       }
     },
     {
@@ -438,12 +367,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eInjury.SeatGroup",
-        "help": "Add or edit eInjury.SeatGroup entries.",
-        "dialog": {
-          "addLabel": "Add eInjury.SeatGroup",
-          "editLabel": "Edit eInjury.SeatGroup"
-        },
         "columns": [
           {
             "elementId": "eInjury.26"
@@ -465,8 +388,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eArrest"
+        "kind": "inline"
       }
     },
     {
@@ -474,8 +396,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eHistory"
+        "kind": "inline"
       }
     },
     {
@@ -484,12 +405,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eHistory.PractitionerGroup",
-        "help": "Add or edit eHistory.PractitionerGroup entries.",
-        "dialog": {
-          "addLabel": "Add eHistory.PractitionerGroup",
-          "editLabel": "Edit eHistory.PractitionerGroup"
-        },
         "columns": [
           {
             "elementId": "eHistory.02"
@@ -509,12 +424,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eHistory.ImmunizationsGroup",
-        "help": "Add or edit eHistory.ImmunizationsGroup entries.",
-        "dialog": {
-          "addLabel": "Add eHistory.ImmunizationsGroup",
-          "editLabel": "Edit eHistory.ImmunizationsGroup"
-        },
         "columns": [
           {
             "elementId": "eHistory.10"
@@ -531,12 +440,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eHistory.CurrentMedsGroup",
-        "help": "Add or edit eHistory.CurrentMedsGroup entries.",
-        "dialog": {
-          "addLabel": "Add eHistory.CurrentMedsGroup",
-          "editLabel": "Edit eHistory.CurrentMedsGroup"
-        },
         "columns": [
           {
             "elementId": "eHistory.12"
@@ -558,8 +461,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eNarrative"
+        "kind": "inline"
       }
     },
     {
@@ -567,8 +469,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals"
+        "kind": "inline"
       }
     },
     {
@@ -577,12 +478,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eVitals.VitalGroup",
-        "help": "Add or edit eVitals.VitalGroup entries.",
-        "dialog": {
-          "addLabel": "Add eVitals.VitalGroup",
-          "editLabel": "Edit eVitals.VitalGroup"
-        },
         "columns": [
           {
             "elementId": "eVitals.01"
@@ -604,8 +499,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.CardiacRhythmGroup"
+        "kind": "inline"
       }
     },
     {
@@ -613,8 +507,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.BloodPressureGroup"
+        "kind": "inline"
       }
     },
     {
@@ -622,8 +515,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.HeartRateGroup"
+        "kind": "inline"
       }
     },
     {
@@ -631,8 +523,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.GlasgowScoreGroup"
+        "kind": "inline"
       }
     },
     {
@@ -640,8 +531,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.TemperatureGroup"
+        "kind": "inline"
       }
     },
     {
@@ -649,8 +539,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.PainScaleGroup"
+        "kind": "inline"
       }
     },
     {
@@ -658,8 +547,7 @@
       "parentId": "eVitals.VitalGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eVitals.StrokeScaleGroup"
+        "kind": "inline"
       }
     },
     {
@@ -667,8 +555,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eLabs"
+        "kind": "inline"
       }
     },
     {
@@ -677,12 +564,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eLabs.LabGroup",
-        "help": "Add or edit eLabs.LabGroup entries.",
-        "dialog": {
-          "addLabel": "Add eLabs.LabGroup",
-          "editLabel": "Edit eLabs.LabGroup"
-        },
         "columns": [
           {
             "elementId": "eLabs.01"
@@ -705,12 +586,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eLabs.LabResultGroup",
-        "help": "Add or edit eLabs.LabResultGroup entries.",
-        "dialog": {
-          "addLabel": "Add eLabs.LabResultGroup",
-          "editLabel": "Edit eLabs.LabResultGroup"
-        },
         "columns": [
           {
             "elementId": "eLabs.03"
@@ -727,12 +602,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eLabs.LabImageGroup",
-        "help": "Add or edit eLabs.LabImageGroup entries.",
-        "dialog": {
-          "addLabel": "Add eLabs.LabImageGroup",
-          "editLabel": "Edit eLabs.LabImageGroup"
-        },
         "columns": [
           {
             "elementId": "eLabs.05"
@@ -755,12 +624,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eLabs.WaveformGraphicGroup",
-        "help": "Add or edit eLabs.WaveformGraphicGroup entries.",
-        "dialog": {
-          "addLabel": "Add eLabs.WaveformGraphicGroup",
-          "editLabel": "Edit eLabs.WaveformGraphicGroup"
-        },
         "columns": [
           {
             "elementId": "eLabs.07"
@@ -776,8 +639,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eExam"
+        "kind": "inline"
       }
     },
     {
@@ -786,12 +648,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.AssessmentGroup",
-        "help": "Add or edit eExam.AssessmentGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.AssessmentGroup",
-          "editLabel": "Edit eExam.AssessmentGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.03"
@@ -814,12 +670,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.AbdomenGroup",
-        "help": "Add or edit eExam.AbdomenGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.AbdomenGroup",
-          "editLabel": "Edit eExam.AbdomenGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.10"
@@ -836,12 +686,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.SpineGroup",
-        "help": "Add or edit eExam.SpineGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.SpineGroup",
-          "editLabel": "Edit eExam.SpineGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.13"
@@ -858,12 +702,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.ExtremityGroup",
-        "help": "Add or edit eExam.ExtremityGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.ExtremityGroup",
-          "editLabel": "Edit eExam.ExtremityGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.15"
@@ -880,12 +718,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.EyeGroup",
-        "help": "Add or edit eExam.EyeGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.EyeGroup",
-          "editLabel": "Edit eExam.EyeGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.17"
@@ -902,12 +734,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.LungGroup",
-        "help": "Add or edit eExam.LungGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.LungGroup",
-          "editLabel": "Edit eExam.LungGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.22"
@@ -924,12 +750,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eExam.ChestGroup",
-        "help": "Add or edit eExam.ChestGroup entries.",
-        "dialog": {
-          "addLabel": "Add eExam.ChestGroup",
-          "editLabel": "Edit eExam.ChestGroup"
-        },
         "columns": [
           {
             "elementId": "eExam.24"
@@ -945,8 +765,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eProtocols"
+        "kind": "inline"
       }
     },
     {
@@ -955,12 +774,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eProtocols.ProtocolGroup",
-        "help": "Add or edit eProtocols.ProtocolGroup entries.",
-        "dialog": {
-          "addLabel": "Add eProtocols.ProtocolGroup",
-          "editLabel": "Edit eProtocols.ProtocolGroup"
-        },
         "columns": [
           {
             "elementId": "eProtocols.01"
@@ -976,8 +789,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eMedications"
+        "kind": "inline"
       }
     },
     {
@@ -986,12 +798,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eMedications.MedicationGroup",
-        "help": "Add or edit eMedications.MedicationGroup entries.",
-        "dialog": {
-          "addLabel": "Add eMedications.MedicationGroup",
-          "editLabel": "Edit eMedications.MedicationGroup"
-        },
         "columns": [
           {
             "elementId": "eMedications.01"
@@ -1013,8 +819,7 @@
       "parentId": "eMedications.MedicationGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eMedications.DosageGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1022,8 +827,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eProcedures"
+        "kind": "inline"
       }
     },
     {
@@ -1032,12 +836,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eProcedures.ProcedureGroup",
-        "help": "Add or edit eProcedures.ProcedureGroup entries.",
-        "dialog": {
-          "addLabel": "Add eProcedures.ProcedureGroup",
-          "editLabel": "Edit eProcedures.ProcedureGroup"
-        },
         "columns": [
           {
             "elementId": "eProcedures.01"
@@ -1059,8 +857,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eAirway"
+        "kind": "inline"
       }
     },
     {
@@ -1068,8 +865,7 @@
       "parentId": "eAirwaysSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eAirway.AirwayGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1078,12 +874,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eAirway.ConfirmationGroup",
-        "help": "Add or edit eAirway.ConfirmationGroup entries.",
-        "dialog": {
-          "addLabel": "Add eAirway.ConfirmationGroup",
-          "editLabel": "Edit eAirway.ConfirmationGroup"
-        },
         "columns": [
           {
             "elementId": "eAirway.02"
@@ -1105,8 +895,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDevice"
+        "kind": "inline"
       }
     },
     {
@@ -1115,12 +904,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eDevice.DeviceGroup",
-        "help": "Add or edit eDevice.DeviceGroup entries.",
-        "dialog": {
-          "addLabel": "Add eDevice.DeviceGroup",
-          "editLabel": "Edit eDevice.DeviceGroup"
-        },
         "columns": [
           {
             "elementId": "eDevice.01"
@@ -1142,8 +925,7 @@
       "parentId": "eDevice.DeviceGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDevice.WaveformGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1151,8 +933,7 @@
       "parentId": "eDevice.DeviceGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDevice.ShockGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1160,8 +941,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDisposition"
+        "kind": "inline"
       }
     },
     {
@@ -1169,8 +949,7 @@
       "parentId": "eDispositionSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDisposition.DestinationGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1178,8 +957,7 @@
       "parentId": "eDispositionSection",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eDisposition.IncidentDispositionGroup"
+        "kind": "inline"
       }
     },
     {
@@ -1188,12 +966,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eDisposition.HospitalTeamActivationGroup",
-        "help": "Add or edit eDisposition.HospitalTeamActivationGroup entries.",
-        "dialog": {
-          "addLabel": "Add eDisposition.HospitalTeamActivationGroup",
-          "editLabel": "Edit eDisposition.HospitalTeamActivationGroup"
-        },
         "columns": [
           {
             "elementId": "eDisposition.24"
@@ -1209,8 +981,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eOutcome"
+        "kind": "inline"
       }
     },
     {
@@ -1219,12 +990,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOutcome.ExternalDataGroup",
-        "help": "Add or edit eOutcome.ExternalDataGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOutcome.ExternalDataGroup",
-          "editLabel": "Edit eOutcome.ExternalDataGroup"
-        },
         "columns": [
           {
             "elementId": "eOutcome.03"
@@ -1244,12 +1009,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOutcome.EmergencyDepartmentProceduresGroup",
-        "help": "Add or edit eOutcome.EmergencyDepartmentProceduresGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOutcome.EmergencyDepartmentProceduresGroup",
-          "editLabel": "Edit eOutcome.EmergencyDepartmentProceduresGroup"
-        },
         "columns": [
           {
             "elementId": "eOutcome.09"
@@ -1266,12 +1025,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOutcome.HospitalProceduresGroup",
-        "help": "Add or edit eOutcome.HospitalProceduresGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOutcome.HospitalProceduresGroup",
-          "editLabel": "Edit eOutcome.HospitalProceduresGroup"
-        },
         "columns": [
           {
             "elementId": "eOutcome.12"
@@ -1287,8 +1040,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "enhanced",
       "presentation": {
-        "kind": "inline",
-        "label": "eCustomResults"
+        "kind": "inline"
       }
     },
     {
@@ -1297,12 +1049,6 @@
       "mode": "enhanced",
       "presentation": {
         "kind": "table",
-        "label": "eCustomResults.ResultsGroup",
-        "help": "Add or edit eCustomResults.ResultsGroup entries.",
-        "dialog": {
-          "addLabel": "Add eCustomResults.ResultsGroup",
-          "editLabel": "Edit eCustomResults.ResultsGroup"
-        },
         "columns": [
           {
             "elementId": "eCustomResults.01"
@@ -1321,8 +1067,7 @@
       "parentId": "PatientCareReportGroup",
       "mode": "editable",
       "presentation": {
-        "kind": "inline",
-        "label": "eOther"
+        "kind": "inline"
       }
     },
     {
@@ -1331,12 +1076,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOther.EMSCrewMemberGroup",
-        "help": "Add or edit eOther.EMSCrewMemberGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOther.EMSCrewMemberGroup",
-          "editLabel": "Edit eOther.EMSCrewMemberGroup"
-        },
         "columns": [
           {
             "elementId": "eOther.03"
@@ -1359,12 +1098,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOther.FileGroup",
-        "help": "Add or edit eOther.FileGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOther.FileGroup",
-          "editLabel": "Edit eOther.FileGroup"
-        },
         "columns": [
           {
             "elementId": "eOther.09"
@@ -1387,12 +1120,6 @@
       "mode": "editable",
       "presentation": {
         "kind": "table",
-        "label": "eOther.SignatureGroup",
-        "help": "Add or edit eOther.SignatureGroup entries.",
-        "dialog": {
-          "addLabel": "Add eOther.SignatureGroup",
-          "editLabel": "Edit eOther.SignatureGroup"
-        },
         "columns": [
           {
             "elementId": "eOther.12"

@@ -1,3 +1,4 @@
+import { platformRequestError } from "./platform-errors";
 import type { ActiveReportResource, ClinicalFormConfiguration, CreateReportTextNoteCommand, DeleteDraftReportResponse, DeleteReportTextNoteCommand, DeleteReportTextNoteResponse, DispatchCancellation, DispatchConflict, DispatchPriority, EncounterDocument, EncounterValue, ReportMediaPolicy, ReportNote, ReportTextNoteMutationResponse, UpdateReportTextNoteCommand } from "@open-triage/contracts";
 import type { ShellState } from "./standard-encounter";
 import { getNemsisGroup, requireNemsisDataElement } from "./nemsis-data-model";
@@ -14,6 +15,10 @@ export const DRAFT_SYNC_RETRY_MS = 2_000;
 export const ACTIVE_REPORT_POLL_INTERVAL_MS = 10_000;
 export const DRAFT_CONFLICT_RECOVERY_LIMIT = 1;
 export type DraftSyncStatus = "Saved" | "Saving" | "Pending sync" | "Conflict";
+
+export function reconciledDraftSyncStatus(current: DraftSyncStatus, hasPendingChanges: boolean): DraftSyncStatus {
+  return hasPendingChanges ? current : "Saved";
+}
 
 export type DraftSaveFailureCategory = "server-conflict" | "validation-rejected";
 
@@ -47,6 +52,10 @@ export interface ActiveDraftReport {
   readonly agencyTimeZone?: string;
   readonly documentingUserId?: string;
   readonly catalogReleaseId?: string;
+  readonly validationVersionId?: string;
+  readonly formDefinitionSha256?: string;
+  readonly catalogArtifactSha256?: string;
+  readonly validationCompiledSha256?: string;
   readonly clinicalForm?: ClinicalFormConfiguration;
   readonly status?: "draft";
   readonly demoMutable?: boolean;
@@ -337,11 +346,7 @@ export async function deleteDraftReport(csrfToken: string, reportId: string): Pr
   } catch {
     throw new Error("Record deletion is unavailable while offline.");
   }
-  if (!response.ok) {
-    if (response.status === 401) throw new Error("Your shift session has ended.");
-    if (response.status === 409) throw new Error("Only an open generated synthetic draft can be deleted.");
-    throw new Error("The record could not be deleted.");
-  }
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<DeleteDraftReportResponse>;
 }
 
@@ -362,7 +367,8 @@ async function mutateReportTextNote<T>(csrfToken: string, path: string, method: 
   }
   if (response.status === 409) throw new DraftSaveRejectedError("server-conflict");
   if (response.status === 422) throw new DraftSaveRejectedError("validation-rejected");
-  if (!response.ok) throw new Error(response.status === 401 ? "session" : "The text note could not be saved.");
+  if (response.status === 401) throw new Error("session");
+  if (!response.ok) throw await platformRequestError(response);
   return response.json() as Promise<T>;
 }
 
@@ -437,7 +443,5 @@ export async function signDraftReport(
   } catch {
     throw new Error("The record could not be signed. Check your connection and try again.");
   }
-  if (response.status === 409) throw new Error("The record changed before it could be signed. Reopen it and try again.");
-  if (response.status === 422) throw new Error("The record did not pass server validation and was not signed.");
-  if (!response.ok) throw new Error(response.status === 401 ? "Your shift session has ended." : "The record could not be signed.");
+  if (!response.ok) throw await platformRequestError(response);
 }

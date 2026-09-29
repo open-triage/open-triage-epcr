@@ -20,8 +20,10 @@
   "scripts": {
     "generate:nemsis-ems-import": "node scripts/generate-nemsis-ems-import.mjs",
     "check:nemsis-ems-import": "node scripts/generate-nemsis-ems-import.mjs --check",
-    "prebuild": "npm run check:nemsis-ems-import",
+    "prebuild": "node scripts/generate-ui-languages.mjs && npm run check:nemsis-ems-import",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretypecheck": "node scripts/generate-ui-languages.mjs",
+    "test:ui-languages": "node --test scripts/generate-ui-languages.test.mjs"
   }
 }

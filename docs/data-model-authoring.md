@@ -4,18 +4,20 @@ OpenTriage stores one canonical encounter document. UI components, persistence,
 review, summaries, and JSON interchange are projections of stable
 NEMSIS or reverse-DNS custom identifiers; component names are never data keys.
 
-## Updating and regenerating the standard catalog
+## Updating the standard catalog
 
-The pinned inputs and provenance are described in
-`apps/web/app/data/nemsis-3.5.1-sources/README.md`. For an update, download the
-official versioned dictionary, enumeration export, XSD archive, and public lists;
-retain their original bytes; update release, retrieval date, and URLs in the
-generator; then run `npm run generate:nemsis-data-model` and
-`npm run audit:nemsis-catalog`, followed by `npm run generate:database`. Commit
-sources, generated JSON, the analytical mapping, and generated migration blocks
-together. The
-audit rejects element/enumeration omissions and additions and requires identical
-pretty-printed output. Never hand-edit the generated catalog.
+`defines/catalog/catalog_nemsis-3.5.1.json` is the canonical catalog. Edit it
+directly; keep exact NEMSIS technical identifiers in `id` and human-readable
+application wording in `name` and the other display fields. No repository command
+writes files under `defines/`.
+
+The pinned upstream inputs and provenance are described in
+`apps/web/app/data/nemsis-3.5.1-sources/README.md`. After editing the canonical
+catalog, run `npm run check:nemsis-data-model`, `npm run audit:nemsis-catalog`,
+and `npm run check:database`. These commands validate the authored JSON against
+its JSON Schema, pinned NEMSIS sources, and analytical projection without
+modifying it. A fresh application installation reads the canonical definitions
+from `defines/` and publishes them to the database.
 
 ## Form and custom-element authoring
 

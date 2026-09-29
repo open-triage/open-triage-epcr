@@ -1,9 +1,13 @@
 "use client";
 
+import { AdminText } from "../app/admin-localization";
+
 import type { AgencyAppearance, AgencyMediaSettings, UpdateAgencyMediaSettingsCommand } from "@open-triage/contracts";
-import React, { FormEvent, useEffect, useState } from "react";
+import React, { FormEvent, useCallback, useEffect, useState } from "react";
 import { loadAgencyMediaSettings, updateAgencyMediaSettings } from "../app/admin-context";
 import { applyAgencyColors } from "../app/installation-settings";
+import { formatClinicalDate, formatClinicalNumber, type RegionalFormat } from "../app/regional-format";
+import { availableUiLanguages, languageDisplayName, resolveMessage, type AgencyLanguage } from "../app/localization";
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -13,7 +17,7 @@ export function showsStorageGrowthWarning(bytes: number, defaultBytes = 50 * MEB
 
 function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsCommand {
   const demographics = settings.demographics;
-  return { expectedRevision: settings.revision,
+  return { expectedRevision: settings.revision, language: settings.language, regionalFormat: settings.regionalFormat, timeZone: settings.timeZone,
     reportMediaAllowanceBytes: settings.reportMediaAllowanceBytes,
     imageMediaLimitBytes: settings.imageMediaLimitBytes,
     appearance: { ...settings.appearance },
@@ -24,10 +28,13 @@ function editable(settings: AgencyMediaSettings): UpdateAgencyMediaSettingsComma
     } };
 }
 
-export function AgencySettingsPanel({ csrfToken, canWrite }: {
+export function AgencySettingsPanel({ csrfToken, canWrite, language = "en" }: {
   readonly csrfToken: string;
   readonly canWrite: boolean;
+  readonly language?: AgencyLanguage;
 }) {
+  const t = useCallback((key: string, parameters?: Record<string, string | number>) =>
+    resolveMessage(language, key, parameters), [language]);
   const [settings, setSettings] = useState<AgencyMediaSettings | null>(null);
   const [draft, setDraft] = useState<UpdateAgencyMediaSettingsCommand | null>(null);
   const [allowanceMib, setAllowanceMib] = useState("50");
@@ -45,10 +52,10 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
       setAllowanceMib(String(loaded.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(loaded.imageMediaLimitBytes / MEBIBYTE));
     }).catch((reason: unknown) => {
-      if (current) setError(reason instanceof Error ? reason.message : "Agency Settings could not be loaded.");
+      if (current) setError(language !== "en" ? t("settings.loadFailed") : reason instanceof Error ? reason.message : t("settings.loadFailed"));
     });
     return () => { current = false; };
-  }, []);
+  }, [language, t]);
 
   useEffect(() => {
     if (draft) applyAgencyColors(draft.appearance, document);
@@ -79,12 +86,12 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
   function chooseLogo(file: File | undefined) {
     if (!file) return;
     if (file.type !== "image/png" || file.size > 128 * 1024) {
-      setError("Logo must be a PNG no larger than 128 KiB.");
+      setError(t("settings.logoInvalid"));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => changeAppearance("logoPngDataUrl", typeof reader.result === "string" ? reader.result : null);
-    reader.onerror = () => setError("The logo could not be read.");
+    reader.onerror = () => setError(t("settings.logoReadFailed"));
     reader.readAsDataURL(file);
   }
 
@@ -99,79 +106,109 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
       setSettings(updated); setDraft(editable(updated));
       setAllowanceMib(String(updated.reportMediaAllowanceBytes / MEBIBYTE));
       setImageLimitMib(String(updated.imageMediaLimitBytes / MEBIBYTE));
-      setNotice("Agency Settings saved. Appearance is active on refresh; new reports use demographic version " +
-        `${updated.demographics.version}.`);
+      setNotice(t("settings.saved", { version: updated.demographics.version }));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Agency Settings could not be saved.");
+      setError(reason instanceof Error && /revision is stale/i.test(reason.message) ? t("settings.stale") :
+        language !== "en" ? t("settings.saveFailed") : reason instanceof Error ? reason.message : t("settings.saveFailed"));
     } finally { setBusy(false); }
   }
 
   return <section className="admin-configuration agency-settings" aria-labelledby="agency-settings-heading">
-    <div className="section-heading"><h2 id="agency-settings-heading">Agency Settings</h2></div>
+    <div className="section-heading"><h2 id="agency-settings-heading">{t("navigation.settings")}</h2></div>
     {error && <p className="admin-error" role="alert">{error}</p>}
     {notice && <p className="agency-settings-notice" role="status">{notice}</p>}
-    {!draft && !error && <p role="status">Loading Agency Settings…</p>}
+    {!draft && !error && <p role="status">{t("settings.loading")}</p>}
     {draft && <form onSubmit={save}>
       <fieldset disabled={!canWrite || busy}>
-        <legend>Report media</legend>
-        <label htmlFor="image-media-limit"><strong>Per-image limit</strong>
-          <span>Maximum canonical size of each captured image.</span></label>
+        <legend>{t("settings.language")}</legend>
+        <label htmlFor="agency-language"><strong>{t("settings.agencyLanguage")}</strong>
+          <span>{t("settings.languageHelp")}</span></label>
+        <select id="agency-language" value={draft.language} onChange={(event) =>
+          setDraft((current) => current ? { ...current, language: event.target.value as AgencyLanguage } : current)}>
+          {availableUiLanguages.map((code) => <option key={code} value={code}>{languageDisplayName(code, language)}</option>)}
+        </select>
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.regionalFormat")}</legend>
+        <label htmlFor="agency-regional-format"><strong>{t("settings.datesAndNumbers")}</strong>
+          <span>{t("settings.regionalFormatHelp")}</span></label>
+        <select id="agency-regional-format" value={draft.regionalFormat ?? ""} onChange={(event) =>
+          setDraft((current) => current ? { ...current, regionalFormat: (event.target.value || null) as RegionalFormat } : current)}>
+          <option value="">{t("settings.currentFormat")}</option>
+          <option value="en-US">English (United States)</option>
+          <option value="sv-SE">Svenska (Sverige)</option>
+        </select>
+        <p aria-live="polite">{t("settings.preview")}: {formatClinicalDate("2026-09-28T13:45:00Z", draft.regionalFormat ?? null)} · {formatClinicalNumber(1234.5, draft.regionalFormat ?? null)}</p>
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend>{t("settings.timeZone")}</legend>
+        <label htmlFor="agency-time-zone"><strong>{t("settings.clinicalTimeZone")}</strong>
+          <span>{t("settings.timeZoneHelp")}</span></label>
+        <input id="agency-time-zone" value={draft.timeZone ?? ""} placeholder={resolveMessage(language, "admin.useDeviceTime")}
+          onChange={(event) => setDraft((current) => current ? { ...current, timeZone: event.target.value || null } : current)} />
+      </fieldset>
+
+      <fieldset disabled={!canWrite || busy}>
+        <legend><AdminText messageKey="admin.reportMedia" /></legend>
+        <label htmlFor="image-media-limit"><strong><AdminText messageKey="admin.perImageLimit" /></strong>
+          <span><AdminText messageKey="admin.maximumCanonicalSize" /></span></label>
         <div className="agency-settings-input">
           <input id="image-media-limit" name="imageMediaLimitMib" type="number"
             min="1" max={validAllowance ? mib : 2048} step="1" required value={imageLimitMib}
             onChange={(event) => setImageLimitMib(event.target.value)} /><span>MB</span>
         </div>
-        <small>Allowed range: 1 MB up to the total report-media limit. Default: 10 MB.</small>
-        <label htmlFor="report-media-allowance"><strong>Total report-media limit</strong>
-          <span>Aggregate photo and audio storage available to each report.</span></label>
+        <small><AdminText messageKey="admin.allowedRange1MB" /></small>
+        <label htmlFor="report-media-allowance"><strong><AdminText messageKey="admin.totalReportMedia" /></strong>
+          <span><AdminText messageKey="admin.aggregatePhotoAnd" /></span></label>
         <div className="agency-settings-input">
           <input id="report-media-allowance" name="reportMediaAllowanceMib" type="number"
             min="1" max="2048" step="1" required value={allowanceMib}
             onChange={(event) => setAllowanceMib(event.target.value)} /><span>MB</span>
         </div>
-        <small>Allowed range: 1–2,048 MB. Default: 50 MB.</small>
-        {warning && <p className="agency-settings-warning" role="alert">Above 50 MB, report media increases
-          Postgres database, WAL, replica, backup, restore, and vacuum storage growth.</p>}
+        <small><AdminText messageKey="admin.allowedRange12" /></small>
+        {warning && <p className="agency-settings-warning" role="alert"><AdminText messageKey="admin.above50MB" /></p>}
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
-        <legend>Sign-in and appearance</legend>
-        <label>Brand text<input maxLength={100} required value={draft.appearance.brandText}
+        <legend><AdminText messageKey="admin.signInAnd" /></legend>
+        <label><AdminText messageKey="admin.brandText" /><input maxLength={100} required value={draft.appearance.brandText}
           onChange={(event) => changeAppearance("brandText", event.target.value)} /></label>
-        <label>Sign-in guidance<textarea maxLength={300} required value={draft.appearance.helperText}
+        <label><AdminText messageKey="admin.signInGuidance" /><textarea maxLength={300} required value={draft.appearance.helperText}
           onChange={(event) => changeAppearance("helperText", event.target.value)} />
-          <span>Public guidance must not contain usernames, passwords, tokens, or other secrets.</span></label>
-        <label>Logo (PNG, optional, at most 128 KiB and 1024×1024)
+          <span><AdminText messageKey="admin.publicGuidanceMust" /></span></label>
+        <label><AdminText messageKey="admin.logoPNGOptional" />
           <input type="file" accept="image/png" onChange={(event) => chooseLogo(event.target.files?.[0])} /></label>
         {draft.appearance.logoPngDataUrl && <div className="agency-logo-preview">
           {/* A bounded administrator-supplied data URL cannot use Next's static image optimizer. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={draft.appearance.logoPngDataUrl} alt="Agency logo preview" />
-          <button type="button" onClick={() => changeAppearance("logoPngDataUrl", null)}>Remove logo</button>
+          <img src={draft.appearance.logoPngDataUrl} alt={resolveMessage(language, "admin.agencyLogoPreview")} />
+          <button type="button" onClick={() => changeAppearance("logoPngDataUrl", null)}><AdminText messageKey="admin.removeLogo" /></button>
         </div>}
         <div className="agency-color-grid">
-          <label>Accent color<input type="color" value={draft.appearance.accentColor}
+          <label><AdminText messageKey="admin.accentColor" /><input type="color" value={draft.appearance.accentColor}
             onChange={(event) => changeAppearance("accentColor", event.target.value)} /></label>
-          <label>Dark accent color<input type="color" value={draft.appearance.accentDarkColor}
+          <label><AdminText messageKey="admin.darkAccentColor" /><input type="color" value={draft.appearance.accentDarkColor}
             onChange={(event) => changeAppearance("accentDarkColor", event.target.value)} /></label>
-          <label>Browser theme color<input type="color" value={draft.appearance.browserThemeColor}
+          <label><AdminText messageKey="admin.browserThemeColor" /><input type="color" value={draft.appearance.browserThemeColor}
             onChange={(event) => changeAppearance("browserThemeColor", event.target.value)} /></label>
-          <label>PWA background color<input type="color" value={draft.appearance.pwaBackgroundColor}
+          <label><AdminText messageKey="admin.pwaBackgroundColor" /><input type="color" value={draft.appearance.pwaBackgroundColor}
             onChange={(event) => changeAppearance("pwaBackgroundColor", event.target.value)} /></label>
         </div>
         <p className="agency-appearance-preview">
-          <span>Accessible accent preview</span>
-          <span>Dark accent preview</span>
+          <span><AdminText messageKey="admin.accessibleAccentPreview" /></span>
+          <span><AdminText messageKey="admin.darkAccentPreview" /></span>
         </p>
-        <label>PWA name<input maxLength={100} required value={draft.appearance.pwaName}
+        <label><AdminText messageKey="admin.pwaName" /><input maxLength={100} required value={draft.appearance.pwaName}
           onChange={(event) => changeAppearance("pwaName", event.target.value)} /></label>
-        <label>PWA short name<input maxLength={30} required value={draft.appearance.pwaShortName}
+        <label><AdminText messageKey="admin.pwaShortName" /><input maxLength={30} required value={draft.appearance.pwaShortName}
           onChange={(event) => changeAppearance("pwaShortName", event.target.value)} /></label>
       </fieldset>
 
       <fieldset disabled={!canWrite || busy}>
-        <legend>NEMSIS agency demographics</legend>
-        <p>Changes append an immutable dAgency version. Existing reports keep their pinned version.</p>
+        <legend><AdminText messageKey="admin.nemsisAgencyDemographics" /></legend>
+        <p><AdminText messageKey="admin.changesAppendAn" /></p>
         <label>dAgency.01 — EMS Agency Unique State ID<input maxLength={50} required
           value={draft.demographics.agencyUniqueStateId}
           onChange={(event) => changeDemographic("agencyUniqueStateId", event.target.value)} /></label>
@@ -181,15 +218,15 @@ export function AgencySettingsPanel({ csrfToken, canWrite }: {
         <label>dAgency.04 — ANSI state code<input inputMode="numeric" pattern="[0-9]{2}" maxLength={2} required
           value={draft.demographics.stateCode}
           onChange={(event) => changeDemographic("stateCode", event.target.value)} /></label>
-        <label>State display (optional)<input maxLength={100} value={draft.demographics.stateDisplay ?? ""}
+        <label><AdminText messageKey="admin.stateDisplayOptional" /><input maxLength={100} value={draft.demographics.stateDisplay ?? ""}
           onChange={(event) => changeDemographic("stateDisplay", event.target.value || null)} /></label>
-        <small>Current demographic version {settings?.demographics.version}; code system {draft.demographics.stateCodeSystem ?? "not recorded"}.</small>
+        <small>{resolveMessage(language, "admin.currentDemographicVersion", { version: settings?.demographics.version ?? 0, codeSystem: draft.demographics.stateCodeSystem ?? resolveMessage(language, "admin.notRecorded") })}</small>
       </fieldset>
 
-      <small>Agency Settings revision {settings?.revision}.</small>
-      {!canWrite && <p>You can view these settings, but changing them requires settings:write authority.</p>}
+      <small>{t("settings.revision", { revision: settings?.revision ?? 0 })}</small>
+      {!canWrite && <p>{t("settings.readOnly")}</p>}
       {canWrite && <div className="form-actions"><button type="submit"
-        disabled={busy || !validAllowance || !validImageLimit || !complete || unchanged}>{busy ? "Saving…" : "Save"}</button></div>}
+        disabled={busy || !validAllowance || !validImageLimit || !complete || unchanged}>{busy ? t("settings.saving") : t("settings.save")}</button></div>}
     </form>}
   </section>;
 }

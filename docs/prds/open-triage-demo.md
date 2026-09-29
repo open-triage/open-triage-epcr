@@ -96,7 +96,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 72. As an Administrator, I want to bind fields to versioned local value sets, so that coded entry remains available offline and historically reproducible.
 73. As an Administrator, I want to rename dropdown labels and add or deprecate options in a future form version, so that terminology can evolve without rewriting old reports.
 74. As an Administrator, I want deprecated options hidden only from future forms, so that existing drafts and signed reports remain valid against their pinned versions.
-75. As an Administrator, I want language-neutral form structure with localized labels and help text, so that English and Swedish do not silently develop different clinical logic.
+75. As an Administrator, I want language-neutral form structure with all labels and descriptions owned by the catalog, so English and Swedish do not silently develop different clinical logic.
 76. As an Administrator, I want missing translations visible and validated according to deployment policy, so that localization gaps are deliberate.
 77. As an Administrator, I want to create custom elements with immutable application identities and human-readable deployment namespaces, so that regional additions remain stable and distinguishable from NEMSIS identifiers.
 78. As an Administrator, I want every custom field to be representable through NEMSIS `eCustomConfiguration` and `eCustomResults`, so that configuration does not create future export dead ends.
@@ -164,7 +164,7 @@ The demo will run as a guarded public sandbox using fixed Demo credentials and s
 ### Versioned Form Engine module
 
 - A form definition contains stable sections, fields, repeatable groups, presentation metadata, rules, terminology bindings, translations, and validation policy.
-- Structural versions are language-neutral. Localized labels and help text are attached by locale, with visible fallback behavior.
+- Form versions are language-neutral structures. Localized group names, element labels, and descriptions come from the pinned catalog locale, with visible fallback behavior.
 - Published form versions are immutable. Editing begins by cloning a published version into a draft.
 - Every report remains pinned to the exact form and terminology versions used at creation. New publications apply only to new reports.
 - Field identifiers and fundamental value types become immutable after publication. A materially different field is created as a new element.

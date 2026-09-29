@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import type {
-  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
+  AuthoringVersionOption, CatalogDefinitionView, CatalogDraft, CatalogDraftCodeList, CatalogDraftCodeValue, CatalogDraftDefinition, CatalogDraftElement, CatalogValidationResult,
   ClinicianSession, PublishedCatalog
 } from "@open-triage/contracts";
 import { DataSource, type EntityManager } from "typeorm";
@@ -17,8 +17,8 @@ type DraftRow = {
 };
 
 type SourceElementRow = {
-  hidden_element_ids?: string[];
-  element_id: string; name: string; element_identity_id: string; base_datatype: string; source_datatype: string;
+  hidden_element_ids?: string[]; special_choices?: CatalogDraftElement["specialChoices"];
+  element_id: string; name: string; description: string | null; localization: CatalogDraftElement["localization"] | null; element_identity_id: string; base_datatype: string; source_datatype: string;
   group_path: string[]; min_occurs: number; max_occurs: number | null; nillable: boolean;
   supports_not_values: boolean; supports_pertinent_negatives: boolean; usage: string;
   agency_required_severity: "warning" | "error" | null;
@@ -28,8 +28,9 @@ type SourceElementRow = {
 type SourceCodeListRow = {
   list_id: string; name: string; classification: "defined" | "suggested" | "agency" | "inline"; element_ids: string[];
   values: Array<{ code: string; codeSystem: string; label: string; sourceLabel: string;
-    category: string | null; enabled: boolean }>;
+    category: string | null; enabled: boolean; localization?: CatalogDraftCodeValue["localization"] }>;
   default_value: { code: string; codeSystem: string } | null;
+  localization?: CatalogDraftCodeList["localization"];
 };
 
 function stable(value: unknown): unknown {
@@ -178,6 +179,34 @@ export class CatalogAuthoringService {
     });
   }
 
+  async delete(sessionToken: string, draftId: string, input: unknown): Promise<void> {
+    const session = await this.authorize(sessionToken, "catalog:write");
+    const expectedRevision = this.expectedRevision(input);
+    await this.dataSource.transaction("SERIALIZABLE", async (manager) => {
+      await manager.query("select pg_advisory_xact_lock(hashtext($1))", [`catalog-draft:${session.organization.id}`]);
+      const rows = await manager.query<DraftRow[]>(`
+        select * from catalog.authoring_draft
+        where id=$1 and organization_id=$2 and published_release_id is null for update
+      `, [draftId, session.organization.id]);
+      const draft = rows[0];
+      if (!draft) throw new NotFoundException(`Catalog draft ${draftId} was not found`);
+      if (draft.revision !== expectedRevision) throw new ConflictException({
+        message: "Catalog draft revision is stale", expectedRevision, actualRevision: draft.revision
+      });
+      await manager.query(`insert into app_identity.configuration_event
+        (organization_id,actor_id,action,result,form_version_id,catalog_release_id,
+         change_note,content_sha256,details)
+        values ($1,$2,'catalog.draft_delete','succeeded',null,$3,'Catalog draft deleted',$4,$5::jsonb)`,
+      [session.organization.id, session.user.id, draft.source_release_id, draft.definition_sha256,
+        JSON.stringify({ catalogDraftId: draft.id, sourceReleaseId: draft.source_release_id, revision: draft.revision })]);
+      const deleted = mutationRows<{ id: string }>(await manager.query(`
+        delete from catalog.authoring_draft
+        where id=$1 and organization_id=$2 and revision=$3 and published_release_id is null returning id
+      `, [draftId, session.organization.id, expectedRevision]));
+      if (!deleted[0]) throw new ConflictException("Catalog draft revision is stale or the catalog was published");
+    });
+  }
+
   async validate(sessionToken: string, draftId: string): Promise<CatalogValidationResult> {
     const session = await this.authorize(sessionToken, "catalog:read");
     const rows = await this.dataSource.query<DraftRow[]>(`
@@ -225,7 +254,22 @@ export class CatalogAuthoringService {
         source.artifact_schema_version, validation.definitionSha256, JSON.stringify({ sourceReleaseId: draft.source_release_id,
           dataModelVersion: source.data_model_version,
           organizationId: session.organization.id, changeNote: body.changeNote,
-          hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [] }), body.displayName]);
+          hiddenElementIds: draft.canonical_definition.hiddenElementIds ?? [],
+          specialChoiceLocalization: Object.fromEntries(draft.canonical_definition.elements
+            .filter((element) => element.specialChoices?.some((choice) => choice.localization?.sv))
+            .map((element) => [element.elementId, Object.fromEntries([...new Set(element.specialChoices!.map((choice) => choice.kind))]
+              .map((kind) => [kind, Object.fromEntries(element.specialChoices!
+                .filter((choice) => choice.kind === kind && choice.localization?.sv)
+                .map((choice) => [choice.code, choice.localization]))]))])),
+          elementLocalization: Object.fromEntries(draft.canonical_definition.elements
+            .filter((element) => element.localization?.sv)
+            .map((element) => [element.elementId, element.localization])),
+          codeListLocalization: Object.fromEntries(draft.canonical_definition.codeLists.map((list) => [list.listId, {
+            ...(list.localization ? { localization: list.localization } : {}),
+            values: Object.fromEntries([...new Set(list.values.map((value) => value.codeSystem))].map((system) =>
+              [system, Object.fromEntries(list.values.filter((value) => value.codeSystem === system && value.localization?.sv)
+                .map((value) => [value.code, value.localization]))]))
+          }])) }), body.displayName]);
       await this.project(manager, draft, releaseId);
       await this.cloneAgencyDemographics(manager, session.organization.id, draft.source_release_id,
         releaseId, session.user.id);
@@ -314,49 +358,60 @@ export class CatalogAuthoringService {
   }
 
   private async sourceElements(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceElementRow[]> {
-    return manager.query(`select e.element_id, e.name, e.element_identity_id, e.base_datatype, e.source_datatype,
+    return manager.query(`select e.element_id, e.name, e.description, cr.provenance->'elementLocalization'->e.element_id as localization,
+      (select coalesce(jsonb_agg(jsonb_build_object('kind', o.source_kind, 'code', o.code, 'label', o.display,
+        'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)
+        order by o.source_kind, o.code), '[]'::jsonb) from catalog.element_option o
+        where o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind in ('not-value', 'pertinent-negative')) as special_choices,
+      e.element_identity_id, e.base_datatype, e.source_datatype,
       e.group_path, e.min_occurs, e.max_occurs, e.nillable, e.supports_not_values,
       e.supports_pertinent_negatives, e.usage, e.agency_required_severity, m.analytical_location, m.sql_type,
       (select coalesce(array_agg(value),array[]::text[]) from jsonb_array_elements_text(
         coalesce((select provenance->'hiddenElementIds' from catalog.release where id=$1),'[]'::jsonb)) value) as hidden_element_ids
       from catalog.element_definition e left join catalog.analytics_element_mapping m
         on m.release_id=e.release_id and m.element_id=e.element_id
+      join catalog.release cr on cr.id=e.release_id
       where e.release_id=$1 order by e.element_id`, [releaseId]).then((rows: Array<SourceElementRow & { analytical_location: string | null; sql_type: string | null }>) =>
         rows.map((row) => ({ ...row, analytical_location: row.analytical_location ?? "unmapped", sql_type: row.sql_type ?? "" })) as SourceElementRow[]);
   }
 
   private async sourceCodeLists(manager: Pick<EntityManager, "query">, releaseId: string): Promise<SourceCodeListRow[]> {
     const valueSets = await manager.query<SourceCodeListRow[]>(`select v.value_set_id as list_id, v.name, v.classification,
+      cr.provenance->'codeListLocalization'->v.value_set_id->'localization' as localization,
       coalesce((select array_agg(vse.element_id order by vse.element_id)
         from catalog.value_set_element vse where vse.release_id=v.release_id
           and vse.value_set_id=v.value_set_id), array[]::text[]) as element_ids,
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.source_display, 'category', o.category,
-        'enabled', coalesce(c.enabled, true)) order by c.sort_order nulls last, o.code_system, o.code)
+        'enabled', coalesce(c.enabled, true), 'localization',
+        cr.provenance->'codeListLocalization'->v.value_set_id->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
       from catalog.value_set v left join catalog.value_set_option o
         on o.release_id=v.release_id and o.value_set_id=v.value_set_id
+      join catalog.release cr on cr.id=v.release_id
       left join catalog.value_set_option_configuration c
         on c.release_id=o.release_id and c.value_set_id=o.value_set_id and c.code_system=o.code_system and c.code=o.code
       where v.release_id=$1 and v.classification in ('defined', 'suggested', 'agency')
-      group by v.release_id, v.value_set_id, v.name, v.classification order by v.value_set_id`, [releaseId]);
+      group by v.release_id, v.value_set_id, v.name, v.classification, cr.id order by v.value_set_id`, [releaseId]);
     const inline = await manager.query<SourceCodeListRow[]>(`select 'inline:' || e.element_id as list_id,
       e.name, 'inline'::text as classification, array[e.element_id] as element_ids,
+      cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'localization' as localization,
       coalesce(jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system,
         'label', o.display, 'sourceLabel', o.display, 'category', null,
-        'enabled', coalesce(c.enabled, true)) order by c.sort_order nulls last, o.code_system, o.code)
+        'enabled', coalesce(c.enabled, true), 'localization',
+        cr.provenance->'codeListLocalization'->('inline:' || e.element_id)->'values'->o.code_system->o.code) order by c.sort_order nulls last, o.code_system, o.code)
         filter (where o.code is not null), '[]'::jsonb) as values,
       (jsonb_agg(jsonb_build_object('code', o.code, 'codeSystem', o.code_system))
         filter (where c.is_default))->0 as default_value
-      from catalog.element_definition e join catalog.element_option o
+      from catalog.element_definition e join catalog.release cr on cr.id=e.release_id join catalog.element_option o
         on o.release_id=e.release_id and o.element_id=e.element_id and o.source_kind='inline'
       left join catalog.element_option_configuration c
         on c.release_id=o.release_id and c.element_id=o.element_id and c.source_kind=o.source_kind
         and c.code_system=o.code_system and c.code=o.code
       where e.release_id=$1
-      group by e.element_id, e.name order by e.element_id`, [releaseId]);
+      group by e.element_id, e.name, cr.id order by e.element_id`, [releaseId]);
     return [...inline, ...valueSets];
   }
 
@@ -366,7 +421,8 @@ export class CatalogAuthoringService {
     return { schemaVersion: 1, sourceReleaseId,
       ...(elements[0]?.hidden_element_ids?.length ? { hiddenElementIds: elements[0].hidden_element_ids } : {}),
       elements: elements.map((row) => ({
-      elementId: row.element_id, label: row.name, identityId: row.element_identity_id, baseDatatype: row.base_datatype,
+      elementId: row.element_id, label: row.name, description: row.description ?? "",
+      ...(row.localization ? { localization: row.localization } : {}), ...(row.special_choices?.length ? { specialChoices: row.special_choices } : {}), identityId: row.element_identity_id, baseDatatype: row.base_datatype,
       storageSemantics: { sourceDatatype: row.source_datatype, groupPath: row.group_path,
         analyticalLocation: row.analytical_location, sqlType: row.sql_type },
       requirednessSeverity: row.agency_required_severity ??
@@ -375,6 +431,7 @@ export class CatalogAuthoringService {
         supportsNotValues: row.supports_not_values, supportsPertinentNegatives: row.supports_pertinent_negatives }
     })), codeLists: codeLists.map((list) => ({
       listId: list.list_id, name: list.name, classification: list.classification,
+      ...(list.localization ? { localization: list.localization } : {}),
       elementIds: list.element_ids, values: list.values, defaultValue: list.default_value
     })) };
   }
@@ -393,7 +450,10 @@ export class CatalogAuthoringService {
         // Catalog authoring owns labels and vocabulary. Requiredness and documented
         // occurrence policy are migrated to Validation and cannot be changed here.
         return { ...prior,
-          label: typeof prior.label === "string" && prior.label.trim() ? prior.label : element.label,
+          label: typeof prior.label === "string" ? prior.label : element.label,
+          description: typeof prior.description === "string" ? prior.description : element.description,
+          ...(prior.localization ? { localization: prior.localization } : {}),
+          ...(prior.specialChoices?.length || element.specialChoices?.length ? { specialChoices: prior.specialChoices ?? element.specialChoices } : {}),
           requirednessSeverity: element.requirednessSeverity,
           constraints: { ...prior.constraints, minOccurs: element.constraints.minOccurs, maxOccurs: element.constraints.maxOccurs } };
       }),
@@ -408,6 +468,7 @@ export class CatalogAuthoringService {
     manager: Pick<EntityManager, "query">, sourceReleaseId: string, definition: unknown
   ): Promise<CatalogValidationResult> {
     const findings: string[] = [];
+    const warnings: string[] = [];
     if (!isRecord(definition) || definition.schemaVersion !== 1 || definition.sourceReleaseId !== sourceReleaseId ||
         !Array.isArray(definition.elements)) {
       findings.push("The canonical catalog must be schema version 1 and remain pinned to its source release");
@@ -436,8 +497,49 @@ export class CatalogAuthoringService {
         storage?.sqlType === base.sql_type && Array.isArray(storage?.groupPath) &&
         storage.groupPath.length === base.group_path.length && storage.groupPath.every((part, i) => part === base.group_path[i]);
       if (!immutable) findings.push(`${element.elementId} identity, datatype, and storage semantics cannot change`);
-      if (typeof element.label !== "string" || !element.label.trim())
-        findings.push(`${element.elementId}.label must be a non-empty label`);
+      if (typeof element.label !== "string") findings.push(`${element.elementId}.label must be text`);
+      else if (!element.label.trim()) warnings.push(`${element.elementId}.label is missing English text`);
+      if (element.description !== undefined && typeof element.description !== "string")
+        findings.push(`${element.elementId}.description must be text`);
+      const localization = element.localization;
+      if (localization !== undefined) {
+        if (!isRecord(localization) || localization.schemaVersion !== 1 ||
+            Object.keys(localization).some((key) => !["schemaVersion", "sv"].includes(key)) ||
+            localization.sv !== undefined && (!isRecord(localization.sv) ||
+              Object.keys(localization.sv).some((key) => !["label", "description", "reviewedSource"].includes(key)) ||
+              [localization.sv.label, localization.sv.description].some((value) => value !== undefined && typeof value !== "string") ||
+              localization.sv.reviewedSource !== undefined && (!isRecord(localization.sv.reviewedSource) ||
+                Object.keys(localization.sv.reviewedSource).some((key) => !["label", "description"].includes(key)) ||
+                Object.values(localization.sv.reviewedSource).some((value) => typeof value !== "string"))))
+          findings.push(`${element.elementId}.localization is malformed`);
+        else if (isRecord(localization.sv)) {
+          if (typeof localization.sv.label !== "string" || !localization.sv.label.trim())
+            warnings.push(`${element.elementId}.label is missing Swedish text`);
+          if (localization.sv.label && localization.sv.reviewedSource &&
+              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.label !== element.label)
+            warnings.push(`${element.elementId}.label Swedish text needs English source review`);
+          if (localization.sv.description && localization.sv.reviewedSource &&
+              isRecord(localization.sv.reviewedSource) && localization.sv.reviewedSource.description !== element.description)
+            warnings.push(`${element.elementId}.description Swedish text needs English source review`);
+        }
+      } else warnings.push(`${element.elementId}.label is missing Swedish text`);
+      const baseChoices = base.special_choices ?? [];
+      if (!Array.isArray(element.specialChoices ?? []) || (element.specialChoices ?? []).length !== baseChoices.length) {
+        findings.push(`${element.elementId} special choices must preserve source identities`);
+      } else {
+        const sourceChoices = new Map(baseChoices.map((choice) => [`${choice.kind}\u0000${choice.code}`, choice]));
+        const seenChoices = new Set<string>();
+        for (const choice of element.specialChoices ?? []) {
+          const key = `${choice.kind}\u0000${choice.code}`;
+          if (!sourceChoices.has(key) || seenChoices.has(key) || sourceChoices.get(key)!.label !== choice.label)
+            findings.push(`${element.elementId} special choice identity ${key} is unknown, duplicate, or changed`);
+          seenChoices.add(key);
+          if (choice.localization?.sv?.label !== undefined && typeof choice.localization.sv.label !== "string")
+            findings.push(`${element.elementId} special choice ${key} translation is malformed`);
+          if (choice.localization?.sv?.reviewedSource?.label && choice.localization.sv.reviewedSource.label !== choice.label)
+            warnings.push(`${element.elementId} special choice ${key} needs source review`);
+        }
+      }
       const constraints = element.constraints;
       if (!constraints || !Number.isInteger(constraints.minOccurs) || constraints.minOccurs < 0 ||
           !(constraints.maxOccurs === null || Number.isInteger(constraints.maxOccurs) && constraints.maxOccurs >= 1) ||
@@ -474,6 +576,13 @@ export class CatalogAuthoringService {
           !Array.isArray(list.elementIds) || list.elementIds.length !== baseList.element_ids.length ||
           list.elementIds.some((elementId, index) => elementId !== baseList.element_ids[index]))
         findings.push(`${list.listId} identity and classification cannot change`);
+      const listTranslation = list.localization?.sv;
+      if (list.localization !== undefined && (list.localization.schemaVersion !== 1 ||
+          (listTranslation !== undefined && (typeof listTranslation.name !== "string" ||
+            (listTranslation.reviewedSource !== undefined && typeof listTranslation.reviewedSource.name !== "string")))))
+        findings.push(`${list.listId} localized list name is malformed`);
+      else if (listTranslation?.reviewedSource && listTranslation.reviewedSource.name !== list.name)
+        warnings.push(`${list.listId} localized list name needs source review`);
       const sourceValues = new Map(baseList.values.map((value) => [`${value.codeSystem}\u0000${value.code}`, value]));
       const seenValues = new Set<string>();
       const enabledByKey = new Map<string, boolean>();
@@ -494,6 +603,14 @@ export class CatalogAuthoringService {
             typeof unknownValue.sourceLabel !== "string" || !unknownValue.sourceLabel.trim() ||
             !(unknownValue.category === null || typeof unknownValue.category === "string") ||
             typeof unknownValue.enabled !== "boolean") findings.push(`${list.listId} value ${code} is malformed`);
+        const translation = (unknownValue as CatalogDraftCodeValue).localization?.sv;
+        if ((unknownValue as CatalogDraftCodeValue).localization != null &&
+            ((unknownValue as CatalogDraftCodeValue).localization?.schemaVersion !== 1 ||
+              (translation !== undefined && (typeof translation.label !== "string" ||
+                (translation.reviewedSource !== undefined && typeof translation.reviewedSource.label !== "string")))))
+          findings.push(`${list.listId} value ${code} localization is malformed`);
+        else if (translation?.reviewedSource && translation.reviewedSource.label !== unknownValue.label)
+          warnings.push(`${list.listId} value ${code} needs source review`);
         const baseValue = sourceValues.get(key);
         if (baseValue && (unknownValue.sourceLabel !== baseValue.sourceLabel || unknownValue.category !== baseValue.category))
           findings.push(`${list.listId} published code ${code} identity and source meaning cannot change`);
@@ -510,7 +627,7 @@ export class CatalogAuthoringService {
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
     const digest = catalogDefinitionSha256(definition);
-    return { valid: findings.length === 0, findings, definitionSha256: digest,
+    return { valid: findings.length === 0, findings, warnings, definitionSha256: digest,
       projectionsVerified: findings.length === 0 && seen.size === source.length && seenLists.size === sourceLists.length };
   }
 
@@ -522,13 +639,13 @@ export class CatalogAuthoringService {
       (release_id,element_id,element_identity_id,section,name,description,national,state,usage,source_datatype,base_datatype,
        group_path,min_occurs,max_occurs,unbounded,nillable,supports_not_values,supports_pertinent_negatives,definition,
        agency_required,agency_required_severity)
-      select $2,e.element_id,e.element_identity_id,e.section,x.label,e.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
+      select $2,e.element_id,e.element_identity_id,e.section,x.label,x.description,e.national,e.state,e.usage,e.source_datatype,e.base_datatype,
        e.group_path,x.min_occurs,x.max_occurs,e.unbounded,x.nillable,x.supports_not_values,x.supports_pertinent_negatives,e.definition,
        x.requiredness_severity is not null,x.requiredness_severity
-      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,label text,min_occurs integer,max_occurs integer,
+      from catalog.element_definition e join jsonb_to_recordset($3::jsonb) x(element_id text,label text,description text,min_occurs integer,max_occurs integer,
         nillable boolean,supports_not_values boolean,supports_pertinent_negatives boolean,requiredness_severity text) on x.element_id=e.element_id
       where e.release_id=$1`, [source, releaseId, JSON.stringify(draft.canonical_definition.elements.map((e) => ({
-        element_id:e.elementId,label:e.label,min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
+        element_id:e.elementId,label:e.label,description:e.description ?? "",min_occurs:e.constraints.minOccurs,max_occurs:e.constraints.maxOccurs,nillable:e.constraints.nillable,
         supports_not_values:e.constraints.supportsNotValues,supports_pertinent_negatives:e.constraints.supportsPertinentNegatives,
         requiredness_severity:e.requirednessSeverity })))]);
     await manager.query(`insert into catalog.element_option
@@ -576,6 +693,13 @@ export class CatalogAuthoringService {
       [releaseId, JSON.stringify(projectedValues)]);
     await manager.query(`insert into catalog.repeating_group_time_mapping select $2,group_id,resolution,time_element_id,inherited_from_group_id,candidate_time_element_ids,note from catalog.repeating_group_time_mapping where release_id=$1`, [source, releaseId]);
     await manager.query(`insert into catalog.analytics_element_mapping select $2,element_id,element_identity_id,analytical_location,sql_column,sql_type,identifying,mapping from catalog.analytics_element_mapping where release_id=$1`, [source, releaseId]);
+  }
+
+  private expectedRevision(input: unknown): number {
+    const revision = isRecord(input) ? input.expectedRevision : undefined;
+    if (!Number.isSafeInteger(revision) || Number(revision) < 1)
+      throw new UnprocessableEntityException("expectedRevision must be a positive integer");
+    return Number(revision);
   }
 
   private saveBody(input: unknown): { expectedRevision: number; displayName: string | null; definition: CatalogDraftDefinition } {

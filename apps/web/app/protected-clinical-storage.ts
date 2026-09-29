@@ -297,13 +297,8 @@ export async function removeProtectedPhotoPreview(reportId: string): Promise<voi
   if (!context?.payload.photoPreview) return;
   const { photoPreview: _preview, ...payload } = context.payload;
   context.payload = payload;
-  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   await context.writer.flush();
-}
-
-function photoQueueSettled(payload: ProtectedClinicalPayload): boolean {
-  return !(payload.photoQueue?.some(({ note }) => note.persistenceState !== "ready") ?? false) && !payloadHasPendingWork(payload);
 }
 
 export async function stageProtectedPhoto(reportId: string, entry: ProtectedPhotoQueueEntry): Promise<void> {
@@ -325,7 +320,6 @@ export async function updateProtectedPhoto(reportId: string, noteId: string,
   if (!context) return;
   context.payload = { ...context.payload, photoQueue: (context.payload.photoQueue ?? [])
     .map((entry) => entry.note.id === noteId ? update(entry) : entry) };
-  if (photoQueueSettled(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   publishPhotos(reportId);
   await context.writer.flush();
@@ -336,7 +330,6 @@ export async function removeProtectedPhoto(reportId: string, noteId: string): Pr
   if (!context) return;
   context.payload = { ...context.payload, photoQueue: (context.payload.photoQueue ?? [])
     .filter(({ note }) => note.id !== noteId) };
-  if (photoQueueSettled(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   publishPhotos(reportId);
   await context.writer.flush();
@@ -407,7 +400,6 @@ export async function removeProtectedAudioPreview(reportId: string): Promise<voi
   if (!context?.payload.audioPreview) return;
   const { audioPreview: _preview, ...payload } = context.payload;
   context.payload = payload;
-  if (!payloadHasPendingWork(payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   await context.writer.flush();
 }
@@ -432,7 +424,6 @@ export async function updateProtectedAudio(reportId: string, noteId: string,
   if (!context) return;
   context.payload = { ...context.payload, audioQueue: (context.payload.audioQueue ?? [])
     .map((entry) => entry.note.id === noteId ? update(entry) : entry) };
-  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   publishAudio(reportId);
   await context.writer.flush();
@@ -443,7 +434,6 @@ export async function removeProtectedAudio(reportId: string, noteId: string): Pr
   if (!context) return;
   context.payload = { ...context.payload, audioQueue: (context.payload.audioQueue ?? [])
     .filter(({ note }) => note.id !== noteId) };
-  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
   publishAudio(reportId);
   await context.writer.flush();
@@ -451,8 +441,16 @@ export async function removeProtectedAudio(reportId: string, noteId: string): Pr
 
 /** Only active-session state is inspected; locked records are deliberately undiscoverable. */
 export function protectedLogoutSummary(): ProtectedLogoutSummary {
-  const pending = [...contexts.values()].filter((context) =>
-    context.synchronizedRevision < context.revision || payloadHasPendingWork(context.payload));
+  return summarizeProtectedPendingWork([...contexts.values()]);
+}
+
+export function summarizeProtectedPendingWork(entries: ReadonlyArray<{
+  readonly payload: ProtectedClinicalPayload;
+  readonly envelope: Pick<ProtectedReportKeyEnvelope, "recoveryDeadline">;
+}>): ProtectedLogoutSummary {
+  // Ciphertext revisions also advance for UI state and local cache writes.
+  // Only queued clinical commands and unfinished media need synchronization.
+  const pending = entries.filter(({ payload }) => payloadHasPendingWork(payload));
   return {
     pendingReportCount: pending.length,
     recoveryDeadline: pending.map(({ envelope }) => envelope.recoveryDeadline).sort()[0] ?? null,
@@ -685,13 +683,16 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
   const context = contexts.get(reportId);
   if (!context) return;
   const revision = context.revision + 1;
+  // Derive sync metadata from this queued snapshot, not the mutable live
+  // context: another update can arrive while encryption or its receipt awaits.
+  const synchronizedRevision = payloadHasPendingWork(payload) ? context.synchronizedRevision : revision;
   let persistedPayload = payload;
   let encrypted = await encryptProtectedPayload(context.key, context.envelope.recoveryHandle, revision, persistedPayload);
   let record: ProtectedClinicalRecord = {
     localRecordId: context.localRecordId, schemaVersion: PROTECTED_ENVELOPE_SCHEMA, algorithm: "AES-256-GCM",
     ...(context.checkpointScope === "browser" ? { checkpointScope: "browser" as const } : {}),
     recoveryHandle: context.envelope.recoveryHandle, recoveryDeadline: context.envelope.recoveryDeadline,
-    ciphertextRevision: revision, synchronizedRevision: Math.min(context.synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
+    ciphertextRevision: revision, synchronizedRevision: Math.min(synchronizedRevision, revision), updatedAt: new Date().toISOString(), ...encrypted,
   };
   try {
     await storeWithPressureRecovery(record);
@@ -748,6 +749,7 @@ async function persist(reportId: string, payload: ProtectedClinicalPayload): Pro
     await updateRecordDeadline(context.localRecordId, revision, receipt.recoveryDeadline);
   }
   context.revision = revision;
+  context.synchronizedRevision = synchronizedRevision;
   context.failure = null;
   publishStatus(reportId, writableStorageStatus(context));
   if (context.synchronizedRevision >= revision) void checkpointProtectedCiphertext(reportId, context, revision, encrypted.ciphertext);
@@ -999,7 +1001,6 @@ export function updateProtectedReport(reportId: string, report: unknown): void {
   const context = contexts.get(reportId);
   if (!context) return;
   context.payload = { ...context.payload, report };
-  if (!payloadHasPendingWork(context.payload)) context.synchronizedRevision = context.revision + 1;
   queuePersist(reportId);
 }
 

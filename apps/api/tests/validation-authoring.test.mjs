@@ -172,7 +172,7 @@ test("publication validation promotes structural-bound diagnostics to blocking e
   const result = await service(manager).validate("session", versionId);
   assert.equal(result.valid, false);
   assert.deepEqual(result.diagnostics.map(({ code, severity }) => ({ code, severity })),
-    [{ code: "occurrence-bound", severity: "error" }]);
+    [{ code: "occurrence-bound", severity: "error" }, { code: "wording", severity: "warning" }]);
 });
 
 test("server validation compiles and evaluates the same nested conditional semantics used by the browser", async () => {

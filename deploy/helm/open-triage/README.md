@@ -85,9 +85,12 @@ committed in its own transaction. A failed migration is rolled back and stops
 the release; a successful migration remains committed if a later application
 rollout fails.
 
-The migration Job defaults to schema migrations only. The public demonstration
-values set `migration.bootstrapSynthetic=true`, which runs the idempotent,
-insert-only fixture bootstrap before every rollout. The target organization must
+The migration Job applies schema migrations, imports the canonical catalog and
+installation definitions from `defines/`, and then seeds any applicable published
+configuration. The public demonstration values set
+`migration.bootstrapSynthetic=true`, which performs that installation flow before
+running the idempotent, insert-only fixture bootstrap and reseeding applicable
+definitions. The target organization must
 already exist; this creates only missing `demo.admin` and `demo.clinician`
 accounts and never changes an existing account. For a one-time manual bootstrap, run:
 

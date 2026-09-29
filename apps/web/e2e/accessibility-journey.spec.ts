@@ -156,9 +156,9 @@ test("quick capture phone journey remains operable and persists", async ({ page 
   await note.fill("Accessible phone journey note updated");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("button", { name: /Open text note.*updated/ }).click();
-  await page.getByRole("button", { name: "Delete text note" }).click();
+  await page.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("alertdialog", { name: "Text note" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Keep note" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
   await expectNoBlockingAccessibilityViolations(page);
   await page.getByRole("button", { name: "Delete note" }).click();
   await expect(page.getByText("Accessible phone journey note updated")).toHaveCount(0);
