@@ -65,7 +65,11 @@ export class AgencySettingsService {
     `);
     const appearance = rows[0] ? this.appearance(rows[0]) : { ...DEFAULT_AGENCY_APPEARANCE };
     const settings = selectedInstallationSettings();
-    return { settings: { ...settings, language: rows[0]?.language ?? "en", regionalFormat: rows[0]?.regional_format ?? null, timeZone: rows[0]?.time_zone ?? null, signIn: {
+    const regionalFormat = rows[0]?.regional_format;
+    const timeZone = rows[0]?.time_zone;
+    return { settings: { ...settings, language: rows[0]?.language ?? "en",
+      ...(regionalFormat == null ? {} : { regionalFormat }),
+      ...(timeZone == null ? {} : { timeZone }), signIn: {
       brandText: appearance.brandText, helperText: appearance.helperText,
     } }, appearance };
   }
