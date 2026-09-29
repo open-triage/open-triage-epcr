@@ -1142,5 +1142,7 @@
   "admin.removeRulesAndActivate": "Godkänn, ta bort regler och aktivera",
   "admin.cancelActivation": "Avbryt aktivering",
   "platform.error.admin.formValidationRemovalRequired": "Granska de {count} valideringsregler som påverkas av formuläret före aktivering.",
-  "platform.error.admin.formValidationReviewChanged": "Valideringsvalet har ändrats. Granska aktiveringen igen."
+  "platform.error.admin.formValidationReviewChanged": "Valideringsvalet har ändrats. Granska aktiveringen igen.",
+  "calls.openingCall": "Öppnar uppdrag {call}",
+  "calls.preparingReport": "Förbereder din journal. Redigeraren öppnas automatiskt."
 }

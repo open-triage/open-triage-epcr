@@ -54,7 +54,9 @@ export function OpenReports({
   onReopened,
   onSessionEnded,
   refreshRequest = 0,
+  paused = false,
 }: {
+  readonly paused?: boolean;
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
   readonly activeReportId?: string;
@@ -75,6 +77,9 @@ export function OpenReports({
   const reportsRef = useRef<OpenReportSummary[]>([]);
   const syncingCachedReports = useRef(false);
   const refreshing = useRef(false);
+  const pauseEpoch = useRef(0);
+  const pausedRef = useRef(paused);
+  useEffect(() => { pausedRef.current = paused; pauseEpoch.current += 1; }, [paused]);
   const recoveryReauthentication = useRef(new RecoveryReauthenticationGate());
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
@@ -86,7 +91,7 @@ export function OpenReports({
   }, []);
 
   const syncCachedReports = useCallback(async () => {
-    if (activeReportId || syncingCachedReports.current) return;
+    if (pausedRef.current || activeReportId || syncingCachedReports.current) return;
     syncingCachedReports.current = true;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
@@ -125,11 +130,13 @@ export function OpenReports({
   }, [activeReportId, csrfToken, onSessionEnded, session.user.id]);
 
   const refresh = useCallback(async () => {
-    if (refreshing.current) return;
+    if (pausedRef.current || refreshing.current) return;
+    const epoch = pauseEpoch.current;
     refreshing.current = true;
     try {
       purgeExpiredOfflineReports(window.localStorage).forEach((reportId) => clearShellState(window.localStorage, reportId));
       const response = await fetchOpenReports();
+      if (pausedRef.current || pauseEpoch.current !== epoch) return;
       const completedReportIds = response.completedReportIds ?? [];
       const completedIds = new Set(completedReportIds);
       const removed = reportsRef.current.filter((report) => completedIds.has(report.reportId));
@@ -176,6 +183,7 @@ export function OpenReports({
       if (activeReportId && completedIds.has(activeReportId)
           && !nextDraftChange(window.localStorage, activeReportId)) onCompleted?.(activeReportId);
     } catch (refreshError) {
+      if (pausedRef.current || pauseEpoch.current !== epoch) return;
       if (refreshError instanceof Error && refreshError.message === "Your shift session has ended.") {
         onSessionEnded?.();
         return;
@@ -239,6 +247,7 @@ export function OpenReports({
   }, [csrfToken, reopen, t]);
 
   useEffect(() => {
+    if (paused) return;
     let pollTimer: number | null = null;
     const startOrPausePolling = () => {
       if (pollTimer !== null) window.clearInterval(pollTimer);
@@ -265,7 +274,7 @@ export function OpenReports({
       if (pollTimer !== null) window.clearInterval(pollTimer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [refresh, session.user.id]);
+  }, [refresh, session.user.id, paused]);
 
   useEffect(() => {
     if (handledRefreshRequest.current === refreshRequest) return;

@@ -1,7 +1,7 @@
 "use client";
 import { PlatformRequestError } from "../app/platform-errors";
 
-import type { ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
+import type { AssignedCall, ClinicianSession, PublicInstallationConfiguration } from "@open-triage/contracts";
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import {
   clearClinicianSession,
@@ -76,7 +76,10 @@ export function ClinicianSessionGate({ children }: {
   const [session, setSession] = useState<ClinicianSession | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const openingHeading = useRef<HTMLHeadingElement>(null);
+  const [openingCall, setOpeningCall] = useState<AssignedCall | null>(null);
   const [activeReport, setActiveReport] = useState<ActiveDraftReport | null>(null);
+  useEffect(() => { if (openingCall) openingHeading.current?.focus(); }, [openingCall]);
   const [openReportsRevision, setOpenReportsRevision] = useState(0);
   const [refreshRequest, setRefreshRequest] = useState(0);
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("mobile");
@@ -372,7 +375,7 @@ export function ClinicianSessionGate({ children }: {
             <button type="button" aria-pressed={presentationMode === "stationary"} onClick={() => selectPresentationMode("stationary")}>{t("navigation.stationary")}</button>
           </>}
           {hasAdminMode(session.capabilities) && <button type="button" aria-pressed={presentationMode === "admin"}
-            disabled={activeReport !== null}
+            disabled={activeReport !== null || openingCall !== null}
             onClick={() => selectPresentationMode("admin")}>{t("navigation.admin")}</button>}
         </div>
         <button type="button" onClick={requestLogout}>{t("navigation.logOut")}</button>
@@ -408,10 +411,14 @@ export function ClinicianSessionGate({ children }: {
             setRefreshRequest((value) => value + 1);
           }}
         />}
-      {presentationMode !== "admin" && <div hidden={activeReport !== null}>
+      {openingCall && !activeReport && <section className="call-opening" aria-busy="true" aria-labelledby="call-opening-heading">
+        <h1 ref={openingHeading} tabIndex={-1} id="call-opening-heading">{t("calls.openingCall", { call: openingCall.callNumber })}</h1>
+        <LoadingStatus>{t("calls.preparingReport")}</LoadingStatus>
+      </section>}
+      {presentationMode !== "admin" && <div hidden={activeReport !== null || openingCall !== null}>
         <TransientNotice message={completionNotice} onDismiss={() => setCompletionNotice(null)} focusOnMount />
         <AssignedCalls session={session} language={language} refreshRequest={refreshRequest} focusAssignmentId={generatedAssignmentId}
-          suppressedCallNumbers={completedCallNumbers} onOpened={async (opened, call) => {
+          suppressedCallNumbers={completedCallNumbers} onOpeningChange={setOpeningCall} onOpened={async (opened, call) => {
           setCompletionNotice(null);
           await prepareProtectedReport(sessionRequestToken(session), opened.report.id);
           const cached = cacheOpenedReport(window.localStorage, session, opened, call);
@@ -419,7 +426,7 @@ export function ClinicianSessionGate({ children }: {
           setDismissedActiveReportNoticeId(null);
           setActiveReport(cached.report);
         }} />
-        <OpenReports key={openReportsRevision} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
+        <OpenReports key={openReportsRevision} paused={openingCall !== null} session={session} language={language} refreshRequest={refreshRequest} activeReportId={activeReport?.id} onSessionEnded={sessionEnded} onCompleted={() => {
           setActiveReport(null);
         }} onReopened={(opened) => {
           const cached = cacheReopenedReport(window.localStorage, session, opened);

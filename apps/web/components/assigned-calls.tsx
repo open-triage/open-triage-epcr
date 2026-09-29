@@ -20,12 +20,14 @@ export function AssignedCalls({
   session,
   language,
   onOpened,
+  onOpeningChange,
   refreshRequest = 0,
   suppressedCallNumbers = [],
   focusAssignmentId = null,
 }: {
   readonly session: ClinicianSession;
   readonly language: AgencyLanguage;
+  readonly onOpeningChange?: (call: AssignedCall | null) => void;
   readonly onOpened?: (opened: OpenAssignmentResponse, call: AssignedCall) => void | Promise<void>;
   readonly refreshRequest?: number;
   readonly suppressedCallNumbers?: ReadonlyArray<string>;
@@ -37,25 +39,35 @@ export function AssignedCalls({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const openingRef = useRef(false);
+  const refreshEpoch = useRef(0);
   const callsRef = useRef<AssignedCall[]>([]);
   const handledRefreshRequest = useRef(refreshRequest);
   const csrfToken = sessionRequestToken(session);
   const t = useCallback((key: string) => resolveMessage(language, key), [language]);
 
   const refresh = useCallback(async () => {
+    if (openingRef.current) return;
+    const epoch = refreshEpoch.current;
     try {
       const response = await fetchAssignedCalls();
+      if (openingRef.current || refreshEpoch.current !== epoch) return;
       const visible = response.assignedCalls.filter((call) => !suppressedCallNumbers.includes(call.callNumber));
       callsRef.current = visible;
       setCalls(visible);
       setLoaded(true);
       setError(null);
     } catch (refreshError) {
+      if (openingRef.current || refreshEpoch.current !== epoch) return;
       setError(refreshError instanceof Error ? refreshError.message : t("calls.refreshFailed"));
     }
   }, [suppressedCallNumbers, t]);
 
   const open = useCallback(async (call: AssignedCall) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    refreshEpoch.current += 1;
+    onOpeningChange?.(call);
     setOpeningId(call.id);
     setError(null);
     try {
@@ -72,10 +84,15 @@ export function AssignedCalls({
       window.requestAnimationFrame(() => document.querySelector<HTMLElement>(".encounter-header")?.scrollIntoView());
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : t("calls.openFailed"));
+      window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(
+        `[data-assignment-id="${CSS.escape(call.id)}"] button`)?.focus());
     } finally {
+      openingRef.current = false;
+      refreshEpoch.current += 1;
+      onOpeningChange?.(null);
       setOpeningId(null);
     }
-  }, [csrfToken, onOpened, t]);
+  }, [csrfToken, onOpened, onOpeningChange, t]);
 
   useEffect(() => {
     let pollTimer: number | null = null;

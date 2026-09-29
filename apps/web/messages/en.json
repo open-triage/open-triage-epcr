@@ -1144,5 +1144,7 @@
   "admin.removeRulesAndActivate": "Agree, remove rules and activate",
   "admin.cancelActivation": "Cancel activation",
   "platform.error.admin.formValidationRemovalRequired": "Review the {count} validation rules affected by this form before activating it.",
-  "platform.error.admin.formValidationReviewChanged": "The validation selection changed. Review activation again."
+  "platform.error.admin.formValidationReviewChanged": "The validation selection changed. Review activation again.",
+  "calls.openingCall": "Opening call {call}",
+  "calls.preparingReport": "Preparing your report. The editor will open automatically."
 }

@@ -72,24 +72,34 @@ export async function catalogFieldsConfiguration(
   elementIds: readonly string[],
 ): Promise<ClinicalFormConfiguration["catalogFields"]> {
 
+  // Extract each translation map once. Re-reading the large, compressed provenance
+  // document for every field/choice made a full form take seconds to assemble.
   const fields = elementIds.length ? await manager.query<FieldRow[]>(`
+    with wording as materialized (
+      select provenance->'elementLocalization' as elements,
+             provenance->'specialChoiceLocalization' as special_choices
+      from catalog.release where id=$1
+    )
     select e.element_id, e.name, e.description,
-           cr.provenance->'elementLocalization'->e.element_id as localization,
+           cr.elements->e.element_id as localization,
            (select coalesce(jsonb_agg(jsonb_build_object('key', o.source_kind || ':' || o.code,
-             'localization', cr.provenance->'specialChoiceLocalization'->e.element_id->o.source_kind->o.code)), '[]'::jsonb)
+             'localization', cr.special_choices->e.element_id->o.source_kind->o.code)), '[]'::jsonb)
              from catalog.element_option o where o.release_id=e.release_id and o.element_id=e.element_id
              and o.source_kind in ('not-value', 'pertinent-negative')) as exceptional_choices,
            e.agency_required, e.agency_required_severity, e.min_occurs, e.max_occurs, e.nillable,
            e.supports_not_values, e.supports_pertinent_negatives
-    from catalog.element_definition e join catalog.release cr on cr.id=e.release_id
+    from catalog.element_definition e cross join wording cr
     where e.release_id = $1 and e.element_id = any($2::text[])
   `, [catalogReleaseId, elementIds]) : [];
   const choices = elementIds.length ? await manager.query<ChoiceRow[]>(`
+    with wording as materialized (
+      select provenance->'codeListLocalization' as lists from catalog.release where id=$1
+    )
     select * from (select vse.element_id, option.code, option.code_system, option.display as label, option.source_display as source_label,
-           cr.provenance->'codeListLocalization'->value_set.value_set_id->'values'->option.code_system->option.code as localization,
+           cr.lists->value_set.value_set_id->'values'->option.code_system->option.code as localization,
            value_set.published_at as terminology_version
     from catalog.value_set_element vse
-    join catalog.release cr on cr.id=vse.release_id
+    cross join wording cr
     join catalog.value_set value_set on value_set.release_id = vse.release_id
       and value_set.value_set_id = vse.value_set_id
     join catalog.value_set_option option on option.release_id = vse.release_id
@@ -100,10 +110,10 @@ export async function catalogFieldsConfiguration(
     where vse.release_id = $1 and vse.element_id = any($2::text[]) and coalesce(configured.enabled, true)
     union all
     select option.element_id, option.code, option.code_system, option.display as label, option.display as source_label,
-           cr.provenance->'codeListLocalization'->('inline:' || option.element_id)->'values'->option.code_system->option.code as localization,
+           cr.lists->('inline:' || option.element_id)->'values'->option.code_system->option.code as localization,
            null::text as terminology_version
     from catalog.element_option option
-    join catalog.release cr on cr.id=option.release_id
+    cross join wording cr
     left join catalog.element_option_configuration configured
       on configured.release_id=option.release_id and configured.element_id=option.element_id
       and configured.source_kind=option.source_kind and configured.code_system=option.code_system
@@ -145,9 +155,11 @@ export async function catalogGroupsConfiguration(
   const groups = await manager.query<Array<{
     group_id: string; name: string;
     localization: NonNullable<ClinicalFormConfiguration["catalogGroups"]>[string]["localization"];
-  }>>(`select g.group_id, g.name,
-      r.provenance->'groupLocalization'->g.group_id as localization
-    from catalog.group_definition g join catalog.release r on r.id=g.release_id
+  }>>(`with wording as materialized (
+      select provenance->'groupLocalization' as groups from catalog.release where id=$1
+    )
+    select g.group_id, g.name, r.groups->g.group_id as localization
+    from catalog.group_definition g cross join wording r
     where g.release_id=$1`, [catalogReleaseId]);
   return Object.fromEntries(groups.map(({ group_id, name, localization }) =>
     [group_id, { name, ...(localization ? { localization } : {}) }]));
