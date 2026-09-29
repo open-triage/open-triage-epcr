@@ -185,6 +185,8 @@ test("public installation configuration exposes only the agency language and app
   const result = await service.publicConfiguration();
   assert.equal(result.settings.language, "sv");
   assert.equal(result.settings.signIn.brandText, appearance.brandText);
+  assert.equal("regionalFormat" in result.settings, false);
+  assert.equal("timeZone" in result.settings, false);
   assert.equal("organizationId" in result, false);
   assert.equal("revision" in result.settings, false);
 });
