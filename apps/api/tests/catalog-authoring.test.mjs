@@ -294,7 +294,7 @@ function listManager(currentDefinition) {
   } };
 }
 
-test("recommended code lists support labels, enabled state, ordering, additions, and an enabled default", async () => {
+test("recommended code lists support labels, enabled state, ordering, additions, and inert legacy default metadata", async () => {
   const changed = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
     classification: "suggested", elementIds: sourceCodeList.element_ids, values: [
       { ...sourceCodeList.values[1], label: "Walking or hiking", enabled: false },
@@ -334,13 +334,13 @@ test("duplicate codes and removed published values fail validation", async () =>
       /cannot be deleted/.test(JSON.stringify(error.getResponse())));
 });
 
-test("a disabled code cannot be the list default", async () => {
+test("legacy default metadata stays inert when its code is disabled", async () => {
   const invalid = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
     classification: "suggested", elementIds: sourceCodeList.element_ids,
     values: sourceCodeList.values.map((value, index) => index === 0 ? { ...value, enabled: false } : value),
     defaultValue: { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem } }] };
-  await assert.rejects(serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid }),
-    (error) => error instanceof UnprocessableEntityException && /default must reference an enabled value/.test(JSON.stringify(error.getResponse())));
+  const saved = await serviceWith(listManager(invalid)).save("session", "draft-1", { expectedRevision: 1, definition: invalid });
+  assert.deepEqual(saved.definition.codeLists, invalid.codeLists);
 });
 
 
@@ -466,4 +466,29 @@ test("publishing choice translations seals nested list, system, and code identit
     displayName: "Swedish choices", changeNote: "Reviewed Swedish choices" });
   assert.equal(provenance.codeListLocalization["patient-activity"].values["ICD-10-CM"]["Y93.K"].sv.label, "Djurvård");
   assert.equal(JSON.stringify(provenance).includes("\\u0000"), false);
+});
+
+test("API rejects new default authoring while allowing legacy metadata to round-trip", async () => {
+  const current = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: sourceCodeList.values }] };
+  const changed = structuredClone(current);
+  changed.codeLists[0].defaultValue = { code: sourceCodeList.values[0].code, codeSystem: sourceCodeList.values[0].codeSystem };
+  await assert.rejects(serviceWith(listManager(current)).save("session", "draft-1", { expectedRevision: 1, definition: changed }),
+    (error) => error instanceof UnprocessableEntityException && /Default-value authoring/.test(error.message));
+});
+
+test("publishing legacy default metadata never projects an active default or reorders choices", async () => {
+  const legacy = { ...definition, codeLists: [{ listId: sourceCodeList.list_id, name: sourceCodeList.name,
+    classification: "suggested", elementIds: sourceCodeList.element_ids, values: sourceCodeList.values,
+    defaultValue: { code: sourceCodeList.values[1].code, codeSystem: sourceCodeList.values[1].codeSystem } }] };
+  const original = structuredClone(legacy);
+  let projected;
+  const manager = { query: async (sql, parameters) => {
+    if (sql.includes("insert into catalog.value_set_option_configuration")) projected = JSON.parse(parameters[1]);
+    return [];
+  } };
+  await serviceWith(manager).project(manager, { source_release_id: "release-1", canonical_definition: legacy }, "release-2");
+  assert.deepEqual(projected.map((value) => [value.code, value.sort_order, value.is_default]),
+    sourceCodeList.values.map((value, index) => [value.code, index, false]));
+  assert.deepEqual(legacy, original);
 });

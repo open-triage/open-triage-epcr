@@ -15,7 +15,7 @@ export type ProcedureSuccess = "yes" | "no";
 export type ProcedureRecord = {
   readonly code: string;
   readonly label: string;
-  readonly attempts: number;
+  readonly attempts: number | "";
   readonly success: ProcedureSuccess;
   readonly outcome: ProcedureOutcome;
   readonly complications: ReadonlyArray<string>;
@@ -116,5 +116,6 @@ export function describeProcedure(record: ProcedureRecord, definition: Procedure
   const complications = record.complications
     .map((code) => definition.complicationOptions.find((candidate) => candidate.code === code)?.label ?? code)
     .join(", ");
-  return `${record.attempts} ${record.attempts === 1 ? definition.timeline.attemptSingular : definition.timeline.attemptPlural}, ${success} · ${outcome} · ${definition.timeline.complicationLabel}: ${complications}`;
+  const attempts = record.attempts === "" ? "" : `${record.attempts} ${record.attempts === 1 ? definition.timeline.attemptSingular : definition.timeline.attemptPlural}, `;
+  return `${attempts}${success} · ${outcome} · ${definition.timeline.complicationLabel}: ${complications}`;
 }

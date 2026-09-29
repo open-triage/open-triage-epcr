@@ -447,7 +447,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
           time: action.time,
           procedureCode: "",
           procedureLabel: "",
-          attempts: String(definition.events.procedure.attempts.defaultValue),
+          attempts: "",
           success: "",
           outcome: "",
           complications: [],
@@ -521,7 +521,7 @@ export function transitionShell(state: ShellState, action: ShellAction, definiti
       const procedure: ProcedureRecord = {
         code: draft.procedureCode,
         label: draft.procedureLabel || definition.events.procedure.labels.procedure,
-        attempts: Number(draft.attempts) || 0,
+        attempts: draft.attempts.trim() === "" ? "" : Number(draft.attempts) || 0,
         success: draft.success as ProcedureRecord["success"],
         outcome: draft.outcome as ProcedureRecord["outcome"],
         complications: draft.complications,

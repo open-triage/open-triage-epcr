@@ -286,9 +286,7 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
 
   function updateValue(index: number, update: (value: CatalogDraftCodeList["values"][number]) => CatalogDraftCodeList["values"][number], announcement: string) {
     const values = list.values.map((value, valueIndex) => valueIndex === index ? update(value) : value);
-    const selected = list.defaultValue && valueKey(list.defaultValue) === valueKey(values[index]!);
-    const defaultValue = selected && !values[index]!.enabled ? null : list.defaultValue;
-    onChange({ ...list, values, defaultValue }, announcement);
+    onChange({ ...list, values }, announcement);
   }
 
   function addValue() {
@@ -322,7 +320,6 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
     <ol aria-label={`${list.name} values`}>
       {list.values.map((value, index) => {
         const key = valueKey(value);
-        const isDefault = list.defaultValue ? valueKey(list.defaultValue) === key : false;
         return <li key={key}>
           <div><strong>{value.code}</strong>{value.codeSystem && <small>{value.codeSystem}</small>}</div>
           <label><AdminText messageKey="admin.label" /> <input disabled={readOnly} aria-label={`${language === "sv" ? t("admin.swedish") : t("admin.english")} label for ${list.listId} ${value.codeSystem} ${value.code}`}
@@ -339,11 +336,6 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
                 sv: { ...current.localization?.sv, reviewedSource: { label: current.label } } } }), `Reviewed ${value.code}.`)}><AdminText messageKey="admin.confirmReview" /></button></p>}
           <label><input disabled={readOnly} type="checkbox" aria-label={`${value.label} enabled`} checked={value.enabled} onChange={(event) => updateValue(index,
             (current) => ({ ...current, enabled: event.target.checked }), `${event.target.checked ? t("admin.enabled") : t("admin.disabled")} ${value.label}.`)} /> <AdminText messageKey="admin.enabled" /></label>
-          <label><input type="radio" name={`${list.listId}-default`} aria-label={`Use ${value.label} as default`} checked={isDefault} disabled={readOnly || !value.enabled}
-            onChange={() => {
-              onChange({ ...list, defaultValue: { code: value.code, codeSystem: value.codeSystem } },
-                `Set ${value.label} as the default.`);
-            }} /> <AdminText messageKey="admin.default" /></label>
           <div className="code-list-order" aria-label={`Reorder ${value.label}`}>
             <button type="button" disabled={readOnly || index === 0} aria-label={`Move ${value.label} up`} onClick={() => onChange(
               moveCodeValue(list, index, index - 1), `Moved ${value.label} up.`)}><AdminText messageKey="admin.moveUp" /></button>
@@ -353,6 +345,5 @@ export function CatalogCodeListEditor({ list, issues = [], language = "en", read
         </li>;
       })}
     </ol>
-    <button type="button" disabled={readOnly || list.defaultValue === null} onClick={() => onChange({ ...list, defaultValue: null }, t("admin.clearedTheCode"))}><AdminText messageKey="admin.clearDefault" /></button>
   </div>;
 }

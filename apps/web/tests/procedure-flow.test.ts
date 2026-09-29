@@ -131,7 +131,8 @@ test("configured procedure metadata drives capture, validation, warnings, review
   const definition: EncounterDefinition = { ...standardEncounterDefinition, events: { ...standardEncounterDefinition.events, procedure } };
 
   let state = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "configured-procedure", time: "09:14" }, definition);
-  assert.equal(state.procedureDraft?.attempts, "2");
+  assert.equal(state.procedureDraft?.attempts, "");
+  state = transitionShell(state, { type: "procedure-draft-changed", field: "attempts", value: "2" }, definition);
   state = transitionShell(state, { type: "procedure-selected", code: "268400002" }, definition);
   assert.equal(state.procedureDraft?.procedureLabel, "ECG, 12 lead");
   state = transitionShell(state, { type: "procedure-draft-changed", field: "success", value: "no" }, definition);
@@ -189,4 +190,17 @@ test("Swedish procedure search retains English and code search with the same can
   const selected = transitionShell(state, { type: "procedure-selected", code: "268400002", label: "EKG, 12 avledningar" });
   assert.equal(selected.procedureDraft?.procedureCode, "268400002");
   assert.equal(selected.procedureDraft?.procedureLabel, "EKG, 12 avledningar");
+});
+
+test("saving and recovering an unanswered attempts field never invents a zero answer", () => {
+  let state = transitionShell(INITIAL_SHELL_STATE, { type: "procedure-started", id: "unanswered-attempts", time: "09:16" });
+  state = transitionShell(state, { type: "procedure-selected", code: "268400002" });
+  state = transitionShell(state, { type: "procedure-saved" });
+  const instance = state.encounter.document.groups.find((group) => group.id === "eProcedures.ProcedureGroup")!
+    .instances.find((candidate) => candidate.instanceId === "unanswered-attempts")!;
+  assert.deepEqual(instance.elements.find((element) => element.id === "eProcedures.05")?.values ?? [], []);
+  const storage = memoryStorage();
+  saveShellState(storage, state);
+  state = transitionShell(loadShellState(storage)!, { type: "procedure-opened", id: "unanswered-attempts" });
+  assert.equal(state.procedureDraft?.attempts, "");
 });

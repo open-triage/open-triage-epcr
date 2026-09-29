@@ -417,13 +417,14 @@ const codeList = { listId: "activity", name: "Patient Activity", classification:
     { code: "TWO", codeSystem: "LOCAL", label: "Second", sourceLabel: "Second", category: null, enabled: true }
   ] };
 
-test("code-list controls expose labeled editing, state, default, and keyboard-operable ordering", () => {
-  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, { list: codeList, onChange: () => {} }));
+test("code-list controls expose labeled editing, state and keyboard-operable ordering without default controls", () => {
+  const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor, {
+    list: { ...codeList, defaultValue: { code: "TWO", codeSystem: "LOCAL" } }, onChange: () => {} }));
   assert.match(markup, /<legend>Add value<\/legend>/);
   assert.match(markup, /aria-label="Move First up"/);
   assert.match(markup, /aria-label="Move Second down"/);
   assert.equal((markup.match(/Enabled<\/label>/g) ?? []).length, 2);
-  assert.equal((markup.match(/Default<\/label>/g) ?? []).length, 2);
+  assert.doesNotMatch(markup, /default|type="radio"/i);
 });
 
 test("accessible move controls reorder values without changing code identity", () => {
@@ -445,8 +446,8 @@ test("Catalog authority requires the complete read-write-publish prerequisite ch
 test("read-only code-list inspection exposes definitions without mutable controls", () => {
   const markup = renderToStaticMarkup(createElement(CatalogCodeListEditor,
     { list: codeList, readOnly: true, onChange: () => assert.fail("read-only control mutated") }));
-  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 10);
-  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 6);
+  assert.equal((markup.match(/<input[^>]*disabled=""/g) ?? []).length, 8);
+  assert.equal((markup.match(/<button type="button" disabled=""/g) ?? []).length, 5);
 });
 
 const formDefinition = { schemaVersion: 1 as const, sections: [

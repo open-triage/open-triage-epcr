@@ -690,7 +690,8 @@ export interface CatalogDraftCodeList {
   elementIds: string[];
   localization?: { schemaVersion: 1; sv?: { name?: string; reviewedSource?: { name: string } } };
   values: CatalogDraftCodeValue[];
-  defaultValue: { code: string; codeSystem: string } | null;
+  /** Inert legacy metadata, retained for lossless compatibility; not an authoring setting. */
+  defaultValue?: { code: string; codeSystem: string } | null;
 }
 
 export interface CatalogDraftDefinition {

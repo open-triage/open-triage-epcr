@@ -305,3 +305,25 @@ test("shipped Swedish choice seed appears in the clinical picker without changin
     else Reflect.deleteProperty(globalThis, "document");
   }
 });
+
+test("legacy defaults cannot populate a blank control or change configured order and recorded answers", () => {
+  const configured = {
+    agencyRequired: false, minOccurs: 0, maxOccurs: 1, nillable: true,
+    supportsNotValues: true, supportsPertinentNegatives: true,
+    codeChoices: [
+      { code: "9906001", codeSystem: "", label: "First choice" },
+      { code: "9906003", codeSystem: "", label: "Legacy default" },
+    ],
+    defaultValue: { code: "9906003", codeSystem: "" },
+  };
+  const original = structuredClone(configured);
+  const field = configuredStationaryCodedField("ePatient.25", configured);
+  assert.deepEqual(field.options.map(({ code }) => code), ["9906001", "9906003"]);
+  const blank = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, onChange: () => assert.fail("Opening cannot record") }));
+  assert.match(blank, /<option value="" selected="">Choose a value/);
+  const recorded: EncounterValue = { kind: "coded", occurrenceId: "recorded", code: "9906001", display: "Original answer" };
+  const markup = renderToStaticMarkup(createElement(StationaryCodedValueField, { field, value: recorded, onChange: () => assert.fail("Rendering cannot change an answer") }));
+  assert.match(markup, /<option value="0" selected="">First choice/);
+  assert.deepEqual(configured, original);
+  assert.equal(recorded.display, "Original answer");
+});

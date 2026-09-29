@@ -164,6 +164,16 @@ export class CatalogAuthoringService {
         message: "Catalog draft revision is stale", expectedRevision: body.expectedRevision, actualRevision: draft.revision
       });
       const definition = await this.upgradeDefinition(manager, draft.source_release_id, body.definition);
+      // Upgrade both sides so older drafts also retain metadata inherited from their pinned source.
+      const previousDefinition = await this.upgradeDefinition(manager, draft.source_release_id, draft.canonical_definition);
+      // Legacy metadata may round-trip unchanged, but clients cannot author defaults.
+      for (const list of definition.codeLists) {
+        const previous = previousDefinition.codeLists.find((candidate) => candidate.listId === list.listId);
+        if (list.defaultValue != null && catalogDefinitionSha256(list.defaultValue) !==
+            catalogDefinitionSha256(previous?.defaultValue ?? null)) {
+          throw new UnprocessableEntityException("Default-value authoring is no longer supported");
+        }
+      }
       const validation = await this.validateDefinition(manager, draft.source_release_id, definition);
       if (!validation.valid) throw new UnprocessableEntityException({ message: "Catalog validation failed", findings: validation.findings });
       const updated = await manager.query<DraftRow[]>(`
@@ -585,7 +595,6 @@ export class CatalogAuthoringService {
         warnings.push(`${list.listId} localized list name needs source review`);
       const sourceValues = new Map(baseList.values.map((value) => [`${value.codeSystem}\u0000${value.code}`, value]));
       const seenValues = new Set<string>();
-      const enabledByKey = new Map<string, boolean>();
       for (const [valueIndex, unknownValue] of list.values.entries()) {
         if (!isRecord(unknownValue) || typeof unknownValue.code !== "string" || typeof unknownValue.codeSystem !== "string") {
           findings.push(`${list.listId}.values[${valueIndex}] is invalid`); continue;
@@ -597,7 +606,6 @@ export class CatalogAuthoringService {
           findings.push(`${list.listId} contains a blank or duplicate code`); continue;
         }
         seenValues.add(key);
-        enabledByKey.set(key, unknownValue.enabled === true);
         if (code !== unknownValue.code || codeSystem !== unknownValue.codeSystem ||
             typeof unknownValue.label !== "string" || !unknownValue.label.trim() ||
             typeof unknownValue.sourceLabel !== "string" || !unknownValue.sourceLabel.trim() ||
@@ -617,12 +625,6 @@ export class CatalogAuthoringService {
       }
       for (const key of sourceValues.keys()) if (!seenValues.has(key))
         findings.push(`${list.listId} published code ${key.split("\u0000")[1]} cannot be deleted or changed`);
-      const defaultValue = unknownList.defaultValue;
-      if (defaultValue !== null) {
-        if (!isRecord(defaultValue) || typeof defaultValue.code !== "string" || typeof defaultValue.codeSystem !== "string" ||
-            enabledByKey.get(`${defaultValue.codeSystem}\u0000${defaultValue.code}`) !== true)
-          findings.push(`${list.listId} default must reference an enabled value`);
-      }
     }
     if (seenLists.size !== sourceLists.length)
       findings.push("The draft must retain every inline, agency-maintained, or recommended code list");
@@ -662,7 +664,7 @@ export class CatalogAuthoringService {
     const inlineValues = draft.canonical_definition.codeLists.filter((list) => list.classification === "inline")
       .flatMap((list) => list.values.map((value, index) => ({ element_id: list.elementIds[0]!, source_kind: "inline",
         code: value.code, code_system: value.codeSystem, display: value.label, enabled: value.enabled, sort_order: index,
-        is_default: list.defaultValue?.code === value.code && list.defaultValue.codeSystem === value.codeSystem })));
+        is_default: false })));
     if (inlineValues.length) await manager.query(`insert into catalog.element_option
       (release_id,element_id,source_kind,code,display,code_system)
       select $1,x.element_id,x.source_kind,x.code,x.display,x.code_system
@@ -677,7 +679,7 @@ export class CatalogAuthoringService {
       .flatMap((list) => list.values.map((value, index) => ({
       value_set_id: list.listId, code: value.code, code_system: value.codeSystem, display: value.label,
       source_display: value.sourceLabel, category: value.category, enabled: value.enabled, sort_order: index,
-      is_default: list.defaultValue?.code === value.code && list.defaultValue.codeSystem === value.codeSystem
+      is_default: false
     })));
     if (projectedValues.length) await manager.query(`insert into catalog.value_set_option
       (release_id,value_set_id,code,code_system,display,source_display,category)

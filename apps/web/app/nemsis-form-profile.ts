@@ -52,7 +52,7 @@ export function procedureElementMetadata(references: Record<ProcedureField, Nems
   if (!noneCode) throw new Error(`${references.complications} has no None value`);
   const procedure = requireNemsisDataElement(references.procedure);
   const codeSystem = procedure.valueSource.kind === "external-code-system" ? procedure.valueSource.systems[0]?.label ?? "" : "";
-  return { required, attempts: { defaultValue: attemptMin, min: attemptMin, max: attemptMax }, successOptions, outcomeOptions, complicationOptions, noneCode, terminology: { catalog: procedure.id as NemsisReference, codeSystem } };
+  return { required, attempts: { min: attemptMin, max: attemptMax }, successOptions, outcomeOptions, complicationOptions, noneCode, terminology: { catalog: procedure.id as NemsisReference, codeSystem } };
 }
 
 export function medicationElementMetadata(references: ReadonlyArray<{ readonly id: string; readonly reference: NemsisReference }>) {
