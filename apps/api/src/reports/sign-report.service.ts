@@ -16,6 +16,7 @@ import { DataSource, type EntityManager } from "typeorm";
 import { ClinicianSessionService } from "../sessions/clinician-session.service.js";
 import { encounterDocument } from "./encounter-document.persistence.js";
 import { commandSha256 } from "./draft-report.validation.js";
+import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { lockAndValidateReportNotes, type SignedNoteManifestEntry } from "./sign-report-notes.js";
 import type {
   SignedReportResult,
@@ -91,6 +92,10 @@ type OccurrenceRow = {
   min_occurs: number | null;
   max_occurs: number | null;
   text_constraints: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
+  custom_definition: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  allowed_absence_states: string[] | null;
+  not_value_code: string | null;
+  pertinent_negative_code: string | null;
 };
 
 type SigningAttempt = { result?: SignedReportResult; findings?: SigningFinding[] };
@@ -418,18 +423,32 @@ export class SignReportService {
         when 'boolean' then to_jsonb(o.value_boolean) when 'date' then to_jsonb(o.value_date)
         when 'datetime' then to_jsonb(o.value_datetime) when 'time' then to_jsonb(o.value_time)
         when 'duration' then to_jsonb(o.value_duration) else null end as scalar_value,
-      o.code, o.code_system, o.absence_code, coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
-      e.min_occurs, e.max_occurs, ced.definition->'constraints' as text_constraints
+      o.code, o.code_system, o.absence_code, o.not_value_code, o.pertinent_negative_code,
+      coalesce(e.base_datatype, ced.base_datatype) as base_datatype,
+      e.min_occurs, e.max_occurs, ced.definition->'constraints' as text_constraints,
+      ced.definition as custom_definition, ff.allowed_absence_states
       from clinical.element_occurrence o
       left join catalog.element_definition e on e.release_id = o.catalog_release_id and e.element_id = o.element_id
       left join forms.custom_element_definition ced on ced.id = o.element_identity_id
+      left join forms.form_field ff on ff.id=o.form_field_id
       where o.report_id = $1 and o.tombstoned_at is null order by o.element_id, o.ordinal, o.id`, [report.id]);
 
     const choicePolicies = new Map(form[0].canonical_definition.sections.flatMap((section) => section.fields.flatMap((field) =>
-      field.source.kind === "nemsis" && field.choicePolicy !== undefined
-        ? [[field.source.elementId, field.choicePolicy] as const] : [])));
+      field.choicePolicy !== undefined
+        ? [[field.source.kind === "nemsis" ? field.source.elementId : field.source.elementDefinitionId,
+          field.choicePolicy] as const] : [])));
     for (const occurrence of occurrences) {
-      const policy = choicePolicies.get(occurrence.element_id);
+      const policy = choicePolicies.get(occurrence.custom_definition ? occurrence.element_identity_id : occurrence.element_id);
+      if (occurrence.custom_definition?.datatype === "coded") {
+        const customFindings = customCodedValueFindings(occurrence.custom_definition, {
+          kind: occurrence.value_kind, code: occurrence.code, codeSystem: occurrence.code_system,
+          absenceCode: occurrence.absence_code,
+          notValue: occurrence.not_value_code ? { code: occurrence.not_value_code } : undefined,
+          pertinentNegative: occurrence.pertinent_negative_code ? { code: occurrence.pertinent_negative_code } : undefined,
+        }, policy, occurrence.allowed_absence_states ?? []);
+        for (const message of customFindings) findings.push(this.finding("catalog.custom-code", `$.occurrences.${occurrence.id}`, message));
+        continue;
+      }
       if (!policy) continue;
       if (occurrence.value_kind === "coded" && !policy.some((choice) => choice.kind === "code" &&
         choice.code === occurrence.code && choice.codeSystem === (occurrence.code_system ?? ""))) {

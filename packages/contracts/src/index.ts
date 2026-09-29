@@ -701,7 +701,7 @@ export interface CatalogDraftDefinition {
   hiddenElementIds?: string[];
   elements: CatalogDraftElement[];
   codeLists: CatalogDraftCodeList[];
-  customElements?: CatalogDraftCustomTextElement[];
+  customElements?: CatalogDraftCustomElement[];
 }
 
 /** A standalone, single-value scalar extension owned by one organization. */
@@ -718,6 +718,19 @@ export interface CatalogDraftCustomTextElement {
   identifying: boolean | null;
   localization?: CatalogDraftElement["localization"];
 }
+
+/** Local codes are identified by their own system and code; NEMSIS mappings are annotations. */
+export interface CatalogDraftCustomCodedElement extends Omit<CatalogDraftCustomTextElement, "datatype" | "constraints"> {
+  datatype: "coded";
+  codeSystem: string;
+  choices: Array<{ code: string; label: string; localization?: CatalogDraftCodeValue["localization"];
+    nemsisCode?: string }>;
+  nemsisElement?: string;
+  permittedNotValues: string[];
+  permittedPertinentNegatives: string[];
+}
+
+export type CatalogDraftCustomElement = CatalogDraftCustomTextElement | CatalogDraftCustomCodedElement;
 
 export interface CatalogDraft {
   id: string;
@@ -890,7 +903,7 @@ export interface FormDraftDefinition {
 
 /** Runtime projection of the immutable form and catalog versions pinned to a report. */
 export interface ClinicalFormConfiguration {
-  customFields?: Record<string, CatalogDraftCustomTextElement>;
+  customFields?: Record<string, CatalogDraftCustomElement>;
   /** Group wording from the same immutable catalog as the fields. */
   catalogGroups?: Record<string, { name: string; localization?: {
     schemaVersion: 1; sv?: { name: string; reviewedSource?: { name: string } };

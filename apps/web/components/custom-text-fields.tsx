@@ -9,7 +9,7 @@ const GROUP_ID = "PatientCareReportGroup";
 const MAX_CUSTOM_RESULT_LENGTH = 100000;
 const canonicalBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
-export function customTextIdentity(definition: CatalogDraftCustomTextElement): string {
+export function customTextIdentity(definition: Pick<CatalogDraftCustomTextElement, "namespace" | "slug">): string {
   return `${definition.namespace}.${definition.slug}`;
 }
 
@@ -81,7 +81,7 @@ export function CustomTextFields({ document, fields, definitions = {}, language 
   return <div className="custom-text-fields">{fields.flatMap((field) => {
     if (field.source.kind !== "custom") return [];
     const definition = definitions?.[field.source.elementDefinitionId];
-    if (!definition || field.source.groupDefinitionId) return [];
+    if (!definition || definition.datatype === "coded" || field.source.groupDefinitionId) return [];
     const value = customTextValue(document, definition);
     const findings = [...customTextFindings(definition, value, language), ...(fileErrors[field.key] ? [fileErrors[field.key]] : [])];
     const id = `custom-text-${field.key.replaceAll(/[^A-Za-z0-9_-]/g, "-")}`;

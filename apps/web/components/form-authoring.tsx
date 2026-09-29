@@ -24,9 +24,16 @@ function fieldIdentity(field: FormDraftField): string {
 
 type Choice = NonNullable<FormDraftField["choicePolicy"]>[number];
 
-function availableChoices(field: FormDraftField, catalogFields?: ClinicalFormConfiguration["catalogFields"]): Choice[] {
+function availableChoices(field: FormDraftField, catalogFields?: ClinicalFormConfiguration["catalogFields"],
+  customFields?: ClinicalFormConfiguration["customFields"]): Choice[] {
   const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
+  const custom = field.source.kind === "custom" ? customFields?.[field.source.elementDefinitionId] : undefined;
   return [
+    ...(custom?.datatype === "coded" ? [
+      ...custom.choices.map(({ code }) => ({ kind: "code" as const, code, codeSystem: custom.codeSystem })),
+      ...custom.permittedNotValues.filter((code) => field.allowedAbsenceStates?.includes(code))
+        .map((code) => ({ kind: "not-value" as const, code })),
+    ] : []),
     ...(catalog?.codeChoices ?? []).map(({ code, codeSystem }) => ({ kind: "code" as const, code, codeSystem })),
     ...(catalog?.exceptionalChoices ?? []).filter((choice) => choice.key.startsWith("not-value:"))
       .map((choice) => ({ kind: "not-value" as const, code: choice.key.slice("not-value:".length) })),
@@ -137,9 +144,10 @@ export function FormElementPicker({ definition, results, query, targetSection, c
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, catalogFields, catalogGroups, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
+export function FormSectionElements({ definition, catalogFields, customFields, catalogGroups, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
   readonly definition: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
+  readonly customFields?: ClinicalFormConfiguration["customFields"];
   readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"]; readonly language?: string;
   readonly busy?: boolean;
   readonly readOnly?: boolean;
@@ -192,7 +200,7 @@ export function FormSectionElements({ definition, catalogFields, catalogGroups, 
         {section.fields.map((field, index) => {
           const label = field.source.kind === "nemsis" ? field.source.elementId : field.key;
           const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : t("admin.customElement");
-          const available = availableChoices(field, catalogFields);
+          const available = availableChoices(field, catalogFields, customFields);
           const selected = field.choicePolicy ?? available;
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
@@ -202,8 +210,10 @@ export function FormSectionElements({ definition, catalogFields, catalogGroups, 
                   const identity = choiceIdentity(choice);
                   const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
                   const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
+                  const custom = field.source.kind === "custom" ? customFields?.[field.source.elementDefinitionId] : undefined;
                   const choiceLabel = choice.kind === "code"
-                    ? catalog?.codeChoices?.find((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)?.label
+                    ? catalog?.codeChoices?.find((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)?.label ??
+                      (custom?.datatype === "coded" ? custom.choices.find((candidate) => candidate.code === choice.code)?.label : undefined)
                     : `NOT ${choice.code}`;
                   return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy}
                     onChange={(event) => onChange(updateFieldChoices(definition, field.key,
@@ -218,6 +228,22 @@ export function FormSectionElements({ definition, catalogFields, catalogGroups, 
                   </li>;
                 })}</ol>
               </details>}
+              {field.source.kind === "custom" && customFields?.[field.source.elementDefinitionId]?.datatype === "coded" &&
+                <details><summary>Permitted exceptional values</summary>
+                  {(() => {
+                    const custom = customFields[field.source.elementDefinitionId];
+                    if (custom?.datatype !== "coded") return null;
+                    return [...custom.permittedNotValues.map((code) => ({ code, kind: "NOT" })),
+                      ...custom.permittedPertinentNegatives.map((code) => ({ code, kind: "PN" }))].map(({ code, kind }) =>
+                      <label key={`${kind}:${code}`}><input type="checkbox" checked={field.allowedAbsenceStates?.includes(code) ?? false}
+                        onChange={(event) => onChange({ ...definition, sections: definition.sections.map((section) => ({ ...section,
+                          fields: section.fields.map((candidate) => candidate.key !== field.key ? candidate : {
+                            ...candidate, allowedAbsenceStates: event.target.checked
+                              ? [...(candidate.allowedAbsenceStates ?? []), code]
+                              : (candidate.allowedAbsenceStates ?? []).filter((value) => value !== code),
+                          }) })) }, `Updated exceptional values for ${label}.`)} />{kind} {code}</label>);
+                  })()}
+                </details>}
               <label>{t("admin.moveToSection")}
                 <select aria-label={`${t("admin.moveToSection")} ${label}`} disabled={busy} value={section.key}
                   onChange={(event) => onChange(transferFormElement(definition, section.key, field.key, event.target.value), t("admin.fieldMoved"))}>

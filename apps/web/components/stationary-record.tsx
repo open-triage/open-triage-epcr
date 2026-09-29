@@ -19,6 +19,7 @@ import { currentCatalogLanguage, resolveCatalogGroupText } from "../app/catalog-
 import type { FormLanguage } from "../app/form-localization";
 import { resolveMessage } from "../app/localization";
 import { CustomTextFields } from "./custom-text-fields";
+import { CustomCodedFields } from "./custom-coded-fields";
 
 function statusText(language: FormLanguage, errors: number, warnings: number): string {
   return `${resolveMessage(language, "mobile.errorCount", { count: errors }, errors)}, ${resolveMessage(language, "mobile.warningCount", { count: warnings }, warnings)}`;
@@ -157,6 +158,8 @@ export function StationaryRecord({ document, findings = [], sectionFindings = fi
             : <StationaryRepeatingGroups key={`${block.group.id}:${blockIndex}`} document={document} groups={[block.group]} findings={findings}
               clinicalForm={formDefinition ? { definition: formDefinition, catalogFields, catalogGroups, ...(validation ? { validation } : {}) } : undefined} language={language} onDocumentChange={onDocumentChange} />)}
           {"fields" in section && <CustomTextFields document={document} fields={section.fields} definitions={customFields}
+            language={language} onDocumentChange={onDocumentChange} />}
+          {"fields" in section && <CustomCodedFields document={document} fields={section.fields} definitions={customFields}
             language={language} onDocumentChange={onDocumentChange} />}
         </section>;
       })}

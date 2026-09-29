@@ -30,6 +30,7 @@ import {
   validateSaveDraftReportCommand
 } from "./draft-report.validation.js";
 import { dispatchConflicts, encounterDocument } from "./encounter-document.persistence.js";
+import { customCodedValueFindings } from "./custom-coded-validation.js";
 import { withReportSnapshot } from "./report-snapshot.js";
 import { reportTextNotes } from "./report-note.persistence.js";
 
@@ -77,6 +78,8 @@ type ElementMetadata = {
   supports_pertinent_negatives: boolean;
   max_occurs: number | null;
   text_constraints?: { minLength?: number; maxLength?: number; pattern?: string; minimum?: number; maximum?: number } | null;
+  custom_definition?: import("@open-triage/contracts").CatalogDraftCustomElement | null;
+  form_choice_policy?: import("@open-triage/contracts").FormDraftField["choicePolicy"];
 };
 
 type SingletonTargetStateRow = DraftTargetStateRow & {
@@ -1396,9 +1399,12 @@ export class DraftReportService {
                ced.base_datatype, null::integer as max_occurs,
                (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
                (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
-               ff.analytical_repeatable, ced.identifying,
+               ff.analytical_repeatable, ced.identifying, ced.definition as custom_definition,
+               (select item->'choicePolicy' from jsonb_array_elements(fv.canonical_definition->'sections') section,
+                 jsonb_array_elements(section->'fields') item where item->>'key'=ff.stable_key limit 1) as form_choice_policy,
                array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states
         from forms.form_field ff
+        join forms.form_version fv on fv.id=ff.form_version_id
         left join forms.custom_element_definition ced on ced.id = ff.custom_element_definition_id
         where ff.id = any($1::uuid[]) and ff.form_version_id = $2
       `, [formFieldIds, report.form_version_id]) : [];
@@ -1411,8 +1417,11 @@ export class DraftReportService {
              (cardinality(ff.allowed_absence_states) > 0) as supports_not_values,
              (cardinality(ff.allowed_absence_states) > 0) as supports_pertinent_negatives,
              array(select 'form:' || state from unnest(ff.allowed_absence_states) state) as allowed_absence_states,
-             ced.definition->'constraints' as text_constraints
+             ced.definition->'constraints' as text_constraints, ced.definition as custom_definition,
+             (select item->'choicePolicy' from jsonb_array_elements(fv.canonical_definition->'sections') section,
+               jsonb_array_elements(section->'fields') item where item->>'key'=ff.stable_key limit 1) as form_choice_policy
       from forms.form_field ff join forms.custom_element_definition ced on ced.id=ff.custom_element_definition_id
+      join forms.form_version fv on fv.id=ff.form_version_id
       where ff.form_version_id=$1 and ced.namespace || '.' || ced.slug=any($2::text[])
     `, [report.form_version_id, customElementIds]) : [];
     const customByElement = new Map(custom.map((metadata) => [metadata.element_id!, metadata]));
@@ -1433,6 +1442,11 @@ export class DraftReportService {
   }
 
   private validateDatatype(value: DraftValue, metadata: ElementMetadata, elementId: string): void {
+    if (metadata.base_datatype === "coded" && metadata.custom_definition?.datatype === "coded") {
+      const findings = customCodedValueFindings(metadata.custom_definition, value,
+        metadata.form_choice_policy, metadata.allowed_absence_states.map((state) => state.replace(/^form:/, "")));
+      if (findings.length) throw new UnprocessableEntityException(findings.join("; "));
+    }
     const expected: Record<string, DraftValue["kind"]> = {
       string: "text", integer: "integer", decimal: "numeric", boolean: "boolean",
       date: "date", dateTime: "datetime", time: "time", duration: "duration",
