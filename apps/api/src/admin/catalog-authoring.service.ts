@@ -673,7 +673,8 @@ export class CatalogAuthoringService {
       if (old && (old.namespace !== item.namespace || old.slug !== item.slug ||
         old.definition.title !== item.title || old.definition.definition !== item.definition || old.definition.datatype !== item.datatype ||
         old.definition.usage !== item.usage || old.definition.identifying !== item.identifying ||
-        JSON.stringify(old.definition.constraints) !== JSON.stringify(item.constraints)))
+        ["minLength", "maxLength", "pattern", "minimum", "maximum"].some((key) =>
+          old.definition.constraints?.[key as keyof typeof item.constraints] !== item.constraints?.[key as keyof typeof item.constraints])))
         findings.push(`Published custom identity ${key} cannot change its meaning or classification`);
     }
     for (const old of inherited) if (!customIds.has(old.id)) findings.push(`Published custom identity ${old.namespace}.${old.slug} must be retained`);
