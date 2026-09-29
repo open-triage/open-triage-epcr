@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ConflictException, ForbiddenException, UnauthorizedException, UnprocessableEntityException } from "@nestjs/common";
-import { FormAuthoringService } from "../dist/admin/form-authoring.service.js";
+import { FormAuthoringService, formCatalogAdoptionChoices } from "../dist/admin/form-authoring.service.js";
 
 const organizationId = "10000000-0000-4000-8000-000000000001";
 const catalogId = "20000000-0000-4000-8000-000000000001";
@@ -31,7 +31,70 @@ function element(element_id, overrides = {}) {
     source_datatype: "string", usage: "Optional", definition: {}, analytical_location: "wide", ...overrides };
 }
 
-test("cloning copies compatible references, reports conflicts, and leaves the source aggregate unchanged", async () => {
+test("catalog adoption exposes new shared and custom choices without changing independent field policies", () => {
+  const a = { kind: "code", code: "A", codeSystem: "shared" };
+  const b = { kind: "code", code: "B", codeSystem: "shared" };
+  const sourceForm = { schemaVersion: 1, sections: [{ key: "care", fields: [
+    { key: "first", source: { kind: "nemsis", elementId: "ePatient.01" }, choicePolicy: [b, a] },
+    { key: "second", source: { kind: "nemsis", elementId: "ePatient.01" }, choicePolicy: [a] },
+    { key: "custom", source: { kind: "custom", elementDefinitionId: "coded-id" },
+      choicePolicy: [{ kind: "code", code: "X", codeSystem: "local" }] }
+  ] }] };
+  const old = { "ePatient.01": { codeChoices: [{ code: "A", codeSystem: "shared" }, { code: "B", codeSystem: "shared" }],
+    exceptionalChoices: [{ key: "not-value:NV1" }] } };
+  const next = { "ePatient.01": { codeChoices: [{ code: "A", codeSystem: "shared" }, { code: "B", codeSystem: "shared" },
+    { code: "C", codeSystem: "shared" }], exceptionalChoices: [{ key: "not-value:NV1" }, { key: "not-value:NV2" }] } };
+  const oldCustom = new Map([["coded-id", { datatype: "coded", codeSystem: "local", choices: [{ code: "X" }], permittedNotValues: [] }]]);
+  const nextCustom = new Map([["coded-id", { datatype: "coded", codeSystem: "local", choices: [{ code: "X" }, { code: "Y" }],
+    permittedNotValues: ["NV3"] }]]);
+  assert.deepEqual(formCatalogAdoptionChoices(sourceForm, old, next, oldCustom, nextCustom), {
+    first: [{ kind: "code", code: "C", codeSystem: "shared" }, { kind: "not-value", code: "NV2" }],
+    second: [{ kind: "code", code: "C", codeSystem: "shared" }, { kind: "not-value", code: "NV2" }],
+    custom: [{ kind: "code", code: "Y", codeSystem: "local" }, { kind: "not-value", code: "NV3" }]
+  });
+  assert.deepEqual(sourceForm.sections[0].fields[0].choicePolicy, [b, a]);
+  assert.deepEqual(sourceForm.sections[0].fields[1].choicePolicy, [a]);
+});
+
+test("cloning to a newer catalog keeps field order and disables new codes while retaining the source version", async () => {
+  const source = { schemaVersion: 1, sections: [{ key: "ePatient", fields: [{ key: "first",
+    source: { kind: "nemsis", elementId: "ePatient.25" }, choicePolicy: [
+      { kind: "code", code: "B", codeSystem: "shared" }, { kind: "code", code: "A", codeSystem: "shared" }] }] }] };
+  const original = structuredClone(source);
+  const queries = [];
+  let targetCodes = ["A", "B", "C"];
+  const manager = { query: async (sql, parameters = []) => {
+    queries.push(sql);
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("select r.id from catalog.release")) return [{ id: catalogId }];
+    if (sql.includes("join forms.agency_stationary_default active")) return [{
+      id: sourceFormId, form_id: formId, catalog_release_id: sourceCatalogId, version: 1, canonical_definition: source }];
+    if (sql.includes("status='draft' for update")) return [];
+    if (sql.includes("from catalog.element_definition")) return [{ ...element("ePatient.25"), name: "Patient choice",
+      min_occurs: 0, max_occurs: 1, nillable: true, supports_not_values: false, supports_pertinent_negatives: false }];
+    if (sql.includes("from catalog.value_set_element")) return (parameters[0] === sourceCatalogId ? ["A", "B"] : targetCodes)
+      .map((code, sort_order) => ({ element_id: "ePatient.25", code, code_system: "shared", label: code, sort_order }));
+    if (sql.includes("from catalog.group_definition") || sql.includes("configuration_event")) return [];
+    if (sql.includes("insert into forms.form_version")) return [[{ id: draftId, form_id: formId,
+      catalog_release_id: catalogId, cloned_from_id: sourceFormId, revision: 1,
+      canonical_definition: JSON.parse(parameters[2]), definition_sha256: parameters[3], updated_at: new Date() }], 1];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ manager, transaction: async (_level, work) => work(manager) },
+    { requireCapability: async () => session });
+  const cloned = await service.clone("owner-session", { catalogReleaseId: catalogId, displayName: "Adopt C" });
+  assert.deepEqual(cloned.definition.sections[0].fields[0].choicePolicy, original.sections[0].fields[0].choicePolicy);
+  assert.deepEqual(cloned.adoption.newChoicesByField.first, [{ kind: "code", code: "C", codeSystem: "shared" }]);
+  assert.deepEqual(cloned.diagnostics, []);
+  assert.deepEqual(source, original, "the published source remains pinned to its old choices");
+  assert.equal(queries.some((sql) => /update forms\.form_version/.test(sql)), false);
+  targetCodes = ["A", "C"];
+  const unresolved = await service.compatibleClone(manager, sourceCatalogId, catalogId, source);
+  assert.deepEqual(unresolved.definition, source, "retired selections stay visible for explicit resolution");
+  assert.ok(unresolved.diagnostics.some(({ code, path }) => code === "retired-reference" && path.endsWith("choicePolicy[0]")));
+});
+
+test("cloning retains unresolved references for review and leaves the source aggregate unchanged", async () => {
   const original = structuredClone(definition);
   const queries = [];
   const sourceElements = definition.sections[0].fields.map(({ source }) => element(source.elementId));
@@ -73,7 +136,7 @@ test("cloning copies compatible references, reports conflicts, and leaves the so
   });
 
   const draft = await service.clone("owner-session", { catalogReleaseId: catalogId, displayName: "Night Shift Form" });
-  assert.deepEqual(draft.definition.sections[0].fields.map(({ key }) => key), ["compatible"]);
+  assert.deepEqual(draft.definition.sections[0].fields.map(({ key }) => key), ["compatible", "missing", "changed", "disabled"]);
   assert.deepEqual(draft.diagnostics.map(({ code }) => code), [
     "missing-reference", "incompatible-reference", "disabled-reference"
   ]);
@@ -249,7 +312,13 @@ test("publishing requires a saved revision and note without changing the agency 
     return { id, status: "published", definitionSha256: body.definitionSha256,
       publishedAt: "2026-09-07T02:00:00.000Z", projections: { sections: 1, fields: 4, rules: 0 } };
   } };
-  const service = new FormAuthoringService({ query: async (sql) => {
+  const manager = { query: async (sql) => {
+    if (sql.includes("from catalog.element_definition")) return definition.sections.flatMap((section) =>
+      section.fields.filter((field) => field.source.kind === "nemsis").map((field) => element(field.source.elementId)));
+    if (sql.includes("from catalog.value_set_element") || sql.includes("from catalog.group_definition")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ manager, query: async (sql) => {
     assert.doesNotMatch(sql, /agency_stationary_default/);
     return [{ id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
       version: 2, revision: 3, canonical_definition: definition, definition_sha256: "a".repeat(64), updated_at: new Date() }];
@@ -265,6 +334,30 @@ test("publishing requires a saved revision and note without changing the agency 
   assert.deepEqual(calls[0], { id: draftId, organization: organizationId, body: {
     publishedBy: session.user.id, changeNote: "Reviewed structure", definitionSha256: "a".repeat(64), displayName: "Night Shift Form"
   } });
+});
+
+test("direct publication rejects an unresolved catalog adoption without touching the source form", async () => {
+  const original = { schemaVersion: 1, sections: [{ key: "care", fields: [
+    { key: "missing", source: { kind: "nemsis", elementId: "ePatient.01" } }
+  ] }] };
+  let published = false;
+  const manager = { query: async (sql, parameters = []) => {
+    if (sql.includes("from catalog.element_definition")) return parameters[0] === sourceCatalogId
+      ? [element("ePatient.01")] : [];
+    if (sql.includes("from catalog.value_set_element")) return [];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const service = new FormAuthoringService({ manager, query: async (sql) =>
+    sql.includes("status='published'") ? [{ catalog_release_id: sourceCatalogId }] : [{
+      id: draftId, form_id: formId, catalog_release_id: catalogId, cloned_from_id: sourceFormId,
+      revision: 2, canonical_definition: original, definition_sha256: "a".repeat(64)
+    }] }, { requireCapability: async () => session }, { publish: async () => { published = true; } });
+  await assert.rejects(service.publish("owner-session", draftId, { expectedRevision: 2,
+    definitionSha256: "a".repeat(64), displayName: "Adopt", changeNote: "Review" }),
+  (error) => error instanceof UnprocessableEntityException && error.getResponse().findings.some((finding) =>
+    finding.code === "missing-reference"));
+  assert.equal(published, false);
+  assert.deepEqual(original.sections[0].fields.map(({ key }) => key), ["missing"]);
 });
 
 test("activation pins one exact version and appends previous/new audit evidence", async () => {
