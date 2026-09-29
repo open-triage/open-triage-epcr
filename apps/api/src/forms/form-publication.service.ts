@@ -9,6 +9,9 @@ import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource, type EntityManager } from "typeorm";
 import { releaseCustomDefinitions } from "../admin/custom-definition-version.js";
 import type {
+  CatalogDraftCustomCodedElement,
+} from "@open-triage/contracts";
+import type {
   CanonicalFormDefinition,
   CanonicalFormField,
   PublishedFormVersion,
@@ -114,9 +117,13 @@ export class FormPublicationService {
         const metadata = await this.resolveMetadata(manager, version, definition);
         const elementIds = [...new Set(definition.sections.flatMap((section) => section.fields.flatMap((field) =>
           field.source.kind === "nemsis" ? [field.source.elementId] : [])))];
-        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds, true);
+        const catalogFields = await catalogFieldsConfiguration(manager, version.catalog_release_id, elementIds);
+        const customSnapshot = definition.sections.some((section) => section.fields.some((field) => field.source.kind === "custom"))
+          ? await releaseCustomDefinitions(manager, version.catalog_release_id) : null;
         const invalidChoices = validateFieldChoicePolicies(definition, catalogFields,
-          await customCodedPolicies(manager, definition));
+          customSnapshot === null ? await customCodedPolicies(manager, definition)
+            : Object.fromEntries(customSnapshot.filter((item): item is CatalogDraftCustomCodedElement => !item.retired && item.datatype === "coded")
+              .map((item) => [item.id, item])));
         if (invalidChoices.length) throw new UnprocessableEntityException({ message: "Form publication failed", findings: invalidChoices });
         await manager.query("delete from forms.publication_validation where form_version_id = $1", [version.id]);
         await manager.query("delete from forms.form_rule where form_version_id = $1", [version.id]);

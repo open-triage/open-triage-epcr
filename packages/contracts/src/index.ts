@@ -945,7 +945,7 @@ export interface ClinicalFormConfiguration {
 }
 
 export interface FormCloneDiagnostic {
-  code: "missing-reference" | "disabled-reference" | "incompatible-reference";
+  code: "missing-reference" | "disabled-reference" | "incompatible-reference" | "retired-reference";
   path: string;
   message: string;
 }
@@ -964,6 +964,8 @@ export interface StationaryFormDraft {
   customFields?: ClinicalFormConfiguration["customFields"];
   catalogGroups?: ClinicalFormConfiguration["catalogGroups"];
   diagnostics: FormCloneDiagnostic[];
+  /** Codes newly available in the target catalog, by stable form field key. They start disabled in choicePolicy. */
+  adoption?: { sourceCatalogReleaseId: string; newChoicesByField: Record<string, NonNullable<FormDraftField["choicePolicy"]>> };
   updatedAt: string;
 }
 

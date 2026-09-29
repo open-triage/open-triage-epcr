@@ -144,11 +144,12 @@ export function FormElementPicker({ definition, results, query, targetSection, c
   </fieldset>;
 }
 
-export function FormSectionElements({ definition, catalogFields, customFields, catalogGroups, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
+export function FormSectionElements({ definition, catalogFields, customFields, catalogGroups, newChoicesByField, language = "en", busy = false, readOnly = false, onChange, onMoveSection, onRequestRemoveSection }: {
   readonly definition: FormDraftDefinition;
   readonly catalogFields?: ClinicalFormConfiguration["catalogFields"];
   readonly customFields?: ClinicalFormConfiguration["customFields"];
   readonly catalogGroups?: ClinicalFormConfiguration["catalogGroups"]; readonly language?: string;
+  readonly newChoicesByField?: Record<string, NonNullable<FormDraftField["choicePolicy"]>>;
   readonly busy?: boolean;
   readonly readOnly?: boolean;
   readonly onChange: (definition: FormDraftDefinition, announcement: string) => void;
@@ -202,23 +203,33 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
           const clinicalLabel = field.source.kind === "nemsis" ? getNemsisDataElement(field.source.elementId)?.name : t("admin.customElement");
           const available = availableChoices(field, catalogFields, customFields);
           const selected = field.choicePolicy ?? available;
+          const availableIds = new Set(available.map(choiceIdentity));
+          const newIds = new Set((newChoicesByField?.[field.key] ?? []).map(choiceIdentity));
+          const selectedIds = new Set(selected.map(choiceIdentity));
+          const reviewChoices = [...selected, ...available.filter((choice) => !selectedIds.has(choiceIdentity(choice)))];
           return <li key={field.key}>
             <span><strong>{label}</strong><small>{clinicalLabel ?? t("admin.unknownCatalogElement")}</small></span>
             {!readOnly && <div className="form-field-actions" aria-label={`Actions for ${label}`}>
-              {available.length > 0 && <details><summary>Enabled choices and order</summary>
-                <ol aria-label={`Choices for ${label}`}>{available.map((choice) => {
+              {reviewChoices.length > 0 && <details><summary>{language === "sv" ? "Aktiva val och ordning" : "Enabled choices and order"}
+                {newIds.size > 0 && ` · ${newIds.size} ${language === "sv" ? "nya val" : "new choices"}`}</summary>
+                <ol aria-label={`Choices for ${label}`}>{reviewChoices.map((choice) => {
                   const identity = choiceIdentity(choice);
                   const position = selected.findIndex((candidate) => choiceIdentity(candidate) === identity);
+                  const unavailable = !availableIds.has(identity);
                   const catalog = field.source.kind === "nemsis" ? catalogFields?.[field.source.elementId] : undefined;
                   const custom = field.source.kind === "custom" ? customFields?.[field.source.elementDefinitionId] : undefined;
                   const choiceLabel = choice.kind === "code"
                     ? catalog?.codeChoices?.find((candidate) => candidate.code === choice.code && candidate.codeSystem === choice.codeSystem)?.label ??
                       (custom?.datatype === "coded" ? custom.choices.find((candidate) => candidate.code === choice.code)?.label : undefined)
                     : `NOT ${choice.code}`;
-                  return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy}
+                  return <li key={identity}><label><input type="checkbox" checked={position >= 0} disabled={busy || unavailable && position < 0}
                     onChange={(event) => onChange(updateFieldChoices(definition, field.key,
                       event.target.checked ? [...selected, choice] : selected.filter((candidate) => choiceIdentity(candidate) !== identity)),
                     `Updated choices for ${label}.`)} />{choiceLabel ?? choice.code}</label>
+                    {newIds.has(identity) && <small>{position >= 0
+                      ? language === "sv" ? "Ny i målkatalogen · aktiverad" : "New in target catalog · enabled"
+                      : language === "sv" ? "Ny i målkatalogen · avstängd tills du väljer den" : "New in target catalog · disabled until selected"}</small>}
+                    {unavailable && <small role="alert">{language === "sv" ? "Inte tillgänglig i målkatalogen; avmarkera för att lösa" : "Unavailable in target catalog; uncheck to resolve"}</small>}
                     {position >= 0 && <><button type="button" disabled={busy || position === 0} aria-label={`Move ${choice.code} choice up`}
                       onClick={() => { const next = [...selected]; [next[position - 1], next[position]] = [next[position]!, next[position - 1]!];
                         onChange(updateFieldChoices(definition, field.key, next), `Moved ${choice.code} up.`); }}>↑</button>
@@ -241,7 +252,9 @@ export function FormSectionElements({ definition, catalogFields, customFields, c
                             ...candidate, allowedAbsenceStates: event.target.checked
                               ? [...(candidate.allowedAbsenceStates ?? []), code]
                               : (candidate.allowedAbsenceStates ?? []).filter((value) => value !== code),
-                          }) })) }, `Updated exceptional values for ${label}.`)} />{kind} {code}</label>);
+                          }) })) }, `Updated exceptional values for ${label}.`)} />{kind} {code}
+                        {kind === "NOT" && newIds.has(`not-value::${code}`) && <small>{language === "sv"
+                          ? "Ny i målkatalogen" : "New in target catalog"}</small>}</label>);
                   })()}
                 </details>}
               <label>{t("admin.moveToSection")}

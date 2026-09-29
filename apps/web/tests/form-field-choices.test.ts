@@ -27,3 +27,24 @@ test("authoring and preview use one field policy for codes and NOT values", () =
   assert.deepEqual(preview["ePatient.25"]?.codeChoices?.map((choice) => choice.code), ["9906001"]);
   assert.deepEqual(preview["ePatient.25"]?.exceptionalChoices?.map((choice) => choice.key), ["not-value:7701003"]);
 });
+
+test("catalog adoption marks new choices disabled and exposes unavailable selections", () => {
+  const definition: FormDraftDefinition = { schemaVersion: 1, sections: [{ key: "ePatient", fields: [{
+    key: "sex", source: { kind: "nemsis", elementId: "ePatient.25" }, choicePolicy: [
+      { kind: "code", code: "9906001", codeSystem: "NEMSIS" },
+      { kind: "code", code: "retired", codeSystem: "NEMSIS" }]
+  }] }] };
+  const catalog = { "ePatient.25": { ...catalogFields["ePatient.25"], codeChoices: [
+    ...catalogFields["ePatient.25"].codeChoices,
+    { code: "new", codeSystem: "NEMSIS", label: "New choice" }
+  ] } } satisfies ClinicalFormConfiguration["catalogFields"];
+  const markup = renderToStaticMarkup(createElement(FormSectionElements, { definition, catalogFields: catalog,
+    newChoicesByField: { sex: [{ kind: "code", code: "new", codeSystem: "NEMSIS" }] }, onChange() {} }));
+  assert.match(markup, /New in target catalog · disabled until selected/);
+  assert.match(markup, /Unavailable in target catalog; uncheck to resolve/);
+  assert.ok(markup.indexOf("retired") < markup.indexOf("New choice"), "enabled order precedes new disabled choices");
+  const historical = previewCatalogFields(definition, { "ePatient.25": { ...catalogFields["ePatient.25"], codeChoices: [
+    ...catalogFields["ePatient.25"].codeChoices, { code: "retired", codeSystem: "NEMSIS", label: "Historical choice" }
+  ] } });
+  assert.deepEqual(historical["ePatient.25"]?.codeChoices?.map(({ code }) => code), ["9906001", "retired"]);
+});
