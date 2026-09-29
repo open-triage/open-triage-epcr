@@ -30,6 +30,18 @@ export function removeCustomGroupInstance(document: EncounterDocument, definitio
     ? { ...group, instances: group.instances.filter((instance) => instance.instanceId !== instanceId) } : group) };
 }
 
+function parentLabel(parent: EncounterGroupInstance, target: string | undefined, language: string): string {
+  if (!target) return language === "sv" ? "Patientrapport" : "Patient report";
+  const kind = target === "eMedications.MedicationGroup"
+    ? language === "sv" ? "Läkemedel" : "Medication"
+    : language === "sv" ? "Bedömning" : "Assessment";
+  const value = parent.elements.flatMap((element) => element.values)
+    .find((candidate) => candidate.kind === "coded" || candidate.kind === "scalar");
+  const detail = value?.kind === "coded" ? value.display || value.code
+    : value?.kind === "scalar" ? String(value.value) : parent.instanceId;
+  return `${kind}: ${detail}`;
+}
+
 export function CustomGroupFields({ document, fields, definitions, groups, language = "en", onDocumentChange }: {
   readonly document: EncounterDocument;
   readonly fields: ReadonlyArray<FormDraftField>;
@@ -52,10 +64,10 @@ export function CustomGroupFields({ document, fields, definitions, groups, langu
     const title = language === "sv" ? definition.localization?.sv?.label || definition.title : definition.title;
     return <section key={groupDefinitionId} data-custom-group-definition-id={groupDefinitionId}>
       <h3>{title}</h3>
-      {parents.map((parent, parentIndex) => {
+      {parents.map((parent) => {
         const instances = customGroupInstances(document, definition).filter((instance) => instance.parentInstanceId === parent.instanceId);
         return <div key={parent.instanceId} data-custom-group-parent-id={parent.instanceId}>
-          <h4>{definition.correlatesTo ? `${definition.correlatesTo === "eMedications.MedicationGroup" ? language === "sv" ? "Läkemedel" : "Medication" : language === "sv" ? "Bedömning" : "Assessment"} ${parentIndex + 1}` : language === "sv" ? "Patientrapport" : "Patient report"}</h4>
+          <h4>{parentLabel(parent, definition.correlatesTo, language)}</h4>
           {instances.map((instance, index) => <div key={instance.instanceId} data-custom-group-instance-id={instance.instanceId}>
             <h5>{title} {index + 1}</h5>
             <RepeatedCustomFields document={document} fields={memberFields} definitions={definitions} language={language}
